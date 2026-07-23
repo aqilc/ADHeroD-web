@@ -1,0 +1,1853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADHeroD</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"/></symbol>
+  <symbol id="i-prio" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6"/><path d="m6 18 6-6 6 6"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-sofa" viewBox="0 0 24 24"><path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3"/><path d="M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z"/><path d="M4 18v2"/><path d="M20 18v2"/><path d="M12 4v9"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></symbol>
+  <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86"/><rect x="7" y="10.75" width="10" height="2.5" rx="0.5" fill="#fff" stroke="none"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+  <symbol id="i-tag-tag" viewBox="0 0 24 24"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l7.29-7.29a1 1 0 0 0 0-1.41L12 2z"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tag-home" viewBox="0 0 24 24"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></symbol>
+  <symbol id="i-tag-briefcase" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="7" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></symbol>
+  <symbol id="i-tag-star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></symbol>
+  <symbol id="i-tag-heart" viewBox="0 0 24 24"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></symbol>
+  <symbol id="i-tag-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></symbol>
+  <symbol id="i-tag-cart" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></symbol>
+  <symbol id="i-tag-dollar" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></symbol>
+  <symbol id="i-tag-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+  <symbol id="i-tag-dumbbell" viewBox="0 0 24 24"><path d="M14.4 14.4 9.6 9.6"/><path d="M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829l6.364-6.364a2 2 0 1 1 2.829 2.829l-1.768 1.767a2 2 0 1 1 2.828 2.829z"/><path d="m21.5 21.5-1.4-1.4"/><path d="M3.9 3.9 2.5 2.5"/><path d="M6.404 12.768a2 2 0 1 1-2.829-2.829l1.768-1.767a2 2 0 1 1-2.828-2.829 2 2 0 1 1 2.828 2.829l1.768 1.768a2 2 0 1 1 2.829 2.828z"/></symbol>
+  <symbol id="i-tag-plane" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
+  <symbol id="i-tag-bell" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+  <symbol id="i-tag-flame" viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+  <symbol id="i-tag-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></symbol>
+  <symbol id="i-tag-music" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="i-tag-map" viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></symbol>
+  <symbol id="i-tag-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+  <symbol id="i-tag-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-tag-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
+  <symbol id="i-tag-gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+  <symbol id="i-promote" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+  <symbol id="i-repeat" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><polygon points="7 4 19 12 7 20 7 4"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="4 13 10 19 20 6"/></symbol>
+  <symbol id="i-repeat-done" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><path d="M9 12.5l2.2 2.2 4-4.5"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></symbol>
+  <symbol id="i-backlog" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+  <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></symbol>
+  <symbol id="i-all" viewBox="0 0 24 24"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
+</defs></svg>
+<!-- fire-defs: filters/gradients/paths referenced via <use> — turbulence computed once per layer, not per fire. -->
+<svg id="fire-defs" width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+  <filter id="fireA" x="-30%" y="-20%" width="160%" height="140%"><feTurbulence type="turbulence" baseFrequency="0.05" numOctaves="3" seed="3"/><feDisplacementMap in="SourceGraphic" scale="17" xChannelSelector="R" yChannelSelector="G"/></filter>
+  <filter id="fireB" x="-30%" y="-20%" width="160%" height="140%"><feTurbulence type="turbulence" baseFrequency="0.07" numOctaves="2" seed="8"/><feDisplacementMap in="SourceGraphic" scale="9" xChannelSelector="R" yChannelSelector="G"/></filter>
+  <filter id="fireC" x="-30%" y="-20%" width="160%" height="140%"><feTurbulence type="turbulence" baseFrequency="0.09" numOctaves="2" seed="12"/><feDisplacementMap in="SourceGraphic" scale="6" xChannelSelector="R" yChannelSelector="G"/></filter>
+  <radialGradient id="gOut" cx=".5" cy=".72" fx=".5" fy=".82" r=".8"><stop offset="0" stop-color="#f57c38" stop-opacity=".55"/><stop offset=".4" stop-color="#d2570f" stop-opacity=".55"/><stop offset=".72" stop-color="#a8300a" stop-opacity=".5"/><stop offset=".9" stop-color="#7a1c02" stop-opacity=".35"/><stop offset="1" stop-color="#58120a" stop-opacity="0"/></radialGradient>
+  <radialGradient id="gMid" cx=".5" cy=".72" fx=".5" fy=".84" r=".72"><stop offset="0" stop-color="#ffb35e" stop-opacity=".95"/><stop offset=".35" stop-color="#ff9448" stop-opacity=".92"/><stop offset=".68" stop-color="#ef6c10" stop-opacity=".8"/><stop offset="1" stop-color="#c2410c" stop-opacity="0"/></radialGradient>
+  <radialGradient id="gIn" cx=".5" cy=".74" fx=".5" fy=".86" r=".68"><stop offset="0" stop-color="#ffe9c8"/><stop offset=".3" stop-color="#ffcf8a"/><stop offset=".6" stop-color="#ffa63e" stop-opacity=".95"/><stop offset="1" stop-color="#ff8324" stop-opacity="0"/></radialGradient>
+  <radialGradient id="gH" cx=".5" cy=".5" fx=".5" fy=".55" r=".55"><stop offset="0" stop-color="#fff3dd"/><stop offset=".45" stop-color="#ffd9a0" stop-opacity=".95"/><stop offset="1" stop-color="#ffb054" stop-opacity="0"/></radialGradient>
+  <path id="p1" d="M32 122 C22 114 20 99 16 84 C21 72 15 64 22 52 C29 40 44 34 52 22 C54 14 62 15 58 24 C63 34 60 44 68 56 C73 74 74 96 66 108 C60 116 53 120 46 122 Z"/>
+  <path id="p2" d="M28 122 C18 114 16 100 23 88 C28 79 24 70 30 60 C35 51 38 48 40 41 C40 35 47 36 46 44 C52 53 52 63 59 73 C68 85 70 102 61 112 C56 118 50 121 44 122 Z"/>
+  <path id="p3" d="M36 121 C30 114 31 104 35 96 C38 90 36 84 40 78 C43 72 47 70 49 74 C53 79 51 87 56 94 C60 101 58 111 51 117 C48 119 43 120 40 121 Z"/>
+  <!-- 3 layered flames scrolling through their own fixed turbulence field, each at its own rate — zero JS. -->
+  <g id="flA">
+    <g><animateTransform attributeName="transform" type="translate" values="0 0;0 -3000" dur="22s" repeatCount="indefinite"/>
+      <g filter="url(#fireA)"><g><animateTransform attributeName="transform" type="translate" values="0 0;0 3000" dur="22s" repeatCount="indefinite"/>
+        <use href="#p1" fill="url(#gOut)" opacity=".85"/></g></g></g>
+    <g><animateTransform attributeName="transform" type="translate" values="0 0;0 -3000" dur="29s" repeatCount="indefinite"/>
+      <g filter="url(#fireB)"><g><animateTransform attributeName="transform" type="translate" values="0 0;0 3000" dur="29s" repeatCount="indefinite"/>
+        <use href="#p2" fill="url(#gMid)" opacity=".9"/></g></g></g>
+    <g><animateTransform attributeName="transform" type="translate" values="0 0;0 -3000" dur="18s" repeatCount="indefinite"/>
+      <g filter="url(#fireC)"><g><animateTransform attributeName="transform" type="translate" values="0 0;0 3000" dur="18s" repeatCount="indefinite"/>
+        <use href="#p3" fill="url(#gIn)" opacity=".95"/>
+        <ellipse cx="45" cy="107" rx="9" ry="11" fill="url(#gH)" opacity=".9"/></g></g></g>
+  </g>
+  <!-- 5 chunky angular char pieces; gaps between them = glowing crevices -->
+  <clipPath id="coalC" clipPathUnits="objectBoundingBox">
+    <polygon points="0.03,0.62 0.10,0.24 0.24,0.16 0.31,0.42 0.27,0.86 0.08,0.92"/>
+    <polygon points="0.34,0.50 0.40,0.12 0.55,0.20 0.58,0.55 0.50,0.90 0.36,0.84"/>
+    <polygon points="0.62,0.40 0.74,0.10 0.90,0.26 0.96,0.62 0.86,0.90 0.64,0.82"/>
+    <polygon points="0.19,0.96 0.25,0.66 0.38,0.72 0.40,1.0"/>
+    <polygon points="0.54,1.0 0.58,0.70 0.73,0.66 0.77,0.98"/>
+  </clipPath>
+</defs></svg>
+<div x-data="adherod" x-cloak
+     @keydown.window="onKey($event)"
+     @keydown.escape.window="escape()">
+
+  <!-- Magic-link sign-in (opt-in sync); LocalStore is the offline default. Signed in → set app password. -->
+  <main class="auth" x-show="authOpen" x-cloak>
+    <div class="card">
+      <h1 x-text="session ? 'Phone sign-in' : 'Sync ADHeroD'"></h1>
+      <p class="sub" x-show="!session">Sign in with a magic link to sync across devices. Your local data stays available offline.</p>
+      <template x-if="session">
+        <form @submit.prevent="setAppPassword()">
+          <p class="sub" x-text="authMsg || 'Set an app password — the phone app signs in with your email and this password.'"></p>
+          <input class="inp" type="password" x-model="authPass" placeholder="new app password" autocomplete="new-password" required>
+          <div class="dialog-actions">
+            <button type="button" class="ghost" @click="authOpen = false; authMsg = ''; authPass = ''">Close</button>
+            <button type="submit" class="primary">Set password</button>
+          </div>
+        </form>
+      </template>
+      <template x-if="!session && !authSent">
+        <form @submit.prevent="signIn()">
+          <input class="inp" type="email" x-model="authEmail" placeholder="you@email.com" autocomplete="email" required>
+          <div class="dialog-actions">
+            <button type="button" class="ghost" @click="authOpen = false; authMsg = ''">Cancel</button>
+            <button type="submit" class="primary">Send link</button>
+          </div>
+        </form>
+      </template>
+      <template x-if="!session && authSent">
+        <form @submit.prevent="verifyCode()">
+          <p class="sub" x-text="authMsg"></p>
+          <input class="inp" inputmode="numeric" x-model="authCode" placeholder="6-digit code" autocomplete="one-time-code">
+          <div class="dialog-actions">
+            <button type="button" class="ghost" @click="authOpen = false; authSent = false; authMsg = ''">Close</button>
+            <button type="submit" class="primary">Verify code</button>
+          </div>
+        </form>
+      </template>
+    </div>
+  </main>
+
+  <!-- App -->
+  <div id="shell" x-show="!store.requiresAuth || session">
+
+
+    <div class="canvas" x-ref="canvas"
+         @pointerdown="canvasDown($event)" @pointermove="canvasMove($event)" @pointerup="canvasUp($event)" @pointercancel="canvasUp($event)"
+         @wheel.passive="onCanvasWheel($event)">
+     <div class="canvas-track" :class="{ dragging }" :style="`transform: translateX(calc(-${surfaceIndex() * 100}% + ${dragDx}px))`">
+
+      <!-- Lists surface: task-list views (All/Backlog/projects/areas/filters); project-picker lives in the overview roller -->
+      <section class="surface surface-lists" data-surface="lists" :inert="surface !== 'lists'" @wheel.passive="onOverscroll($event)">
+
+    <main class="app" :class="{ tinted: !!listTintCol() }" :style="listTintStyle()">
+    <div class="topbar">
+      <button class="hamburger" @click="openOverview()" aria-label="Open menu">
+        <svg class="ico"><use href="#i-menu"/></svg>
+      </button>
+      <div class="topbar-title">
+        <h1 x-text="navHeading()"></h1>
+      </div>
+      <button class="link" x-show="!session" @click="authOpen = true; authMsg = ''">Sync</button>
+      <button class="link" x-show="session" @click="authOpen = true; authMsg = ''">Phone</button>
+      <button class="link" x-show="session" @click="signOut()">Sign out</button>
+    </div>
+
+    <!-- Lists view controls: search + sort + quick-filters, above the task list. Hidden off the Lists surface via listView().
+         Sort/filter state is global + persisted; completed tasks are hidden by default and shown in a section below the add button. -->
+    <div class="list-controls" x-show="listView()">
+      <label class="list-search">
+        <svg class="ico"><use href="#i-search"/></svg>
+        <input type="search" placeholder="Search tasks" x-model="listQ" @keydown.escape.stop="listQ = ''; $event.target.blur()">
+      </label>
+
+      <!-- Sort -->
+      <div class="lc-field">
+        <button type="button" class="list-chip" :class="{ on: sortBy !== 'manual' }" @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'">
+          <span x-text="sortBy === 'manual' ? 'Sort' : sortLabel()"></span>
+          <svg class="ico caret" :style="sortBy !== 'manual' && sortDir === 'desc' ? 'transform:rotate(180deg)' : ''"><use href="#i-chev-d"/></svg>
+        </button>
+        <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+          <template x-for="o in [['manual','Manual'],['due','Due date'],['priority','Priority'],['deadline','Deadline'],['alpha','Alphabetical'],['created','Date added']]" :key="o[0]">
+            <button type="button" class="pop-item" @click="setSort(o[0])">
+              <span x-text="o[1]"></span>
+              <svg class="tick ico" x-show="sortBy === o[0]" :style="o[0] !== 'manual' && sortDir === 'desc' ? 'transform:rotate(180deg)' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path :d="o[0] === 'manual' ? 'M20 6 9 17l-5-5' : 'M12 19V5M5 12l7-7 7 7'"/></svg>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Priority quick-filter -->
+      <div class="lc-field">
+        <button type="button" class="list-chip" :class="{ on: qfPri.length }" @click.stop="listMenu = listMenu === 'pri' ? null : 'pri'">
+          Priority<span class="lc-count" x-show="qfPri.length" x-text="qfPri.length"></span>
+        </button>
+        <div class="pop pri-pop lc-pop" x-show="listMenu === 'pri'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+          <template x-for="p in availPri()" :key="p">
+            <button type="button" class="pri-chip" :class="{ sel: qfPri.includes(p) }" :style="'--pc:' + pc(p)" @click="toggleQfPri(p)">
+              <svg class="ico"><use href="#i-prio"/></svg><span x-text="'P' + p"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Area quick-filter -->
+      <div class="lc-field" x-show="areas.length">
+        <button type="button" class="list-chip" :class="{ on: qfAreas.length }" @click.stop="listMenu = listMenu === 'area' ? null : 'area'">
+          Area<span class="lc-count" x-show="qfAreas.length" x-text="qfAreas.length"></span>
+        </button>
+        <div class="pop lc-pop lc-area-pop" x-show="listMenu === 'area'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+          <template x-for="a in areas" :key="a.id">
+            <button type="button" class="pop-item" @click="toggleQfArea(a.id)">
+              <span class="lc-dot" :style="'background:' + (a.color || areaDefault)"></span>
+              <span x-text="a.name"></span>
+              <svg class="tick ico" x-show="qfAreas.includes(a.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <!-- Due quick-filter -->
+      <div class="lc-field">
+        <button type="button" class="list-chip" :class="{ on: qfDue }" @click.stop="listMenu = listMenu === 'due' ? null : 'due'">
+          Due<span class="lc-count" x-show="qfDue">1</span>
+        </button>
+        <div class="pop lc-pop" x-show="listMenu === 'due'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+          <template x-for="o in [['today','Today'],['overdue','Overdue'],['has','Has a date'],['none','No date']]" :key="o[0]">
+            <button type="button" class="pop-item" @click="setQfDue(o[0])">
+              <span x-text="o[1]"></span>
+              <svg class="tick ico" x-show="qfDue === o[0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <button type="button" class="lc-clear" x-show="qfActive()" x-cloak @click="clearQf()"
+              x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show"
+              x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">Clear</button>
+
+      <button type="button" class="list-filter" :class="{ on: showCompleted }" @click="toggleShowCompleted()"
+              :title="showCompleted ? 'Hide completed tasks' : 'Show completed tasks'">Done</button>
+      <button type="button" class="list-filter" :class="{ on: qfArchived }" @click="toggleQfArchived()"
+              :title="qfArchived ? 'Exit archived view' : 'Show only archived tasks'">Archived</button>
+    </div>
+
+    <div class="empty" x-show="listView() && visibleRows().length === 0 && !composer.open && !(showCompleted && completedRows().length)" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : 'No tasks yet.'"></div>
+    <!-- rows: one innerHTML parse (not x-for) — ~1s→~50ms; events delegated to <ul>; hover/drag/kbfocus imperative -->
+    <ul class="list" x-show="listView()" x-effect="tasks; navSel; collapsed; fitRows()" x-init="initListChkSort($el)"
+        @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)"
+        @dragstart="listDragStart($event)" @dragover.prevent="listDragOver($event)" @dragleave="listDragLeave($event)" @drop.prevent="listDrop($event)" @dragend="dragEnd()">
+      <!-- direct innerHTML (not x-html): x-html walks ~9000 nodes for Alpine directives — rows carry none -->
+      <!-- preserve the scroller position across rebuilds: replacing every row (esp. while the composer's edit-row is mid-list) otherwise clamps scrollTop to 0 -->
+      <div class="rows" x-effect="const h = listHtml(); if ($el._h !== h) { const sc = $el.closest('.app'), st = sc ? sc.scrollTop : 0; $el._h = h; $el.innerHTML = h; if (sc) sc.scrollTop = st; queueMicrotask(() => { if (sc) sc.scrollTop = st; applyEditDom(); }); }"></div>
+
+      <!-- drop ghost: flex order (rows i*2); left indent = depth (shallower = outdent vs reorder) -->
+      <template x-if="ghostPos()">
+        <li class="item drop-ghost" :style="'order:' + ghostPos().order + ';padding-left:calc(18px + ' + (ghostPos().depth*22) + 'px)'"></li>
+      </template>
+
+      <!-- composer: bottom for new; overlaps edited row (pulled up) for check+title crossfade -->
+      <li class="composer" x-ref="composer" :style="'order:' + (editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
+          @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); submitAndClose(); }">
+        <div class="composer-grow" x-ref="grow" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
+        <form class="composer-card" @submit.prevent="submitComposer()">
+        <button type="button" class="check" :class="{ done: editDone() }" :style="'--pc:' + pc(draft.priority) + (editing ? '' : ';display:none')" @click="toggleEditing()"></button>
+        <div class="composer-body">
+        <div class="content" x-ref="content" contenteditable="true" role="textbox" aria-label="Task name"
+             @input="syncTitle(); refreshAreaPicker(); refreshGoalPicker()" @keydown="editorKeydown($event)" @paste="onPaste($event)"></div>
+        <div class="content-hint" x-show="titleEmpty" aria-hidden="true">Buy milk
+          <span class="nlp-pill" data-kind="date">tomorrow</span>
+          <span class="nlp-pill" data-kind="date">5pm</span>
+          <span class="nlp-pill" data-kind="proj">#errands</span>
+          <span class="nlp-pill" data-kind="area">@home</span>
+          <span class="nlp-pill" data-kind="rec">every week</span>
+        </div>
+        <div class="area-autocomplete" x-cloak :style="'display:' + (areaPicker.open ? 'flex' : 'none') + '; left:' + areaPicker.left + 'px; top:' + areaPicker.top + 'px'" @click.outside="areaPicker.open = false">
+          <template x-for="(t, i) in areaMatches()" :key="t.id">
+            <button type="button" class="ac-row" :class="{ sel: i === areaPicker.sel }"
+                    @click="pickArea(t.name)" @mouseenter="areaPicker.sel = i">
+              <span class="area" :style="'--tc:' + (t.color || areaDefault)">
+                <template x-if="t.icon"><svg class="ico" style="width:11px;height:11px;vertical-align:-1px"><use :href="'#' + t.icon"/></svg></template>
+                <span class="dot"></span><span class="nm" x-text="t.name"></span>
+              </span>
+            </button>
+          </template>
+          <button type="button" class="ac-row create" x-show="areaMatches().length === 0 && areaPicker.frag.trim()"
+                  @click="createAreaFromPicker()">Create "@<span x-text="areaPicker.frag"></span>"</button>
+        </div>
+        <div class="area-autocomplete goal-autocomplete" x-cloak :style="'display:' + (goalPicker.open ? 'flex' : 'none') + '; left:' + goalPicker.left + 'px; top:' + goalPicker.top + 'px'" @click.outside="goalPicker.open = false">
+          <template x-for="(g, i) in goalMatches()" :key="g.id">
+            <button type="button" class="ac-row" :class="{ sel: i === goalPicker.sel }"
+                    @click="pickGoal(g.id)" @mouseenter="goalPicker.sel = i">
+              <span class="nm" x-text="g.name"></span>
+            </button>
+          </template>
+        </div>
+        <!-- desc: contenteditable for inline md (markers faded); set imperatively via setDescText on open -->
+        <div class="desc" x-ref="desc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Description"
+             data-placeholder="Description" @input="onDescInput($event)" @compositionend="onDescInput()"
+             @keydown="descKeydown($event)" @paste="descPaste($event)" @click="descClick($event)"></div>
+        <!-- Relation chips, shown under the description so they're easy to see (add more via the Relations chip) -->
+        <div class="composer-rels" x-show="relChips().length > 0">
+          <template x-for="r in relChips()" :key="r.type + r.id">
+            <span class="rel-chip" :class="r.type">
+              <svg class="ico rel-ico" :class="r.type" :title="relTypeLabel(r.type)"><use :href="'#' + relIcon(r.type)"/></svg>
+              <span class="rel-chip-name" x-text="projName(r.id)"></span>
+              <button type="button" class="rel-chip-remove" @click="removeRelation(r.id, r.type)" title="Remove">×</button>
+            </span>
+          </template>
+        </div>
+        <!-- Inline subtasks / checklist entries (Things-style), directly below the description -->
+        <div class="composer-entries" @copy="chkCopy($event)">
+          <template x-if="editing && childTasks(editing).length">
+            <div class="entry-list" x-init="initEntrySort($el, 'sub')">
+              <template x-for="c in childTasks(editing)" :key="c.id">
+                <div class="entry" :class="{ done: c.completed_at }">
+                  <span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>
+                  <button type="button" class="check sm" :class="{ done: c.completed_at, prog: hasProgress(c) && !c.completed_at }" :style="'--pc:' + pc(c.priority) + (hasProgress(c) ? ';--p:' + rowProgress(c) : '')" @click="toggle(c)"></button>
+                  <input type="text" class="entry-txt" :value="c.content" @keydown="entryKey($event)" @keydown.enter.prevent="focusEntryGhost($event.target)" @keydown.escape="$event.target.value = c.content; $event.target.blur()" @blur="renameChild(c, $event.target.value)" @keydown.stop>
+                  <button type="button" class="entry-kids" x-show="childTasks(c.id).length" @click.stop="editTask(c)" title="Open this task"><svg class="ico"><use href="#i-chev-r"/></svg></button>
+                  <button type="button" class="entry-del" @click="removeChild(c)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
+                </div>
+              </template>
+              <div class="entry ghost" :class="{ active: subGhost.length }">
+                <span class="check sm ghost-check"></span>
+                <input type="text" class="entry-txt" placeholder="New subtask" x-model="subGhost" @keydown="entryKey($event)" @keydown.enter.prevent="commitGhostStay('sub')" @keydown.stop>
+              </div>
+            </div>
+          </template>
+          <!-- ghost first (in DOM AND on screen) → open items → done items (done sink via CSS order). Ghost-first DOM = Tab from the description lands on the "new item" box before the existing rows. -->
+          <template x-if="draft.checklist.length && !(editing && childTasks(editing).length)">
+            <div class="entry-list" x-init="initEntrySort($el, 'chk')">
+              <div class="entry chk ghost" :class="{ active: chkGhost.length }">
+                <span class="chk-rect ghost-check"></span>
+                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter.prevent="commitGhostStay('chk')" @paste="chkPaste($event)" @keydown.stop></textarea>
+              </div>
+              <template x-for="(item, idx) in draft.checklist" :key="item.id">
+                <div class="entry chk" :class="{ done: item.done && !chkPlain(), 'chk-alt': idx % 2 }" :data-id="item.id">
+                  <span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>
+                  <button type="button" class="chk-rect" x-show="!chkPlain()" :class="{ done: item.done }" @click="toggleChecklistItem(item)"></button>
+                  <div class="entry-txt" role="textbox" tabindex="0" x-init="$el.innerHTML = chkLive(item.text)" @pointerdown="chkRowDown($event)" @pointerup="chkRowUp($el, $event)" @focus="chkFocus($el)" @input="chkInput(item, $event)" @keydown="entryKey($event)" @keydown.backspace="chkBackspace(item, $event)" @keydown.enter.prevent="insertChkAfter(item)" @keydown.escape="$el.innerHTML = chkLive(item.text); $el.blur()" @blur="$el.contentEditable = 'false'; renameChecklistItem(item, $event.target.textContent)" @paste="chkPaste($event, item)" @keydown.stop></div>
+                  <button type="button" class="entry-del" @click="removeChecklistItem(item)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
+                </div>
+              </template>
+            </div>
+          </template>
+          <!-- Empty state: ghost subtask OR ghost checklist (subtask is edit-only) -->
+          <template x-if="!(editing && childTasks(editing).length) && !draft.checklist.length">
+            <div class="entry-empty">
+              <div class="entry ghost" :class="{ active: subGhost.length }" x-show="editing && !chkGhost.length" x-transition.opacity.duration.150ms>
+                <span class="check sm ghost-check"></span>
+                <input type="text" class="entry-txt" placeholder="New subtask" x-model="subGhost" @keydown="entryKey($event)" @keydown.enter.prevent="commitGhostStay('sub')" @keydown.stop>
+              </div>
+              <span class="entry-or" x-show="editing && !subGhost.length && !chkGhost.length" x-transition.opacity.duration.150ms>OR</span>
+              <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length" x-transition.opacity.duration.150ms>
+                <span class="chk-rect ghost-check"></span>
+                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter.prevent="commitGhostStay('chk')" @paste="chkPaste($event)" @keydown.stop></textarea>
+              </div>
+            </div>
+          </template>
+        </div>
+        <!-- pickers gated in x-if so Alpine doesn't init the whole block at boot -->
+        <template x-if="composer.open">
+        <div class="composer-opts">
+          <!-- Priority -->
+          <div class="field" @click.outside="pop === 'pri' && (pop = null)">
+            <button type="button" class="chip set" @click="togglePop('pri')">
+              <svg class="ico" :style="'color:' + pc(draft.priority)"><use href="#i-prio"/></svg>
+              <span x-text="'P' + draft.priority"></span>
+            </button>
+            <div class="pop pri-pop" x-show="pop === 'pri'">
+              <template x-for="p in [1, 2, 3, 4]" :key="p">
+                <button type="button" class="pri-chip" :class="{ sel: draft.priority === p }" :style="'--pc:' + pc(p)" @click="draft.priority = p; pop = null">
+                  <svg class="ico"><use href="#i-prio"/></svg>
+                  <span x-text="'P' + p"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+          <!-- Due date -->
+          <div class="field" @click.outside="pop === 'due' && (pop = null)">
+            <button type="button" class="chip" :class="{ set: draft.due_at || draft.recurrence }" @click="openDate('due')">
+              <svg class="ico"><use href="#i-cal"/></svg>
+              <span x-text="dueLabel()"></span>
+              <svg class="ico rep-on" x-show="draft.recurrence" title="Repeats"><use :href="repRules().some(r => r.from_completion) ? '#i-repeat-done' : '#i-repeat'"/></svg>
+            </button>
+            <div class="pop cal" x-show="pop === 'due'">
+              <input type="text" class="cal-type" placeholder="Type a date or repeat (e.g. every 2 weeks)" x-model="draft.dateText" x-ref="dueType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop>
+              <div class="cal-quick">
+                <button type="button" class="q tdy" x-show="!quickActive('today')" @click="setQuick('today')"><svg class="ico"><use href="#i-cal"/></svg><span x-text="L.quick.today"></span><b x-text="quickLabel('today')"></b></button>
+                <button type="button" class="q tmw" x-show="!quickActive('tomorrow')" @click="setQuick('tomorrow')"><svg class="ico"><use href="#i-sun"/></svg><span x-text="L.quick.tomorrow"></span><b x-text="quickLabel('tomorrow')"></b></button>
+                <button type="button" class="q wkd" x-show="!quickActive('weekend')" @click="setQuick('weekend')"><svg class="ico"><use href="#i-sofa"/></svg><span x-text="[0, 6].includes(new Date().getDay()) ? 'Next weekend' : L.quick.weekend"></span><b x-text="quickLabel('weekend')"></b></button>
+                <button type="button" class="q nxw" x-show="!quickActive('nextweek')" @click="setQuick('nextweek')"><svg class="ico"><use href="#i-arrow"/></svg><span x-text="L.quick.nextweek"></span><b x-text="quickLabel('nextweek')"></b></button>
+                <button type="button" class="q clear" x-show="draft.due_at || draft.recurrence" @click="draft.due_at = ''; draft.dueTime = ''; draft.recurrence = null; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
+              </div>
+              <div class="cal-head">
+                <span x-text="calLabel()"></span>
+                <span class="cal-navs">
+                  <button type="button" class="cal-nav" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button>
+                  <button type="button" class="cal-nav dot" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button>
+                  <button type="button" class="cal-nav" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button>
+                </span>
+              </div>
+              <div class="cal-grid">
+                <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" :class="{ on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused, pulse: hdrPulse }" @click="toggleRepeatWeekday(i)" x-text="w"></button></template>
+                <template x-for="c in calCells()" :key="c.key">
+                  <button type="button" class="cal-day" :class="calDayClass(c)" @click="calDayTap(c)" @pointerdown="holdStart(c)" @pointerup="holdCancel()" @pointerleave="holdCancel()" @pointercancel="holdCancel()"><span x-text="c.d"></span><b class="ordn" x-show="c.ord" x-text="c.ord"></b></button>
+                </template>
+              </div>
+              <!-- Time: plain drafts keep the Add-time row; a repeating draft carries time in its [at ...] chip. Both open the shared .tpop. -->
+              <button type="button" class="cal-time" x-show="!repRules().length" @click.stop="toggleTimePop($event)">
+                <svg class="ico"><use href="#i-clock"/></svg><span :class="{ tset: draft.dueTime }" x-text="draft.dueTime ? fmtTime(draft.dueTime) : 'Add time'"></span>
+              </button>
+              <!-- V3 phrase-builder zones: each repeat statement is one flowing sentence. Chips are readouts; spatial
+                   controls receive (headers=days, ordinals=end, tpop=time) and act on the ACTIVE (last-touched) statement. -->
+              <template x-for="(r, ri) in repRules()" :key="ri">
+                <div class="zone" :class="{ paused: r.paused, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
+                  <div class="zrail">
+                    <button type="button" class="zbtn" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion - tap for fixed schedule' : 'Fixed schedule - tap to repeat after completion'" @click="repIdx = ri; toggleFromCompletion()">
+                      <svg class="ico"><use :href="r.from_completion ? '#i-repeat-done' : '#i-repeat'"/></svg>
+                    </button>
+                    <button type="button" class="zbtn" :class="{ on: r.paused }" :title="r.paused ? 'Resume' : 'Pause'" @click="r.paused = !r.paused">
+                      <svg class="ico"><use :href="r.paused ? '#i-play' : '#i-pause'"/></svg>
+                    </button>
+                  </div>
+                  <p>
+                    <button type="button" class="zdel" title="Delete repeat" @click="clearRepeat(ri)"><svg class="ico"><use href="#i-trash"/></svg></button>
+                    every
+                    <span class="st"><button type="button" @click="repIdx = ri; setRepeatInterval(-1)">−</button><b x-text="r.interval || 1"></b><button type="button" @click="repIdx = ri; setRepeatInterval(1)">+</button></span>
+                    <button type="button" class="c" @click="repIdx = ri; cycleRepeatFreq()" x-text="repeatUnitLabel(r)"></button>
+                    <template x-if="repDaysLabel(r)"><span>on <button type="button" class="c" @click="repIdx = ri; pulseWeekdays()" x-text="repDaysLabel(r)"></button></span></template>
+                    <button type="button" class="c" :class="{ g: !r.at }" @click.stop="repIdx = ri; toggleTimePop($event)" x-text="r.at ? 'at ' + fmtTime(r.at) : 'at –'"></button><span>,</span>
+                    <span class="st" :class="{ g: !r.ends?.count }"><button type="button" @click="repIdx = ri; setRepeatCount(-1)">−</button><b x-text="r.ends?.count || '∞'"></b><button type="button" @click="repIdx = ri; setRepeatCount(1)">+</button></span> times, ending
+                    <button type="button" class="c" :class="{ g: !r.ends?.date, ring: endPicking && repIdx === ri }" @click="repIdx = ri; toggleEndPicking()" x-text="r.ends?.date ? fmt(r.ends.date) : 'never'"></button>
+                  </p>
+                </div>
+              </template>
+              <button type="button" class="zone ghosted" x-show="!repRules().length" @click="setRepeatFreq('day')">
+                <span class="c ghosty">every…</span><span class="zhint">tap M T W above · or type "every 2 days"</span>
+              </button>
+              <div class="addrep" x-show="repRules().length"><button type="button" @click="addRepeat()">+ repeat</button></div>
+              <!-- shared anchored time popover: type field + hour grid + quarters -->
+              <div class="tpop" x-cloak :style="tpop ? tpopStyle : 'display:none'" @click.stop @click.outside="tpop && (tpop = false)">
+                <div class="tin"><input type="text" :placeholder="timeGet() ? fmtTime(timeGet()) : 'type a time — 4:07pm'" x-ref="tpopIn" @keydown.enter.prevent="applyTimeText($event)" @keydown.stop></div>
+                <div class="thg">
+                  <template x-for="h in tpopHours()" :key="h.h">
+                    <button type="button" class="th" :class="{ on: h.on }" @click="setTimeHour(h.h)"><span x-text="h.lbl"></span><em x-show="h.ap" x-text="h.ap"></em></button>
+                  </template>
+                </div>
+                <div class="tq">
+                  <template x-for="q in [0, 15, 30, 45]" :key="q">
+                    <button type="button" :class="{ on: timeQuarter() === q }" @click="setTimeQuarter(q)" x-text="':' + String(q).padStart(2, '0')"></button>
+                  </template>
+                </div>
+                <div class="tx"><button type="button" @click="timeSet(''); tpop = false">no time</button></div>
+              </div>
+            </div>
+          </div>
+          <!-- Deadline -->
+          <div class="field" @click.outside="pop === 'dl' && (pop = null)">
+            <button type="button" class="chip" :class="{ set: draft.deadline_at }" @click="openDate('dl')">
+              <svg class="ico"><use href="#i-flag"/></svg>
+              <span x-text="draft.deadline_at ? fmt(draft.deadline_at) : 'Deadline'"></span>
+            </button>
+            <div class="pop cal" x-show="pop === 'dl'">
+              <div class="cal-head">
+                <span x-text="calLabel()"></span>
+                <span class="cal-navs">
+                  <button type="button" class="cal-nav" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button>
+                  <button type="button" class="cal-nav dot" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button>
+                  <button type="button" class="cal-nav" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button>
+                </span>
+              </div>
+              <div class="cal-grid">
+                <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><span class="cal-dow" x-text="w"></span></template>
+                <template x-for="c in calCells()" :key="c.key">
+                  <button type="button" class="cal-day" :class="{ out: !c.cur, today: c.today, sel: c.iso === draft.deadline_at }" @click="draft.deadline_at = c.iso; pop = null" x-text="c.d"></button>
+                </template>
+              </div>
+              <button type="button" class="pop-item clear" x-show="draft.deadline_at" @click="draft.deadline_at = ''; pop = null">No deadline</button>
+            </div>
+          </div>
+          <!-- Duration -->
+          <div class="field" @click.outside="pop === 'dur' && (pop = null)">
+            <button type="button" class="chip" :class="{ set: durMinNow() }" @click="openDur()">
+              <svg class="ico"><use href="#i-clock"/></svg>
+              <span x-text="durLabel()"></span>
+            </button>
+            <div class="pop dur" x-show="pop === 'dur'">
+              <div class="dur-grid">
+                <template x-for="d in durPresets" :key="d.min">
+                  <button type="button" class="dur-preset" :class="{ sel: durMinNow() === d.min }" @click="setDur(d.min)" x-text="d.label"></button>
+                </template>
+              </div>
+              <div class="dur-wheel">
+                <div class="wheel-col" x-ref="wheelH" @scroll.debounce.80ms="draft.durH = Math.max(0, Math.min(12, Math.round($el.scrollTop / 30)))">
+                  <template x-for="h in 13" :key="h">
+                    <div class="wheel-item" :class="{ on: draft.durH === h - 1 }" @click="draft.durH = h - 1; scrollWheels()" x-text="h - 1"></div>
+                  </template>
+                </div>
+                <span class="wheel-lab">h</span>
+                <div class="wheel-col" x-ref="wheelM" @scroll.debounce.80ms="draft.durM = Math.max(0, Math.min(55, Math.round($el.scrollTop / 30) * 5))">
+                  <template x-for="m in 12" :key="m">
+                    <div class="wheel-item" :class="{ on: draft.durM === (m - 1) * 5 }" @click="draft.durM = (m - 1) * 5; scrollWheels()" x-text="(m - 1) * 5"></div>
+                  </template>
+                </div>
+                <span class="wheel-lab">m</span>
+                <div class="wheel-band"></div>
+              </div>
+            </div>
+          </div>
+          <!-- Area multi-select -->
+          <div class="field" @click.outside="pop === 'area' && (pop = null)">
+            <button type="button" class="chip chip-area" :class="{ set: draft.areas.length }" @click="togglePop('area')">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l7.29-7.29a1 1 0 0 0 0-1.41L12 2z"/><circle cx="7" cy="7" r="1"/></svg>
+              <span x-text="draft.areas.length ? draft.areas.join(', ') : 'Areas'"></span>
+            </button>
+            <div class="pop area-pop" x-show="pop === 'area'">
+              <div class="area-grid" x-show="areas.length">
+                <template x-for="l in areas" :key="l.id">
+                  <button type="button" class="area-opt" :class="{ on: draft.areas.includes(l.name) }" :style="'--tc:' + (l.color || areaDefault)" @click="toggleArea(l.name)">
+                    <svg class="tick ico" x-show="draft.areas.includes(l.name)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    <template x-if="l.icon"><svg class="ico" style="width:12px;height:12px"><use :href="'#' + l.icon"/></svg></template>
+                    <span x-text="l.name"></span>
+                  </button>
+                </template>
+              </div>
+              <input type="text" class="pop-input" placeholder="New area…" x-model="newAreaName"
+                @keydown.enter.prevent="createAndToggleArea()" @keydown.stop>
+              <button type="button" class="pop-item" x-show="newAreaName.trim()" @click="createAndToggleArea()">Create "<span x-text="newAreaName.trim()"></span>"</button>
+            </div>
+          </div>
+          <!-- Goal attach -->
+          <div class="field" x-show="goals.some(g => !g.archived)" @click.outside="pop === 'goal' && (pop = null)">
+            <button type="button" class="chip chip-goal" :class="{ set: draft.goal_ids.length }" @click="togglePop('goal')">
+              <svg class="ico"><use href="#i-target"/></svg>
+              <span x-text="draft.goal_ids.length ? draft.goal_ids.map(id => goalById(id)?.name).filter(Boolean).join(', ') : 'Goals'"></span>
+            </button>
+            <div class="pop area-pop" x-show="pop === 'goal'">
+              <div class="area-grid">
+                <template x-for="g in goals.filter(g => !g.archived)" :key="g.id">
+                  <button type="button" class="area-opt" :class="{ on: draft.goal_ids.includes(g.id) }" :style="g.color ? '--tc:' + g.color : ''" @click="toggleGoal(g.id)">
+                    <svg class="tick ico" x-show="draft.goal_ids.includes(g.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    <svg class="ico"><use :href="'#' + (g.icon || 'i-target')"/></svg>
+                    <span x-text="g.name"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </div>
+          <!-- Location constraint -->
+          <div class="field" x-show="locations.length" @click.outside="pop === 'loc' && (pop = null)">
+            <button type="button" class="chip chip-loc" :class="{ set: locPolarity() !== 'any' }" @click="openLoc()">
+              <svg class="ico"><use :href="locPolarity() === 'except' ? '#i-pin-off' : '#i-pin'"/></svg>
+              <span x-text="locChipLabel()"></span>
+            </button>
+            <!-- Hybrid picker: sentence polarity ("do this [at]:") + block-driven here-row + region chip rows -->
+            <div class="pop loc-pop" x-show="pop === 'loc'">
+              <p class="lp-line">do this <button type="button" class="c" :class="locPolarity() === 'any' ? 'g' : (locPolarity() === 'except' ? 'x' : '')" @click="toggleLocPolarity()" x-text="locPolarity() === 'any' ? 'anywhere' : (locPolarity() === 'except' ? 'away from' : 'at')"></button><span class="lp-colon" x-show="locPolarity() !== 'any'">:</span></p>
+              <template x-if="hereLocationId()">
+                <button type="button" class="lp-here" @click="toggleLocId(hereLocationId())">
+                  <span class="heredot"></span><span x-text="locName(hereLocationId())"></span><span class="sub">here now</span>
+                  <svg class="ico tick" x-show="draft.location?.ids?.includes(hereLocationId())"><use href="#i-check"/></svg>
+                </button>
+              </template>
+              <!-- designated home always surfaces here (unless it's already the "here" row) so "at home" is one tap -->
+              <template x-if="homeLocationId && homeLocationId !== hereLocationId()">
+                <button type="button" class="lp-here lp-home-row" @click="toggleLocId(homeLocationId)">
+                  <svg class="ico hm-ico"><use href="#i-tag-home"/></svg><span x-text="locName(homeLocationId)"></span><span class="sub">home</span>
+                  <svg class="ico tick" x-show="draft.location?.ids?.includes(homeLocationId)"><use href="#i-check"/></svg>
+                </button>
+              </template>
+              <template x-for="row in locRegionRows()" :key="row.region">
+                <div>
+                  <div class="lp-sec" x-text="row.region + (row.more || row.open ? ' · ' + (row.chips.length + row.more) : '')"></div>
+                  <div class="lp-row">
+                    <template x-for="ch in row.chips" :key="ch.id">
+                      <button type="button" class="c" :class="locChipCls(ch.id)" @click="toggleLocId(ch.id)">
+                        <svg class="ico tkk" x-show="draft.location?.ids?.includes(ch.id)"><use href="#i-check"/></svg><span x-text="ch.name"></span>
+                      </button>
+                    </template>
+                    <button type="button" class="lp-more" x-show="row.more > 0" @click="locExpandRegion(row.region)" x-text="'+' + row.more + ' more'"></button>
+                    <button type="button" class="lp-more" x-show="row.open" @click="locExpandRegion(row.region)">less</button>
+                    <button type="button" class="lp-new" x-show="locNew !== row.region" @click="locNew = row.region; $nextTick(() => $refs.lpNewInput?.focus())">＋ place</button>
+                    <template x-if="locNew === row.region">
+                      <span class="lp-new"><input x-ref="lpNewInput" placeholder="name…" @keydown.enter.prevent="createPlaceInline(row.region, $event.target.value)" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span>
+                    </template>
+                  </div>
+                </div>
+              </template>
+              <button type="button" class="lp-mgr" @click="openLocManager()"><svg class="ico"><use href="#i-pin"/></svg>Manage places &amp; travel…</button>
+            </div>
+          </div>
+          <!-- Relations (edit only) -->
+          <div class="field" x-show="editing" @click.outside="pop === 'rel' && (pop = null)">
+            <button type="button" class="chip chip-rel" :class="{ set: (editingTask()?.blocked_by?.length || editingTask()?.relates?.length) }" @click="togglePop('rel'); relStaged = null; pickerQ = ''" :disabled="!editing">
+              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+              <span>Relations</span>
+            </button>
+            <div class="pop rel-pop" x-show="pop === 'rel'">
+              <div class="relations-section">
+                <!-- staged pick: choose the relation type, then Add (no cancel — click outside closes) -->
+                <template x-if="relStaged">
+                  <div class="rel-staged">
+                    <button type="button" class="rel-staged-name" @click="relStaged = null" title="Pick a different task" x-text="projName(relStaged)"></button>
+                    <div class="rel-type-toggle">
+                      <button type="button" data-type="blocked_by" :class="{ on: relType === 'blocked_by' }" @click="relType = 'blocked_by'">Blocked</button>
+                      <button type="button" data-type="blocks" :class="{ on: relType === 'blocks' }" @click="relType = 'blocks'">Blocks</button>
+                      <button type="button" data-type="relates" :class="{ on: relType === 'relates' }" @click="relType = 'relates'">Relates</button>
+                    </div>
+                    <button type="button" class="rel-add" @click="submitRel()">Add</button>
+                  </div>
+                </template>
+                <!-- unified task picker (hidden while a pick is staged) -->
+                <template x-if="!relStaged">
+                  <div class="rel-picker">
+                    <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop>
+                    <template x-for="t in relationCandidates()" :key="t.id">
+                      <button type="button" class="pop-item task-line" @click="stageRel(t.id)" x-html="taskLine(t)"></button>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+        </template>
+        <div class="composer-actions">
+          <!-- left: project location picker (Todoist-style, bottom-left); actions stay right -->
+          <div class="field loc" @click.outside="pop === 'proj' && (pop = null)">
+            <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired }" @click="togglePop('proj'); pickerQ = ''" x-ref="projChip" :style="projPickColor()">
+              <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="hash" x-show="!pickIsDefault()">#</span><span x-text="draft.project || defaultProjName() || 'Project'"></span>
+            </button>
+            <div class="pop proj-pop up" x-show="pop === 'proj'">
+              <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="createFilteredProj()" @keydown.stop>
+              <template x-for="p in filteredProjects()" :key="p.id">
+                <div>
+                  <!-- task-projects read as the TASKS they are (checkbox + title + areas); sidebar projects keep the # row -->
+                  <template x-if="taskProj(p)">
+                    <button type="button" class="pop-item task-line" :class="{ sel: draft.project_id === p.id }" @click="pickProject(p)" x-html="taskLine(p)"></button>
+                  </template>
+                  <template x-if="!taskProj(p)">
+                    <button type="button" class="pop-item proj-row" :class="{ sel: draft.project_id === p.id }" @click="pickProject(p)">
+                      <svg class="hash-ico ico" :style="p.color ? 'color:' + p.color : ''"><use :href="isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'"/></svg>
+                      <span :style="p.color ? 'color:' + p.color + ';opacity:.75' : ''" x-text="projectPath(p)"></span>
+                      <svg class="tick ico" x-show="draft.project_id === p.id" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                    </button>
+                  </template>
+                </div>
+              </template>
+              <button type="button" class="pop-item create" x-show="pickerQ.trim()" @click="createFilteredProj()">Create "<span x-text="pickerQ.trim()"></span>"</button>
+            </div>
+          </div>
+          <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
+          <div class="more-wrap" x-show="editing" @click.outside="pop === 'overflow' && (pop = null)">
+            <button type="button" class="more-btn" @click="togglePop('overflow')" title="More actions" :aria-expanded="pop === 'overflow'"><svg class="ico" width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
+            <div class="pop overflow-pop" x-show="pop === 'overflow'">
+              <button type="button" class="pop-item" @click="convertToGoal(); pop = null">Convert to goal</button>
+              <button type="button" class="pop-item" x-show="childTasks(editing).length > 0" @click="convertToChecklist(); pop = null">Convert to checklist</button>
+              <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="convertToSubtasks(); pop = null">Convert to subtasks</button>
+              <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="toggleChecklistPlain(); pop = null" x-text="chkPlain() ? 'Make list checkable' : 'Make list uncheckable'"></button>
+              <button type="button" class="pop-item" @click="toggleArchive(); pop = null" x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></button>
+            </div>
+          </div>
+          <button type="button" class="side-btn" x-show="editing && !editingTask()?.sidebar" @click="askSidebarPromote()" title="Promote to project"><svg class="ico"><use href="#i-promote"/></svg></button>
+          <button type="button" class="del-btn" x-show="editing" @click="deleteEditing()" title="Delete task"><svg class="ico"><use href="#i-trash"/></svg></button>
+          <button type="button" class="ghost" @click="closeComposer()">Cancel</button>
+          <button type="submit" class="primary" :disabled="!draft.content.trim()" x-text="editing ? 'Save' : 'Add task'"></button>
+        </div>
+        </div>
+      </form>
+        </div>
+      </li>
+    </ul>
+
+    <!-- Full ghost task row (keeps the .add-task-btn hook): looks like an empty task row; click opens the composer -->
+    <button class="add-task-btn" x-show="listView() && (!composer.open || editing)" @click="startAdd()"><span class="ghost-check"></span><span class="ghost-title">Add task</span></button>
+
+    <!-- Completed tasks: a section BELOW the add button so the button stays visible and completed items are clearly separated. -->
+    <!-- Done: a real task list (same row components) so subtasks show and the composer can relocate in + open inline. -->
+    <div class="list-done" x-show="listView() && showCompleted && completedRows().length" x-cloak>
+      <div class="list-done-head"><span>Done</span><span class="list-done-n" x-text="completedRows().length"></span></div>
+      <ul class="list" @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)">
+        <div class="rows" x-effect="const h = doneHtml(); if ($el._h !== h) { $el._h = h; $el.innerHTML = h; queueMicrotask(() => applyEditDom()); }"></div>
+      </ul>
+    </div>
+
+    <!-- Drag-to-move edge rail: revealed while a task row is dragged (dragId); compact drop targets for
+         Backlog + every project + every area. The fixed wrapper clips the panel so its off-screen slide
+         never grows the page; pointer-events off unless .on so it can't steal scroll/clicks when hidden. -->
+    <div class="move-rail" :class="{ on: dragId }" aria-hidden="true">
+      <div class="mr-panel">
+        <template x-for="it in railList" :key="it.kind + it.id">
+          <button type="button" class="mr-target" :class="{ hot: railHot === it.kind + it.id }" :style="'--cc:' + (it.color || 'var(--muted)')"
+                  @dragenter.prevent @dragover.prevent="railOver(it.kind, it.id)" @drop.prevent="railDrop(it.kind, it.id)">
+            <svg class="ico"><use :href="'#' + it.icon"/></svg>
+            <span class="mr-name" x-text="it.label"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+    </main>
+      </section><!-- /surface-lists -->
+
+    <!-- Now: Room (hero + 2 alternates) + today list. nowFocusId is transient view state only. -->
+    <section class="surface surface-now" data-surface="now" :inert="surface !== 'now'" @wheel.passive="onOverscroll($event)">
+    <main class="app now-room" :data-daypart="daypart()" :class="{ mainlined: nowFocusId }">
+      <section class="room" aria-label="Now">
+        <header class="room-head"><span class="eyebrow" x-text="nowGreeting() + ' · ' + today()"></span></header>
+
+        <template x-if="!nowFocusId">
+          <div class="room-body">
+            <p class="brief" x-text="nowBrief()"></p>
+
+            <template x-if="nowTask()">
+              <article class="now-hero" :style="'--home-warmth:' + homeW">
+                <span class="now-ember" x-show="homeW > 8" aria-hidden="true"></span>
+                <div class="now-k"><span class="now-pulse"></span> Now</div>
+                <div class="now-title" x-text="nowTask().content"></div>
+                <div class="now-meta-row">
+                  <span class="now-meta" x-text="nowMeta(nowTask())"></span>
+                  <span class="areas"><template x-for="l in areaObjs(nowTask().area_ids)" :key="l.id"><span class="area" :style="'--tc:' + (l.color || areaDefault)"><svg class="ico" :class="{ 'ico-default': !l.icon }"><use :href="'#' + (l.icon || 'i-tag-tag')"/></svg><span class="nm" x-text="l.name"></span></span></template></span>
+                  <span class="now-vote" x-show="nowVote(nowTask())" x-text="'🔥 a vote toward ' + nowVote(nowTask())"></span>
+                </div>
+                <div class="now-actions"><button class="primary" @click="nowStart(nowTask())">Start</button><button class="ghost" @click="setNav('all'); $nextTick(() => editTask(nowTask()))">Edit</button><button class="ghost" @click="toast('It’s okay — take a break. I’ll be here.')">Need a break</button></div>
+              </article>
+            </template>
+            <!-- it's-okay empty state -->
+            <template x-if="!nowTask()">
+              <article class="now-hero now-empty" :style="'--home-warmth:' + homeW">
+                <span class="now-ember" x-show="homeW > 8" aria-hidden="true"></span>
+                <div class="now-k">Now</div>
+                <div class="now-title">Nothing pressing — it’s okay.</div>
+                <div class="now-meta">Nothing’s overdue. Take a breath, or add something.</div>
+                <div class="now-actions"><button class="primary" @click="setNav('all'); startAdd()">Add a task</button></div>
+              </article>
+            </template>
+
+            <div class="now-alts" x-show="nowAlts().length">
+              <template x-for="r in nowAlts()" :key="r.t.id">
+                <article class="now-alt">
+                  <div class="now-alt-title" x-text="r.t.content"></div>
+                  <div class="now-alt-meta" x-text="nowMeta(r.t)"></div>
+                  <span class="now-vote sm" x-show="nowVote(r.t)" x-text="'🔥 ' + nowVote(r.t)"></span>
+                  <button type="button" class="ghost" @click="nowStart(r.t)">Start</button>
+                </article>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- mainlined: the room clears to one solo move -->
+        <template x-if="nowFocusId && nowFocusTask()">
+          <div class="room-body now-solo">
+            <button type="button" class="backlink" @click="nowBack()">&#8592; back to choices</button>
+            <article class="now-hero">
+              <div class="now-k"><span class="now-pulse"></span> Mainlined</div>
+              <div class="now-title" x-text="nowFocusTask().content"></div>
+              <div class="now-meta-row"><span class="now-meta" x-text="nowMeta(nowFocusTask())"></span><span class="now-vote" x-show="nowVote(nowFocusTask())" x-text="'🔥 a vote toward ' + nowVote(nowFocusTask())"></span></div>
+              <div class="now-actions"><button class="primary" @click="nowStart(nowFocusTask())">Start</button><button class="ghost" @click="setNav('all'); $nextTick(() => editTask(nowFocusTask()))">Edit</button><button class="ghost" @click="toast('It’s okay — take a break. I’ll be here.')">Need a break</button></div>
+            </article>
+            <p class="brief">The rest of the day is still there, faint and waiting. Right now, only this.</p>
+          </div>
+        </template>
+      </section>
+
+      <!-- today, faint on the same surface: the day list (events first, then tasks) above a now-window timeline -->
+      <aside class="now-today" aria-label="Today's shape">
+        <!-- server auto-plan: today's tasks in rank order (day-windows, not clock-times); falls back to the day list when there's no plan -->
+        <template x-if="nowPlan().length">
+          <div class="now-today-list">
+            <template x-for="p in nowPlan()" :key="p.t.id">
+              <div class="now-today-row now-plan-row" :class="{ blocked: p.blocked }">
+                <span class="now-plan-rank" x-text="p.rank"></span>
+                <span class="now-today-title" x-text="p.t.content"></span>
+                <span class="badge" :class="p.badge && p.badge.kind" x-show="p.badge"><span x-text="p.badge && p.badge.label"></span></span>
+                <svg class="ico lock-ico" x-show="p.blocked" :title="p.waiting ? 'Waiting on: ' + p.waiting : 'Blocked'"><use href="#i-lock"/></svg>
+                <span class="now-plan-flag warn" x-show="p.infeasible" title="Infeasible — window too tight for the estimate">⚠</span>
+                <span class="now-plan-flag" x-show="p.noEst" title="No estimate — the plan can’t size this yet">◌</span>
+                <button type="button" class="pick" @click="nowMainline(p.t.id, $event)">Pick</button>
+              </div>
+            </template>
+          </div>
+        </template>
+        <div class="now-today-list" x-show="!nowPlan().length && nowToday().length">
+          <template x-for="it in nowToday()" :key="it.kind + it.id">
+            <div class="now-today-row" :class="it.kind">
+              <span class="now-today-title" x-text="it.title"></span>
+              <span class="now-today-time" x-text="it.allDay ? (it.kind === 'event' ? 'All day' : '') : _clTime(it.start)"></span>
+              <template x-if="it.kind !== 'event'">
+                <button type="button" class="pick" @click="nowMainline(it.id, $event)">Pick</button>
+              </template>
+              <template x-if="it.kind === 'event' && nowNext() && nowNext().id === it.id">
+                <span class="leaveby" x-text="'◷ ' + (nowNext().mins > 0 ? 'leave in ~' + nowNext().mins + 'm' : 'time to go')"></span>
+              </template>
+            </div>
+          </template>
+        </div>
+        <div class="now-window">
+          <div class="now-window-inner" :style="'height:' + nowWindow().dayH + 'px'">
+            <template x-for="h in nowWindow().hours" :key="'r'+h.h"><div class="now-hr" :class="{ past: h.past, next: h.next }" :style="'top:' + h.top + 'px'"></div></template>
+            <template x-for="h in nowWindow().hours" :key="'l'+h.h"><div class="now-hl" :class="{ past: h.past, next: h.next }" :style="'top:' + h.top + 'px'" x-text="h.label"></div></template>
+            <template x-for="r in nowWindow().rows" :key="r.kind + r.id">
+              <div class="now-evt" :class="[r.kind, { past: r.past, live: r.live }]" :style="'top:' + r.top + 'px;height:' + r.height + 'px'" :title="r.title"><span class="now-evt-t" x-text="r.title"></span></div>
+            </template>
+            <div class="now-line" :style="'top:' + nowWindow().nowY + 'px'"></div>
+            <!-- always lit (not tied to homeStage()) — this fire marks the current minute, not goal warmth -->
+            <span class="fire now-fire st-kindling" :style="'--fire-px:36px;top:' + nowWindow().nowY + 'px'" x-html="fireHTML" aria-hidden="true"></span>
+          </div>
+        </div>
+      </aside>
+    </main>
+      </section><!-- /surface-now -->
+
+    <!-- Plan surface: the calendar. Lazy-mounted (heavy subtree + effects) on first visit; x-init centers it on mount. -->
+    <section class="surface surface-plan" data-surface="plan" :inert="surface !== 'plan'">
+    <template x-if="mounted('plan')">
+    <section class="calendar" :class="'view-' + clView + (clScrolling ? ' cl-scrolling' : '')" x-init="clOpenCalendar()">
+      <!-- Overlaid top chrome: month/period label + controls, translucent over the scrolling calendar -->
+      <div class="cl-bar" @wheel.passive="onCalTitleWheel($event)">
+        <button class="cl-menu hamburger" @click="openOverview()" aria-label="Open menu"><svg class="ico"><use href="#i-menu"/></svg></button>
+        <h2 class="cl-period"><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></h2>
+      </div>
+      <!-- outside .cl-bar: backdrop-filter creates a containing block, trapping position:fixed children -->
+      <div class="cl-actions">
+        <button class="cl-nav" @click="clStep(-1)" title="Previous"><svg class="ico"><use href="#i-chev-l"/></svg></button>
+        <button class="cl-today" @click="clToday()">Today</button>
+        <button class="cl-nav" @click="clStep(1)" title="Next"><svg class="ico"><use href="#i-chev-r"/></svg></button>
+        <button class="cl-add" @click="clNewEvent()" title="New event">＋</button>
+        <button class="cl-add cl-tray-btn" :class="{ on: clSideOpen }" @click="clSideOpen = !clSideOpen" title="Task panel — this view's tasks + unscheduled"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" style="flex:none"><use href="#i-backlog"/></svg></button>
+        <div class="cl-switcher">
+          <template x-for="v in ['day','week','month','year']" :key="v">
+            <button class="cl-seg" :class="{ sel: clView === v }" @click="clSetView(v)" x-text="v[0].toUpperCase()+v.slice(1)"></button>
+          </template>
+        </div>
+      </div>
+
+      <!-- over-header zone title overlay; top set IMPERATIVELY on scroll (_clPositionZone) — reactive top lags a frame -->
+      <div class="cl-mtitles" x-ref="clMtitlesBox" x-show="clView === 'month'">
+        <template x-for="t in clZoneTitles()" :key="t.name">
+          <div class="cl-mtitle" :class="{ 'at-bar': t.atBar }" :data-name="t.name" :style="{ top: t.y + 'px' }"><span x-text="t.name.split(' ')[0]"></span><span class="cl-yr" x-text="' ' + t.name.split(' ')[1]"></span></div>
+        </template>
+      </div>
+
+      <!-- weekday header: a fixed overlay below the bar (month view); weeks scroll under it -->
+      <div class="cl-weekhead" x-show="clView === 'month'">
+        <template x-for="w in clWeekdayNames()" :key="w"><div class="cl-wh" x-text="w"></div></template>
+      </div>
+
+      <!-- MONTH: virtualized — visible weeks absolutely placed in fixed-height spacer (no scroll reflow) -->
+      <div class="cl-month" x-ref="clMonth" x-show="clView === 'month'" @scroll="clMonthScroll($event)" @scrollend="clMonthSnap($event)">
+        <div class="cl-month-inner" x-ref="clInner" :style="'height:' + clTotalH() + 'px'">
+          <!-- body bands: top=idx*rowH glues them to the grid; visible on scroll, fade idle; hand off to clZoneTitles -->
+          <template x-for="b in clMonthBands()" :key="b.name">
+            <div class="cl-mband" :style="{ top: b.top + 'px' }"><span x-text="b.name.split(' ')[0]"></span><span class="cl-yr" x-text="' ' + b.name.split(' ')[1]"></span></div>
+          </template>
+          <template x-for="wk in clWeeks()" :key="wk.key">
+            <div class="cl-wk" :style="'top:' + wk.top + 'px;height:' + clRowH + 'px' + ((clView === 'month' && wk.key === clAnchorIdx()) ? ';view-transition-name:cl-active-week' : '')" @click="clOpenWeekRow(wk.key)">
+              <template x-for="c in wk.days" :key="c.iso">
+                <div class="cl-cell" :class="{ today: c.today, out: c.out, weekend: c.weekend, 'cl-drop': clDropHint === c.iso }" @dragover.prevent @dragenter.prevent="clDropHint = c.iso; clDropPreview = null" @drop="clDropHint = null; clDropOn($event, c.iso)">
+                  <div class="cl-date" role="button" tabindex="0" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)"><span class="cl-mlabel" x-show="c.mlabel" x-text="c.mlabel"></span><span class="cl-dnum" x-text="c.day"></span></div>
+                  <div class="cl-chips">
+                    <template x-for="(it, ix) in c.items.slice(0,3)" :key="it.kind+it.id+ix">
+                      <div class="cl-chip" :class="clChipCls(it)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(it)" @click.stop="clItemClick(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><button type="button" class="cl-chip-check" :class="{ done: byId.get(it.id)?.completed_at }" draggable="false" @click.stop="clToggleTask(it.id)" aria-label="Complete task"></button></template><span class="cl-chip-t" x-text="it.spanStart === false ? '' : it.title"></span></div>
+                    </template>
+                    <div class="cl-more" x-show="c.items.length > 3" x-text="'+' + (c.items.length - 3)"></div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- WEEK / DAY: a window of pages, each filling the viewport; vertical scroll snaps between weeks -->
+      <div class="cl-pages" :class="{ single: clView === 'day', zoomed: clZoom > 1 }" :style="clZoom > 1 ? '--clhh:' + clHourH + 'px' : ''" x-ref="clPages" x-show="clView === 'week' || clView === 'day'" @scrollend="clPagesScrollEnd($event)" @wheel="clPagesWheel($event)">
+        <template x-for="pg in clPages()" :key="pg.key">
+          <div class="cl-page" :style="((clView === 'week' || clView === 'day') && pg.mid) ? 'view-transition-name:cl-active-week' : ''">
+            <div class="cl-phead">
+              <div class="cl-gutter-corner"></div>
+              <template x-for="col in pg.cols" :key="'h'+col.iso">
+                <div class="cl-col-head" :class="{ today: col.today, weekend: col.weekend }"><span class="cl-wd" x-text="col.label"></span><span class="cl-dn" x-text="col.day"></span></div>
+              </template>
+            </div>
+            <div class="cl-pallday">
+              <div class="cl-allday-label">all-day</div>
+              <template x-for="col in pg.cols" :key="'ad'+col.iso">
+                <div class="cl-allday-col" :class="{ 'cl-drop': clDropHint === col.iso }" @dragover.prevent="clDropHint = col.iso; clDropPreview = null" @dragleave="clDropHint === col.iso && (clDropHint = null)" @drop="clDropHint = null; clDropOn($event, col.iso, true)">
+                  <template x-for="(it, ix) in col.allday" :key="it.kind+it.id+ix">
+                    <div class="cl-chip" :class="clChipCls(it)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(it)" @click.stop="clItemClick(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><button type="button" class="cl-chip-check" :class="{ done: byId.get(it.id)?.completed_at }" draggable="false" @click.stop="clToggleTask(it.id)" aria-label="Complete task"></button></template><span class="cl-chip-t" x-text="it.spanStart === false ? '' : it.title"></span></div>
+                  </template>
+                </div>
+              </template>
+            </div>
+            <div class="cl-pbody">
+              <div class="cl-gutter">
+                <template x-for="h in clHours()" :key="'g'+h"><div class="cl-hour"><span x-text="clHourLabel(h)"></span></div></template>
+              </div>
+              <template x-for="col in pg.cols" :key="'c'+col.iso">
+                <div class="cl-pcol" :class="{ weekend: col.weekend }" @pointerdown="clBlockDragStart($event, col.iso)" @pointermove="clBlockDragMove($event)" @pointerup="clBlockDragEnd()" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
+                  <template x-for="h in clHours()" :key="'l'+h"><div class="cl-hour-line"></div></template>
+                  <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"><span class="cl-drop-time" x-text="clDropPreview.label"></span></div></template>
+                  <template x-for="(b, ix) in col.blocks" :key="'b'+b.id+ix">
+                    <div class="cl-block" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, 'block', b.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+b.topPct+'%;height:'+b.hPct+'%;--cc:'+(b.color || 'var(--muted)')" :title="b.title" @click.stop="clEditBlock(b.id)"></div>
+                  </template>
+                  <div class="cl-block cl-block-drag" x-show="clDragBand && clDragBand.iso === col.iso" :style="clDragBand ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : ''"></div>
+                  <div class="cl-now" x-show="col.today" :style="'top:' + clNowPct() + '%'"></div>
+                  <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
+                    <div class="cl-event" :class="p.it.kind + (p.it.kind === 'task-block' && byId.get(p.it.id)?.completed_at ? ' done' : '')" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;left:calc('+p.leftPct+'% + 1px);width:calc('+p.widthPct+'% - 2px);--cc:'+clItemColor(p.it)">
+                      <template x-if="p.it.kind === 'task-block'"><button type="button" class="cl-evt-check" :class="{ done: byId.get(p.it.id)?.completed_at }" @click.stop="clToggleTask(p.it.id)" aria-label="Complete task"></button></template>
+                      <span class="cl-event-t" x-text="p.it.title"></span>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- side panel: scheduled tasks + unscheduled tray; composer relocates here when editing -->
+      <aside class="cl-side" :class="{ open: clSideVisible() }">
+        <div class="cl-side-top"><span class="cl-side-h" x-text="clSideLabel()"></span><button type="button" class="cl-side-x" @click="clSideOpen = false; if (composer.open) closeComposer()" aria-label="Close panel">×</button></div>
+        <!-- the one real composer relocates in here when editing a task on this surface -->
+        <ul class="list cl-side-composer"></ul>
+        <!-- Auto-plan: server-materialized rank order + fuzzy window (no clock-times); empty when offline/no plan -->
+        <template x-if="clPlanItems().length">
+          <div>
+            <div class="cl-side-sec">Plan <span class="cl-side-hint">rank order — day windows, not times</span></div>
+            <ul class="list cl-side-list plan-list" @click="clRowClick($event)">
+              <div class="rows" x-effect="clView; clAnchor; tasks; plan; _rowV; const h = clPlanListHtml(); if ($el._h !== h) { $el._h = h; $el.innerHTML = h; }"></div>
+            </ul>
+          </div>
+        </template>
+        <!-- Reschedule: slipped tasks (past their time/due, not done) — drag them to a new slot -->
+        <template x-if="clReschedule().length">
+          <div>
+            <div class="cl-side-sec resched">Reschedule <span class="cl-side-hint">slipped — drag to a new slot</span></div>
+            <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
+              <div class="rows" x-effect="tasks; _rowV; _nowTickV; const h = clReschedListHtml(); if ($el._h !== h) { $el._h = h; $el.innerHTML = h; }"></div>
+            </ul>
+          </div>
+        </template>
+        <div class="cl-side-sec">Scheduled</div>
+        <!-- the REAL task rows (rowBodyHtml — identical to the Lists surface); check completes, row opens the composer, drag re-schedules -->
+        <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
+          <div class="rows" x-effect="clView; clAnchor; tasks; _rowV; _nowTickV; const h = clViewListHtml(); if ($el._h !== h) { $el._h = h; $el.innerHTML = h; }"></div>
+        </ul>
+        <div class="cl-side-empty" x-show="!clViewTasks().length">Nothing scheduled.</div>
+        <div class="cl-side-sec">Unscheduled <span class="cl-side-hint">drag onto a day</span></div>
+        <!-- same REAL task rows; draggable onto a day/time to schedule -->
+        <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
+          <div class="rows" x-effect="tasks; _rowV; const h = clUnschedListHtml(); if ($el._h !== h) { $el._h = h; $el.innerHTML = h; }"></div>
+        </ul>
+        <div class="cl-side-empty" x-show="!clUnscheduled().length">Nothing unscheduled — nice.</div>
+      </aside>
+
+      <!-- YEAR: 12 mini-months, days heat-tinted by item count -->
+      <div class="cl-year" x-show="clView === 'year'">
+        <template x-for="mo in clYearMonths()" :key="mo.key">
+          <div class="cl-mini" role="button" tabindex="0" @keydown="clKeyActivate($event)" @click="clOpenMonth(mo.y, mo.m)">
+            <div class="cl-mini-label" x-text="mo.name"></div>
+            <div class="cl-mini-grid">
+              <template x-for="(w, wi) in ['S','M','T','W','T','F','S']" :key="'wh'+wi"><div class="cl-mini-whd" x-text="w"></div></template>
+              <template x-for="c in mo.cells" :key="c.key">
+                <div class="cl-mini-cell" :class="{ dim: !c.cur, today: c.today, ['heat'+Math.min(c.n,3)]: c.cur && c.n>0 }" role="button" tabindex="0" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)" x-text="c.cur ? c.day : ''"></div>
+              </template>
+            </div>
+          </div>
+        </template>
+      </div>
+    </section>
+    </template>
+      </section><!-- /surface-plan -->
+
+    <!-- Goals surface -->
+    <section class="surface surface-goals" data-surface="goals" :inert="surface !== 'goals'" @wheel.passive="onOverscroll($event)">
+    <template x-if="mounted('goals')">
+    <section class="goals-view" :style="'--home-warmth:' + homeW" x-init="initFireObserver()">
+      <!-- Empty state: no active goals -->
+      <div class="goal-empty" x-show="!goals.some(x => !x.archived)">
+        <h2>Goals</h2>
+        <p class="goal-empty-sub">Name a direction you're moving toward — then ladder tasks to it.</p>
+        <button class="primary" @click="newGoalComposer()">Create your first goal</button>
+      </div>
+
+      <!-- Firelit hero: an ambient, honest READ of how the whole home is doing — never a score/grade. -->
+      <div class="goals-hero" x-show="homeBand()">
+        <span class="fire hero-fire" :class="'st-' + homeStage()" style="--fire-px:105px" x-html="fireHTML" aria-hidden="true"></span>
+        <div class="goals-hero-title" x-text="homeBand()?.title"></div>
+        <div class="goals-hero-sub" x-show="homeBand()?.sub" x-text="homeBand()?.sub"></div>
+        <div class="goals-hero-embers">
+          <div class="ember-strip" x-html="emberStripHtml()"></div>
+          <span class="hb-rlabel">last two weeks</span>
+        </div>
+      </div>
+
+      <!-- Fires/Identities toggle (only once there are goals to view) -->
+      <div class="goals-view-toggle" role="group" aria-label="Goals view" x-show="goals.some(x => !x.archived)">
+        <button type="button" :class="{ active: goalsView === 'fires' }" @click="setGoalsView('fires')" @keydown.stop>Fires</button>
+        <button type="button" :class="{ active: goalsView === 'identities' }" @click="setGoalsView('identities')" @keydown.stop>Identities</button>
+      </div>
+
+      <!-- goal grid: one card per goal; card click expands the SAME composer (edit path unchanged) -->
+      <div id="goal-board" x-show="goalsView === 'fires' && goals.some(x => !x.archived)">
+        <template x-for="lane in goalLaneDefs()" :key="lane.key">
+        <div class="goal-lane">
+          <div class="goal-lane-head" x-show="lane.goals.length"><span x-text="lane.label"></span></div>
+          <div class="goal-lane-row">
+        <template x-for="g in lane.goals" :key="g.id">
+          <div class="goal-col" :class="{ editing: goalOpenId === g.id, detailing: goalDetailId === g.id, 'goal-pulse': pulseGoal === g.id, 'goal-igniting': ignitingGoal === g.id, 'lane-sustaining': lane.key === 'sustaining', 'lane-fizzled': lane.key === 'fizzled', 'lane-shelved': lane.key === 'shelved' }" :style="g.color ? '--gc:' + g.color : ''">
+
+            <div class="goal-col-view">
+              <!-- Top slot: goal card (view) ↔ inline detail (read) ↔ inline composer (edit). -->
+              <div class="goal-card" :class="'wband-' + warmthBand(goalStats[g.id]?.warmth)" :style="'--warmth:' + (goalStats[g.id]?.warmth ?? 8)" x-show="goalOpenId !== g.id && goalDetailId !== g.id"
+                   role="button" tabindex="0" :aria-label="'Open ' + g.name" @click="openGoalDetail(g.id, $event.currentTarget.offsetHeight)"
+                   @keydown.enter="openGoalDetail(g.id, $event.currentTarget.offsetHeight)" @keydown.space.prevent="openGoalDetail(g.id, $event.currentTarget.offsetHeight)">
+                <span class="fire" :class="['st-' + (goalStats[g.id]?.shelved ? 'shelved' : (goalStats[g.id]?.stage ?? 'unlit')), graduatingGoal === g.id ? 'graduating' : '']" x-html="fireHTML" aria-hidden="true"></span>
+                <span class="goal-col-title">
+                  <span class="goal-name" x-text="g.name"></span>
+                  <span class="goal-identity" x-show="goalIdentitySubtitle(g)" x-text="goalIdentitySubtitle(g)"></span>
+                  <span class="fc-status" x-text="goalStatusLine(g)"></span>
+                  <span class="goal-due" x-show="g.target_date" x-text="goalDueLabel(g.target_date)"></span>
+                  <div class="goal-marks" x-show="goalStats[g.id]?.marks?.length">
+                    <template x-for="(marked, i) in (goalStats[g.id]?.marks ?? [])" :key="i">
+                      <span class="goal-mark" :class="{ 'goal-mark-on': marked }"></span>
+                    </template>
+                    <span class="goal-marks-label" x-show="g.shape !== 'project'" x-text="marksLabel(g.id, false)"></span>
+                  </div>
+                  <div class="goal-arc" x-show="g.shape === 'project'" x-data="{ get arc() { return goalArcStats(g.id) } }">
+                    <svg class="ico arc-lit" viewBox="0 0 24 24"><use href="#i-tag-flame"/></svg>
+                    <template x-for="(mark, i) in goalArcMarks(g.id)" :key="i">
+                      <span class="goal-mark" :class="{ 'goal-mark-on': mark.done }"></span>
+                    </template>
+                    <!-- .goal-arc-label: e2e hook, intentionally unstyled beyond .goal-marks-label -->
+                    <span class="goal-arc-label goal-marks-label" x-show="arc.total > 0" x-text="arc.done + ' of ' + plural(arc.total, 'milestone')"></span>
+                    <span class="goal-light-hint" x-show="arc.total === 0">add milestones from the detail</span>
+                  </div>
+                  <div class="goal-foot">
+                    <span class="cad" x-show="lane.key !== 'sustaining' && g.shape !== 'project' && cadenceLabel(g.cadence)"><span class="cad-dot"></span><span x-text="cadenceLabel(g.cadence)"></span></span>
+                    <span class="cad cad-gold" x-show="lane.key === 'sustaining'">Self-sustaining</span>
+                    <span class="fc-nostend" x-show="lane.key === 'sustaining'">no tending needed</span>
+                    <template x-if="lane.key === 'tending'">
+                    <div class="log-wrap" @click.stop @keydown.stop @click.outside="logWhenOpen === g.id && (logWhenOpen = null)">
+                      <button type="button" class="log-chip" @click="logGoal(g.id)">Log</button>
+                      <button type="button" class="log-caret" @click="toggleLogWhen(g.id)" title="Log at a specific time" aria-label="Log at a specific time" aria-haspopup="true" :aria-expanded="logWhenOpen === g.id">
+                        <svg class="ico" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-d"/></svg>
+                      </button>
+                      <div class="pop log-when-pop" x-cloak :style="'display:' + (logWhenOpen === g.id ? 'flex' : 'none')">
+                        <div class="lw-row lw-note-row">
+                          <input class="inp lw-note" x-model="logWhenNote" placeholder="What did you do? (optional)">
+                        </div>
+                        <div class="lw-row">
+                          <span class="lw-label">Earlier today</span>
+                          <input type="time" class="inp lw-time" x-model="logWhenT1">
+                          <button type="button" class="lw-ok" :disabled="logWhenFuture('earlier')" @click="confirmLogWhen(g.id, 'earlier')" title="Log at this time" aria-label="Confirm time">
+                            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          </button>
+                        </div>
+                        <div class="lw-row">
+                          <span class="lw-label">Yesterday</span>
+                          <input type="time" class="inp lw-time" x-model="logWhenT2">
+                          <button type="button" class="lw-ok" :disabled="logWhenFuture('yesterday')" @click="confirmLogWhen(g.id, 'yesterday')" title="Log at this time" aria-label="Confirm time">
+                            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          </button>
+                        </div>
+                        <div class="lw-row">
+                          <span class="lw-label">Pick date &amp; time</span>
+                          <input type="datetime-local" class="inp lw-dt" x-model="logWhenDT">
+                          <button type="button" class="lw-ok" :disabled="logWhenFuture('pick')" @click="confirmLogWhen(g.id, 'pick')" title="Log at this time" aria-label="Confirm time">
+                            <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    </template>
+                    <template x-if="lane.key === 'shelved'">
+                      <div class="shelved-foot">
+                        <span class="cad">resting — coals banked</span>
+                        <button type="button" class="fc-relight" @click.stop="unshelveGoal(g.id)">Relight</button>
+                      </div>
+                    </template>
+                    <template x-if="lane.key === 'fizzled'">
+                      <button type="button" class="fc-relight" @click.stop="relightGoal(g.id)">Re-light</button>
+                    </template>
+                  </div>
+                  <!-- Light-it moment: a brand-new goal (no show-ups ever) points at the Log chip; gone forever once lit. -->
+                  <div class="goal-light-hint" x-show="lane.key === 'tending' && goalStats[g.id]?.stage === 'unlit'">Tap Log to light it</div>
+                  <!-- Tend beat: transient line after Log (flashGoal's pulseGoal window); milestone beat shows reorientation text instead. -->
+                  <div class="fc-flash" x-show="pulseGoal === g.id || msBeatGid === g.id" x-text="msBeatGid === g.id ? msBeatText(g.id) : 'the fire leans a little taller'"></div>
+                  <!-- SAME task-line row primitive as Lists -->
+                  <div class="goal-next-steps" x-show="goalNextSteps(g.id).length">
+                    <div class="task-list goal-steps" @click.stop="finishStepClick($event, g.id)" @keydown.stop x-html="taskListHtml(goalNextSteps(g.id).slice(0, 3))"></div>
+                    <div class="goal-steps-more" x-show="goalNextSteps(g.id).length > 3" x-text="'+' + (goalNextSteps(g.id).length - 3) + ' more'"></div>
+                  </div>
+                  <!-- Graduation: a quiet, pull-based offer — never a badge/nag. Only appears when the stats layer says the habit has held. -->
+                  <button type="button" class="goal-grad-offer" x-show="goalStats[g.id]?.graduationReady" @click.stop="openGraduateOffer(g.id)">This one seems second-nature now →</button>
+                  <!-- Finish: the third good ending — offered quietly when every project milestone is done. -->
+                  <button type="button" class="goal-grad-offer" x-show="goalFinishReady(g.id)" @click.stop="openFinishOffer(g.id)">This fire has done its work →</button>
+                </span>
+              </div>
+
+              <!-- goal READ view: same grow animation as composer -->
+              <div class="composer" x-show="goalDetailId === g.id">
+              <template x-if="goalDetailId === g.id">
+                <div class="composer-grow" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
+                  <div class="composer-card">
+                    <!-- FIX7: title block left, Log beside it on the right; the big fire sits below on its own. -->
+                    <div class="dt-head">
+                      <div class="dt-head-title">
+                        <div class="dt-why" x-text="identityStatement(g) || g.name"></div>
+                        <div class="dt-stage" x-text="g.name + ' · ' + stageLabel(goalStats[g.id]?.stage) + ' · ' + warmedLabel(g.id)"></div>
+                      </div>
+                      <!-- No .stop here (unlike the card's log-wrap): the detail has no ancestor click
+                           handler to guard against, so there's nothing to stop propagation from. -->
+                      <div class="dt-head-actions">
+                      <div class="log-wrap" @click.outside="logWhenOpen === g.id && (logWhenOpen = null)">
+                        <button type="button" class="log-chip" @click="logGoal(g.id)">Log</button>
+                        <button type="button" class="log-caret" @click="toggleLogWhen(g.id)" title="Log at a specific time" aria-label="Log at a specific time" aria-haspopup="true" :aria-expanded="logWhenOpen === g.id">
+                          <svg class="ico" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-chev-d"/></svg>
+                        </button>
+                        <div class="pop log-when-pop" x-cloak :style="'display:' + (logWhenOpen === g.id ? 'flex' : 'none')">
+                          <div class="lw-row lw-note-row">
+                            <input class="inp lw-note" x-model="logWhenNote" placeholder="What did you do? (optional)">
+                          </div>
+                          <div class="lw-row">
+                            <span class="lw-label">Earlier today</span>
+                            <input type="time" class="inp lw-time" x-model="logWhenT1">
+                            <button type="button" class="lw-ok" :disabled="logWhenFuture('earlier')" @click="confirmLogWhen(g.id, 'earlier')" title="Log at this time" aria-label="Confirm time">
+                              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </button>
+                          </div>
+                          <div class="lw-row">
+                            <span class="lw-label">Yesterday</span>
+                            <input type="time" class="inp lw-time" x-model="logWhenT2">
+                            <button type="button" class="lw-ok" :disabled="logWhenFuture('yesterday')" @click="confirmLogWhen(g.id, 'yesterday')" title="Log at this time" aria-label="Confirm time">
+                              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </button>
+                          </div>
+                          <div class="lw-row">
+                            <span class="lw-label">Pick date &amp; time</span>
+                            <input type="datetime-local" class="inp lw-dt" x-model="logWhenDT">
+                            <button type="button" class="lw-ok" :disabled="logWhenFuture('pick')" @click="confirmLogWhen(g.id, 'pick')" title="Log at this time" aria-label="Confirm time">
+                              <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- the only visible way to close the detail read view besides Escape/backdrop. -->
+                      <button type="button" class="dt-close" @click="closeGoalDetail()" title="Close" aria-label="Close">
+                        <svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"/></svg>
+                      </button>
+                      </div>
+                    </div>
+                    <div class="dt-cue" x-show="g.cue" x-text="'⚓ ' + g.cue"></div>
+                    <button type="button" class="goal-grad-offer" x-show="goalStats[g.id]?.graduationReady" @click="openGraduateOffer(g.id)">This one seems second-nature now →</button>
+                    <button type="button" class="goal-grad-offer" x-show="goalFinishReady(g.id)" @click="openFinishOffer(g.id)">This fire has done its work →</button>
+                    <button type="button" class="goal-crisis-line" x-show="goalStats[g.id]?.inCrisis" @click="openReflect(g.id)">You seem to be wrestling with this one — want to sit with it?</button>
+                    <div class="dt-fire-row">
+                      <span class="fire lg" :class="['st-' + (goalStats[g.id]?.stage ?? 'unlit'), graduatingGoal === g.id ? 'graduating' : '']" x-html="fireHTML" aria-hidden="true"></span>
+                    </div>
+                    <div class="goal-marks" x-show="goalStats[g.id]?.marks?.length">
+                      <template x-for="(marked, i) in (goalStats[g.id]?.marks ?? [])" :key="i">
+                        <span class="goal-mark" :class="{ 'goal-mark-on': marked }"></span>
+                      </template>
+                      <span class="goal-marks-label" x-text="marksLabel(g.id, true)"></span>
+                    </div>
+
+                    <div class="dt-sec">Steps</div>
+                    <div class="goal-mini-empty" x-show="!goalNextSteps(g.id).length">No steps yet — ladder a task from Lists</div>
+                    <div class="task-list goal-steps dt-steps" x-show="goalNextSteps(g.id).length" @click.stop="finishStepClick($event, g.id)" @keydown.stop x-html="taskListHtml(goalNextSteps(g.id), g.shape === 'project' ? { ms: true } : {})"></div>
+
+                    <div class="dt-sec">Progress log</div>
+                    <div class="goal-mini-empty" x-show="!goalLog(g.id).length">Nothing logged yet</div>
+                    <div class="plog" x-show="goalLog(g.id).length">
+                      <template x-for="grp in goalLog(g.id)" :key="grp.dayKey">
+                        <div>
+                          <div class="pl-day" x-text="grp.day"></div>
+                          <template x-for="row in grp.rows" :key="row.id">
+                            <div class="pl-row"><span class="pl-ico" x-text="row.icon"></span><span x-text="row.text"></span><span class="pl-t" x-text="row.time"></span><button type="button" class="pl-del" title="Delete log entry" @click.stop="askConfirm({ message: 'Delete this log entry?', confirmLabel: 'Delete', onConfirm: () => deleteLog(row.id) })"><svg class="ico"><use href="#i-trash"/></svg></button></div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+
+                    <div class="composer-actions dt-actions">
+                      <button type="button" class="side-btn goal-draft-archive" @click="archiveGoal(g.id, !g.archived); closeGoalDetail()" :title="g.archived ? 'Unarchive goal' : 'Archive goal'"><svg class="ico"><use href="#i-archive"/></svg></button>
+                      <button type="button" class="ghost goal-shelve-btn" x-show="!g.shelved_at" @click="shelveGoal(g.id)">Shelve</button>
+                      <button type="button" class="ghost goal-relight-btn" x-show="g.shelved_at" @click="unshelveGoal(g.id)">Relight</button>
+                      <button type="button" class="ghost goal-sit-btn" x-show="!g.shelved_at" @click="openReflect(g.id)">Sit with this</button>
+                      <button type="button" class="primary goal-detail-edit" @click="openGoalFromDetail(g.id)">Edit</button>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              </div>
+
+              <!-- Edit mode: inline-expand composer (SAME grow animation as the task composer) -->
+              <div class="composer" x-show="goalOpenId === g.id">
+              <template x-if="goalOpenId === g.id && goalDraft">
+                <div class="composer-grow" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
+                  <div class="composer-card">
+                    <div class="composer-body">
+                      <input class="goal-title" x-model="goalDraft.name" placeholder="What do you want to build?" @keydown.escape="closeGoal()" aria-label="Goal name">
+                      <!-- Identity: fixed "I'm someone who" prefix + a fill-in-the-blank; storage stays the full statement (composed on save). -->
+                      <div class="goal-draft-identity-row">
+                        <span class="goal-draft-identity-prefix">I'm someone who</span>
+                        <div class="goal-draft-identity-wrap">
+                          <textarea class="goal-draft-identity" rows="1" x-model="goalDraft._identityBlank" placeholder="reads every day" aria-label="Identity — I'm someone who…" @focus="_identSugFocus = true" @blur="_identSugFocus = false" @input="_identSugSel = -1" @keydown="identSugKeydown($event)"></textarea>
+                          <div x-data="{ get sugs() { return identitySuggestions() } }" class="pop ident-sug-pop" role="listbox" x-cloak :style="'display:' + (_identSugFocus && goalDraft._identityBlank && sugs.length ? 'flex' : 'none')" @mousedown.prevent>
+                            <template x-for="(s, idx) in sugs" :key="s.id">
+                              <button type="button" class="pop-item" role="option" :aria-selected="_identSugSel === idx" :class="{ on: _identSugSel === idx }" @click="pickIdentitySuggestion(s.text)" x-text="s.text"></button>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- Cue: the implementation intention (when/where) — quiet, never required. -->
+                      <input class="goal-draft-identity goal-draft-cue" x-model="goalDraft.cue" placeholder="Cue — when &amp; where? (after breakfast, at the gym…)" aria-label="Cue">
+                      <!-- default log note — pre-fills a show-up's note; still overwritable per log. -->
+                      <input class="goal-draft-identity goal-draft-logdefault" x-model="goalDraft.log_default" placeholder="Default log note (optional)" aria-label="Default log note">
+                      <!-- Identity streak+votes (targets are no longer editable UI; stored target data is preserved untouched) -->
+                      <div class="goal-draft-stats" x-show="identityStatement(g)">
+                        <span class="goal-votes" x-show="identityStatement(g)" x-text="plural(goalStats[g.id]?.identityStreak || 0, 'day') + ' streak · ' + plural(goalStats[g.id]?.votes || 0, 'vote')"></span>
+                      </div>
+                      <!-- Shape: Process (default recurring habit) or Project (milestone-based). -->
+                      <div class="rep-freqs goal-shape">
+                        <button type="button" :class="{ on: goalDraft.shape !== 'project' }" @click="goalDraft.shape = 'process'" @keydown.stop>Process</button>
+                        <button type="button" :class="{ on: goalDraft.shape === 'project' }" @click="goalDraft.shape = 'project'" @keydown.stop>Project</button>
+                      </div>
+                      <!-- Cadence: 3 preset chips + a custom N×/week stepper, on one calm row (times = the floor/promise) -->
+                      <div class="goal-cadence-row" x-show="goalDraft.shape !== 'project'">
+                        <div class="rep-freqs goal-cadence">
+                          <button type="button" :class="{ on: goalDraft.cadence?.per==='day' && goalDraft.cadence?.times===1 }" @click="toggleCadence('day',1)">Daily</button>
+                          <button type="button" :class="{ on: goalDraft.cadence?.per==='week' && goalDraft.cadence?.times===5 }" @click="toggleCadence('week',5)">Weekdays</button>
+                          <button type="button" :class="{ on: goalDraft.cadence?.per==='week' && goalDraft.cadence?.times===1 }" @click="toggleCadence('week',1)">Weekly</button>
+                        </div>
+                        <div class="rep-interval goal-cadence-custom" :class="{ on: isCustomCadence() }">
+                          <button type="button" class="rep-step" @click="stepCustomCadence(-1)" aria-label="Fewer times per week">−</button>
+                          <span class="rep-n" x-text="customCadenceTimes()"></span>
+                          <button type="button" class="rep-step" @click="stepCustomCadence(1)" aria-label="More times per week">+</button>
+                          <span class="rep-unit">×/wk</span>
+                        </div>
+                      </div>
+                      <!-- Vague-goal coaching: a soft nudge toward a rhythm, gone the moment one is chosen. -->
+                      <div class="goal-cadence-hint" x-show="goalDraft.name?.trim() &amp;&amp; !goalDraft.cadence &amp;&amp; goalDraft.shape !== 'project'">What would showing up look like? Set a rhythm</div>
+                      <div class="goal-cadence-hint" x-show="goalDraft.shape === 'project'">milestones are tasks — flag them in the goal's detail</div>
+                    </div>
+
+                    <div class="composer-opts">
+                      <div class="field goal-color-field">
+                        <button type="button" class="chip" :style="goalDraft.color ? 'color:' + goalDraft.color : ''" @click="goalDraft._colorPop = !goalDraft._colorPop" title="Color">
+                          <svg class="ico" width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="9"/></svg>
+                          <span>Color</span>
+                        </button>
+                        <div class="pop goal-color-pop" :style="'display:' + (goalDraft._colorPop ? 'flex' : 'none')">
+                          <div class="swatch-row" @click="swatchPick($event, v => { goalDraft.color = v || null; goalDraft._colorPop = false; })" x-html="swatchRow(goalDraft.color)"></div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="composer-actions">
+                      <button type="button" class="del-btn goal-draft-delete" @click="deleteGoal(g.id); closeGoal()" title="Delete goal"><svg class="ico"><use href="#i-trash"/></svg></button>
+                      <button type="button" class="side-btn goal-draft-archive" @click="archiveGoal(g.id, !g.archived); closeGoal()" :title="g.archived ? 'Unarchive goal' : 'Archive goal'"><svg class="ico"><use href="#i-archive"/></svg></button>
+                      <button type="button" class="side-btn goal-draft-fav" :class="{ on: goalDraft.favorite }" @click="goalDraft.favorite = !goalDraft.favorite" :title="goalDraft.favorite ? 'Unfavorite' : 'Favorite'"><svg class="ico" width="15" height="15" viewBox="0 0 24 24" :fill="goalDraft.favorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                      <button type="button" class="ghost" @click="closeGoal()">Cancel</button>
+                      <button type="button" class="primary" @click="submitGoal()">Save</button>
+                    </div>
+
+                  </div>
+                </div>
+              </template>
+              </div>
+            </div>
+          </div>
+        </template>
+        <template x-if="lane.key === 'tending'">
+          <button type="button" class="goal-col-add" @click="newGoalComposer()">
+            <span class="goal-col-add-plus">+</span><span>Light a new fire</span><span class="goal-col-add-hint">when you have the capacity</span>
+          </button>
+        </template>
+          </div>
+        </div>
+        </template>
+      </div>
+
+      <!-- Identities view (ID5): one block per identity entity.
+           Legacy identity strings without entity_id are omitted; boot migration promotes them. -->
+      <template x-if="goalsView === 'identities'"><div class="goals-identities">
+        <template x-for="grp in identityGroups()" :key="grp.ident.id">
+          <div class="identity-block">
+            <div class="ident-block-head">
+              <div class="identity-eyebrow" :class="{ gold: grp.stage === 'sustaining' }" x-text="grp.goals.length ? 'Identity · fed by ' + plural(grp.goals.length, 'fire') : grp.finishedCount ? 'its fires became true' : 'Identity · no fire feeds this yet'"></div>
+              <div class="ident-menu-wrap" @click.outside="identMenuId === grp.ident.id && (identMenuId = null)">
+                <button type="button" class="ident-menu-btn" @click="identMenuId = identMenuId === grp.ident.id ? null : grp.ident.id" aria-label="Identity options">⋯</button>
+                <div class="pop ident-pop" x-show="identMenuId === grp.ident.id">
+                  <button type="button" class="pop-item" @click="identEditId = grp.ident.id; identMenuId = null;">Rename</button>
+                  <template x-if="identities.filter(i => i.id !== grp.ident.id).length > 0">
+                    <div class="pop-sub-head">Merge into…</div>
+                  </template>
+                  <template x-for="other in identities.filter(i => i.id !== grp.ident.id)" :key="other.id">
+                    <button type="button" class="pop-item pop-item-indent" @click="mergeIdentityInto(grp.ident.id, other.id)" x-text="stripIdent(other.statement)"></button>
+                  </template>
+                  <button type="button" class="pop-item" @click="releaseIdentity(grp.ident.id)">Release</button>
+                </div>
+              </div>
+            </div>
+            <template x-if="identEditId !== grp.ident.id">
+              <div class="identity-quote" role="button" tabindex="0" @click="identEditId = grp.ident.id" @keydown.enter.prevent="identEditId = grp.ident.id" title="Click to rename">&ldquo;<span x-text="grp.ident.statement"></span>&rdquo;</div>
+            </template>
+            <template x-if="identEditId === grp.ident.id">
+              <input type="text" class="identity-edit-input" :value="grp.ident.statement"
+                @blur="if (identEditId === grp.ident.id) { renameIdentity(grp.ident.id, $event.target.value); identEditId = null; }"
+                @keydown.enter.prevent="$el.blur()"
+                @keydown.escape.stop="identEditId = null;"
+                @keydown.stop
+                x-init="$nextTick(() => $el.focus())" />
+            </template>
+            <template x-if="grp.goals.length > 0">
+              <div class="ident-agg-row">
+                <span class="fire ident-agg" :class="'st-' + grp.stage" x-html="fireHTML" aria-hidden="true"></span>
+                <div class="ident-agg-info">
+                  <div class="identity-status" x-text="identityReflection({ stage: grp.stage, warmth: grp.agg })"></div>
+                  <div class="ident-votes" x-show="grp.votes > 0" x-text="plural(grp.votes, 'vote')"></div>
+                </div>
+              </div>
+            </template>
+            <template x-for="row in grp.goals" :key="row.g.id">
+              <div class="identity-row">
+                <span class="fire sm" :class="'st-' + (row.w.shelved ? 'shelved' : (row.w.stage || 'unlit'))" x-html="fireHTML" aria-hidden="true"></span>
+                <div class="ir-info">
+                  <div class="ir-name" x-text="row.g.name"></div>
+                  <div class="ir-status" x-text="row.g.shelved_at ? 'resting — coals banked' : goalStatusLine(row.g)"></div>
+                  <div class="ir-note" x-show="row.note" x-text="row.note ? ('“' + row.note.text + '” — ' + row.note.day) : ''"></div>
+                  <div class="fc-flash" x-show="pulseGoal === row.g.id || msBeatGid === row.g.id" x-text="msBeatGid === row.g.id ? msBeatText(row.g.id) : 'the fire leans a little taller'"></div>
+                </div>
+                <template x-if="row.w.stage === 'sustaining'">
+                  <span class="cad cad-gold">Self-sustaining</span>
+                </template>
+                <template x-if="row.w.stage !== 'sustaining'">
+                  <span class="cad" x-show="cadenceLabel(row.g.cadence)"><span class="cad-dot"></span><span x-text="cadenceLabel(row.g.cadence)"></span></span>
+                </template>
+                <template x-if="row.w.stage === 'sustaining'">
+                  <span class="fc-nostend">no tending needed</span>
+                </template>
+                <template x-if="row.g.shelved_at && row.w.stage !== 'sustaining'">
+                  <button type="button" class="fc-relight" @click="unshelveGoal(row.g.id)">Relight</button>
+                </template>
+                <template x-if="!row.g.shelved_at && row.w.stage !== 'sustaining'">
+                  <button type="button" class="log-chip" @click="logGoal(row.g.id)">Log</button>
+                </template>
+              </div>
+            </template>
+            <!-- zero-fire: "became true" when all feeders finished; "never fed" otherwise -->
+            <template x-if="grp.goals.length === 0 && grp.finishedCount > 0">
+              <div class="identity-no-fire">
+                <span>&#x2713; completed &#x2014; light another?</span>
+                <button type="button" class="goal-light-hint" @click="claimIdentity(grp.ident.statement)">light one</button>
+              </div>
+            </template>
+            <template x-if="grp.goals.length === 0 && !grp.finishedCount">
+              <div class="identity-no-fire">
+                <span>no fire feeds this yet</span>
+                <button type="button" class="goal-light-hint" @click="claimIdentity(grp.ident.statement)">light one</button>
+              </div>
+            </template>
+          </div>
+        </template>
+        <div class="identity-add-wrap">
+          <button type="button" class="identity-add" @click="claimIdentity()">+ Claim a new identity</button>
+        </div>
+      </div></template>
+
+      <!-- Recently: day-grouped contribution feed (last 7 days) — an affirming record of what got
+           done toward goals, never a score/grade. Hidden entirely when empty (no sad empty state). -->
+      <div class="recently" x-show="recentContributions().length">
+        <div class="rec-eyebrow">Recently</div>
+        <template x-for="grp in recentContributions()" :key="grp.dayKey">
+          <div>
+            <div class="pl-day rec-day" x-text="grp.day"></div>
+            <template x-for="row in grp.rows" :key="row.id">
+              <div class="rec-item rec-row"><span class="rec-dot" :class="row.dot"></span><span x-html="row.html"></span><span class="pl-t" x-text="row.time"></span></div>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- FIX9: archived reads as dim/honest/re-lightable — never a failure state. Goals here have no
+           stats (loadStats filters !archived), so the fire falls back to the unlit default: a cold
+           coal-bed silhouette, no flame/glow — the "dimmed fire" comes for free from the same markup. -->
+      <details id="goals-archived" x-show="goals.some(x => x.archived)">
+        <summary>Archived</summary>
+        <template x-for="g in goals.filter(x => x.archived)" :key="g.id">
+          <div class="goal-arch-item">
+            <span class="fire sm" x-html="fireHTML" aria-hidden="true"></span>
+            <button class="goal-arch-row" @click="openGoal(g.id)"><span class="goal-name" x-text="g.name"></span></button>
+            <button type="button" class="goal-arch-relight" @click="archiveGoal(g.id, false)" title="Unarchive this goal">Light again</button>
+            <button class="del-btn" @click="askConfirm({ message: 'Permanently delete this goal? This cannot be undone.', confirmLabel: 'Delete', onConfirm: () => deleteGoal(g.id) })" title="Delete goal"><svg class="ico"><use href="#i-trash"/></svg></button>
+          </div>
+        </template>
+      </details>
+    </section>
+    </template>
+      </section><!-- /surface-goals -->
+
+     </div><!-- /canvas-track -->
+     <div class="canvas-dots" @click="dotStripClick($event)"
+          x-html="dotStripHtml(surfaceOrder.map(s => ({ label: surfaceLabel(s) })), surfaceIndex())"></div>
+    </div><!-- /canvas -->
+
+  </div><!-- .shell -->
+
+  <!-- Overview deck: zoom-out to all 5 surfaces as skeleton mockups w/ real titles. Open via the dots, `o`, or pinch. -->
+  <div class="overview" x-show="overview" x-cloak @click="if (!$event.target.closest('[data-ridx], [data-more], .ov-card')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
+    <div id="ov-stage">
+    <!-- Lists picker: a center-focused roller on the left of the deck; the cards keep their size (not cramped) -->
+    <div class="ov-roller" :class="{ sel: ovSel === 0 }" @mouseenter="ovSel = 0">
+      <div class="roller" x-ref="roller" @click="rollerClick($event)">
+          <template x-for="(row, idx) in rollerRows()" :key="row.sec ? 'sec:' + row.label : row.kind + ':' + (row.id ?? row.ridx)">
+            <div class="rl-row">
+              <template x-if="row.sec"><div class="rl-sec" x-text="row.label"></div></template>
+              <template x-if="!row.sec">
+              <div class="rl-wrap" :class="{ 'rl-focus': row.ridx === rollerSel && ovSel === 0 }">
+                <div x-html="rollerBoxHtml(row)"></div>
+              </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+      <div class="ov-grid">
+      <button class="ov-card" :class="{ sel: ovSel === 1 }" @click="diveTo('plan')" @mouseenter="ovSel = 1">
+        <div class="ov-head"><svg class="ico pick-ico"><use href="#i-cal"/></svg> Plan</div>
+        <div class="ov-skel">
+          <div class="sk-cal"><template x-for="i in 21" :key="i"><span class="sk-cell"></span></template></div>
+          <div class="sk-title sk-title-sm" x-text="nowDay().nx ? nowDay().nx.title : 'Calendar'"></div>
+        </div>
+      </button>
+      <button class="ov-card" :class="{ sel: ovSel === 2 }" @click="diveTo('now')" @mouseenter="ovSel = 2">
+        <div class="ov-head"><svg class="ico pick-ico"><use href="#i-clock"/></svg> Now</div>
+        <div class="ov-skel">
+          <div class="sk-strip"></div>
+          <div class="sk-hero"><div class="sk-title" x-text="nowTask() ? nowTask().content : 'All clear'"></div><div class="sk-bone w60"></div></div>
+          <div class="sk-bone w80"></div><div class="sk-bone w70"></div>
+        </div>
+      </button>
+      <button class="ov-card" :class="{ sel: ovSel === 3 }" @click="diveTo('goals')" @mouseenter="ovSel = 3">
+        <div class="ov-head"><svg class="ico pick-ico"><use href="#i-target"/></svg> Goals</div>
+        <div class="ov-skel">
+          <div class="sk-goalcard"><div class="sk-ring"></div><div class="sk-goalbody"><div class="sk-title" x-text="goals.find(g => !g.archived) ? goals.find(g => !g.archived).name : 'A direction'"></div><div class="sk-bar"></div></div></div>
+        </div>
+      </button>
+    </div>
+    </div>
+    <div class="ov-hint"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>↵</kbd> open · <kbd>esc</kbd> close</div>
+    <!-- Nav settings popovers live OUTSIDE the roller so its overflow (and the overview's backdrop-filter containing block) can't clip them; positioned via navPopXY (viewport coords). -->
+    <template x-if="overview && navPopProj()">
+      <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
+        <button class="nav-pop-item" @click="navRename = navPopProj().id; navPop = null"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
+        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })" x-text="navPopProj().favorite ? '&#9733; Unfavorite' : '&#9734; Favorite'"></button>
+        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { sidebar: !navPopProj().sidebar })" x-text="navPopProj().sidebar ? 'Remove from list' : 'Pin to list'"></button>
+        <div class="nav-pop-label">Color</div>
+        <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
+        <div class="nav-pop-sep"></div>
+        <button class="nav-pop-item del" @click="startDeleteProject(navPopProj().id)">Delete&#x2026;</button>
+      </div>
+    </template>
+    <template x-if="overview && navPopArea()">
+      <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
+        <button class="nav-pop-item" @click="navRename = navPopArea().id; navPop = null"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
+        <div class="nav-pop-label">Color</div>
+        <div class="swatch-row" @click="swatchPick($event, v => patchArea(navPopArea().id, { color: v }))" x-html="swatchRow(navPopArea().color, areaDefault)"></div>
+        <div class="nav-pop-label">Icon</div>
+        <div class="icon-pick-row">
+          <button class="icon-pick-btn" :class="{ sel: !navPopArea().icon }" @click="patchArea(navPopArea().id, { icon: null })" title="None"><span class="rl-icon-none">&#x2014;</span></button>
+          <template x-for="ic in areaIcons" :key="ic">
+            <button class="icon-pick-btn" :class="{ sel: navPopArea().icon === ic }" @click="patchArea(navPopArea().id, { icon: ic })" :title="ic"><svg class="ico"><use :href="'#' + ic"/></svg></button>
+          </template>
+        </div>
+        <div class="nav-pop-sep"></div>
+        <button class="nav-pop-item del" @click="deleteArea(navPopArea().id)">Delete</button>
+      </div>
+    </template>
+  </div>
+
+  <!-- All modal dialogs live in one backdrop; clicking it closes every open dialog (closeDialogs). -->
+  <div class="dialog-backdrop" :class="{ 'palette-backdrop': palette.open }" x-show="anyDialog()" x-cloak @click="closeDialogs()">
+
+    <!-- Generic confirm dialog (yes/no prompts: cascade-complete, send-to-sidebar, …) -->
+    <div class="dialog" @click.stop x-show="confirm">
+      <p x-text="confirm?.message"></p>
+      <template x-if="confirm?.bodyHtml"><div x-html="confirm.bodyHtml"></div></template>
+      <div class="dialog-actions">
+        <button class="ghost" @click="confirmNo()" x-text="confirm?.cancelLabel || 'Cancel'"></button>
+        <button :class="confirm?.danger ? 'danger' : 'primary'" @click="confirmYes()" x-text="confirm?.confirmLabel || 'Confirm'"></button>
+      </div>
+    </div>
+
+    <!-- Keyboard shortcuts cheat-sheet (?) -->
+    <div class="dialog shortcuts-sheet" @click.stop x-show="shortcutsOpen">
+      <div class="sheet-head">Keyboard shortcuts<button class="ghost" @click="shortcutsOpen = false">esc</button></div>
+      <div class="sheet-grp"><div class="section-label">Global</div>
+        <div class="sk"><kbd>Space</kbd><span>Go to anything</span></div>
+        <div class="sk"><kbd>1</kbd>–<kbd>5</kbd> · <kbd>←</kbd><kbd>→</kbd><span>Jump / step surfaces</span></div>
+        <div class="sk"><kbd>q</kbd><span>New task</span></div>
+        <div class="sk"><kbd>b</kbd><span>Backlog</span></div>
+        <div class="sk"><kbd>a</kbd><span>All</span></div>
+        <div class="sk"><kbd>?</kbd><span>This help</span></div></div>
+      <div class="sheet-grp"><div class="section-label">Task list</div>
+        <div class="sk"><kbd>j</kbd>/<kbd>k</kbd> · <kbd>↑</kbd><kbd>↓</kbd><span>Move focus</span></div>
+        <div class="sk"><kbd>↵</kbd>/<kbd>e</kbd><span>Open focused</span></div>
+        <div class="sk"><kbd>x</kbd><span>Complete focused</span></div></div>
+      <div class="sheet-grp"><div class="section-label">Composer</div>
+        <div class="sk"><kbd>⌘</kbd><kbd>↵</kbd><span>Save &amp; close</span></div>
+        <div class="sk"><kbd>esc</kbd><span>Close</span></div></div>
+      <div class="sheet-grp"><div class="section-label">Composer title syntax</div>
+        <div class="sk"><b>p1 · tomorrow · 2h · #project · @area · every week</b><span>Tokens</span></div></div>
+    </div>
+
+    <!-- ⌘K search palette (the backdrop gets .palette-backdrop while open for top alignment) -->
+    <div class="palette" @click.stop x-show="palette.open">
+      <div class="palette-head">
+        <svg class="ico palette-search-ico"><use href="#i-search"/></svg>
+        <input class="palette-input" x-ref="paletteInput" type="text" placeholder="Go to anything, or run a command…"
+          x-model="palette.q" @input="palette.sel = 0"
+          @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)" @keydown.enter.prevent="paletteEnter()"
+          @keydown.meta.s.prevent.stop="saveQueryAsFilter()" @keydown.ctrl.s.prevent.stop="saveQueryAsFilter()">
+      </div>
+      <div class="palette-section" x-show="searchResults().length" x-text="palette.q.trim() ? 'Results' : 'Go anywhere'"></div>
+      <div class="palette-results" x-show="searchResults().length">
+        <template x-for="(r, i) in searchResults()" :key="r.type + ':' + r.id">
+          <button type="button" class="palette-row task-line" :class="{ psel: i === palette.sel, done: r.obj?.completed_at }"
+            @click="pickSearchResult(r)" @mouseenter="palette.sel = i"
+            x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r)) : searchJumpHTML(r)"></button>
+        </template>
+      </div>
+      <div class="palette-empty" x-show="palette.q.trim() && !searchResults().length">No matches for “<span x-text="palette.q.trim()"></span>”</div>
+      <div class="palette-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span>
+      </div>
+    </div>
+
+    <!-- Locations manager dialog -->
+    <div class="dialog loc-manager" @click.stop x-show="locMgr">
+      <div class="fe-head"><span class="fe-title">Locations</span></div>
+      <p class="loc-help">Group places into regions. Travel time only applies within a region — drag a place to move it between them.</p>
+
+      <template x-if="!locations.length && !pendingRegions.length">
+        <p class="loc-empty">No places yet. Add a region below to start.</p>
+      </template>
+
+      <!-- Region sections: locations grouped under their region; drop target moves a dragged place here -->
+      <template x-for="r in displayRegions()" :key="r">
+        <div class="loc-region" :class="{ 'drop-into': dragLocId && dragOverRegion === r }"
+             @dragover.prevent="dragOverRegion = r" @dragleave="dragOverRegion === r && (dragOverRegion = null)" @drop="moveToRegion(r)">
+          <input class="loc-region-head" type="text" :value="r" @change="renameRegion(r, $event.target.value)" @keydown.enter="$event.target.blur()" title="Rename region">
+          <!-- add-a-place sits at the TOP of the region's places (kept apart from the bottom + New region button) -->
+          <div x-data="{ q: '' }">
+            <input class="loc-add-input" type="text" placeholder="＋ Add a place…" x-model="q" @keydown.enter="q.trim() && (addLocation(q.trim(), r), q = '')">
+          </div>
+          <template x-for="loc in locationsIn(r)" :key="loc.id">
+            <div class="loc-row" draggable="true" @dragstart="dragLocId = loc.id" @dragend="dragLocId = null; dragOverRegion = null">
+              <button class="loc-home" :class="{ on: isHomeLocation(loc.id) }" :title="isHomeLocation(loc.id) ? 'Home' : 'Set as home'" @click="setHomeLocation(loc.id)"><svg class="ico"><use href="#i-tag-home"/></svg></button>
+              <input class="inp grow" type="text" placeholder="Place name" :value="loc.name" @change="patchLocation(loc.id, { name: $event.target.value.trim() || loc.name })">
+              <button class="loc-del" title="Delete place" @click="deleteLocation(loc.id)"><svg class="ico"><use href="#i-trash"/></svg></button>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- New region — at the BOTTOM (new regions append under the existing ones) -->
+      <div x-data="{ q: '' }" class="loc-add-region">
+        <input class="loc-add-input" type="text" placeholder="＋ New region…" x-model="q" @keydown.enter="q.trim() && (addRegion(q), q = '')">
+      </div>
+
+      <div class="loc-travel-section" x-show="locations.length > 1">
+        <div class="fe-title">Travel</div>
+        <label class="travel-default">Default travel time
+          <input class="inp num" type="number" min="0" :value="store.defaultTravel()" @change="store.setDefaultTravel(Number($event.target.value))"> min
+        </label>
+        <template x-if="travel.length">
+          <div class="travel-list">
+            <template x-for="p in travel" :key="p.from + '>' + p.to">
+              <div class="travel-pair">
+                <span x-text="locName(p.from)"></span>
+                <span class="travel-arrow">→</span>
+                <span x-text="locName(p.to)"></span>
+                <span class="travel-min"><span x-text="p.minutes"></span> min</span>
+                <button class="icon-btn del" title="Remove" @click="removeTravelPair(p.from, p.to)"><svg class="ico"><use href="#i-trash"/></svg></button>
+              </div>
+            </template>
+          </div>
+        </template>
+        <div class="travel-add">
+          <select class="inp" x-model="travelPair.from">
+            <option value="">From…</option>
+            <template x-for="l in locations" :key="l.id"><option :value="l.id" x-text="l.name"></option></template>
+          </select>
+          <select class="inp" x-model="travelPair.to">
+            <option value="">To…</option>
+            <template x-for="l in locations" :key="l.id"><option :value="l.id" x-text="l.name"></option></template>
+          </select>
+          <input class="inp num" type="number" min="0" x-model.number="travelPair.min"> <span class="travel-minlbl">min</span>
+          <button class="primary" @click="addTravelPair()">Set</button>
+        </div>
+      </div>
+
+      <div class="dialog-actions">
+        <span class="spacer"></span>
+        <button class="primary" @click="locMgr = false">Done</button>
+      </div>
+    </div>
+
+    <!-- Filter editor: name + AQL query + live match count + syntax guide -->
+    <div class="dialog filter-editor" @click.stop x-show="filterEdit">
+      <div class="fe-head">
+        <input class="inp grow fe-name" x-ref="filterName" type="text" placeholder="Filter name" :value="filterEdit?.name" @input="filterEdit.name = $event.target.value">
+        <span class="fe-count" x-text="filterMatchCount() === 1 ? '1 task' : filterMatchCount() + ' tasks'"></span>
+      </div>
+      <div class="fe-body">
+        <textarea class="fe-query" placeholder="#work (p:>=4 OR due:overdue) -@someday" :value="filterEdit?.query" @input="filterEdit.query = $event.target.value"></textarea>
+        <!-- always-open tabbed reference, right under the input — never expect memorization (teach by doing) -->
+        <div class="fe-ref">
+          <div class="fe-tabs">
+            <button class="fe-tab" :class="{ sel: feTab === 'examples' }" @click="feTab = 'examples'">Examples</button>
+            <button class="fe-tab" :class="{ sel: feTab === 'fields' }" @click="feTab = 'fields'">Fields</button>
+            <button class="fe-tab" :class="{ sel: feTab === 'dates' }" @click="feTab = 'dates'">Dates</button>
+            <button class="fe-tab" :class="{ sel: feTab === 'flags' }" @click="feTab = 'flags'">Flags</button>
+            <button class="fe-tab" :class="{ sel: feTab === 'logic' }" @click="feTab = 'logic'">Text &amp; logic</button>
+          </div>
+          <div class="fe-tab-body">
+            <div class="fe-ex-list" x-show="feTab === 'examples'">
+              <button class="fe-ex" @click="filterEdit.query = '#work (p:>=4 OR due:overdue) -@someday'">#work (p:&gt;=4 OR due:overdue) -@someday</button>
+              <button class="fe-ex" @click="filterEdit.query = '@home groceries due:<2026-07-01'">@home groceries due:&lt;2026-07-01</button>
+              <button class="fe-ex" @click="filterEdit.query = 'is:recurring is:open'">is:recurring is:open</button>
+            </div>
+            <div class="fe-ref-rows" x-show="feTab === 'fields'">
+              <div><b>Project / area</b><code>#proj</code> in project · <code>##proj</code> incl. sub · <code>@area</code> area</div>
+              <div><b>Priority</b><code>p:4</code> · <code>p:&gt;=3</code> · <code>p:2,5</code> · <code>p:1..3</code></div>
+            </div>
+            <div class="fe-ref-rows" x-show="feTab === 'dates'">
+              <div><b>due: / deadline:</b><code>today</code> · <code>tomorrow</code> · <code>overdue</code> · <code>eow</code> · <code>eom</code> · <code>+7d</code> · <code>2026-07-01</code> · <code>none</code> · <code>any</code></div>
+            </div>
+            <div class="fe-ref-rows" x-show="feTab === 'flags'">
+              <div><b>is:</b><code>done</code> · <code>open</code> · <code>recurring</code> · <code>daily</code> · <code>weekly</code> · <code>monthly</code> · <code>yearly</code> · <code>blocked</code> · <code>leaf</code> · <code>project</code> · <code>overdue</code> · <code>today</code></div>
+            </div>
+            <div class="fe-ref-rows" x-show="feTab === 'logic'">
+              <div><b>Scope</b><code>in:title</code> · <code>in:notes</code> · bare words = free text</div>
+              <div><b>Operators</b><code>AND</code> / <code>&amp;</code> · <code>OR</code> / <code>|</code> · <code>NOT</code> / <code>!</code> / <code>-</code> · <code>( )</code></div>
+            </div>
+          </div>
+        </div>
+        <div class="fe-preview" x-show="filterEdit?.query?.trim()" x-cloak>
+          <div class="section-label">Matches</div>
+          <template x-for="t in filterMatches().slice(0, 50)" :key="t.id">
+            <div class="task-line fe-prev-row" x-html="taskLine(t)"></div>
+          </template>
+          <div class="fe-prev-empty" x-show="!filterMatches().length">No tasks match.</div>
+        </div>
+      </div>
+      <div class="dialog-actions">
+        <button class="icon-btn del" x-show="filterEdit?.id" title="Delete filter" @click="deleteFilter()"><svg class="ico"><use href="#i-trash"/></svg></button>
+        <span class="spacer"></span>
+        <button class="ghost" @click="filterEdit = null">Cancel</button>
+        <button class="primary" @click="saveFilter()">Save</button>
+      </div>
+    </div>
+
+    <!-- Event editor (calendar) -->
+    <div class="dialog event-editor" @click.stop x-show="eventEdit">
+      <template x-if="eventEdit">
+        <div>
+          <input class="ev-title" type="text" placeholder="New event" :value="eventEdit.title" @input="eventEdit.title = $event.target.value" x-ref="evTitle">
+          <div class="ev-row">
+            <label class="ev-allday"><input type="checkbox" :checked="eventEdit.all_day" @change="eventEdit.all_day = $event.target.checked"> All-day</label>
+          </div>
+          <div class="ev-row">
+            <input class="ev-field" type="date" :value="eventEdit.date" @input="eventEdit.date = $event.target.value">
+            <template x-if="!eventEdit.all_day">
+              <span class="ev-times">
+                <input class="ev-field" type="time" :value="eventEdit.start" @input="eventEdit.start = $event.target.value">
+                <span class="ev-dash">–</span>
+                <input class="ev-field" type="time" :value="eventEdit.end" @input="eventEdit.end = $event.target.value">
+              </span>
+            </template>
+          </div>
+          <div class="section-label ev-color-label">Color</div>
+          <div class="ev-row ev-colors" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div>
+          <div class="dialog-actions">
+            <button class="ghost danger" x-show="eventEdit.id" @click="clDeleteEvent()">Delete</button>
+            <span class="spacer"></span>
+            <button class="ghost" @click="eventEdit = null">Cancel</button>
+            <button class="primary" @click="clSaveEvent()">Save</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Block editor: a condition-bearing span (drag on week/day to create, click a band to edit) -->
+    <div class="dialog block-editor" @click.stop x-show="blockEdit">
+      <template x-if="blockEdit">
+        <div>
+          <input class="ev-title" type="text" placeholder="New block — e.g. At the office" :value="blockEdit.title" @input="blockEdit.title = $event.target.value" x-ref="blkTitle">
+          <div class="ev-row">
+            <label class="ev-allday"><input type="checkbox" :checked="blockEdit.all_day" @change="blockEdit.all_day = $event.target.checked"> All-day</label>
+          </div>
+          <div class="ev-row">
+            <input class="ev-field" type="date" :value="blockEdit.date" @input="blockEdit.date = $event.target.value">
+            <template x-if="!blockEdit.all_day">
+              <span class="ev-times">
+                <input class="ev-field" type="time" :value="blockEdit.start" @input="blockEdit.start = $event.target.value">
+                <span class="ev-dash">–</span>
+                <input class="ev-field" type="time" :value="blockEdit.end" @input="blockEdit.end = $event.target.value">
+              </span>
+            </template>
+          </div>
+          <div class="blk-field">
+            <label class="section-label">Repeat</label>
+            <div class="blk-weekdays">
+              <template x-for="w in clBlockWeekdays()" :key="w.d">
+                <button type="button" class="blk-wd" :class="{ sel: blockEdit.weekdays.includes(w.d) }" @click="_toggleIn(blockEdit.weekdays, w.d)" x-text="w.l"></button>
+              </template>
+            </div>
+          </div>
+          <div class="blk-field">
+            <label class="section-label">Location</label>
+            <select class="ev-field" @change="blockEdit.location_id = $event.target.value || null">
+              <option value="" :selected="!blockEdit.location_id">Anywhere (free)</option>
+              <template x-for="l in locations" :key="l.id"><option :value="l.id" :selected="blockEdit.location_id === l.id" x-text="l.name"></option></template>
+            </select>
+          </div>
+          <div class="blk-field" x-show="areas.length">
+            <label class="section-label">Areas</label>
+            <div class="blk-chips">
+              <template x-for="a in areas" :key="a.id">
+                <button type="button" class="blk-chip" :class="{ sel: blockEdit.areas.includes(a.id) }" @click="_toggleIn(blockEdit.areas, a.id)" x-text="a.name"></button>
+              </template>
+            </div>
+          </div>
+          <div class="ev-row">
+            <select class="ev-field" :value="blockEdit.energy || ''" @change="blockEdit.energy = $event.target.value || null">
+              <option value="">Energy: any</option><option value="low">Low energy</option><option value="med">Medium energy</option><option value="high">High energy</option>
+            </select>
+            <select class="ev-field" :value="blockEdit.availability || ''" @change="blockEdit.availability = $event.target.value || null">
+              <option value="">Availability: —</option><option value="free">Free</option><option value="busy">Busy</option><option value="focus">Focus</option>
+            </select>
+          </div>
+          <div class="section-label ev-color-label">Color</div>
+          <div class="ev-row ev-colors" @click="swatchPick($event, v => blockEdit.color = v)" x-html="swatchRow(blockEdit.color)"></div>
+          <div class="dialog-actions">
+            <button class="ghost danger" x-show="blockEdit.id" @click="clDeleteBlock()">Delete</button>
+            <span class="spacer"></span>
+            <button class="ghost" @click="blockEdit = null">Cancel</button>
+            <button class="primary" @click="clSaveBlock()">Save</button>
+          </div>
+        </div>
+      </template>
+    </div>
+
+    <!-- Delete-project confirmation: move the tasks inside to another container, or delete them all with the project -->
+    <div class="dialog" @click.stop x-show="deletingProject">
+      <p><b>Delete "<span x-text="projName(deletingProject)"></span>"?</b></p>
+      <p class="dialog-sub">It holds <b x-text="descendantCount(deletingProject)"></b> task<span x-show="descendantCount(deletingProject) !== 1">s</span>. What should happen to them?</p>
+      <div class="seg">
+        <button type="button" :class="{ on: deleteProjMode === 'move' }" @click="deleteProjMode = 'move'">Move them</button>
+        <button type="button" :class="{ on: deleteProjMode === 'delete' }" @click="deleteProjMode = 'delete'">Delete them too</button>
+      </div>
+      <template x-if="deleteProjMode === 'move'">
+        <div>
+          <label class="section-label">Move tasks to</label>
+          <select class="dialog-select" x-model="deleteTarget">
+            <template x-for="p in deletionTargets()" :key="p.id"><option :value="p.id" x-text="p.content"></option></template>
+          </select>
+        </div>
+      </template>
+      <div class="dialog-actions">
+        <button class="ghost" @click="deletingProject = null">Cancel</button>
+        <button class="danger" @click="confirmDeleteProject()" x-text="deleteProjMode === 'delete' ? 'Delete all' : 'Delete project'"></button>
+      </div>
+    </div>
+
+    <!-- Delete a task that has subtasks: delete them too, or move them to a destination -->
+    <div class="dialog del-sub-dialog" @click.stop x-show="deleteSub" x-cloak>
+      <p><b>Delete "<span x-text="byId.get(deleteSub?.id)?.content"></span>"?</b></p>
+      <p class="dialog-sub">It has <b x-text="deleteSub?.count"></b> subtask<span x-show="deleteSub?.count !== 1">s</span>. What should happen to them?</p>
+      <div class="seg">
+        <button type="button" :class="{ on: deleteSubMode === 'move' }" @click="deleteSubMode = 'move'">Move them</button>
+        <button type="button" :class="{ on: deleteSubMode === 'delete' }" @click="deleteSubMode = 'delete'">Delete them too</button>
+      </div>
+      <template x-if="deleteSubMode === 'move'">
+        <div>
+          <label class="section-label">Move subtasks to</label>
+          <select class="dialog-select" x-model="deleteSubTarget">
+            <template x-for="p in deleteSubTargets()" :key="p.id"><option :value="p.id" x-text="p.content"></option></template>
+          </select>
+        </div>
+      </template>
+      <div class="dialog-actions">
+        <button class="ghost" @click="deleteSub = null">Cancel</button>
+        <button class="danger" @click="confirmDeleteTask()" x-text="deleteSubMode === 'delete' ? 'Delete all' : 'Delete task'"></button>
+      </div>
+    </div>
+
+    <!-- GS8 graduation offer: own state (not confirm dialog) so Escape/backdrop has no side effect -->
+    <div class="dialog grad-dialog" @click.stop x-show="graduateOffer">
+      <p><b>Let it run on its own?</b></p>
+      <p x-text="'“' + (goalById(graduateOffer)?.name || '') + '” has burned steadily for months. Mark it self-sustaining — it keeps its place and its warmth, and frees your energy for a new fire.'"></p>
+      <div class="dialog-actions">
+        <button class="ghost grad-decline" @click="declineGraduation()">Keep tending</button>
+        <button class="primary grad-confirm" @click="confirmGraduation()">Let it run</button>
+      </div>
+    </div>
+
+    <!-- Finish offer (HH8) — the third good ending. Escape or “Keep going” = pure close; “Finish it”
+         marks finished_at + plays the graduation choreography + archives after the beat. -->
+    <div class="dialog finish-dialog" @click.stop x-show="finishOffer">
+      <p><b>Let it rest, finished?</b></p>
+      <p x-text="'“' + (goalById(finishOffer)?.name || '') + '” — every milestone is done. Mark it finished — the heat carries to your next fire.'"></p>
+      <div class="dialog-actions">
+        <button class="ghost finish-decline" @click="declineFinishing()">Keep going</button>
+        <button class="primary finish-confirm" @click="confirmFinishing()">Finish it</button>
+      </div>
+    </div>
+
+    <!-- Release & reflection (GS15) — the second good ending. Own state (not the generic confirm dialog)
+         so Escape/backdrop is a pure close; Recommit and Release are deliberately equal-weight (both
+         .ghost — no primary/secondary framing, released ≠ failed). -->
+    <div class="dialog reflect-dialog" @click.stop x-show="reflectGoal">
+      <p><b>Sit with this one?</b></p>
+      <p x-text="'“' + (goalById(reflectGoal)?.name || '') + '” — fires change, and so do you. Recommit with a fresh shape, set it down on purpose for later, or release it and carry the heat to another fire. All are good endings.'"></p>
+      <div class="dialog-actions">
+        <button class="ghost reflect-recommit" @click="recommitGoal()">Recommit</button>
+        <button class="ghost reflect-shelve" @click="shelveGoal(reflectGoal); reflectGoal = null">Shelve</button>
+        <button class="ghost reflect-release" @click="releaseGoal()">Release</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Transient toast (e.g. +1 identity vote). Non-blocking: pointer-events none, auto-hides. -->
+  <div id="toast-wrap">
+    <div class="toast" role="status" aria-live="polite" x-show="toastOn" x-transition x-cloak x-text="toastMsg"></div>
+    <div class="toast toast-undo" role="status" aria-live="polite" x-show="undo.on" x-transition x-cloak>
+      <span x-text="undo.label"></span>
+      <button type="button" class="undo-btn" @click="doUndo()">Undo</button>
+    </div>
+  </div>
+
+</div>
+
+<script defer src="./vendor/supabase.min.js"></script>
+<script type="module" src="./app.js"></script>
+<script defer src="./vendor/alpinejs.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,1794 @@
+/* ---- Things-like: compact, calm, content-first ---- */
+@font-face {
+  font-family: "Instrument Sans"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url("./vendor/instrument-sans-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Instrument Sans"; font-style: italic; font-weight: 400 700; font-display: swap;
+  src: url("./vendor/instrument-sans-latin-italic.woff2") format("woff2");
+}
+@font-face {
+  font-family: "LT Remark"; font-style: normal; font-weight: 700; font-display: swap;
+  src: url("./vendor/ltremark-bold.otf") format("opentype");
+}
+html { color-scheme: light dark; }
+* { box-sizing: border-box; scrollbar-width: none; }   /* hide scrollbars app-wide — scroll still works */
+*::-webkit-scrollbar { width: 0; height: 0; }
+[x-cloak] { display: none !important; }
+html, body { margin: 0; height: 100%; overscroll-behavior-x: none; }   /* horizontal trackpad swipe drives our surface switch — never the browser's back/forward history gesture */
+body {
+  background: var(--bg-wash), var(--bg-foot), var(--bg); color: var(--ink);   /* fixed top wash + bottom nav-backdrop wash under the whole shell — don't scroll/page with .canvas-track */
+  font: 14.5px/1.45 var(--font-ui);
+  -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+button { font: inherit; cursor: pointer; border: none; }
+input, textarea, select { font: inherit; color: var(--ink); }
+h1, h2 { font-family: var(--font-display); }   /* topbar/auth/goal-empty headings; .cl-period overrides back to sans below */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }   /* keyboard focus ring, app-wide (one group, not per-element) */
+kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px solid var(--edge); border-radius: var(--r-6); padding: 1px var(--sp-6); margin: 0 1px; }
+
+/* ---- Auth seam (only shown by an auth-bearing adapter; hidden under LocalStore) ---- */
+.auth { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--sp-24); background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(6px); }
+.card {
+  background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow);
+  padding: var(--sp-24); width: 100%; max-width: 360px;
+  h1 { margin: 0 0 var(--sp-4); font-size: var(--fs-22); }
+  .sub { margin: 0; color: var(--muted); }
+}
+
+/* ---- Spatial canvas: home-centric shell of 5 surfaces in a translated flex track ---- */
+#shell { display: flex; flex-direction: column; height: 100dvh; }
+.canvas { flex: 1; min-height: 0; overflow: hidden; position: relative; touch-action: pan-y; }
+.canvas-track { display: flex; height: 100%; will-change: transform; }
+.surface { flex: 0 0 100%; height: 100%; min-width: 0; overflow: hidden; }
+/* Visual left→right order (DOM order differs; flex `order` arranges the track) */
+.surface-lists { order: 0; display: flex; } .surface-plan { order: 1; } .surface-now { order: 2; } .surface-goals { order: 3; }
+/* Slide between surfaces — programmatic moves animate; during a drag the transition is off (1:1 with the finger) */
+.canvas-track { transition: transform .42s var(--ease-drawer); }
+.canvas-track.dragging { transition: none; }
+.swiping, .swiping * { user-select: none; -webkit-user-select: none; }   /* no text selection / flicker mid horizontal swipe */
+.canvas-dots { position: absolute; left: 50%; transform: translateX(-50%); bottom: 10px; z-index: 5; display: flex; gap: var(--sp-16); justify-content: center; align-items: center; padding: var(--sp-10); }
+.cd { background: none; border: 0; cursor: pointer; display: flex; align-items: center; gap: var(--sp-6); font-size: var(--fs-11); font-weight: 600; color: var(--muted); }
+.cd-cur { color: var(--accent); }
+.cd-pip { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.cd-cur .cd-pip { background: var(--accent); }
+.cd-far .cd-lab { display: none; }
+@media (prefers-reduced-motion: reduce) { .canvas-track { transition: opacity .2s ease; } }
+
+/* ---- Overview deck: zoom-out grid of 5 surface skeletons (real titles filled in) ---- */
+.overview { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-16); padding: var(--sp-24); background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(6px); opacity: 1; transition: opacity .2s var(--ease-out); }
+@starting-style { .overview { opacity: 0; } }
+.ov-grid { display: flex; flex-wrap: wrap; gap: var(--sp-16); justify-content: center; align-items: center; max-width: 880px; transform: scale(1); transition: transform .26s var(--ease-out); }
+@starting-style { .ov-grid { transform: scale(.96); } }
+.ov-card { width: 200px; height: 150px; display: flex; flex-direction: column; gap: var(--sp-8); padding: var(--sp-12); text-align: left; background: var(--panel); border: 1.5px solid transparent; border-radius: var(--r); box-shadow: var(--shadow-sm); cursor: pointer; transition: border-color .15s ease, transform .15s var(--ease-out), box-shadow .15s ease; }
+@media (hover: hover) and (pointer: fine) { .ov-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); } }
+.ov-card.sel { border-color: var(--accent); box-shadow: var(--shadow); }
+.ov-head { display: flex; align-items: center; gap: var(--sp-6); font-weight: 600; font-size: var(--fs-13); color: var(--ink); }
+.ov-head .pick-ico { color: var(--muted); }
+.ov-skel { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--sp-6); overflow: hidden; }
+.ov-hint { font-size: var(--fs-12); color: var(--muted); }
+.sk-bone { height: 7px; border-radius: var(--r-4); background: var(--hover); }
+.sk-bone.w80 { width: 80%; } .sk-bone.w70 { width: 70%; } .sk-bone.w60 { width: 60%; }
+.sk-strip { height: 10px; border-radius: var(--r-4); background: color-mix(in srgb, var(--accent) 22%, var(--hover)); }
+.sk-hero { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-6); border-radius: var(--r-6); background: var(--hover); }
+.sk-title { font-size: var(--fs-12); font-weight: 600; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sk-title-sm { font-size: var(--fs-11); font-weight: 500; color: var(--muted); }
+.sk-cal { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--sp-4); }
+.sk-cell { border-radius: 2px; background: var(--hover); }
+.sk-goalcard { display: flex; gap: var(--sp-8); align-items: center; padding: var(--sp-6); border-radius: var(--r-6); background: var(--hover); }
+.sk-ring { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--faint); border-top-color: var(--accent); flex: none; }
+.sk-goalbody { flex: 1; display: flex; flex-direction: column; gap: var(--sp-6); min-width: 0; }
+.sk-bar { height: 6px; border-radius: var(--r-4); background: var(--hover); }
+@media (prefers-reduced-motion: reduce) { .ov-grid { transition: none; } }
+/* Lists roller — center-focused project picker. Sits on the LEFT of the deck (own flex column), bigger but fixed-size cards aren't cramped. */
+#ov-stage { display: flex; align-items: center; gap: clamp(var(--sp-12), 3vw, 40px); }
+.ov-roller { flex: none; width: 320px; height: min(78vh, 620px); display: flex; flex-direction: column; }
+.roller { flex: 1; min-height: 0; position: relative; overflow-y: auto; scroll-behavior: smooth; display: flex; flex-direction: column; gap: var(--sp-6); padding: 48px var(--sp-8);   /* big top/bottom padding → first/last items can scroll clear of the fade */
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(180deg, transparent, #000 8%, #000 92%, transparent); }
+.rl-row { width: 100%; }
+.rl-sec { padding: var(--sp-10) var(--sp-12) var(--sp-2); }
+.rl-wrap { position: relative; width: 100%; }
+.rl-box { width: 100%; display: flex; align-items: center; gap: var(--sp-10); padding: var(--sp-8) var(--sp-12);   /* −3px vs the 12/16 default (user-tuned) */
+  background: var(--bg); border: 1px solid var(--edge); border-radius: var(--r); box-shadow: var(--shadow-sm); cursor: pointer;
+  transition: background-color .18s var(--ease-out), border-color .18s var(--ease-out), box-shadow .18s var(--ease-out); }
+/* focus keeps the default box, recolored to the item's OWN color (filter/project/area) — accent when it has none */
+.rl-wrap.rl-focus .rl-box { border-color: var(--rlc, var(--accent)); background: color-mix(in srgb, var(--rlc, var(--accent)) 9%, var(--bg)); box-shadow: var(--shadow); }
+.rl-ic { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; }
+.rl-ic .ico { width: 18px; height: 18px; flex: none; }
+.rl-prog { border-radius: 50%; background: conic-gradient(var(--pc) calc(var(--p) * 360deg), color-mix(in srgb, var(--pc) 22%, var(--hover)) 0); position: relative; }   /* empty arc tinted toward the project color */
+.rl-prog::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--bg); }
+.rl-wrap.rl-focus .rl-prog::after { background: color-mix(in srgb, var(--rlc, var(--accent)) 9%, var(--bg)); }
+.rl-nm { flex: 1; font-size: var(--fs-15); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rl-wrap.rl-focus .rl-nm { color: var(--rlc, var(--accent)); font-weight: 700; }
+.rl-cnt { font-size: var(--fs-13); color: var(--muted); font-variant-numeric: tabular-nums; }
+.rl-more { background: none; border: 0; color: var(--muted); cursor: pointer; font-weight: 700; letter-spacing: 1px; opacity: .5; padding: 0 var(--sp-2); font-size: var(--fs-15); }
+.rl-more:hover { opacity: 1; }
+.rl-nest { color: var(--muted); margin-right: var(--sp-2); font-size: var(--fs-12); }
+.nav-pop.rl-pop { position: fixed; }                      /* two classes → beats the later `.nav-pop{position:absolute}`; fixed = escapes the roller's overflow clip via navPopXY */
+.nav-pop-item .ico { width: 15px; height: 15px; flex: none; }   /* explicit sizing — un-sized .ico in the popover inflated the row */
+@media (prefers-reduced-motion: reduce) { .rl-box { transition: none; } .roller { scroll-behavior: auto; } }
+/* .nav-pop/.nav-pop-item appearance: see Popover shell block below. */
+.nav-pop-sep { border-top: 1px solid var(--hair); margin: var(--sp-2) 0; }
+.rl-icon-none { font-size: var(--fs-11); color: var(--muted); }
+/* Color swatch row — 7-column grid (no-color/default + 13 colors = two even rows) */
+.swatch-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--sp-6); padding: var(--sp-4) var(--sp-8) var(--sp-6); place-items: center; }
+.swatch {
+  width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; flex: none;
+  &:hover { opacity: .8; }
+  &.sel { border-color: var(--ink); }
+  /* "no color" option — outlined with a diagonal slash, not a gray fill */
+  &.none { border-color: var(--edge);
+    background: linear-gradient(to top right, transparent 46%, var(--muted) 46%, var(--muted) 54%, transparent 54%); }
+}
+/* Area icon picker — 7-column grid */
+.icon-pick-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--sp-4); place-items: center; padding: var(--sp-4) var(--sp-8) var(--sp-6); }
+.icon-pick-btn {
+  width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid transparent; border-radius: var(--r-6); background: none; cursor: pointer; color: var(--ink);
+  &:hover { background: var(--hover); }
+  &.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+}
+.icon-pick-btn .ico { width: 15px; height: 15px; flex: none; }
+/* Delete confirm popover */
+.nav-pop-label { font-size: var(--fs-11); color: var(--muted); padding: var(--sp-4) var(--sp-8) var(--sp-2); }
+/* Shared dialog bits (used by the delete-project modal and any custom-content dialog). */
+.dialog-sub { font-size: var(--fs-13); color: var(--muted); margin: var(--sp-6) 0 var(--sp-12); }
+/* layout only — appearance comes from the shared .inp/.ev-field/.dialog-select rule */
+.dialog-select { width: 100%; margin-bottom: var(--sp-12); }
+
+/* ---- App content (right pane) ---- */
+/* full-width padding (not max-width+margin) so margin-area wheel events scroll natively, not via JS */
+.app { flex: 1; min-width: 0; padding: 64px max(var(--sp-24), calc((100% - 680px) / 2)) 120px; height: 100%; overflow-y: auto; overflow-x: hidden; }
+.topbar {
+  display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--sp-24);
+  h1 { margin: 0; font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
+  .date { margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-13); }
+}
+.topbar-title { min-width: 0; }   /* when not on mobile, make title text left-aligned */
+.hamburger { display: none; background: none; border: none; padding: var(--sp-4); margin: var(--sp-2) var(--sp-10) 0 -4px; color: var(--ink); flex: none; cursor: pointer; }
+.hamburger .ico { width: 22px; height: 22px; display: block; }
+.link { background: none; border: none; color: var(--muted); font-size: var(--fs-13); &:hover { color: var(--ink); } }
+.empty { color: var(--muted); text-align: center; padding: 56px 0; font-size: 14px; }
+
+/* ---- Tasks: rows separated by space + hover tint, not lines (Things style) ---- */
+.list { list-style: none; margin: 0 -10px 0 -18px; padding: 0; display: flex; flex-direction: column; }   /* left bleed = row's 18px padding so the check column lines up with the title/date above */
+.rows { display: contents; }   /* innerHTML container for the row string — must not create a box (its <li>s are the flex items) */
+.item {
+  position: relative;
+  display: flex; align-items: flex-start; gap: var(--sp-10); padding: var(--sp-8) var(--sp-10); border-radius: var(--r-8);
+  /* the checklist supplies its own bottom spacing, so don't double it up */
+  &:has(.chk-list) { padding-bottom: 0; }
+  cursor: pointer; transition: background-color .12s ease;
+  /* content-visibility:auto skips offscreen paint; auto intrinsic-size preserves row height; fitRows re-runs on reveal */
+  content-visibility: auto; contain-intrinsic-size: auto 38px;
+  /* indent guides: 2px vertical line per depth level (matches checklist connector) */
+  background-image: repeating-linear-gradient(to right, transparent 0 9px, color-mix(in srgb, var(--faint) 55%, transparent) 9px 11px, transparent 11px 22px);
+  background-repeat: no-repeat; background-position: 17px 0; background-size: calc(var(--d, 0) * 22px) 100%;
+  &:hover { background-color: var(--hover); }
+  .body { flex: 1; min-width: 0; position: relative; }
+  .title { display: block; width: 100%; font-size: var(--fs-15); line-height: 18px; cursor: pointer; }
+  &.done .title { color: var(--muted); text-decoration: line-through; }
+  .del {
+    background: none; border: none; color: var(--muted); font-size: var(--fs-12); opacity: 0;
+    transition: opacity .12s ease;
+    &:hover { color: var(--p1); }
+  }
+  &:hover .del { opacity: 1; }
+}
+/* Priority encoded in the checkbox color, Todoist-style (--pc set per task) */
+.check {
+  position: relative; width: 18px; height: 18px; border-radius: 50%; border: 2.25px solid var(--pc, var(--faint));
+  background: transparent; flex: none; transition: background-color .12s ease;
+  &:hover { background: color-mix(in srgb, var(--pc) 15%, transparent); }
+  &.done { background: var(--pc); border-color: var(--pc); }
+  &.done::after { content: ""; position: absolute; left: 4px; top: 1.5px; width: 4px; height: 8px;
+    border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+}
+/* Blocked (waiting on an incomplete blocker): a subtle lock badge centered in the checkbox. */
+.check.blocked { background: color-mix(in srgb, var(--p1) 18%, transparent); }
+.check .lock-ico { position: absolute; inset: 0; margin: auto; width: 9px; height: 9px; color: var(--muted); opacity: .5; stroke-width: 3; pointer-events: none; }
+/* Paused recurrence: amber border + pause icon instead of checkmark. */
+.check.paused { border-color: var(--amber, #f59e0b); }
+.check.paused .pause-ico { position: absolute; inset: 0; margin: auto; width: 8px; height: 8px; color: var(--amber, #f59e0b); fill: currentColor; stroke: none; pointer-events: none; }
+.check.prog { background: conic-gradient(var(--pc) calc(var(--p, 0) * 1%), transparent 0); border-color: var(--pc);
+  &:hover { background: conic-gradient(var(--pc) calc(var(--p, 0) * 1%), color-mix(in srgb, var(--pc) 15%, transparent) 0); } }
+/* Archived (can't be completed anymore): inert archive glyph instead of the circle/checkmark; no fill, no hover. */
+.check.archived { border-color: color-mix(in srgb, var(--muted) 45%, transparent); background: transparent; cursor: default; }
+.check.archived:hover { background: transparent; }
+/* archived = a dash-in-circle "set aside" mark (indeterminate-checkbox idiom), distinct from the done tick */
+.check.archived::after { content: ''; position: absolute; inset: 0; margin: auto; width: 8px; height: 2px; border-radius: 1px; background: var(--muted); opacity: .7; pointer-events: none; }
+/* Archived rows read muted (like done) but WITHOUT strike-through — the work is set aside, not finished. */
+.item.archived .title { color: var(--muted); }
+.item.archived .badge, .item.archived .m { color: var(--faint); }
+/* Row line 1: title + areas (left, title truncates), then properties pushed right */
+.row1 { display: flex; align-items: center; gap: var(--sp-8); }
+.r1l { display: flex; align-items: center; gap: var(--sp-6); min-width: 0; flex: 1; }
+/* project TEXT shares the title baseline; the icon-only default proj stays centered (areas/goals stay centered too) */
+.r1l .title, .r1l .proj:has(.proj-nm) { align-self: baseline; }
+.r1l .title { width: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* content-width so areas sit right beside it; truncates only when the row runs out of room (override .item .title width:100%) */
+.title strong { font-weight: 600; }
+.title em { font-style: italic; }
+.title a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.title code { font: var(--fs-13) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); }
+/* strikethrough (~~) reads as "struck out" — dim it, in titles + descriptions (rows and the composer editor) */
+.title s, .desc-line s, .desc s { color: var(--muted); }
+/* a struck-through LINK: draw the strikethrough with the same color + thickness as the underline (accent, 1px),
+   so it doesn't read as a dim line-through crossing a bright underline */
+.title a, .desc-line a, .desc a.dm-link { text-decoration-thickness: 1px; }
+.title s:has(a), .desc-line s:has(a), .desc s:has(a) { text-decoration-color: var(--accent); text-decoration-thickness: 1px; }
+/* completed rows strike the whole .title via CSS line-through (not an <s>) — when it holds a link, match the
+   strikethrough to the underline (accent, 1px) so the two lines read as one, same as the <s>:has(a) case above */
+.item.done .title:has(a) { text-decoration-color: var(--accent); text-decoration-thickness: 1px; }
+.r1r { display: flex; align-items: center; gap: var(--sp-8); flex: 0 1 auto; min-width: 0; }   /* shrinkable so the loc chip (below) yields space to the title before the title truncates */
+.r1r .m { display: inline-flex; align-items: center; gap: var(--sp-4); font-size: var(--fs-12); color: var(--muted);
+  .ico { width: 12px; height: 12px; }
+}
+.r1r .m.dl.over { color: var(--p1); }
+.r1r .m:not(.loc) { flex: none; }   /* every badge except the location chip holds its size */
+.r1r .m.loc { min-width: 0; flex: 0 1 auto; } .r1r .m.loc > span { min-width: 4ch; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* loc text shrinks first, down to a ~3-4 letter floor, then the title truncates */
+.row2 { display: flex; align-items: center; gap: var(--sp-8); margin-top: var(--sp-2); overflow: hidden; }
+.desc-line { flex: 1; min-width: 0; font-size: var(--fs-12); color: var(--faint);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desc-line a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+/* bold stays in the faded family — one step above the desc's own text, never jumping to title-level ink */
+.desc-line strong { color: var(--muted); font-weight: 600; }
+.desc-line em { font-style: italic; }
+.desc-line code { font: var(--fs-11) ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); }
+/* mdLive(): markers faded (.dm-mark), styled text is real DOM (no overlay) — caret tracks it exactly */
+.dm-mark { color: var(--faint); }
+.desc strong { font-weight: 600; color: var(--ink); }
+.desc em { font-style: italic; }
+.desc code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-2); }
+.desc .dm-h { font-weight: 600; color: var(--ink); }
+.desc a.dm-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.row-rels { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-8); margin-top: var(--sp-2); min-width: 0; }
+.row-rel { display: inline-flex; align-items: center; gap: var(--sp-4); font-size: var(--fs-11); color: var(--muted);
+  .ico { width: 11px; height: 11px; flex: none; color: var(--rc, var(--muted)); } }
+.row-rel.blocked_by { --rc: var(--p1); }
+.row-rel.relates { --rc: var(--accent); }
+/* the blocked-by stop sign is filled (solid) so it reads as an octagon, not a circle, at small sizes */
+.row-rel.blocked_by .ico, .rel-ico.blocked_by { fill: currentColor; stroke: none; }
+.row-rel-name { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nlp-pill { display: inline-flex; align-items: center; font-size: var(--fs-13); line-height: 16px; color: var(--ink);
+  background: color-mix(in srgb, var(--rc, var(--muted)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rc, var(--muted)) 35%, transparent);
+  border-radius: var(--r-6); padding: 0 var(--sp-6); margin: 0 1px; white-space: nowrap; user-select: none; }
+.nlp-pill[data-kind="pri"]  { --rc: var(--p1); }
+.nlp-pill[data-kind="date"] { --rc: var(--accent); }
+.nlp-pill[data-kind="dur"]  { --rc: #8b5cf6; }
+.nlp-pill[data-kind="proj"] { --rc: #3aa655; }
+.nlp-pill[data-kind="area"]  { --rc: #e8862a; }
+.nlp-pill[data-kind="rec"]  { --rc: #2d7ff9; }
+.nlp-pill[data-kind="deadline"] { --rc: #d6336c; }
+/* Checklist: rectangle boxes (distinct from round task checkbox); –6px aligns box with subtask column */
+.chk-list { display: flex; flex-direction: column; gap: 1px; margin: var(--sp-4) 0 0 -6px; position: relative; }
+/* 2px indent guide spans to item bottom (no padding-bottom when chk-list present); matches subtask guide */
+.chk-list::before { content: ""; position: absolute; left: -14px; top: 2px; bottom: 0;
+  width: 2px; background: color-mix(in srgb, var(--faint) 55%, transparent); border-radius: 2px; }
+.chk-row { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; padding: 1px 0; }
+/* dragged checklist row lifts above its siblings + the indent guide; siblings' shift transition is set inline by the sortable helper */
+.chk-row.sorting { position: relative; z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
+.chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 2px solid color-mix(in srgb, var(--faint) 60%, transparent); background: none; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check */
+.chk-list .chk-rect { background: color-mix(in srgb, var(--faint) 8%, transparent); }   /* faint tint on the LIST checklist boxes only (composer entry boxes stay transparent) */
+.chk-row:hover .chk-rect { border-color: var(--muted); }   /* hovering the checkbox OR its text highlights the box */
+.chk-rect.done { background: var(--accent); border-color: var(--accent); }
+.chk-rect.done::after { content: ""; position: absolute; left: 4px; top: 2px; width: 3px; height: 6px; border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+/* title-first: no width cap, so a long title spans the whole row and truncates only when it alone overflows;
+   the desc sits inline after it and, via its huge shrink factor, gives up width FIRST so a short title never shrinks for a long desc. */
+.chk-txt { font-size: var(--fs-13); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+.chk-desc { font-size: var(--fs-11); color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 200 auto; min-width: 0; }
+.chk-row.done .chk-txt { color: var(--muted); text-decoration: line-through; }
+/* block hover: flat rect reads as the composer's source area */
+.item.inblock { background-color: var(--hover); border-radius: 0; }
+.item.inblock.rb-top { border-top-left-radius: 8px; border-top-right-radius: 8px; }
+.item.inblock.rb-bottom { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+.item.dragging { opacity: .4; }
+.item.row-hidden { display: none; }   /* dragged task's descendants (move as one block) — applied imperatively */
+.item.edit-hidden { display: none; }  /* edited task's subtree, hidden while the composer covers the row (imperative, no list rebuild) */
+.item.editing-row { pointer-events: none; overflow: hidden; background-image: none; }   /* the edited row: height pinned inline for the composer crossfade */
+/* Todoist-style insertion line: full-width accent bar + leading dot, straddling the row gap */
+/* drop ghost: left indent shows depth (shallower = outdent, not reorder) */
+.item.drop-ghost { height: 30px; box-sizing: border-box; pointer-events: none; margin: var(--sp-2) 0;
+  border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent); border-radius: var(--r-8);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  transition: padding-left .12s ease;        /* indent slides as the drop depth changes (reorder ↔ nest ↔ outdent) */
+  animation: ghost-in .14s ease; }
+@keyframes ghost-in { from { height: 0; margin-top: 0; margin-bottom: 0; opacity: 0; } }
+/* into = "select" the parent task (box) + the indented child ghost below tells you it'll nest */
+.item.drop-into  { background: color-mix(in srgb, var(--accent) 10%, transparent); outline: 1.5px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: var(--r-8); }
+/* keyboard-focused row (j/k/↑↓) — a soft accent ring, distinct from hover */
+.item.kbfocus { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: -2px; border-radius: var(--r-8); }
+
+/* Drag-to-move edge rail. Fixed clip wrapper pinned to the left edge (full height, transparent, no
+   pointer events unless .on) so the panel's off-screen slide never grows the page or steals scroll. */
+.move-rail { position: fixed; top: 0; left: 0; bottom: 0; z-index: 55; width: min(240px, 62vw);
+  display: flex; align-items: center; justify-content: flex-start; overflow: hidden; pointer-events: none; }
+.move-rail.on { pointer-events: auto; }
+.mr-panel { display: flex; flex-direction: column; gap: var(--sp-2); max-height: 80vh; overflow-y: auto;
+  padding: var(--sp-6); background: var(--panel); border-radius: 0 var(--r) var(--r) 0; box-shadow: var(--shadow-pop);
+  transform: translateX(-100%); opacity: 0; transition: transform .18s var(--ease-out), opacity .18s var(--ease-out); }
+.move-rail.on .mr-panel { transform: translateX(0); opacity: 1; }
+.mr-target { display: flex; align-items: center; gap: var(--sp-8); width: 100%; padding: var(--sp-6) var(--sp-10);
+  border-radius: var(--r-8); background: transparent; color: var(--ink); font-size: var(--fs-13); text-align: left; cursor: grab;
+  transition: background-color .12s var(--ease-out), box-shadow .12s var(--ease-out); }
+.mr-target .ico { width: 15px; height: 15px; flex: none; color: var(--cc); }
+.mr-target .mr-name { max-width: 168px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (hover: hover) and (pointer: fine) { .mr-target:hover { background: var(--hover); } }
+.mr-target.hot { background: color-mix(in srgb, var(--cc) 22%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--cc) 55%, transparent); }
+@media (prefers-reduced-motion: reduce) { .mr-panel { transition: opacity .18s var(--ease-out); } }   /* keep the fade, drop the slide */
+/* Tinted chip — .area (solid, filled) + .goal (dashed, no fill) share layout; each sets its own --tc tint. */
+.area, .goal { display: inline-flex; align-items: center; gap: var(--sp-4); font-size: var(--fs-11); font-weight: 600; padding: 0 var(--sp-6); line-height: 15px; border-radius: var(--r-pill); white-space: nowrap; }
+.area { border: 1px solid color-mix(in srgb, var(--tc, var(--muted)) 30%, transparent);
+  color: color-mix(in srgb, var(--tc, var(--muted)) 60%, var(--muted));
+  background: color-mix(in srgb, var(--tc, var(--muted)) 9%, transparent); }
+.areas { display: inline-flex; align-items: center; gap: var(--sp-6); min-width: 0; }
+.area .ico { width: 11px; height: 11px; flex: none; color: var(--tc, var(--muted)); }
+/* Goal chip icon is always the flame sprite (fill, not stroke) — tint via --tc, fallback --warm (not muted: a goal chip is never neutral). */
+.goal .ico { width: 11px; height: 11px; flex: none; fill: var(--tc, var(--warm)); stroke: none; }
+.area .ico-default { display: none; }   /* areas without a set icon show just their name when there's room */
+/* Progressive collapse (fitRows): names→icons→3-icon pill→"…"; chips merge into one pill.
+   Transparent 1px border matches bordered chips height (no row-height jump). */
+.r1l.icons-only .area .nm { display: none; }
+.r1l.icons-only .area .ico-default { display: inline-flex; }
+.r1l.icons-only .areas { background: color-mix(in srgb, var(--tc, var(--muted)) 14%, transparent); border: 1px solid color-mix(in srgb, var(--tc, var(--muted)) 28%, transparent); border-radius: var(--r-pill); padding: 0 var(--sp-6); gap: var(--sp-6); flex: none; height: 17px; }
+.r1l.icons-only .area { padding: 0; gap: 0; border: none; background: none; line-height: 15px; }
+/* >3 areas collapsed: show the first 3 icons, then a "…". (Combinator counts only .area; Alpine leaves the x-for <template> in .areas.) */
+.r1l.rolled .areas .area ~ .area ~ .area ~ .area { display: none; }
+.r1l.rolled .areas::after { content: "…"; display: inline-flex; align-items: center;
+  font-size: var(--fs-12); font-weight: 700; color: var(--muted); line-height: 15px; padding: 0 1px; }
+/* Goal chips: same rhythm as .area but a dashed outline (no fill) reads as a goal, not a label. */
+.goals-chips { display: inline-flex; align-items: center; gap: var(--sp-6); min-width: 0; }
+.goal { border: 1px dashed color-mix(in srgb, var(--tc, var(--muted)) 45%, transparent);
+  color: color-mix(in srgb, var(--tc, var(--muted)) 65%, var(--muted)); }
+/* Completion echo (DAILY tier — tens/day, so subtle): the row's goal chip glints warm for ~250ms, transform+opacity only. */
+@keyframes chip-glint { 0% { transform: scale(1); opacity: 1; } 35% { transform: scale(1.14); opacity: .82; } 100% { transform: scale(1); opacity: 1; } }
+.goal.glint .ico { animation: chip-glint 250ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .goal.glint .ico { animation: none; opacity: .82; } }
+/* Project: colored # or backlog icon — semantic location, not an area */
+.proj { display: inline-flex; align-items: center; gap: var(--sp-2); max-width: 9rem; min-width: 0; flex: none;
+  font-size: var(--fs-12); color: color-mix(in srgb, var(--muted) 50%, transparent); white-space: nowrap; }
+.proj .proj-in { flex: none; margin-right: 1px; color: var(--faint); }   /* "in <project>" — the word stays neutral; only icon+name take the project tint */
+.proj .proj-nm { overflow: hidden; text-overflow: ellipsis; }
+.proj-ico { width: 13px; height: 13px; flex: none; margin-top: 2.5px; }  /* icon-only (default project) — sits on the title baseline (align-self) with headroom above */
+/* Due-date badge — Things-style tinted box, colored by proximity */
+.badge { display: inline-flex; align-items: center; gap: var(--sp-4); font-size: var(--fs-11); font-weight: 600;
+  padding: 1.5px var(--sp-8); border-radius: var(--r-6); white-space: nowrap; color: var(--muted); background: var(--hover);
+  .badge-rep { width: 11px; height: 11px; flex: none; } }   /* repeat glyph inherits the badge's color */
+.badge.overdue { color: var(--p1); background: color-mix(in srgb, var(--p1) 13%, transparent); }
+.badge.today { color: #d6890f; background: color-mix(in srgb, #e8a33b 20%, transparent); }
+.badge.soon { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.item.done .badge { color: var(--faint); background: none; }
+.badge.later { color: var(--muted); background: var(--hover); }
+.composer-actions .field { position: relative; margin-right: auto; }
+.field.loc { display: flex; align-items: center; gap: var(--sp-2); }
+.loc-go { display: inline-flex; align-items: center; background: none; border: none; color: var(--muted);
+  border-radius: var(--r-6); padding: var(--sp-4); cursor: pointer; .ico { width: 15px; height: 15px; }
+  &:hover { color: var(--ink); background: var(--hover); } }
+.proj-pick { display: inline-flex; align-items: baseline; gap: var(--sp-6); background: none; border: none;
+  padding: var(--sp-2); color: var(--ink); font-size: 16px; font-weight: 600; letter-spacing: -.01em;
+  .hash { color: var(--muted); font-weight: 500; }
+  &:hover { opacity: .82; } }
+.proj-pick-ico { width: 15px; height: 15px; flex: none; align-self: center; }
+.proj-pick.required { color: var(--p1); animation: req-pulse .35s ease 2; }
+.pop.up { top: auto; bottom: calc(100% + 5px); }
+
+/* ---- Quick-add composer (inline by default; .modal re-skins it as an overlay) ---- */
+/* Full ghost task row — an empty task row that opens the composer on click. margin-left + padding-left are
+   tuned so the ghost check lands exactly on the real task checkboxes' left edge (measured, not the raw list bleed). */
+.add-task-btn {
+  display: flex; align-items: center; gap: var(--sp-10);
+  /* match .item-in-.list geometry so the hover box spans the full row: -18px left bleed + width grown by the
+     28px total bleed (18 left + 10 right). 18px left padding lands the ghost check on the real checkboxes
+     (which sit at the content edge, 18px in from the bleed). */
+  width: calc(100% + 28px); box-sizing: border-box;
+  margin: var(--sp-2) 0 0 -18px; padding: var(--sp-8) var(--sp-10) var(--sp-8) 18px;
+  background: none; border: none; border-radius: var(--r-8); text-align: left; cursor: pointer;
+  transition: background-color .12s ease;
+  .ghost-check { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 2.25px dashed var(--faint); transition: border-color .15s ease; }
+  .ghost-title { font-size: var(--fs-15); line-height: 18px; color: var(--muted); transition: color .12s ease; }
+  &:hover { background: var(--hover); }
+  &:hover .ghost-check { border-color: var(--accent); }
+  &:hover .ghost-title { color: var(--ink); }
+}
+.composer { display: block; position: relative; z-index: 1; }   /* sit above the edited row's positioned check so it's occluded, not doubled */
+.composer-grow { opacity: 0; overflow: visible; display: flow-root;   /* BFC: keep card margins inside measured height (else height drops at settle) */
+  transition: height .22s var(--ease-drawer), opacity .2s ease; }
+.composer-grow.grown { opacity: 1; }
+/* height:0 floors before JS sets inline height; without it the grow renders full for one frame (stutter) */
+.composer-grow.clip { overflow: hidden; height: 0; }
+/* padding+margin animate concurrently with height (not gated on settle); target measured as-if-grown so it doesn't jump */
+.composer-grow.grown .composer-card { padding-top: 14px; padding-bottom: var(--sp-12); margin: var(--sp-8) 0 var(--sp-12); }
+@media (prefers-reduced-motion: reduce) { .composer-grow, .composer-card { transition: none; } }
+.composer-card {
+  display: flex; align-items: flex-start; gap: var(--sp-12); padding: var(--sp-8) 14px var(--sp-12); margin: 0;
+  border-radius: var(--r-8); background: var(--panel); transition: padding .18s ease, margin .18s ease;
+  box-shadow: var(--shadow-pop), inset 0 0 0 1px var(--edge);   /* depth from the pop-shadow; hairline inner edge (subtle --edge, not the harsher --faint) */
+  .composer-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-8); position: relative; }
+  .content { border: none; background: none; padding: 0; font-size: var(--fs-15); line-height: 18px;
+    min-height: 18px; outline: none; white-space: pre-wrap; word-break: break-word; cursor: text; }
+  /* ghost hint is absolute over a 1-line field; never wraps (would spill onto Description) */
+  .content-hint { position: absolute; left: 0; right: 0; top: 0; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--sp-4);
+    font-size: var(--fs-15); line-height: 18px; white-space: nowrap; color: var(--muted); opacity: .55; pointer-events: none; user-select: none; overflow: hidden;
+    .nlp-pill { opacity: .85; flex: none; } }
+  .desc { border: none; background: none; padding: 0; font-size: var(--fs-13); width: 100%; outline: none;
+    font-family: inherit; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.4em;
+    &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
+}
+.composer-opts {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-6); margin: var(--sp-8) 0 0;
+  .field { position: relative; }
+  .chip { display: inline-flex; align-items: center; gap: var(--sp-6); height: 30px; padding: 0 var(--sp-10);
+    font-size: var(--fs-12); color: var(--muted); font-weight: 500; border: 1px solid var(--edge);
+    border-radius: var(--r-8); background: var(--panel);
+    &:hover { border-color: var(--muted); }
+    &.set { color: var(--ink); } }
+  .ico { width: 15px; height: 15px; flex: none; }
+}
+/* Composer inline entries (Things-style): subtask/checklist rows + grayed ghost row */
+.composer-entries { display: flex; flex-direction: column; }
+.entry-list { display: flex; flex-direction: column; gap: 1px; }
+.entry { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative;
+  /* grip lives in the empty gutter LEFT of the entry (absolute → no reflow); revealed on hover */
+  .entry-grip { position: absolute; left: -16px; top: 0; bottom: 0; width: 14px; display: flex; align-items: center; justify-content: center;
+    color: var(--faint); cursor: grab; opacity: 0; touch-action: none; transition: opacity .15s ease;
+    .ico { width: 14px; height: 14px; fill: currentColor; stroke: none; } &:active { cursor: grabbing; } }
+  .entry-txt { flex: 1; min-width: 0; border: none; background: none; font: inherit; font-size: 14px;
+    color: var(--ink); padding: 0; outline: none; &::placeholder { color: var(--muted); } }
+  .entry-del { display: flex; align-items: center; border: none; background: none; color: var(--muted);
+    padding: 0 var(--sp-2); cursor: pointer; opacity: 0; transition: opacity .1s; &:hover { color: var(--p1); }
+    .ico { width: 14px; height: 14px; }
+    &:focus { opacity: 1; color: var(--p1); } }   /* reveal + redden when tab-focused, like row-hover */
+  &:hover .entry-del { opacity: .6; }
+  &.done .entry-txt { color: var(--muted); text-decoration: line-through; }
+  /* dragged entry lifts above its siblings; siblings' shift transition is set inline by the sortable helper */
+  &.sorting { z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
+  /* horizontal chevron → opens the subtask in the composer */
+  .entry-kids { border: none; background: none; padding: var(--sp-2); flex: none; line-height: 0; color: var(--muted); cursor: pointer;
+    .ico { width: 13px; height: 13px; } &:hover { color: var(--ink); } }
+}
+@media (hover: hover) and (pointer: fine) { .entry:hover .entry-grip { opacity: .5; } }
+@media (hover: none) { .entry-grip { opacity: .35; } }   /* touch has no hover — keep the grip faintly visible */
+/* Ghost "new entry": gray+dashed at rest → ink+solid as typed; reverses on backtrack. */
+.entry.ghost {
+  /* reset styles leaking from the .ghost button class (collision) so the ghost row blends into the list */
+  padding: var(--sp-4) 0; background: none; border: none; border-radius: 0;
+  &:hover { background: none; }
+  .entry-txt { color: var(--muted); transition: color .15s ease; &::placeholder { color: var(--muted); } }
+  .ghost-check { transition: border-color .15s ease; }
+  &.active .entry-txt { color: var(--ink); }
+  &.active .ghost-check { border-style: solid; border-color: var(--muted); }
+}
+/* checklist buckets: ghost (DOM-first) → open (default order 0) → done. Only done needs an order override to sink;
+   the ghost leads by DOM position, so freshly-added items (which unshift to the top) share the top just below it. */
+.entry.chk.done { order: 2; }
+/* checklist item live "::" editor. At rest: one line, title-first — the title shows fully and the ":: description"
+   tail (small/faded, chkLive) is what clips at the edge. While editing: wrap to multiple lines so no text hides. */
+.entry.chk .entry-txt { white-space: nowrap; overflow: hidden; cursor: text; }   /* editable-on-demand: plain-selectable until clicked, so a drag spans rows */
+.entry.chk div.entry-txt { min-height: 1lh; }   /* an EMPTY item's div must keep one line of height or it's unclickable */
+.entry.chk .entry-txt[contenteditable="true"] { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; }
+.entry.chk .entry-txt .chk-idesc { font-size: var(--fs-11); color: var(--faint); }
+.entry.chk.done .entry-txt .chk-idesc { color: var(--muted); }
+/* the "new item" ghost is a textarea so it wraps and grows to multiple lines as you type a long item (grown in JS via
+   taGrow — field-sizing isn't universally implemented). Needs pre-wrap to beat the item rows' nowrap rule above. */
+.entry.chk textarea.entry-txt { resize: none; overflow: hidden; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* zebra: alternating item rows get a subtle lift so adjacent rows (and their trash icons) read as distinct.
+   The band gets horizontal padding via padding-inline + a compensating negative margin-inline applied to EVERY
+   checklist row — so the tint has breathing room around the content while the checkboxes never move. */
+.entry-list .entry.chk { padding-inline: var(--sp-6); margin-inline: calc(-1 * var(--sp-6)); --row-bg: var(--panel); }
+.entry.chk.chk-alt { background: color-mix(in srgb, var(--faint) 20%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--faint) 20%, var(--panel)); }
+/* Trash = hover overlay: absolute (no layout space) so every item — and the ghost, which has no trash — shows the SAME
+   text width. A gradient fades the row's own bg in from the left so the icon reads over long text; appears on hover.
+   Height = one text line (14px/1.35 + row padding), NOT the full row — a multiline item keeps its lower lines visible. */
+.entry.chk .entry-del { position: absolute; right: 0; top: 0; height: calc(1.35 * 14px + 2 * var(--sp-4)); padding: 0 var(--sp-4) 0 var(--sp-24);
+  background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-16)); opacity: 0; transition: opacity .15s var(--ease-out); }
+@media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del { opacity: 1; } }
+/* a cross-row drag-select tints the rows it spans — what ⌘C will copy (chkCopy kicks in at ≥2 rows) */
+.entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-6); }
+/* small round check for subtask entries (smaller than the row .check) */
+.check.sm { width: 16px; height: 16px; border-width: 2px; }
+.ghost-check { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px dashed var(--faint); }
+.entry.chk .ghost-check { border-radius: var(--r-4); }
+/* empty state: two ghosts with an OR between them */
+.entry-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-6); padding: var(--sp-4) 0;
+  .entry { flex: 1 1 108px; min-width: 0; padding: 0; }   /* small min-basis: stay inline when there's room, wrap (not clip) when the composer is squished */
+  .entry-or { font-size: var(--fs-11); font-weight: 600; color: var(--muted); letter-spacing: .04em; flex: none; }
+}
+.ico { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Popover shell — floating panel of rows. .nav-pop is the same shell anchored to a nav row. */
+.pop, .nav-pop { position: absolute; z-index: 20; background: var(--panel); border: 1px solid var(--edge);
+  border-radius: var(--r); box-shadow: var(--shadow); padding: var(--sp-6); display: flex; flex-direction: column; gap: 1px; }
+.pop { top: calc(100% + 5px); left: 0; min-width: 192px; }
+.nav-pop { top: 100%; left: var(--sp-8); z-index: 30; min-width: 184px; }
+.pop-item, .nav-pop-item { display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left;
+  padding: var(--sp-6) var(--sp-8); border: none; background: none; border-radius: var(--r-6); color: var(--ink); font-size: var(--fs-13);
+  &:hover { background: var(--hover); }
+  &.clear { color: var(--muted); }
+  &.del { color: var(--p1); }
+  .tick { margin-left: auto; color: var(--accent); } }
+.pop .pop-input { padding: var(--sp-8) var(--sp-8); margin: var(--sp-2) 0 var(--sp-4); border: 1px solid var(--edge);
+  border-radius: var(--r-6); background: var(--panel); color: var(--ink); font-size: var(--fs-13); width: 100%;
+  &::placeholder { color: var(--muted); } }
+/* Priority: horizontal row of color-tinted chips */
+.pop.pri-pop { flex-direction: row; gap: var(--sp-6); width: max-content; padding: var(--sp-6); }
+.pri-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-10); border: none; border-radius: var(--r-8);
+  font-size: var(--fs-12); font-weight: 600;
+  background: color-mix(in srgb, var(--pc) 15%, transparent);
+  color: color-mix(in srgb, var(--pc) 78%, var(--ink));
+  .ico { color: var(--pc); width: 13px; height: 13px; }
+  &:hover { background: color-mix(in srgb, var(--pc) 24%, transparent); }
+  &.sel { background: color-mix(in srgb, var(--pc) 28%, transparent); box-shadow: inset 0 0 0 1.5px var(--pc); }
+}
+/* Date popover (Todoist-style): type field, quick options, month calendar, time */
+/* Cap tracks the viewport (fits-viewport guarantee) — compacted content fits without an internal scroll in the normal case; overflow-y stays only for very short viewports. */
+.pop.cal { min-width: 240px; gap: 1px; padding: var(--sp-6); max-height: min(720px, calc(100vh - var(--sp-16))); overflow-y: auto; }
+.cal-type {
+  width: 100%; padding: var(--sp-6) var(--sp-8) var(--sp-8); border: none; border-bottom: 1px solid var(--edge);
+  background: none; color: var(--ink); font-size: 14px; margin-bottom: var(--sp-4);
+  &::placeholder { color: var(--muted); }
+}
+.cal-quick {
+  display: flex; flex-direction: column; gap: 1px; padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--hair); margin-bottom: var(--sp-2);
+  .q { display: flex; align-items: center; gap: var(--sp-8); width: 100%; padding: var(--sp-4) var(--sp-6); border: none;
+    background: none; border-radius: var(--r-6); color: var(--ink); font-size: var(--fs-13);
+    &:hover { background: var(--hover); }
+    span { flex: 1; text-align: left; }
+    b { color: var(--muted); font-weight: 400; font-size: var(--fs-12); } }
+  .q.clear { color: var(--muted); .ico { color: var(--muted); } }
+  .q.tdy .ico { color: var(--q-today); } .q.tmw .ico { color: var(--q-tomorrow); } .q.wkd .ico { color: var(--q-weekend); } .q.nxw .ico { color: var(--q-nextweek); }
+}
+.cal-head {
+  display: flex; align-items: center; justify-content: space-between; padding: 1px var(--sp-4) var(--sp-6);
+  font-size: var(--fs-13); font-weight: 700;
+  .cal-navs { display: flex; align-items: center; gap: 1px; }
+  .cal-nav { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px;
+    background: none; border: none; color: var(--muted); border-radius: var(--r-6);
+    .ico { width: 16px; height: 16px; }
+    &.dot .ico { width: 14px; height: 14px; }
+    &:hover { background: var(--hover); color: var(--ink); } }
+}
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.cal-dow { text-align: center; font-size: 10px; color: var(--muted); padding: 2px 0 3px; margin-bottom: 1px; border: none; background: none; cursor: pointer; border-radius: 999px; transition: background .15s var(--ease-out), box-shadow .3s var(--ease-out);
+  &:hover { background: var(--hover); color: var(--ink); }
+  &.on { background: var(--accent); color: var(--on-accent); font-weight: 700; }
+  &.on.pz { background: var(--hover); color: var(--muted); }
+  &.pulse.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+}
+.cal-day {
+  position: relative; aspect-ratio: 1; border: none; background: none; border-radius: var(--r-6); color: var(--ink);
+  font-size: var(--fs-13); font-weight: 600;
+  &:hover { background: var(--hover); }
+  &.out { color: var(--muted); font-weight: 500; }
+  &.today { color: var(--accent); border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--accent); }
+  /* recurrence preview vocabulary: solid = fixed occurrence · hollow = completion-dependent · grey = paused · tinted day + edge wall = end */
+  &.occ::after { content: ""; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--accent); opacity: .55; }
+  &.occ-h::after { content: ""; position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.2px var(--accent); opacity: .75; }
+  &.occ-g::after { content: ""; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--faint); opacity: .65; }
+  &.end { background: color-mix(in srgb, var(--accent) 12%, transparent);
+    &::before { content: ""; position: absolute; right: 1px; top: 20%; bottom: 20%; width: 2.5px; border-radius: 2px; background: var(--accent); }
+    &::after { content: ""; position: absolute; left: 50%; bottom: 3px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--accent); opacity: .7; } }
+  &.end.h { background: color-mix(in srgb, var(--accent) 7%, transparent);
+    &::before { opacity: .5; }
+    &::after { background: transparent; box-shadow: inset 0 0 0 1.2px var(--accent); width: 4px; height: 4px; bottom: 2px; } }
+  &.sel.gz { background: var(--hover); color: var(--muted); }   /* paused + rule-generated due */
+  .ordn { position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%); font-size: 9px; font-weight: 800; line-height: 12px; min-width: 13px; height: 12px; padding: 0 2px; text-align: center; color: var(--warm-ink); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); border-radius: 999px; box-shadow: 0 0 0 1.5px var(--panel); }   /* bottom badge; the panel halo lets the today-ring/sel circle pass visually behind it */
+  &.sel::after { display: none; }
+}
+.cal-time {
+  display: flex; align-items: center; gap: var(--sp-8); width: 100%; margin-top: var(--sp-4); padding: var(--sp-4) var(--sp-8);
+  border: 1px solid var(--edge); background: none; border-radius: var(--r-8); color: var(--muted); font-size: var(--fs-13); min-height: 30px; cursor: pointer;
+  &:hover { border-color: var(--muted); }
+  .tset { color: var(--ink); }
+}
+/* Repeat marker on the date chip + the recurrence picker at the bottom of the date popover */
+.chip .rep-on { width: 12px; height: 12px; flex: none; margin-left: -3px; color: var(--accent); }
+/* V3 phrase-builder zone — the repeat rule as one flowing tappable sentence (design: repeats-ui-explorations-v3.html) */
+.zone {
+  display: flex; gap: var(--sp-6); margin-top: var(--sp-4); padding: var(--sp-6); text-align: left;
+  border: 1px solid var(--edge); background: none; border-radius: var(--r-8); min-height: 52px; width: 100%;
+  p { flex: 1; min-width: 0; font-size: var(--fs-13); line-height: 2.05; color: var(--ink); margin: 0; }
+  .zdel { float: right; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+    border: none; background: none; border-radius: var(--r-6); color: var(--faint); margin: 2px 0 0 4px; cursor: pointer;
+    .ico { width: 12px; height: 12px; }
+    &:hover { background: var(--hover); color: var(--p1); } }
+  .mg { color: var(--warm-ink); vertical-align: middle; margin-right: 5px; .ico { width: 12px; height: 12px; display: block; } }
+  /* empty state = a borderless suggestion line at the popover foot — the chip reads as part of the sentence */
+  &.ghosted { border: none; background: none; min-height: 0; align-items: center; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-6); cursor: pointer;
+    .zhint { font-size: var(--fs-11); color: var(--faint); transition: color .15s var(--ease-out); }
+    &:hover { background: var(--hover);
+      .c.ghosty { color: var(--warm-ink); border-color: var(--warm-ink); }
+      .zhint { color: var(--muted); } } }
+}
+.zone.paused p { color: var(--muted); }
+.zone.paused .c, .zone.paused .st, .zone.paused .st button { background: var(--hover); color: var(--muted); }
+.zone.act { border-color: var(--edge-hi); }   /* the active statement (spatial controls act on it) */
+.addrep { display: flex; margin-top: var(--sp-2);
+  button { font-size: var(--fs-12); color: var(--muted); background: none; border: 1px dashed var(--faint); border-radius: 999px; padding: 2px 10px; cursor: pointer;
+    &:hover { background: var(--hover); color: var(--ink); } } }
+.zrail { display: flex; flex-direction: column; gap: 2px; flex: none; }
+.zbtn {
+  display: inline-flex; align-items: center; justify-content: center; width: 21px; height: 21px;
+  border: none; background: none; border-radius: var(--r-6); color: var(--muted); cursor: pointer;
+  .ico { width: 13px; height: 13px; }
+  &:hover { background: var(--hover); color: var(--ink); }
+  &.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--warm-ink); }
+}
+/* sentence chips (.c) + always-visible steppers (.st): own line-height — they must NOT inherit the sentence's tall wrap rhythm */
+.c {
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--warm-ink); font-weight: 500;
+  font-size: var(--fs-12); border: none; border-radius: 999px; padding: 0 var(--sp-8);
+  display: inline-flex; align-items: center; height: 19px; vertical-align: middle;
+  white-space: nowrap; cursor: pointer; transition: background .15s var(--ease-out);
+  &:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  &.g { background: var(--hover); color: var(--muted); font-weight: 400; }
+  &.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+  &.ghosty { background: none; border: 1px dashed var(--faint); color: var(--muted); }
+}
+.st {
+  display: inline-flex; align-items: center; gap: 3px; background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--warm-ink); font-weight: 600; font-size: var(--fs-12); border-radius: 999px; padding: 0 3px; height: 19px; vertical-align: middle;
+  button { width: 15px; height: 15px; border: none; border-radius: 50%; background: var(--panel); color: var(--warm-ink);
+    font-size: var(--fs-11); line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px var(--edge); cursor: pointer; padding: 0;
+    &:hover { background: var(--hover); } }
+  b { min-width: 10px; text-align: center; font-weight: 600; }
+  &.g { background: var(--hover); color: var(--muted); b { color: var(--faint); } button { color: var(--muted); } }
+}
+/* anchored time popover — one component, two anchors (Add-time row, [at ...] chip) */
+.tpop {
+  position: absolute; width: 212px; background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r);
+  box-shadow: var(--shadow-pop); padding: var(--sp-6); z-index: 5;
+  .tin { display: flex; padding: 2px var(--sp-6) var(--sp-6); border-bottom: 1px solid var(--hair); margin-bottom: var(--sp-4);
+    input { border: none; background: none; color: var(--ink); font-size: var(--fs-13); font-weight: 600; width: 100%;
+      &::placeholder { color: var(--faint); font-weight: 400; } } }
+  .thg { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; }
+  .th { height: 24px; border: none; background: none; border-radius: var(--r-6); font-size: var(--fs-11); font-weight: 600;
+    color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer;
+    em { font-style: normal; font-size: 8px; color: var(--muted); margin-left: 1px; }
+    &:hover { background: var(--hover); }
+    &.on { background: var(--accent); color: var(--on-accent); em { color: var(--on-accent); } } }
+  .tq { display: flex; border: 1px solid var(--edge); border-radius: 999px; overflow: hidden; margin-top: var(--sp-4);
+    button { flex: 1; border: none; background: none; font-size: var(--fs-11); padding: 3px 0; color: var(--muted); cursor: pointer;
+      &:not(:last-child) { border-right: 1px solid var(--hair); }
+      &:hover { background: var(--hover); }
+      &.on { background: var(--accent); color: var(--on-accent); font-weight: 600; } } }
+  .tx { display: flex; margin-top: var(--sp-4);
+    button { flex: 1; border: none; background: none; font-size: var(--fs-11); color: var(--muted); padding: 3px 0;
+      border-radius: var(--r-6); cursor: pointer; &:hover { background: var(--hover); color: var(--p1); } } }
+}
+.rep-freqs { display: flex; border: 1px solid var(--edge); border-radius: var(--r-8); overflow: hidden;
+  button { flex: 1; border: none; background: var(--panel); color: var(--muted); font-size: var(--fs-12); padding: var(--sp-6) 0; cursor: pointer;
+    &:not(:last-child) { border-right: 1px solid var(--hair); }
+    &:hover { background: var(--hover); } } }
+.rep-interval { display: flex; align-items: center; gap: var(--sp-8); font-size: var(--fs-13); color: var(--ink);
+  .rep-step { width: 22px; height: 22px; border: 1px solid var(--edge); background: var(--panel); border-radius: var(--r-6);
+    color: var(--ink); font-size: var(--fs-15); line-height: 1; cursor: pointer; &:hover { border-color: var(--muted); } }
+  .rep-n { min-width: 16px; text-align: center; font-weight: 600; }
+  .rep-unit { color: var(--muted); } }
+/* Duration popover: preset grid + scroll-wheel spinner */
+.pop.dur { min-width: 200px; padding: var(--sp-8); }
+.dur-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4);
+  .dur-preset { padding: var(--sp-8) 0; border: 1px solid var(--edge); border-radius: var(--r-8); background: var(--panel);
+    color: var(--ink); font-size: var(--fs-12); font-weight: 500;
+    &:hover { border-color: var(--muted); } }
+}
+.dur-wheel {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  margin-top: var(--sp-8);
+  .wheel-col { height: 90px; width: 46px; overflow-y: scroll; scroll-snap-type: y mandatory;
+    padding-block: 30px; text-align: center; }
+  .wheel-item { height: 30px; line-height: 30px; scroll-snap-align: center; cursor: pointer;
+    font-size: var(--fs-15); color: var(--muted); transition: color .1s;
+    &.on { color: var(--ink); font-weight: 700; } }
+  .wheel-lab { color: var(--muted); font-size: var(--fs-12); }
+  .wheel-band { position: absolute; left: 8px; right: 8px; top: 37px; height: 30px; pointer-events: none;
+    border-top: 1px solid var(--hair); border-bottom: 1px solid var(--hair); }
+}
+/* Project/area/relations popovers: wider, scrollable; right-sized icons (not the default huge SVG) */
+.pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
+.pop.rel-pop { min-width: 280px; padding: var(--sp-8) var(--sp-10); }
+.pop .ico { width: 16px; height: 16px; }
+.proj-row { gap: var(--sp-8); }
+.hash-ico { width: 15px; height: 15px; flex: none; color: var(--muted); }
+/* Area picker: a wrapping grid of color-tinted chips with checkmarks (like the priority picker) */
+.area-grid { display: flex; flex-wrap: wrap; gap: var(--sp-6); padding: var(--sp-2) var(--sp-2) var(--sp-6); }
+.area-opt { display: inline-flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-8); border-radius: var(--r-pill);
+  font-size: var(--fs-12); font-weight: 600; white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--tc) 30%, transparent);
+  color: color-mix(in srgb, var(--tc) 62%, var(--muted));
+  background: color-mix(in srgb, var(--tc) 10%, transparent);
+  .ico { width: 12px; height: 12px; }
+  &.on { border-color: var(--tc); background: color-mix(in srgb, var(--tc) 22%, transparent);
+    color: color-mix(in srgb, var(--tc) 82%, var(--ink)); } }
+/* Location constraint popover */
+/* Location hybrid picker: sentence polarity + block-driven here-row + region chip rows (design: location-ui-explorations.html ★) */
+.pop.loc-pop { min-width: 232px; max-width: 264px; padding: var(--sp-6); }
+.lp-line { font-size: var(--fs-13); line-height: 1.45; color: var(--ink); padding: 0 var(--sp-4); }   /* single-line: no flowing-sentence room needed */
+.lp-colon { color: var(--muted); margin-left: 1px; }
+.lp-here {
+  display: flex; align-items: center; gap: var(--sp-8); width: 100%; padding: var(--sp-4) var(--sp-8);
+  border: none; border-radius: var(--r-6); font-size: var(--fs-13); color: var(--ink); text-align: left;
+  background: color-mix(in srgb, var(--q-today) 7%, transparent); cursor: pointer;
+  .heredot { width: 7px; height: 7px; border-radius: 50%; background: var(--q-today); box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-today) 20%, transparent); flex: none; }
+  .sub { color: var(--faint); font-size: var(--fs-11); }   /* reserved slot: source/staleness text lands here later, no reflow */
+  .tick { margin-left: auto; width: 13px; height: 13px; color: var(--accent); flex: none; }
+  &:hover { background: color-mix(in srgb, var(--q-today) 12%, transparent); }
+}
+/* home row: amber tint + home glyph — distinct from the blue "here now" row */
+.lp-home-row { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.lp-home-row:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.lp-home-row .hm-ico { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.lp-sec { font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); padding: var(--sp-6) var(--sp-4) 2px; }
+.lp-row { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px var(--sp-4) var(--sp-2);
+  .c .tkk { width: 11px; height: 11px; margin: 0 3px 0 -2px; } }
+.c.sel { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.c.selx { background: var(--p1); color: var(--on-accent); font-weight: 600; }
+.c.x { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
+.lp-more { display: inline-flex; align-items: center; background: var(--hover); color: var(--muted); font-weight: 500; font-size: var(--fs-12); border: none; border-radius: var(--r-pill); padding: 0 var(--sp-8); height: 19px; cursor: pointer;
+  &:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--warm-ink); } }
+.lp-new { display: inline-flex; align-items: center; background: none; border: 1px dashed var(--faint); color: var(--muted); font-weight: 400; font-size: var(--fs-12); border-radius: var(--r-pill); padding: 0 var(--sp-8); height: 19px; cursor: pointer;
+  &:hover { background: var(--hover); color: var(--ink); }
+  input { border: none; background: none; color: var(--ink); font-size: var(--fs-12); width: 64px; &::placeholder { color: var(--faint); } } }
+.lp-mgr { display: flex; align-items: center; gap: var(--sp-6); width: 100%; padding: var(--sp-6) var(--sp-4) 2px; margin-top: var(--sp-8);
+  border: none; border-top: 1px solid var(--hair); background: none; color: var(--muted); font-size: var(--fs-12); cursor: pointer; text-align: left;
+  .ico { width: 12px; height: 12px; flex: none; }
+  &:hover { color: var(--ink); } }
+/* Chip that requires a selection pulses its border when save is attempted without a value */
+.chip.required { border-color: var(--p1); color: var(--p1); animation: req-pulse .35s ease 2; }
+@keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+
+/* 1.5px border on all buttons (transparent for filled) — action-row siblings stay pixel-equal height */
+.primary, .ghost, .danger { padding: var(--sp-4) var(--sp-12); border: 1.5px solid transparent; border-radius: var(--r-8); font-size: var(--fs-13); cursor: pointer; }
+.primary, .danger { font-weight: 600; }
+.primary { background: var(--accent); color: var(--on-accent); }
+.primary:disabled { opacity: .45; cursor: default; }
+.danger { background: var(--p1); color: var(--on-accent); }
+.ghost { background: none; border-color: color-mix(in srgb, var(--muted) 55%, transparent); border-style: dotted; color: var(--ink); transition: border-color .15s ease, background-color .15s ease;
+  &:hover { background: var(--hover); border-color: var(--muted); } }
+/* Actions on their own compact row, divided from the pickers (Todoist-style) */
+.composer-actions {
+  display: flex; justify-content: flex-end; gap: var(--sp-6); align-items: stretch;
+  margin-top: var(--sp-8); padding-top: var(--sp-8); border-top: 1px solid var(--hair);
+  /* opaque resting color (dark --muted is semi-transparent → stroke icons read translucent); hover keeps the accent */
+  .del-btn { display: inline-flex; align-items: center; background: none; border: none;
+    color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);
+    .ico { width: 19px; height: 19px; }
+    &:hover { color: var(--p1); } }
+  .side-btn { display: inline-flex; align-items: center; background: none; border: none; cursor: pointer;
+    color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);
+    .ico { width: 19px; height: 19px; }
+    &:hover { color: var(--accent); } }
+  .more-wrap { position: relative; display: inline-flex; align-items: center; }
+  .more-btn { display: inline-flex; align-items: center; background: none; border: none; cursor: pointer;
+    color: var(--ink); border-radius: var(--r-8); padding: var(--sp-6);
+    .ico { width: 17px; height: 17px; }
+    &:hover { color: var(--accent); } }
+}
+/* Composer parent (project) chip caps long names */
+.chip-proj { max-width: 14rem; min-width: 0; }
+.chip-proj > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Now: the Room — one continuous firelit surface (time made felt) ---- */
+/* two columns: Room + Today (no divider); ::before/::after atmosphere spans both */
+.now-room { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) clamp(230px, 24vw, 330px); overflow: hidden;
+  --glow-a: color-mix(in srgb, var(--gold) 12%, transparent); --glow-b: color-mix(in srgb, var(--warm) 5%, transparent); }
+/* 2-class specificity outranks .app padding (incl. mobile override) — Room manages its own layout */
+.app.now-room { padding: 0; }
+.now-room[data-daypart="dawn"]  { --glow-a: color-mix(in srgb, var(--gold) 20%, transparent); --glow-b: color-mix(in srgb, var(--gold) 9%, transparent); }
+.now-room[data-daypart="day"]   { --glow-a: color-mix(in srgb, var(--gold) 12%, transparent); --glow-b: color-mix(in srgb, var(--warm) 5%, transparent); }
+.now-room[data-daypart="dusk"]  { --glow-a: color-mix(in srgb, var(--warm) 22%, transparent); --glow-b: color-mix(in srgb, var(--deep) 8%, transparent); }
+.now-room[data-daypart="night"] { --glow-a: color-mix(in srgb, var(--deep) 24%, transparent); --glow-b: color-mix(in srgb, var(--deep) 7%, transparent); }
+.now-room::before { content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background: linear-gradient(180deg, var(--glow-b), transparent 42%); }
+/* (the Now-page bottom glow moved to the global body --bg-foot wash, so the bottom nav is backed on every surface) */
+.room { position: relative; z-index: 1; min-width: 0; overflow-y: auto; padding: var(--sp-24) var(--sp-24) var(--sp-16); display: flex; flex-direction: column; }
+.room-head { padding-bottom: var(--sp-8); }
+.room-body { margin: auto 0; display: flex; flex-direction: column; gap: var(--sp-16); max-width: 640px; padding: var(--sp-16) 0; }
+.brief { font-family: var(--font-display); font-style: italic; color: var(--muted); font-size: var(--fs-15); margin: 0 0 var(--sp-4); max-width: 56ch; }
+/* Hero: the warm, glowing lead card — amber-tinted border sets it apart from the neutral alternates. */
+.now-hero { position: relative; overflow: hidden; background: var(--panel); border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--edge)); border-radius: var(--r-lg); padding: var(--sp-20) var(--sp-24); box-shadow: 0 0 40px var(--glow-b), var(--shadow-sm); }
+/* hidden via x-show (not opacity:0) at/below ember, so "unlit" reads genuinely absent */
+.now-ember { position: absolute; top: -25%; right: -15%; width: 55%; height: 130%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, color-mix(in srgb, var(--warm) 24%, transparent), transparent 72%);
+  opacity: calc((var(--home-warmth, 8) - 8) / 92 * .4); }
+.now-k { font-size: var(--fs-11); font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--accent); display: inline-flex; align-items: center; gap: var(--sp-8); }
+.now-pulse { position: relative; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+/* expanding ring on a ::after — transform+opacity (GPU), not an animated box-shadow (paint) */
+.now-pulse::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: color-mix(in srgb, var(--accent) 45%, transparent); opacity: 0; animation: now-pulse 2.4s var(--ease-out) infinite; }
+@keyframes now-pulse { 0% { transform: scale(1); opacity: .6; } 70% { transform: scale(3.3); opacity: 0; } 100% { transform: scale(1); opacity: 0; } }
+.now-title { font-family: var(--font-display); font-size: 28px; font-weight: 740; letter-spacing: -.015em; line-height: 1.12; margin: var(--sp-8) 0 var(--sp-6); }
+.now-solo .now-title { font-size: 34px; }
+.now-meta-row { display: flex; align-items: center; gap: var(--sp-10); flex-wrap: wrap; margin-bottom: 14px; }
+.now-meta { font-size: var(--fs-13); color: var(--muted); }
+.now-actions { display: flex; align-items: center; gap: var(--sp-12); }
+/* Use the app's STANDARD .primary/.ghost as-is (standard roundings/padding) — only stop the alt's ghost
+   from stretching full-width in its flex-column card. */
+.now-alt .ghost { align-self: flex-start; margin-top: var(--sp-2); }
+/* Identity vote chip — this move is a vote toward a goal's identity (real: goalsForTask → g.identity). */
+.now-vote { display: inline-flex; align-items: center; gap: var(--sp-4); background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); border-radius: var(--r-pill); padding: var(--sp-2) var(--sp-10); font-size: var(--fs-12); font-weight: 600; }
+.now-vote.sm { padding: 1px var(--sp-8); font-size: var(--fs-11); }
+.backlink { align-self: flex-start; color: var(--muted); font-size: var(--fs-13); padding: var(--sp-6) var(--sp-8); margin: 0 0 0 calc(var(--sp-8) * -1); border-radius: var(--r-6); }
+.backlink:hover { color: var(--ink); background: var(--hover); }
+.now-alts { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--sp-14); }
+/* Alternates: sibling cards to the hero — same panel + border + radius, just neutral (no warm border/glow). */
+.now-alt { display: flex; flex-direction: column; gap: var(--sp-8); background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r-lg); padding: var(--sp-16) var(--sp-20); }
+.now-alt-title { font-family: var(--font-display); font-size: 19px; font-weight: 720; letter-spacing: -.01em; line-height: 1.2; }
+.now-alt-meta { font-size: var(--fs-13); color: var(--muted); min-height: 1em; }
+.now-alt .ghost.sm { align-self: flex-start; margin-top: var(--sp-2); padding: var(--sp-6) var(--sp-14); font-size: var(--fs-13); }
+
+/* ---- Today: faint on the same surface — wakes to legible-quiet on hover/focus, the flame stays lit ---- */
+.now-today { position: relative; z-index: 1; min-width: 0; display: flex; flex-direction: column; padding: var(--sp-24) var(--sp-12) var(--sp-12) 0; gap: var(--sp-4); }
+.now-today-list { display: flex; flex-direction: column; gap: var(--sp-2); padding-bottom: var(--sp-8); border-bottom: 1px solid var(--hair); margin-bottom: var(--sp-8); }
+.now-today-row { position: relative; display: flex; align-items: baseline; gap: var(--sp-6); padding: var(--sp-4) var(--sp-8); border-radius: var(--r-6); flex-wrap: wrap; transition: background .3s ease, opacity .3s ease; opacity: .68; }
+.now-today:hover .now-today-row, .now-today:focus-within .now-today-row { opacity: 1; }
+.now-today-row.event { color: var(--ink); }
+.now-today-title { font-size: var(--fs-13); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.now-today-time { font-size: var(--fs-11); color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.now-today-row .leaveby { flex: 0 0 100%; font-size: var(--fs-11); color: var(--accent); }
+.now-today-row .pick { flex: none; font-size: var(--fs-11); font-weight: 600; color: var(--accent); background: var(--panel); border: 1px solid var(--edge-hi); border-radius: var(--r-pill); padding: 1px var(--sp-8); opacity: 0; transition: opacity .15s ease; }
+.now-today-row:hover .pick, .now-today-row:focus-within .pick { opacity: 1; }
+@media (hover: none) { .now-today-row .pick { opacity: .8; } }
+/* Now-plan rows: server auto-plan for today — rank prefix + fuzzy-window badge + blocked/flag treatment (see nowPlan()). */
+.now-plan-row { color: var(--ink); }
+.now-plan-row.blocked { opacity: .5; }
+.now-plan-rank { flex: none; font-size: var(--fs-11); font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; min-width: var(--sp-12); }
+.now-plan-row .badge { flex: none; }
+.now-plan-row .lock-ico { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.now-plan-flag { flex: none; font-size: var(--fs-11); color: var(--faint); }
+.now-plan-flag.warn { color: var(--p1); }
+
+/* Now-window: the day's hours on a locked, masked strip — the fire sits on the current minute. */
+.now-window { position: relative; flex: 1; min-height: 120px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%);
+          mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 86%, transparent 100%); }
+.now-window-inner { position: relative; }
+.now-hr { position: absolute; left: 34px; right: 0; border-top: 1px solid var(--hair); opacity: .5; }
+.now-hr.past { opacity: .25; }
+.now-hr.next { border-top-style: dashed; }   /* tomorrow's small hours read as a softer, dashed band */
+.now-hl { position: absolute; left: 0; width: 30px; text-align: right; transform: translateY(-50%); font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
+.now-hl.past { opacity: .5; }
+.now-hl.next { font-style: italic; }
+.now-evt { position: absolute; left: 38px; right: var(--sp-8); overflow: hidden; background: var(--fill, var(--hover)); border-radius: var(--r-6); padding: 2px var(--sp-8); font-size: var(--fs-11); color: var(--muted); }
+.now-evt-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.now-evt.event { color: var(--ink); font-weight: 600; }
+.now-evt.past { opacity: .4; }
+.now-evt.live { background: color-mix(in srgb, var(--warm) 10%, transparent); color: var(--ink); }
+.now-line { position: absolute; left: 34px; right: 0; border-top: 1px solid var(--warm); box-shadow: 0 1px 8px var(--glow-a); }
+.now-fire { position: absolute; left: 34px; transform: translate(-50%, -78%) scale(.7); transform-origin: bottom center; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .now-pulse::after { animation: none; } }
+
+/* ---- Stack below ~840px: Room, then Today (day list + a shorter now-window), glow still bleeds behind ---- */
+@media (max-width: 840px) {
+  .now-room { grid-template-columns: 1fr; display: block; }
+  .now-room::before { position: fixed; }
+  .room { min-height: 70svh; }
+  .now-window { min-height: 200px; max-height: 44svh; }
+}
+
+/* ---- Nested row: expand chevron ---- */
+/* Chevron sits in the indent gutter, just left of where the check is — so it never shifts task content. */
+/* Collapse toggle: its own rounded-rect button, sitting in the indent gutter just left of the checkbox. */
+.row-chev {
+  position: absolute; top: 8px; left: calc(18px + var(--d, 0) * 22px - 16px);
+  width: 14px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; color: var(--muted); cursor: pointer; border-radius: var(--r-6); padding: 0;
+  transition: transform .15s, background-color .12s, color .12s;
+  /* enlarge the click target to ~full row height + the gutter, without growing the visible chevron/box */
+  &::before { content: ""; position: absolute; inset: -8px 0 -8px -14px; }   /* extend left + full row height, NOT right (don't steal checkbox clicks) */
+  .ico { width: 13px; height: 13px; }
+  /* nested parents: boxed background, nudged 4px left with 2px side padding so it lands on the indent guide */
+  &.boxed { left: calc(18px + var(--d, 0) * 22px - 22px); width: 18px; padding: 0 var(--sp-2); background: var(--hover); }
+  &:hover { background: color-mix(in srgb, var(--faint) 55%, var(--hover)); color: var(--ink); }
+}
+
+/* ---- Relations section (lives inside .pop.rel-pop) — unified task picker ---- */
+.relations-section { display: flex; flex-direction: column; gap: var(--sp-6); }
+.rel-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-6);
+  background: color-mix(in srgb, var(--rc, var(--muted)) 10%, transparent); color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--rc, var(--muted)) 35%, transparent);
+  font-size: var(--fs-11); border-radius: var(--r-6); padding: var(--sp-2) var(--sp-4);
+}
+.rel-chip.blocked_by { --rc: var(--p1); }
+.rel-chip.blocks { --rc: var(--p2); }   /* this task is the blocker — holding the other one up */
+.rel-chip.relates { --rc: var(--accent); }
+.rel-chip-name { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-ico { width: 12px; height: 12px; flex: none; color: var(--rc, var(--muted)); }
+/* relation chips shown under the description in the composer */
+.composer-rels { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
+.rel-chip-remove {
+  border: none; background: none; color: var(--muted); font-size: 14px; line-height: 1;
+  padding: 0; cursor: pointer; display: inline-flex; align-items: center;
+  &:hover { color: var(--p1); }
+}
+/* staged pick: name + relation-type toggle + Add */
+.rel-staged { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-2) 0; }
+/* staged name is a bordered button (fills the row so there's no empty gap; click → back to the picker) */
+.rel-staged-name { font-size: var(--fs-13); color: var(--ink); flex: 1; min-width: 0; text-align: left; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 1px solid var(--edge); border-radius: var(--r-6); background: var(--panel); padding: var(--sp-4) var(--sp-8);
+  &:hover { border-color: var(--muted); } }
+.rel-type-toggle { display: inline-flex; border: 1px solid var(--edge); border-radius: var(--r-6); overflow: hidden; flex: none;
+  button { border: none; background: var(--panel); color: var(--muted); font-size: var(--fs-11); padding: var(--sp-4) var(--sp-8); cursor: pointer;
+    &.on { background: var(--accent); color: var(--on-accent); }
+    &[data-type="blocked_by"].on { background: var(--p1); }
+    &[data-type="relates"].on { background: var(--accent); } } }
+.rel-add { border: none; background: var(--accent); color: var(--on-accent); font-size: var(--fs-12); font-weight: 500;
+  border-radius: var(--r-6); padding: var(--sp-4) var(--sp-10); cursor: pointer; flex: none; &:hover { opacity: .9; } }
+/* Rich task line (check + title + areas + #project); see taskLine() in app.js. */
+.task-line { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
+/* task-list rows delegate clicks via openFromTaskList; see taskListHtml() in app.js */
+.task-list { display: flex; flex-direction: column; }
+.task-list .task-line { width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: var(--sp-6) var(--sp-8); border-radius: var(--r-6); }
+.task-list .task-line:hover { background: var(--hover); }
+/* picker result rows: priority check + title + areas + dimmed project path (titles capped) */
+.rel-picker { display: flex; flex-direction: column; gap: 1px; max-height: 240px; overflow-y: auto; }
+.rel-picker .pop-item .check.sm { flex: none; }
+.pick-name { flex: none; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-tag { margin-left: auto; flex: none; font-size: var(--fs-11); color: var(--muted); text-transform: capitalize; }   /* surface/filter/goal/Action label */
+.pick-ico { width: 18px; height: 18px; flex: none; color: var(--muted); }   /* palette nav/command lead icon (explicit size — bare .ico inflates) */
+.pick-path { margin-left: auto; flex: none; max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-11); color: var(--muted); padding-left: var(--sp-8); }
+
+/* ---- Cascade-completion confirm dialog ---- */
+.dialog-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+}
+.dialog {
+  background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow);
+  padding: var(--sp-20) var(--sp-24); width: 320px; max-width: 90vw;
+  p { margin: 0 0 var(--sp-10); font-weight: 500; }
+}
+/* ⌘K search palette */
+.palette-backdrop { align-items: flex-start; }
+.palette { background: var(--panel); border-radius: var(--r-lg); box-shadow: var(--shadow); width: 600px; max-width: 92vw;
+  margin-top: 11vh; overflow: hidden; display: flex; flex-direction: column; }
+.palette-head { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-12) var(--sp-16); border-bottom: 1px solid var(--hair); }
+.palette-search-ico { width: 18px; height: 18px; flex: none; color: var(--muted); }
+.palette-input { flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--ink);
+  font-size: 16px; padding: 0; &::placeholder { color: var(--muted); } }
+.palette-section { font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); padding: var(--sp-8) var(--sp-16) var(--sp-4); }
+.palette-results { display: flex; flex-direction: column; gap: 1px; max-height: 54vh; overflow-y: auto; padding: 0 var(--sp-6) var(--sp-6); }
+.palette-row { gap: var(--sp-8); width: 100%; text-align: left; padding: var(--sp-8) var(--sp-10); border: none; background: none;
+  color: var(--ink); font: inherit; border-radius: var(--r-8); cursor: pointer; scroll-margin: var(--sp-6); }
+.palette-row.psel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.palette-row.done .pick-name { color: var(--muted); text-decoration: line-through; }
+.palette-row .hash { color: var(--muted); font-weight: 600; }
+.palette-row mark, .pick-name mark { background: color-mix(in srgb, var(--accent) 24%, transparent); color: inherit; border-radius: var(--r-4); padding: 0 1px; }
+.palette-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-24) var(--sp-16); text-align: center; }
+.palette-foot { display: flex; gap: var(--sp-16); padding: var(--sp-8) var(--sp-16); border-top: 1px solid var(--hair); color: var(--muted); font-size: var(--fs-11); }
+/* nav Search affordance keeps its ⌘K hint pill */
+/* Shortcuts cheat-sheet (?) */
+.shortcuts-sheet { min-width: 320px; max-width: 420px; }
+.sheet-head { font-family: var(--font-display); display: flex; align-items: center; justify-content: space-between; font-weight: 600; margin-bottom: var(--sp-10); }
+.sheet-grp { margin-bottom: var(--sp-12); }
+.sk { display: flex; align-items: center; gap: var(--sp-6); font-size: var(--fs-12); color: var(--muted); padding: var(--sp-4) 0; }
+.sk span { margin-left: auto; color: var(--ink); }
+/* cascade-complete list reuses the shared .task-line rows */
+.sweep-list { display: flex; flex-direction: column; gap: 1px; margin: 0 0 var(--sp-16); max-height: 240px; overflow-y: auto; }
+.sweep-list .task-line { padding: var(--sp-6) var(--sp-4); border-radius: var(--r-6); font-size: var(--fs-13); }
+.dialog-actions { display: flex; gap: var(--sp-8); justify-content: flex-end; align-items: center; margin-top: var(--sp-20); }
+/* Segmented control (dialogs.md): pill group, selected segment = accent fill (see .seg button.on below). */
+.seg { display: flex; gap: var(--sp-4); margin-bottom: var(--sp-12); }
+.seg button { flex: 1; padding: var(--sp-6) 0; border: 1px solid var(--edge); background: var(--panel); border-radius: var(--r-6);
+  font-size: var(--fs-12); font-weight: 600; color: var(--muted); cursor: pointer; &:hover { border-color: var(--muted); } }
+/* destructive secondary (Delete in an editor footer): red text, no fill — reads destructive without shouting */
+.ghost.danger { background: none; color: var(--p1); }
+.ghost.danger:hover { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
+
+/* Saved filters: a small color dot mirrors the project/area dot in the nav. */
+.filter-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+/* Filter editor dialog: name + count header, query textarea, syntax guide. */
+.filter-editor { width: 560px; }
+.fe-head { position: relative; margin-bottom: var(--sp-10); }
+/* name + query are .inp; these are thin modifiers, not bespoke bordered inputs */
+.fe-head .fe-name { font-family: var(--font-display); font-size: var(--fs-17); font-weight: 600; width: 100%; border: none; border-bottom: 1.5px solid var(--edge); border-radius: 0; background: none; padding: var(--sp-6) 74px var(--sp-6) 0; }
+.fe-head .fe-name:focus { border-bottom-color: var(--accent); box-shadow: none; outline: none; }
+/* task count sits INSIDE the name field, right-aligned (not floating beside it) */
+.fe-count { position: absolute; right: var(--sp-10); top: 50%; transform: translateY(-50%); color: var(--muted); font-size: var(--fs-12); white-space: nowrap; pointer-events: none; }
+.fe-body { display: flex; flex-direction: column; gap: var(--sp-10); margin-bottom: var(--sp-16); }
+.fe-query { border: none; background: var(--hover); border-radius: var(--r-8); padding: var(--sp-8) var(--sp-10);
+  min-height: 48px; resize: none; width: 100%; outline: none; color: var(--ink);
+  font: var(--fs-13)/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.fe-query::placeholder { color: var(--muted); }
+/* live preview of matching tasks (reuses taskLine) */
+.fe-preview { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); }
+.fe-prev-row { padding: var(--sp-4) var(--sp-6); border-radius: var(--r-6); font-size: var(--fs-13); }
+.fe-prev-row:hover { background: var(--hover); }
+.fe-prev-empty { color: var(--muted); font-size: var(--fs-12); padding: var(--sp-4) 0; }
+/* example queries — clickable, drop into the query (teach by doing) */
+.fe-ex { text-align: left; font: var(--fs-12)/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border: none; border-radius: var(--r-6); padding: var(--sp-4) var(--sp-8); color: var(--muted); cursor: pointer; }
+.fe-ex:hover { color: var(--ink); }
+/* always-open tabbed reference — never expect memorization (teach by doing) */
+.fe-ref { border: 1px solid var(--edge); border-radius: var(--r-8); overflow: hidden; }
+.fe-tabs { display: flex; gap: var(--sp-2); padding: var(--sp-4); background: var(--hover); border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
+.fe-tab { padding: var(--sp-4) var(--sp-10); border: none; background: none; border-radius: var(--r-6); color: var(--muted); font-size: var(--fs-12); font-weight: 600; cursor: pointer; }
+.fe-tab:hover { color: var(--ink); }
+.fe-tab.sel { background: var(--bg); color: var(--ink); box-shadow: var(--shadow-sm); }
+.fe-tab-body { padding: var(--sp-10) var(--sp-12); }
+.fe-ex-list { display: flex; flex-direction: column; gap: var(--sp-4); }
+.fe-ref-rows { display: flex; flex-direction: column; gap: var(--sp-8); font-size: var(--fs-12); color: var(--muted); line-height: 1.9; }
+.fe-ref-rows b { display: block; color: var(--ink); font-weight: 600; margin-bottom: var(--sp-2); }
+.fe-ref-rows code { font: var(--fs-11) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); color: var(--ink); white-space: nowrap; }
+
+/* @-area autocomplete under the composer title — inline wrapping chip layout. */
+.area-autocomplete { position: absolute; z-index: 30; max-width: 300px; max-height: 240px;
+  overflow-y: auto; background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r-8);
+  box-shadow: var(--shadow-pop); padding: var(--sp-6);
+  display: flex; flex-wrap: wrap; gap: var(--sp-4); }
+.area-autocomplete .ac-row { display: inline-flex; align-items: center; padding: 1px;
+  border: none; background: none; cursor: pointer; }
+/* selection/hover tint the area chip ITSELF (stronger --tc), no clashing outer box */
+.area-autocomplete .ac-row:hover .area { background: color-mix(in srgb, var(--tc, var(--muted)) 16%, transparent); }
+.area-autocomplete .ac-row.sel .area { background: color-mix(in srgb, var(--tc, var(--muted)) 42%, transparent);
+  border-color: color-mix(in srgb, var(--tc, var(--muted)) 85%, transparent);
+  color: color-mix(in srgb, var(--tc, var(--muted)) 92%, var(--ink));
+  box-shadow: 0 0 7px color-mix(in srgb, var(--tc, var(--muted)) 55%, transparent); }
+.area-autocomplete .ac-row.create { display: inline-flex; align-items: center;
+  padding: var(--sp-2) var(--sp-6); color: var(--accent); font-size: var(--fs-13); }
+/* goal (^) picker: a vertical list, not wrapping chips — the selected row gets a real highlight so keyboard arrows are visible. */
+.goal-autocomplete { flex-direction: column; flex-wrap: nowrap; align-items: stretch; min-width: 160px; }
+.goal-autocomplete .ac-row { display: flex; padding: var(--sp-4) var(--sp-8); border-radius: var(--r-4); font-size: var(--fs-13); color: var(--ink); }
+.goal-autocomplete .ac-row:hover { background: var(--hover); }
+.goal-autocomplete .ac-row.sel { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+
+/* ---- Goals ---- */
+/* Ambient warmth tint: 0..12% at full --home-warmth, mood cue only, never gates legibility */
+.goals-view { display: flex; flex-direction: column; height: 100%; padding: var(--sp-16) var(--sp-24); box-sizing: border-box; overflow-y: auto;
+  background-image: radial-gradient(120% 60% at 50% -10%, color-mix(in srgb, var(--warm) calc(var(--home-warmth, 8) * .12%), transparent), transparent 70%); }   /* full-bleed goals surface (spine) */
+/* Goals hero: ambient "how's the home doing" — fire + one sentence + 14-day strip, never a score */
+.goals-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: var(--sp-16) 0 var(--sp-24); }
+.hero-fire { margin-bottom: var(--sp-4); }
+.goals-hero-title { font-family: var(--font-display); font-size: 38px; color: var(--ink-hi); }
+.goals-hero-sub { color: var(--muted); font-size: var(--fs-15); margin-top: var(--sp-6); max-width: 46em; }
+.goals-hero-embers { display: flex; align-items: center; gap: var(--sp-10); margin-top: var(--sp-16); }
+.ember-strip { display: flex; align-items: center; gap: 5px; }
+.ember-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ember-cold); flex: none; }
+.ember-dot.e-mid { background: var(--ember-mid); }
+.ember-dot.e-hot { background: var(--ember-hot); box-shadow: 0 0 6px color-mix(in srgb, var(--ember-hot) 60%, transparent); }
+.hb-rlabel { color: var(--muted); font-size: var(--fs-11); white-space: nowrap; }
+/* Fires/Identities pill toggle: active segment filled warm, inactive muted on a translucent track. */
+.goals-view-toggle { align-self: center; display: flex; gap: var(--sp-4); width: fit-content; margin: 0 0 var(--sp-16); padding: var(--sp-4); background: rgba(255, 255, 255, .05); border: 1px solid var(--edge); border-radius: var(--r-pill); }
+.goals-view-toggle button { border: none; background: none; border-radius: var(--r-pill); padding: var(--sp-6) var(--sp-16); font-size: var(--fs-13); font-weight: 500; color: var(--muted); cursor: pointer; transition: background .15s ease, color .15s ease; }
+.goals-view-toggle button.active { background: var(--warm); color: #fff; font-weight: 600; cursor: default; }
+@media (prefers-color-scheme: dark) { .goals-view-toggle button.active { color: #14100c; } }   /* dark: near-black on amber reads better; light: white per request */
+/* Hearth home grid: GR6 — 3 lifecycle lanes (tending/sustaining/fizzled), each its OWN horizontal
+   side-scroll row (never the page/board itself — #goal-board stays a vertical stack so the outer
+   surface never scrolls sideways). */
+#goal-board { display: flex; flex-direction: column; gap: var(--sp-24); }
+.goal-lane { display: flex; flex-direction: column; gap: var(--sp-12); min-width: 0; }
+.goal-lane-head { display: flex; align-items: center; gap: var(--sp-10); }
+.goal-lane-head span { font-size: var(--fs-11); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
+.goal-lane-head::after { content: ''; flex: 1; height: 1px; background: var(--hair); }
+.goal-lane-row { display: flex; align-items: flex-start; gap: var(--sp-16); overflow-x: auto; scroll-snap-type: x proximity; padding: var(--sp-2) var(--sp-2) var(--sp-10); }
+.goal-col { flex: 0 0 clamp(280px, 32vw, 360px); scroll-snap-align: start; }
+.goal-col-view { display: flex; flex-direction: column; gap: var(--sp-12); }
+/* goal card: fire · name/why · calm marks · cadence + Log · next steps, all one raised surface */
+.goal-card { position: relative; display: flex; align-items: flex-start; gap: var(--sp-12); width: 100%; text-align: left; background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow-sm); cursor: pointer; padding: var(--sp-16); transition: box-shadow .18s ease, opacity .18s ease; }
+.goal-card:hover { box-shadow: var(--shadow); }   /* the heavier shadow eases in (also as the composer opens) */
+.goal-col-title { flex: 1; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+/* Self-sustaining lane: gold accents, no tending needed. Fizzled lane: dim, quiet re-light — honest, not punishing. */
+.goal-col.lane-sustaining .goal-card { background: linear-gradient(180deg, color-mix(in srgb, var(--gold) 7%, transparent), transparent 45%), var(--panel); border: 1px solid color-mix(in srgb, var(--gold) 20%, var(--edge)); }
+.goal-col.lane-fizzled .goal-card { opacity: .6; }
+.goal-col.lane-fizzled .goal-card:hover { opacity: .82; }
+.goal-col-add { flex: 0 0 clamp(200px, 22vw, 260px); align-self: stretch; scroll-snap-align: start; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-6); min-height: 132px; background: none; border: 1px dashed var(--edge-hi); border-radius: var(--r-lg); color: var(--faint); cursor: pointer; font: inherit; text-align: center; transition: color .15s ease, border-color .15s ease; }
+.goal-col-add:hover { color: var(--warm-ink); border-color: color-mix(in srgb, var(--warm) 55%, var(--edge-hi)); }
+.goal-col-add-plus { font-size: 22px; line-height: 1; }
+.goal-col-add span:nth-child(2) { font-size: var(--fs-13); font-weight: 500; color: inherit; }
+.goal-col-add-hint { font-size: var(--fs-11); color: var(--faint); }
+/* Inline-expand edit composer — reuses the task composer's grow animation (.composer-grow base rules). */
+.goal-col .composer { display: block; }
+.goal-col .composer-grow.grown .composer-card { padding: var(--sp-16); margin: 0; }   /* beat the task-card's grown padding/margin */
+.goal-col .composer-card { background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow); padding: var(--sp-16); display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-12); margin: 0; }
+.composer-actions .goal-draft-archive { margin-right: auto; }   /* delete+archive left; Cancel/Save right */
+.dt-actions .goal-draft-archive { margin-right: 0; }             /* detail footer: Archive sits beside "Sit with this", not alone */
+.dt-actions .goal-sit-btn { margin-right: auto; }                /* …which absorbs the space, pushing Edit to the far right */
+.goal-mini-empty { color: var(--muted); font-size: var(--fs-12); padding: var(--sp-4) 0; }
+.goal-draft-identity { width: 100%; background: none; border: none; padding: 0; color: var(--ink); font-size: var(--fs-13); outline: none; }
+.goal-draft-identity::placeholder { color: var(--muted); }
+.goal-draft-cue, .goal-draft-logdefault { font-size: var(--fs-12); color: var(--muted); }   /* quieter than identity — a hint, not a headline */
+.goal-draft-logdefault { margin-top: var(--sp-4); }
+.goal-draft-stats { display: flex; flex-direction: column; gap: var(--sp-8); }
+/* Identity: fixed "I'm someone who" prefix + a fill-in-the-blank textarea that wraps + auto-grows */
+.goal-draft-identity-row { display: flex; align-items: flex-start; gap: var(--sp-6); }
+.goal-draft-identity-wrap { flex: 1; position: relative; }
+.goal-draft-identity-prefix { flex: none; color: var(--faint); font-size: var(--fs-13); white-space: nowrap; line-height: 1.4; }
+textarea.goal-draft-identity { field-sizing: content; resize: none; overflow: hidden; min-height: 1.4em; line-height: 1.4; font-family: inherit; }
+/* overflow-x:auto on .goal-lane-row forces overflow-y:auto — composer body keeps enough clearance for the pop */
+.ident-sug-pop { min-width: 0; width: 100%; }
+/* .ico sets fill:none globally; fill must be forced here (CSS beats svg fill attr) */
+.goal-draft-fav.on { color: var(--gold, #f0b64e); }
+.goal-draft-fav.on .ico { fill: currentColor; }
+.goal-color-field { position: relative; }
+.goal-color-pop { flex-wrap: wrap; gap: var(--sp-4); padding: var(--sp-6); min-width: 160px; top: calc(100% + 4px); left: 0; }
+.goal-name { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-17); }
+.goal-identity { color: var(--warm-ink); font-size: var(--fs-12); font-style: italic; }   /* derived subtitle: "feeds the person who …" (goalIdentitySubtitle) */
+.goal-due { color: var(--muted); font-size: var(--fs-12); }
+.fc-status { color: var(--muted); font-size: var(--fs-12); line-height: 1.5; }   /* one honest status sentence — stageLabel + warmedLabel */
+.fc-nostend { color: var(--faint); font-size: var(--fs-11); font-style: italic; }
+.fc-relight { background: none; border: 1px dashed var(--edge); border-radius: var(--r-pill); padding: 3px var(--sp-10); color: var(--muted); font: inherit; font-size: var(--fs-12); cursor: pointer; transition: border-color .15s ease, color .15s ease; }
+.fc-relight:hover { border-color: color-mix(in srgb, var(--warm) 50%, var(--faint)); color: var(--warm-ink); }
+.fc-flash { color: var(--warm-ink); font-size: var(--fs-12); font-style: italic; }   /* transient, after Log — flashGoal's pulseGoal window */
+.goal-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: var(--sp-8); max-width: 420px; margin: 0 auto; min-height: 70vh; padding: var(--sp-24) 0; }
+.goal-empty h2 { font-size: var(--fs-22); font-weight: 700; margin: 0; }
+.goal-empty-sub { color: var(--muted); font-size: var(--fs-13); margin: 0 0 var(--sp-4); }
+/* FIX9: archived reads as dim/honest/re-lightable, never a failure state — muted throughout, no red,
+   no "abandoned" framing. The fire (fireHTML, no stage class → falls back to the unlit coal-bed with
+   zero heat/flame) doubles as the dimmed-flame touch for free; .goal-arch-item mutes it a touch further. */
+#goals-archived { margin-top: var(--sp-24); }
+#goals-archived summary { color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
+.goal-arch-item { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-4) 0; }
+.goal-arch-item .fire { flex: none; opacity: .55; }
+.goal-arch-row { flex: 1; min-width: 0; display: block; text-align: left; padding: var(--sp-6) var(--sp-8); border-radius: var(--r-6); background: none; color: var(--faint); cursor: pointer; transition: background-color .12s ease, color .12s ease; }
+.goal-arch-row:hover { background: var(--hover); color: var(--muted); }
+.goal-arch-relight { flex: none; background: none; border: none; font: inherit; font-size: var(--fs-12); color: var(--faint); padding: var(--sp-6) var(--sp-10); border-radius: var(--r-6); cursor: pointer; transition: background-color .12s ease, color .12s ease; }
+.goal-arch-relight:hover, .goal-arch-relight:focus-visible { background: var(--hover); color: var(--warm-ink); }
+.goal-arch-item .del-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; background: none; border: none; color: var(--faint); border-radius: var(--r-8); padding: var(--sp-6); cursor: pointer; }
+.goal-arch-item .del-btn .ico { width: 15px; height: 15px; flex: none; }
+.goal-arch-item .del-btn:hover { color: var(--p1); }
+
+/* ── Hearth warmth visual ── */
+/* 4 banded color-temperature tints on goal cards; stepped for legibility (continuous is too subtle) */
+.goal-card.wband-warming { background: color-mix(in srgb, var(--warm) 8%, var(--panel)); }
+.goal-card.wband-warm { background: color-mix(in srgb, var(--warm) 16%, var(--panel)); box-shadow: var(--shadow-sm), 0 0 14px color-mix(in srgb, var(--warm) 10%, transparent); }
+.goal-card.wband-thriving { background: color-mix(in srgb, var(--warm) 26%, var(--panel)); box-shadow: var(--shadow-sm), 0 0 20px color-mix(in srgb, var(--warm) 16%, transparent); }
+/* Hover keeps heavier shadow even on warm cards */
+.goal-card.wband-warm:hover { box-shadow: var(--shadow), 0 0 14px color-mix(in srgb, var(--warm) 12%, transparent); }
+.goal-card.wband-thriving:hover { box-shadow: var(--shadow), 0 0 20px color-mix(in srgb, var(--warm) 20%, transparent); }
+/* Fire: locked design from fire-css.html; shared defs in #fire-defs. SMIL turbulence + counter-scroll = zero JS.
+   Stage: st-unlit/kindling/burning/sustaining/shelved. --fire-px is the one size lever. */
+.fire { --fire-px: 52px; --e2: #df6b12; --e4: #ffd9a0;
+  position: relative; width: var(--fire-px); height: calc(var(--fire-px) * 1.18); flex: none; pointer-events: none; }
+.fire *, .fire ::before, .fire ::after { position: absolute; }
+.fire .fx { inset: 0 0 8px; margin: auto; border-radius: 50%; pointer-events: none; }
+
+/* under/crevice glow, behind the coals — breathes continuously; stages retarget its intensity/hue */
+.fire em { left: -4%; right: -4%; bottom: -2%; height: 38%; content: "";
+  background:
+    radial-gradient(16% 30% at 31% 55%, rgba(255,190,110,.8), transparent 72%),
+    radial-gradient(14% 26% at 59% 52%, rgba(255,160,70,.75), transparent 72%),
+    radial-gradient(18% 28% at 45% 78%, rgba(223,107,18,.65), transparent 74%),
+    radial-gradient(62% 55% at 50% 74%, rgba(223,107,18,.3), rgba(223,107,18,.12) 55%, transparent 80%),
+    radial-gradient(80% 46% at 50% 96%, rgba(223,107,18,.16), transparent 78%);
+  animation: fGlow 2.7s ease-in-out infinite alternate; }
+.st-unlit em { animation: none; background: radial-gradient(52% 42% at 50% 86%, rgba(168,152,140,.34), transparent 72%); }
+.st-kindling em { opacity: .55; }
+.st-sustaining em { filter: hue-rotate(14deg) saturate(.85); }
+.st-shelved em { animation-play-state: paused; opacity: .45; }   /* banked + paused: dimmer than unlit's cold ash, quieter than a live glow */
+
+/* flame — one shared SMIL scroll-through-turbulence flame (#flA), referenced per instance */
+.fire .flame { left: 9%; right: 9%; top: 0; bottom: 10.5%; width: 82%; height: 89.5%; overflow: visible;
+  transform-origin: 50% 100%; z-index: 1; animation: fSway 2.3s ease-in-out infinite alternate; }
+.st-unlit .flame, .st-unlit b, .st-shelved .flame, .st-shelved b { display: none; }
+.st-kindling .flame { animation: fSputter 1.35s ease-in-out infinite; }
+.st-sustaining .flame { animation: fBank 4.1s ease-in-out infinite alternate; filter: hue-rotate(16deg) saturate(.78) brightness(1.04); }
+
+/* smoke — a faint wisp lifting off the flame tip (burning/sustaining only) */
+.fire::after { content: ""; left: 34%; width: 32%; bottom: 56%; height: 48%; border-radius: 50%;
+  background: radial-gradient(50% 60% at 50% 45%, rgba(188,178,166,.11), transparent 72%); filter: blur(4px);
+  opacity: 0; pointer-events: none; animation: fSmoke 6.5s ease-in infinite; }
+.st-unlit::after, .st-kindling::after, .st-shelved::after { display: none; }
+
+/* ambient embers — 2 <b>, each with 2 pseudo-element sparks, lift OFF the flame base (never mid-air) */
+.fire b { inset: 0 0 16%; }
+.fire b::before, .fire b::after { content: ""; bottom: 6%; width: calc(var(--fire-px) * .045); aspect-ratio: 1; border-radius: 50%; opacity: 0;
+  background: radial-gradient(circle, var(--e4), var(--e2) 62%, transparent); --dy: calc(var(--fire-px) * -.8); }
+.fire b:nth-of-type(1)::before { left: 40%; --dx: calc(var(--fire-px) * -.16); animation: fSpark 2.1s cubic-bezier(.3,.4,.6,1) infinite .2s; }
+.fire b:nth-of-type(1)::after { left: 55%; --dx: calc(var(--fire-px) * .15); animation: fSpark 2.7s cubic-bezier(.3,.4,.6,1) infinite 1.1s; }
+.fire b:nth-of-type(2)::before { left: 48%; --dx: calc(var(--fire-px) * .12); --dy: calc(var(--fire-px) * -.95); animation: fSpark 3.3s cubic-bezier(.3,.4,.6,1) infinite 1.9s; }
+.fire b:nth-of-type(2)::after { left: 33%; --dx: calc(var(--fire-px) * -.05); --dy: calc(var(--fire-px) * -.7); animation: fSpark 2.4s cubic-bezier(.3,.4,.6,1) infinite 2.8s; }
+.st-kindling b:nth-of-type(2)::before, .st-kindling b:nth-of-type(2)::after, .st-kindling b:nth-of-type(1)::after { display: none; }
+.st-sustaining { --e2: #e09a2c; --e4: #ffe6bc; }
+.st-sustaining b::after { display: none; }
+.st-sustaining b::before { animation-duration: 4.4s; }
+
+/* coals — 5 chunky angular char pieces clipped from one element (shared #coalC), glow shows through the gaps */
+.fire .coals { left: 6%; right: 6%; bottom: 1%; height: 21%; z-index: 2; clip-path: url(#coalC);
+  background: linear-gradient(180deg, var(--coal1, #2b1d14) 0%, var(--coal2, #160f0b) 75%); transition: transform .7s var(--ease-out); }
+.st-sustaining .coals { transform: translateY(-5px); }                          /* rise slightly toward the low banked flame */
+.fire.graduating .coals { transition: transform .6s var(--ease-out) 1s; }       /* rise only AFTER the flame has fully gone */
+.st-unlit .coals { --coal1: #211c19; --coal2: #131010;
+  background: linear-gradient(180deg, rgba(190,180,170,.14), transparent 34%), linear-gradient(180deg, var(--coal1), var(--coal2) 75%); }
+
+@keyframes fSway { from { transform: skewX(-1.6deg) scaleY(.98); } to { transform: skewX(1.8deg) scaleY(1.03); } }
+@keyframes fBank { from { transform: scale(1.06, .5) skewX(-1deg); } to { transform: scale(1.1, .56) skewX(1.2deg); } }
+@keyframes fSputter { 0%, 100% { transform: scale(.46, .45); } 24% { transform: scale(.39, .51); } 47% { transform: scale(.49, .46); } 72% { transform: scale(.42, .53); } }
+@keyframes fGlow { from { opacity: .75; } to { opacity: 1; } }
+@keyframes fSmoke { 0% { opacity: 0; transform: translate(0, 12%) scale(.55); } 28% { opacity: .5; } 100% { opacity: 0; transform: translate(16%, -72%) scale(1.6); } }
+@keyframes fSpark { 0% { transform: translate(0, 0) scale(.6); opacity: 0; } 9% { opacity: 1; } 62% { opacity: .95; }
+  100% { transform: translate(var(--dx, 0), var(--dy)) scale(.25); opacity: 0; } }
+/* shared FX */
+.fire .bloom  { width: 46px; height: 46px; background: radial-gradient(circle, color-mix(in srgb, var(--warm) 48%, transparent), transparent 70%); opacity: 0; }
+.fire .flash  { width: 34px; height: 34px; background: radial-gradient(circle, var(--hot), color-mix(in srgb, var(--warm) 55%, transparent) 45%, transparent 72%); opacity: 0; }
+.fire .corona { width: 40px; height: 40px; border: 1.5px solid color-mix(in srgb, var(--warm) 55%, transparent); opacity: 0; }
+.fire .spark  { width: 5px; height: 5px; background: var(--hot); box-shadow: 0 0 8px var(--warm); opacity: 0; margin-bottom: 20px; }
+.fire .ember-p { width: 3px; height: 3px; background: var(--warm); opacity: 0; }
+.fire .burst-spark { width: 4px; height: 4px; background: var(--hot); box-shadow: 0 0 6px color-mix(in srgb, var(--warm) 70%, transparent); opacity: 0; }
+/* ambient: embers rising off a live fire, looping */
+.fire .rise-p, .fire .log-ember { position: absolute; bottom: 34px; width: 3px; height: 3px; border-radius: 50%; opacity: 0; pointer-events: none; z-index: 3; }
+.fire .rise-p { background: color-mix(in srgb, var(--warm) 80%, var(--hot)); }
+.fire .log-ember { background: var(--hot); box-shadow: 0 0 5px color-mix(in srgb, var(--warm) 70%, transparent); }
+.st-burning .rise-p, .st-sustaining .rise-p { animation: rise var(--rdur, 2.6s) linear infinite; }
+.st-sustaining .rise-p { --rdur: 4.4s; }
+@keyframes rise { 0% { opacity: 0; transform: translate(0, 0) scale(1); } 14% { opacity: .85; } 68% { opacity: .4; } 100% { opacity: 0; transform: translate(var(--dx, 0), -30px) scale(.35); } }
+/* ::before composites ADDITIVELY over the static glow (box-shadow on .goal-card would replace it at tie);
+   only opacity animates — no paint-cost keyframe. */
+.goal-card::before { content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: 0 0 26px color-mix(in srgb, var(--warm) 22%, transparent); opacity: 0; }
+.goal-card:has(.st-sustaining:not(.graduating))::before { animation: card-breathe 3.4s var(--ease-in-out) infinite; }
+@keyframes card-breathe { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+
+/* .goal-igniting on .goal-col (not .fire) — one transient state tracks both coals + flame */
+.goal-igniting .fire em { animation: coal-ignite 900ms var(--ease-out); }
+@keyframes coal-ignite { 0% { opacity: 0; transform: scale(.6); } 50% { opacity: .9; } 100% { opacity: .36; } }
+.goal-igniting .fire .flame { animation: flame-rise 900ms var(--ease-out); }
+@keyframes flame-rise { 0% { opacity: .2; transform: scaleY(.06) scaleX(.5); } 45% { opacity: 1; transform: scale(.78); } 70% { transform: scale(.56); } 100% { opacity: 1; transform: scale(.62); } }
+.goal-igniting .fire .bloom { animation: bloom 900ms var(--ease-out); }
+@keyframes bloom { 0% { opacity: 0; transform: scale(.5); } 35% { opacity: .85; } 100% { opacity: 0; transform: scale(2.5); } }
+.goal-igniting .fire .spark { animation: spark 640ms var(--ease-out); }
+@keyframes spark { 0% { opacity: 1; transform: translateY(6px) scale(.6); } 60% { opacity: 1; transform: translateY(-4px) scale(1); } 100% { opacity: 0; transform: translateY(-14px) scale(.3); } }
+.goal-igniting .fire .ember-p { animation: drift 900ms var(--ease-out); }
+.fire .ember-p.p1 { margin-left: -14px; } .fire .ember-p.p2 { margin-left: 16px; }
+@keyframes drift { 0% { opacity: 0; transform: translateY(2px); } 30% { opacity: .9; } 100% { opacity: 0; transform: translateY(-24px) translateX(4px); } }
+
+/* GRADUATION: flash → flame surges → sinks to coals → bank → breathe.
+   .graduating triggered by confirmGraduation()/graduatingGoal in app.js (GS8). */
+.fire.graduating .flash { animation: flash 440ms var(--ease-out); }
+@keyframes flash { 0% { opacity: 0; transform: scale(.4); } 22% { opacity: .95; } 100% { opacity: 0; transform: scale(1.6); } }
+.fire.graduating .flame { animation: flame-into-coals 1700ms var(--ease-out); }
+@keyframes flame-into-coals {
+  0%   { opacity: 1; transform: scaleY(1) scaleX(1); }
+  12%  { opacity: 1; transform: scaleY(1.34) scaleX(1.08); }   /* surge up — the celebration crest */
+  30%  { opacity: 1; transform: scaleY(1.02) scaleX(.98); }
+  54%  { opacity: 0; transform: scaleY(0) scaleX(.45); }       /* fully sunk & gone — BEFORE the coals rise */
+  100% { opacity: 0; transform: scaleY(0) scaleX(.45); }
+}
+.fire.graduating em { animation: coal-flare 1700ms var(--ease-out); }
+@keyframes coal-flare { 0% { opacity: .7; } 20% { opacity: 1; transform: scale(1.3); } 55% { opacity: .78; transform: scale(.96); } 100% { opacity: .95; transform: scale(1); } }
+.fire.graduating .corona    { animation: corona 1500ms var(--ease-out); }
+.fire.graduating .corona.c2 { animation: corona 1500ms var(--ease-out) 200ms; }
+.fire.graduating .corona.c3 { animation: corona 1500ms var(--ease-out) 400ms; }
+@keyframes corona { 0% { opacity: .8; transform: scale(.6); } 100% { opacity: 0; transform: scale(3.7); } }
+.fire.graduating .bloom { animation: bloom 1500ms var(--ease-out); }
+.fire.graduating .burst-spark { animation: burst 1150ms var(--ease-out) 120ms; }
+@keyframes burst { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 22% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(.25); } }
+/* IntersectionObserver toggles .fire-paused on off-screen cards; animation-play-state resumes mid-cycle (no restart glitch).
+   will-change scoped to non-paused fires so off-screen cards release their compositing layer. */
+.fire:not(.fire-paused) .flame { will-change: transform; }
+/* SMIL turbulence ignores animation-play-state; initFireObserver also calls svg.pauseAnimations() */
+.fire-paused, .fire-paused *, .fire-paused ::before, .fire-paused ::after { animation-play-state: paused !important; }
+@media (prefers-reduced-motion: reduce) {
+  .coals { transition: none; }
+  .fire, .fire *, .fire ::before, .fire ::after { animation: none !important; }
+  .fire b::before, .fire b::after { opacity: 0; }
+  .goal-card:has(.st-sustaining)::before { animation: none !important; opacity: .7; }   /* glow layer holds a static mid opacity, not zero */
+  .fire .bloom, .fire .flash, .fire .corona, .fire .spark, .fire .ember-p, .fire .burst-spark, .fire .rise-p, .fire .log-ember { display: none !important; }
+}
+/* Calm marks: 14-day dot row + "N / M this week" — not a streak counter */
+.goal-marks { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: nowrap; margin-top: var(--sp-8); }
+.goal-mark { width: 6px; height: 6px; border-radius: var(--r-pill); background: var(--faint); flex: none; }
+.goal-mark-on { background: color-mix(in srgb, var(--warm) 65%, var(--accent)); }
+.goal-marks-label { color: var(--muted); font-size: var(--fs-11); margin-left: var(--sp-4); white-space: nowrap; }
+/* Card footer: cadence read (the floor/promise) + the warm Log chip */
+.goal-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); margin-top: var(--sp-10); }
+.cad { display: inline-flex; align-items: center; gap: var(--sp-6); color: var(--muted); font-size: var(--fs-11); background: var(--hair); border: 1px solid var(--edge); border-radius: var(--r-pill); padding: 4px var(--sp-10); }
+.cad-dot { width: 5px; height: 5px; border-radius: 50%; background: color-mix(in srgb, var(--warm) 60%, var(--faint)); flex: none; }
+.cad.cad-gold { color: color-mix(in srgb, var(--gold) 82%, var(--ink)); background: color-mix(in srgb, var(--gold) 10%, transparent); border-color: color-mix(in srgb, var(--gold) 28%, transparent); }
+/* Light-it moment: points a brand-new (unlit) goal at the Log chip — gone forever after the first show-up. */
+.goal-light-hint { color: var(--muted); font-size: var(--fs-11); margin-top: var(--sp-2); }
+.log-chip { background: color-mix(in srgb, var(--warm) 18%, var(--hover)); color: var(--ink); border: none; border-radius: var(--r-pill); padding: 3px var(--sp-12); font: inherit; font-size: var(--fs-12); font-weight: 560; cursor: pointer; transition: transform 140ms var(--ease-out); }
+.log-chip:active { transform: scale(.95); }
+/* Log-at-time caret (GS13): muted, must never compete with the warm Log chip. */
+.log-wrap { position: relative; display: inline-flex; align-items: center; gap: 2px; }
+.log-caret { background: none; color: var(--muted); border: none; border-radius: var(--r-pill); width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; transition: background 140ms ease, color 140ms ease, transform 140ms var(--ease-out); }
+.log-caret:hover { background: var(--hover); color: var(--ink); }
+.log-caret:active { transform: scale(.9); }
+.log-caret .ico { width: 10px; height: 10px; flex: none; }
+.log-when-pop { flex-direction: column; gap: var(--sp-6); padding: var(--sp-8); min-width: 240px; }
+.lw-row { display: flex; align-items: center; gap: var(--sp-8); }
+.lw-label { flex: 1; font-size: var(--fs-12); color: var(--ink); white-space: nowrap; }
+.lw-time, .lw-dt { flex: none; }
+.lw-note-row { margin-bottom: var(--sp-2); }
+.lw-note { width: 100%; }
+.lw-ok { background: var(--hover); color: var(--muted); border: none; border-radius: var(--r-6); width: 26px; height: 26px; flex: none; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 140ms ease, color 140ms ease, transform 140ms var(--ease-out); }
+.lw-ok .ico { width: 13px; height: 13px; flex: none; }
+.lw-ok:not(:disabled):hover { background: color-mix(in srgb, var(--warm) 22%, var(--hover)); color: var(--ink); }
+.lw-ok:not(:disabled):active { transform: scale(.9); }
+.lw-ok:disabled { opacity: .35; cursor: default; }
+/* Custom N×/week cadence stepper: reuses the recurrence-interval stepper idiom (rep-interval/rep-step). */
+/* Cadence: presets + stepper in one row; presets natural-width (never squished), stepper wraps only if needed. */
+/* Project arc: lit commitment mark + one mark per milestone + "N of M milestones" label. */
+.goal-arc { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-8); }
+.arc-lit { width: 12px; height: 12px; flex: none; fill: currentColor; stroke: none; color: var(--warm-ink); }
+/* Composer shape toggle: Process / Project chips; .goal-shape scopes the margin on the rep-freqs directly. */
+.composer-body .goal-shape { margin-top: var(--sp-8); }
+.goal-cadence-row { display: flex; align-items: center; gap: var(--sp-8); flex-wrap: wrap; margin-top: var(--sp-8); }
+.goal-cadence-row .rep-freqs { flex: 0 0 auto; }
+.goal-cadence-row .goal-cadence-custom { flex: 0 0 auto; margin-top: 0; }
+.goal-cadence-custom { margin-top: var(--sp-8); }
+.goal-cadence-custom.on { color: var(--accent); }
+.goal-cadence-custom.on .rep-step { border-color: var(--accent); }
+.goal-cadence-hint { color: var(--muted); font-size: var(--fs-11); margin-top: var(--sp-4); }   /* vague-goal coaching: gone once a cadence is chosen */
+/* Milestone toggle row (project detail steps) */
+.goal-step-row { display: flex; align-items: center; gap: var(--sp-4); }
+.ms-toggle { font-size: var(--fs-11); color: var(--muted); background: none; border: none; padding: 2px 4px; cursor: pointer; flex: none; line-height: 1; }
+.ms-toggle.ms-on { color: var(--accent); }
+.ms-toggle:hover { color: var(--ink); }
+.ms-toggle.ms-on:hover { filter: brightness(1.15); }
+.ms-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+/* Shelved lane card foot */
+.shelved-foot { display: flex; align-items: center; gap: var(--sp-8); }
+/* Next 2-3 steps: the standardized .task-list/.task-line rows, just compact — click completes in place. */
+.goal-next-steps { margin-top: var(--sp-10); padding-top: var(--sp-8); border-top: 1px solid color-mix(in srgb, var(--hair) 55%, transparent); width: 100%; }
+.goal-steps.task-list .task-line { padding: var(--sp-4) var(--sp-4); font-size: var(--fs-13); }
+.goal-steps.task-list .task-line .pick-path { display: none; }   /* every step already lives under this goal — the project label is noise here */
+.goal-steps-more { color: var(--muted); font-size: var(--fs-11); margin-top: var(--sp-2); padding-left: var(--sp-4); }
+/* GS8: pull-based text link — no badge, no animation (only .graduating gets motion on confirm) */
+.goal-grad-offer { display: block; background: none; border: none; padding: 0; margin-top: var(--sp-8); font: inherit; font-size: var(--fs-12); color: color-mix(in srgb, var(--warm) 55%, var(--muted)); text-align: left; cursor: pointer; transition: color 140ms ease; }
+.goal-grad-offer:hover { color: var(--warm); }
+/* GS15: muted pull-based line, never badge/animation. Only a surfaced shortcut — "Sit with this" in composer opens the same dialog. */
+.goal-crisis-line { display: block; background: none; border: none; padding: 0; margin-top: var(--sp-8); font: inherit; font-size: var(--fs-12); color: color-mix(in srgb, var(--warm) 35%, var(--muted)); text-align: left; cursor: pointer; transition: color 140ms ease; }
+.goal-crisis-line:hover { color: color-mix(in srgb, var(--warm) 55%, var(--muted)); }
+
+/* ── Goal detail (READ): reuses .composer-card + task-line/fire/marks; only hero/fire/log gets new rules. ── */
+.dt-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-12); }
+.dt-head-title { min-width: 0; }
+.dt-head-actions { display: flex; align-items: center; gap: var(--sp-8); flex: none; }
+/* quiet close affordance — faint hover fill, no border (calm idiom), matches .pl-del's icon-button idiom. */
+.dt-close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+  border: none; background: none; border-radius: var(--r-8); color: var(--faint); cursor: pointer; transition: background-color .12s ease, color .12s ease;
+  .ico { width: 14px; height: 14px; }
+  &:hover, &:focus-visible { background: var(--hover); color: var(--muted); } }
+.dt-why { font-family: var(--font-display); font-size: 20px; font-weight: 660; letter-spacing: -.015em; }
+.dt-stage { color: var(--muted); font-size: var(--fs-12); }
+.dt-cue { color: var(--muted); font-size: var(--fs-12); margin-top: var(--sp-2); }
+.dt-fire-row { display: flex; align-items: center; gap: var(--sp-12); margin-top: var(--sp-4); }
+.fire.lg { --fire-px: 91px; margin: var(--sp-8) 0 var(--sp-4); }   /* hero size, ~105px — same component, one variable */
+.dt-sec { font-size: var(--fs-11); font-weight: 640; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: var(--sp-8); }
+.dt-steps { margin-top: var(--sp-4); }
+.plog { display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--fs-13); margin-top: var(--sp-4); }
+.pl-day { color: var(--muted); font-size: var(--fs-11); margin-top: var(--sp-6); }
+.pl-row { display: flex; gap: var(--sp-8); align-items: baseline; padding: 1px 0; }
+.pl-ico { width: 16px; text-align: center; flex: none; }
+.pl-t { margin-left: auto; flex: none; color: var(--muted); font-size: var(--fs-11); font-variant-numeric: tabular-nums; }
+.pl-del { flex: none; border: none; background: none; padding: 0 var(--sp-2); line-height: 0; color: var(--muted); cursor: pointer;
+  opacity: 0; transition: opacity .1s, color .1s; .ico { width: 11px; height: 11px; }
+  &:hover, &:focus-visible { color: var(--p1); } }
+.pl-row:hover .pl-del, .pl-del:focus-visible { opacity: .6; }
+/* ── Identities view (GR7): reuses .fire/.cad/.cad-gold/.fc-nostend/.log-chip/.fc-flash from Fires. ── */
+/* cap the whole identities column to Recently's 720px so they share the same left/right edge. */
+.goals-identities { max-width: 720px; }
+.identity-block { margin-top: var(--sp-24); }
+.identity-block:first-child { margin-top: 0; }
+.identity-eyebrow { font-size: var(--fs-11); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--warm-ink); }
+.identity-eyebrow.gold { color: var(--gold); }
+.identity-quote { font-family: var(--font-display); font-style: italic; font-size: 30px; color: var(--ink-hi); margin-top: var(--sp-6); }   /* spec-pinned hero size, not on the --fs-* scale */
+.identity-status { color: var(--muted); font-size: var(--fs-13); margin-top: var(--sp-4); }
+.identity-row { display: flex; align-items: center; gap: var(--sp-16); padding: var(--sp-16) 0 var(--sp-12); margin-top: var(--sp-10); border-bottom: 1px solid var(--hair); }
+.ir-info { flex: 1; min-width: 0; }
+.fire.sm { --fire-px: 46px; }
+.ir-name { font-family: var(--font-display); font-weight: 600; color: var(--ink-hi); font-size: var(--fs-15); }
+.ir-status { color: var(--muted); font-size: var(--fs-12); margin-top: var(--sp-2); }
+.ir-note { color: var(--faint); font-size: var(--fs-12); font-style: italic; margin-top: var(--sp-4); }
+.ir-info .fc-flash { margin-top: var(--sp-4); }
+.identity-add-wrap { display: flex; justify-content: center; margin-top: var(--sp-24); }
+.identity-add { background: none; border: 1px dashed var(--edge-hi); border-radius: var(--r-pill); padding: var(--sp-10) var(--sp-24); color: var(--faint); font: inherit; font-size: var(--fs-13); cursor: pointer; transition: color .15s ease, border-color .15s ease; }
+.identity-add:hover { color: var(--warm-ink); border-color: color-mix(in srgb, var(--warm) 55%, var(--edge-hi)); }
+/* ID5: identity block header, aggregate fire, inline edit, menu, votes, zero-fire invite */
+.ident-block-head { display: flex; align-items: center; justify-content: space-between; }
+.ident-menu-wrap { position: relative; }
+.ident-menu-btn { background: none; border: none; cursor: pointer; color: var(--faint); font-size: var(--fs-16); padding: var(--sp-4) var(--sp-6); border-radius: var(--r); transition: color .15s ease, background .15s ease; }
+.ident-menu-btn:hover { color: var(--ink); background: var(--hover); }
+.pop.ident-pop { right: 0; left: auto; min-width: 180px; }
+.pop-sub-head { font-size: var(--fs-11); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); padding: var(--sp-6) var(--sp-10) var(--sp-2); }
+.pop-item-indent { padding-left: var(--sp-20); }
+.identity-quote { cursor: pointer; }
+.identity-edit-input { width: 100%; font-family: var(--font-display); font-style: italic; font-size: 30px; color: var(--ink-hi); background: none; border: none; border-bottom: 1.5px solid var(--accent); outline: none; padding: 0; margin-top: var(--sp-6); }
+.fire.ident-agg { --fire-px: 72px; }
+.ident-agg-row { display: flex; align-items: center; gap: var(--sp-16); margin-top: var(--sp-12); }
+.ident-agg-info { flex: 1; }
+.ident-votes { color: var(--faint); font-size: var(--fs-11); margin-top: var(--sp-2); }
+.identity-no-fire { display: flex; align-items: center; gap: var(--sp-8); color: var(--faint); font-size: var(--fs-13); margin-top: var(--sp-12); font-style: italic; }
+.identity-no-fire .goal-light-hint { color: var(--warm-ink); background: none; border: none; cursor: pointer; font: inherit; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; padding: 0; }
+/* .rec-item/.pl-day are unstyled test selectors; .pl-t (right-aligned time) shared from Plan */
+.recently { max-width: 720px; margin-top: var(--sp-24); }
+.rec-eyebrow { font-size: var(--fs-11); font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.rec-day { color: var(--muted); font-size: var(--fs-11); margin-top: var(--sp-12); }
+.rec-row { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: var(--sp-12); padding: var(--sp-6) 0; color: var(--ink); font-size: var(--fs-13); border-bottom: 1px solid var(--hair); }
+.rec-dot { width: 6px; height: 6px; border-radius: 50%; align-self: center; background: var(--warm); flex: none; }
+.rec-dot.warm { background: var(--warm); }
+.rec-dot.mid { background: var(--ember-mid); }
+.rec-dot.gold { background: var(--gold); }
+/* Warm pulse: brief bloom on Log tap — scale + warm glow, 350ms ease-out */
+@keyframes goal-pulse {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.016); box-shadow: var(--shadow-sm), 0 0 0 1.5px color-mix(in srgb, var(--warm) 35%, transparent), 0 8px 28px color-mix(in srgb, var(--warm) 18%, transparent); }
+  100% { transform: scale(1); }
+}
+/* .goal-card doubled to explicitly out-rank any other .goal-card animation (e.g. the sustaining breathe) by specificity, not stylesheet order */
+.goal-col.goal-pulse .goal-card.goal-card { animation: goal-pulse 350ms var(--ease-out); }
+/* the pulse also ripples a ring out from the card's border and kicks the fire's embers */
+.goal-col.goal-pulse .goal-card::after { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 1.5px solid color-mix(in srgb, var(--warm) 50%, transparent); opacity: 0; animation: box-pulse 520ms var(--ease-out); pointer-events: none; }
+@keyframes box-pulse { 0% { opacity: .65; transform: scale(1); } 100% { opacity: 0; transform: scale(1.05); } }
+.goal-col.goal-pulse .fire .bloom { animation: bloom-sm 420ms var(--ease-out); }
+@keyframes bloom-sm { 0% { opacity: 0; transform: scale(.6); } 40% { opacity: .55; } 100% { opacity: 0; transform: scale(1.7); } }
+.goal-col.goal-pulse .fire .log-ember { animation: log-ember 640ms var(--ease-out); }
+@keyframes log-ember { 0% { opacity: 0; transform: translateY(4px) scale(.8); } 28% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx, 0), -26px) scale(.35); } }
+/* tend/Log beat: the whole fire briefly brightens+swells (flareUp) while the log-embers above rise */
+.goal-col.goal-pulse .fire { animation: flare-up 700ms var(--ease-out); }
+@keyframes flare-up { 0% { transform: scale(1); filter: brightness(1); } 22% { transform: scale(1.1); filter: brightness(1.3); } 100% { transform: scale(1); filter: brightness(1); } }
+@media (prefers-reduced-motion: reduce) { .goal-col.goal-pulse .goal-card.goal-card, .goal-col.goal-pulse .goal-card::after, .goal-col.goal-pulse .fire, .goal-col.goal-pulse .fire .bloom, .goal-col.goal-pulse .fire .log-ember { animation: none; } }
+
+/* Lists view-controls row: a calm search field + filter chips. */
+.list-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-8); padding: var(--sp-4) 0 var(--sp-12); }
+.list-search { display: flex; align-items: center; gap: var(--sp-6); flex: 1 1 180px; min-width: 0; max-width: 340px; padding: var(--sp-6) var(--sp-10); background: var(--hover); border-radius: var(--r-8); }
+.list-search .ico { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.list-search input { flex: 1; min-width: 0; border: none; background: none; outline: none; font: inherit; font-size: var(--fs-13); color: var(--ink); }
+.list-search input::placeholder { color: var(--muted); }
+.list-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.list-filter { flex: none; padding: var(--sp-6) var(--sp-12); border: none; border-radius: var(--r-8); background: var(--hover); color: var(--muted); font: inherit; font-size: var(--fs-13); cursor: pointer; transition: background-color .12s, color .12s; }
+.list-filter:hover { background: var(--faint); }
+/* Selected filter: keeps the default chip shape, recolored + a color-matched border ring (project color on tinted pages, accent otherwise). */
+.list-filter.on { background: color-mix(in srgb, var(--list-tint, var(--accent)) 10%, var(--hover)); color: var(--list-tint, var(--accent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--list-tint, var(--accent)) 50%, transparent); }
+.list-controls .list-filter { margin-left: auto; }   /* completed toggle sits at the far right, separated from the filters */
+/* Sort + quick-filter dropdown chips (siblings of .list-filter). Reuse the .pop / .pop-item / .pri-chip shells for the menus. */
+.lc-field { position: relative; flex: none; }
+.list-chip { display: inline-flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-10); border: none; border-radius: var(--r-8);
+  background: var(--hover); color: var(--muted); font: inherit; font-size: var(--fs-13); cursor: pointer; transition: background-color .12s, color .12s; }
+.list-chip:hover { background: var(--faint); }
+.list-chip.on { background: color-mix(in srgb, var(--list-tint, var(--accent)) 10%, var(--hover)); color: var(--list-tint, var(--accent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--list-tint, var(--accent)) 50%, transparent); }
+/* Tinted project/area pages: filter controls pick up the page's color family (--list-tint from listTintStyle).
+   Scoped to :not(.on) so the accent active-state still wins; the untinted 'all' view is untouched (no --list-tint). */
+.app.tinted .list-search,
+.app.tinted .list-chip:not(.on),
+.app.tinted .list-filter:not(.on) { background: color-mix(in srgb, var(--list-tint) 14%, var(--hover)); }
+.app.tinted .list-chip:not(.on):hover,
+.app.tinted .list-filter:not(.on):hover { background: color-mix(in srgb, var(--list-tint) 22%, var(--faint)); }
+.app.tinted .list-chip.on,
+.app.tinted .list-filter.on { background: color-mix(in srgb, var(--list-tint) 16%, var(--hover)); color: var(--list-tint); }
+.list-chip .caret { width: 13px; height: 13px; flex: none; opacity: .7; transition: transform .15s var(--ease-out); }
+.lc-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--sp-4);
+  border-radius: var(--r-pill); background: var(--accent); color: var(--panel); font-size: var(--fs-11); font-weight: 600; }
+.lc-clear { flex: none; padding: var(--sp-6) var(--sp-8); border: none; background: none; color: var(--muted); font: inherit; font-size: var(--fs-13); cursor: pointer; }
+.lc-clear:hover { color: var(--ink); }
+/* Overlay: lighter than the shared .pop (hairline border + soft shadow) so it matches the light chips, not a heavy box. */
+.lc-pop { transform-origin: top left; border-color: var(--hair); box-shadow: var(--shadow-sm); }
+/* Enter/leave for the pops (and the Clear button): ease-out both ways so the close decelerates instead of stopping abruptly. */
+.lc-anim { transition: opacity .16s var(--ease-out), transform .16s var(--ease-out); }
+.lc-hide { opacity: 0; transform: scale(.96); }
+.lc-show { opacity: 1; transform: scale(1); }
+@media (prefers-reduced-motion: reduce) { .lc-hide { transform: none; } .lc-anim { transition: opacity .12s ease; } }
+.lc-area-pop { max-height: 280px; overflow-y: auto; }
+.lc-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+/* Completed section — below the add-task button so the button stays visible + completed items are clearly separated */
+.list-done { margin-top: var(--sp-16); }
+.list-done-head { display: flex; align-items: center; gap: var(--sp-6); padding: 0 0 var(--sp-6);
+  font-size: var(--fs-11); font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.list-done-n { color: var(--faint); font-weight: 500; letter-spacing: 0; }
+
+.goal-title { font-family: var(--font-display); display: block; width: 100%; font-size: var(--fs-22); font-weight: 700; background: none; border: none; color: var(--ink); padding: 0;
+  &::placeholder { color: var(--muted); } }
+.goal-votes { color: var(--muted); font-size: var(--fs-12); }
+.link.danger { background: none; color: var(--p1); border-radius: 0; }
+
+/* ---- Locations manager ---- */
+.loc-manager { width: 520px; max-height: 80vh; overflow-y: auto; }
+/* a location row IS the field: borderless input + trash tucked inside the same rounded well */
+/* a place is a clean list row: plain-text editable name, hover bg, trash revealed on hover */
+.loc-row { display: flex; align-items: center; gap: var(--sp-6); border-radius: var(--r-6); padding: var(--sp-2) var(--sp-6); transition: background-color .1s; }
+.loc-row:hover { background: var(--hover); }
+.loc-row .inp { flex: 1; min-width: 0; border: none; background: none; border-radius: 0; min-height: 0; padding: var(--sp-4) 0; }
+.loc-row .inp:focus { outline: none; box-shadow: none; }
+.loc-del { flex: none; display: inline-flex; align-items: center; background: none; border: none; color: var(--muted); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); cursor: pointer; opacity: 0; transition: opacity .1s, color .1s; }
+.loc-row:hover .loc-del { opacity: .6; }
+/* designate-home toggle: quiet until hover, solid accent when this place IS home */
+.loc-home { flex: none; display: inline-flex; align-items: center; background: none; border: none; color: var(--muted); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); cursor: pointer; opacity: 0; transition: opacity .1s, color .1s; }
+.loc-home .ico { width: 15px; height: 15px; }
+.loc-row:hover .loc-home { opacity: .55; }
+.loc-home.on { opacity: 1; color: var(--accent); }
+.loc-del:hover { opacity: 1; color: var(--p1); }
+.loc-del .ico { width: 14px; height: 14px; flex: none; display: block; }
+.loc-help { font-size: var(--fs-12); color: var(--muted); line-height: 1.5; margin: 0 0 var(--sp-12); }
+.loc-region { margin-bottom: var(--sp-12); border-radius: var(--r-6); }
+.loc-region.drop-into { background: color-mix(in srgb, var(--accent) 8%, transparent); outline: 1.5px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; }
+/* region header is an editable label (rename in place) */
+/* region name is a real editable subheading (not a tiny uppercase label), so groups read clearly */
+.loc-region-head { width: 100%; background: transparent; border: none; font-size: var(--fs-13); font-weight: 600; color: var(--ink); padding: var(--sp-2) var(--sp-6); margin: 0 0 var(--sp-2); }   /* intentionally sans, not display — editable region-name input; a display serif reads oddly while typing */
+.loc-region-head:focus { outline: none; color: var(--accent); }
+.fe-title { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-22); }
+.loc-empty { color: var(--muted); font-size: var(--fs-13); margin: 14px 0; }
+.travel-default { display: flex; align-items: center; gap: var(--sp-8); font-size: var(--fs-13); margin-bottom: var(--sp-10); }
+/* Dialog inputs: flat 1px border, ring-only focus; .ev-field + .dialog-select alias .inp.
+   No filled wells. (.field is taken — composer property-control wrapper.) */
+.inp, .ev-field, .dialog-select {
+  border: 1px solid var(--edge); border-radius: var(--r-6); padding: var(--sp-6) var(--sp-8); min-height: 32px;
+  background: var(--panel); color: var(--ink); font-family: inherit; font-size: var(--fs-13); box-sizing: border-box;
+}
+.inp:focus, .ev-field:focus, .dialog-select:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.inp::placeholder, .ev-field::placeholder { color: var(--muted); }
+/* native select chrome → custom chevron, styled exactly like a text input */
+select.inp, select.ev-field, .dialog-select {
+  appearance: none; -webkit-appearance: none; padding-right: var(--sp-24); cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9aa0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right var(--sp-8) center;
+}
+.inp.grow { flex: 1; min-width: 0; }
+.inp.num { width: 4rem; text-align: right; }
+textarea.inp { resize: vertical; }
+/* loc dialog: the TRAVEL number/time/select inputs are underlined, dialog-colored (no boxes) —
+   user-requested (B10). Place-name inputs are plain list-row text (see .loc-row .inp), NOT underlined. */
+.loc-manager .inp.num, .loc-manager input[type="time"], .loc-manager select.inp {
+  border: none; border-radius: 0; border-bottom: 1px solid var(--edge); background: none;
+  min-height: 0; padding: var(--sp-2) var(--sp-2); }
+.loc-manager .inp.num:focus, .loc-manager input[type="time"]:focus, .loc-manager select.inp:focus {
+  outline: none; box-shadow: none; border-bottom-color: var(--accent); }
+.loc-manager select.inp { padding-right: var(--sp-24); background-position: right 2px center; }
+.spacer { flex: 1; }
+.travel-list { display: flex; flex-direction: column; gap: var(--sp-6); margin-bottom: var(--sp-10); }
+.travel-pair { display: flex; align-items: center; gap: var(--sp-6); font-size: var(--fs-13); }
+.travel-arrow { color: var(--muted); }
+.travel-min { flex: 1; color: var(--muted); font-variant-numeric: tabular-nums; }
+.travel-add { display: flex; align-items: center; gap: var(--sp-6); flex-wrap: wrap; }
+.travel-minlbl { font-size: var(--fs-13); color: var(--muted); }
+/* "Add a place" / "New region" — a quiet row affordance aligned with the place rows above it */
+.loc-add-input { width: 100%; border: none; padding: var(--sp-4) var(--sp-6); background: none; font-size: var(--fs-13); color: var(--muted); outline: none; border-radius: var(--r-6); }
+.loc-add-input:hover { background: var(--hover); }
+.loc-add-input:focus { color: var(--ink); background: none; }
+.loc-add-region { margin: var(--sp-4) 0 var(--sp-10); }
+.loc-travel-section { margin-top: var(--sp-12); border-top: 1px solid var(--hair); padding-top: var(--sp-12); }
+.loc-travel-section .fe-title { margin-bottom: var(--sp-10); }
+.icon-btn { padding: var(--sp-4) var(--sp-6); border-radius: var(--r); border: 1px solid transparent; background: none; color: var(--muted); flex: none; }
+.icon-btn .ico { width: 15px; height: 15px; flex: none; display: block; }
+.icon-btn:hover { border-color: var(--edge); color: var(--ink); }
+.icon-btn.del:hover { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
+
+/* ===== Calendar (iOS/macOS-style: full-bleed scroll + overlaid chrome) ===== */
+.calendar { --bar: 90px; --head: 32px; --cl-surface: color-mix(in srgb, var(--bg) 55%, transparent); position: relative; height: 100%; overflow: hidden; }   /* fill the Plan surface (canvas minus the time strip); --cl-surface = shared translucent tint for the bar + day cells so the --bg-wash glow shows through both */
+.cl-bar { position: absolute; inset: 0 0 auto 0; z-index: 20; display: flex; align-items: center; gap: var(--sp-12); height: var(--bar); padding: 0 var(--sp-16); background: var(--cl-surface); backdrop-filter: blur(14px); }
+.cl-menu { display: none; }   /* mobile only (revealed in the media query) — reopens the nav drawer */
+.cl-period { flex: 1; min-width: 0; margin: 0; align-self: flex-end; padding-bottom: 14px; font-family: var(--font-ui); font-size: 34px; line-height: 1; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* sits low in the bar, ~24px text-to-text above the weekday names (macOS); sans not display (h2 override) — year stays thin via .cl-yr */
+.cl-scrolling .cl-period { opacity: 0; }   /* while scrolling, the flying .at-bar overlay title is the heading (instant swap; same month, same slot) */
+.cl-yr { font-weight: 300; }   /* the year renders light next to the bold month (macOS) */
+.cl-actions { position: absolute; top: 0; right: 16px; z-index: 22; display: inline-flex; align-items: flex-start; gap: var(--sp-6); padding-top: var(--sp-12); }   /* topmost of the bar (above the low title) so a long month name never collides with them in a narrow window. Outside .cl-bar so the mobile fixed bottom bar works. */
+.cl-nav { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: var(--r); background: var(--panel); color: var(--muted); cursor: pointer; }
+.cl-nav .ico { width: 16px; height: 16px; }
+.cl-nav:hover { color: var(--ink); border-color: var(--muted); }
+.cl-today { height: 30px; padding: 0 var(--sp-12); border-radius: var(--r); background: var(--panel); color: var(--ink); font-size: var(--fs-13); cursor: pointer; }
+.cl-today:hover { border-color: var(--muted); }
+.cl-add { width: 30px; height: 30px; border-radius: var(--r); background: var(--panel); color: var(--ink); font-size: var(--fs-17); line-height: 1; cursor: pointer; }
+.cl-add:hover { border-color: var(--accent); color: var(--accent); }
+.cl-switcher { display: inline-flex; border-radius: var(--r); overflow: hidden; }
+.cl-seg { display: inline-flex; align-items: center; height: 30px; padding: 0 var(--sp-12); border: none; background: var(--panel); color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
+.cl-seg:first-child { border-left: none; }
+
+/* Over-header overlay (above the header z-index, not clipped by the scroller) — the zone title flying into the
+   bar; .at-bar matches the period heading. Opacity is toggled by the .cl-scrolling class (once per scroll
+   session) so the per-scroll position re-renders don't thrash a transition. The mask feathers the top so a title
+   rising past the pinned one fades out (macOS) instead of hard-clipping at the window edge. */
+.cl-mtitles { position: absolute; inset: 0; z-index: 21; pointer-events: none; overflow: hidden; opacity: 0;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 34px, #000 50px); mask-image: linear-gradient(to bottom, transparent 34px, #000 50px); }
+.cl-scrolling .cl-mtitles { opacity: 1; }   /* instant (no transition — it freezes in background tabs and thrashed under re-renders); the rise is the motion */
+.cl-mtitle { position: absolute; left: 16px; font-size: 34px; line-height: 1; font-weight: 800; letter-spacing: -.02em; color: var(--ink); }   /* full opacity while scrolling (only shown then) */
+.cl-mtitle.at-bar { color: var(--ink); }
+/* Coupled body band: top=idx*rowH inline → native scroll (glued to the grid, no lag). Visible while scrolling,
+   fades out when idle. Opacity via .cl-scrolling (class toggles per session, not per render → no thrash). */
+.cl-mband { position: absolute; left: 16px; z-index: 4; pointer-events: none; font-size: 34px; line-height: 1; font-weight: 800; letter-spacing: -.02em; color: var(--ink); opacity: 0; }
+.cl-scrolling .cl-mband { opacity: 1; }
+/* coupled in-content band (rides with the grid below the zone); fades with the overlay while scrolling */
+
+/* MONTH — one continuous, gapless, infinitely-scrolling column of week rows */
+.cl-month { position: relative; height: 100%; overflow-y: auto; padding-top: calc(var(--bar) + var(--head)); scroll-snap-type: y proximity; scroll-padding-top: calc(var(--bar) + var(--head)); }   /* proximity snaps a week row to just below the bar+header (matches scrollTop=idx*rowH), not behind the bar */
+.cl-weekhead { position: absolute; top: var(--bar); left: 0; right: 0; z-index: 8; height: var(--head); display: grid; grid-template-columns: repeat(7, 1fr); align-items: center; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--hair); }
+.cl-wh { padding: 0 var(--sp-10); text-align: right; font-size: 14px; font-weight: 300; letter-spacing: .05em; color: var(--ink); }
+.cl-month-inner { position: relative; }   /* fixed-height spacer (set inline); weeks are absolutely placed within */
+.cl-wk { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: repeat(7, 1fr); border-bottom: 1px solid var(--hair); scroll-snap-align: start; }
+.cl-cell { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; overflow: hidden; padding: var(--sp-4) var(--sp-6); cursor: pointer; background: var(--cl-surface); transition: opacity .3s ease; }
+.cl-date span { transition: color .3s ease, opacity .3s ease; }  /* animate the out-of-month day-number fade as the focused month changes (not gated → tweens both directions) */
+.calendar:not(.cl-scrolling) .cl-cell.out .cl-date span { color: var(--faint); font-weight: 400; }  /* idle: strongly fade the day number for days outside the focused month (Apple) */
+.calendar:not(.cl-scrolling) .cl-cell.out .cl-chips { opacity: .5; }  /* and quiet their events too, so the focused month reads clearly */
+.cl-cell + .cl-cell { border-left: 1px solid var(--hair); }   /* column separators only BETWEEN days — first cell (Sunday) gets none, so it doesn't double the calendar's left border (x-for template is the real :first-child) */
+.cl-cell.weekend, .cl-pcol.weekend, .cl-col-head.weekend { background: color-mix(in srgb, #000 18%, transparent), var(--cl-surface); }   /* darker weekend columns (a translucent dark wash over the cell surface — glow still shows) */
+.cl-cell:hover { background: var(--hover); }
+/* keyboard focus ring for the role="button" calendar cells/chips/events — inset so the cells' overflow:hidden doesn't clip it */
+.cl-date:focus-visible, .cl-chip:focus-visible, .cl-block:focus-visible, .cl-event:focus-visible, .cl-mini:focus-visible, .cl-mini-cell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cl-date { display: flex; align-items: center; gap: var(--sp-4); justify-content: flex-end; }   /* day number sits top-right (Apple) */
+.cl-mlabel { font-size: var(--fs-17); font-weight: 300; color: var(--ink); text-transform: uppercase; letter-spacing: .03em; }
+.cl-dnum { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: var(--fs-17); color: var(--ink); }
+.cl-cell.today .cl-dnum { font-weight: 600; }
+.cl-chips { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; transition: opacity .3s ease; }
+.cl-chip { display: flex; align-items: center; gap: 3px; min-width: 0; padding: 1px var(--sp-6); border-radius: var(--r-4); border-left: 2px solid var(--cc); background: color-mix(in srgb, var(--cc) 16%, transparent); color: color-mix(in srgb, var(--cc) 78%, var(--ink)); font-size: var(--fs-11); line-height: 1.45; overflow: hidden; }
+.cl-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cl-chip.task-due, .cl-chip.task-block { border-left: none; background: none; color: var(--muted); }   /* tasks read distinct from events: no bar, a checkbox instead */
+.cl-chip.done .cl-chip-t { text-decoration: line-through; opacity: .55; }
+/* mini completion checkbox on task chips (month cells + all-day lane) */
+.cl-chip-check { position: relative; flex: none; width: 11px; height: 11px; padding: 0; border-radius: 50%; border: 1.75px solid var(--cc); background: transparent; cursor: pointer; }
+.cl-chip-check:hover { background: color-mix(in srgb, var(--cc) 22%, transparent); }
+.cl-chip-check.done { background: var(--cc); border-color: var(--cc); }
+.cl-chip-check.done::after { content: ""; position: absolute; left: 2.5px; top: .5px; width: 2.5px; height: 5px; border: solid var(--on-accent); border-width: 0 1.75px 1.75px 0; transform: rotate(45deg); }
+/* multi-day all-day event: connected segments read as one band. Each covered day gets a segment; caps round
+   only the true start/end, and negative margins bleed segments to the cell edges (cells clip at their border,
+   so bars from adjacent days meet). Empty mid/end segments keep a chip's height via min-height. */
+.cl-chip.cl-span { border-radius: 0; min-height: calc(1.45em + 2px); }
+.cl-chip.cl-span-l { border-top-left-radius: var(--r-4); border-bottom-left-radius: var(--r-4); margin-right: calc(-1 * var(--sp-6)); }
+.cl-chip.cl-span-r { border-top-right-radius: var(--r-4); border-bottom-right-radius: var(--r-4); border-left: none; margin-left: calc(-1 * var(--sp-6)); padding-left: var(--sp-6); }
+.cl-chip.cl-span-mid { border-left: none; margin: 0 calc(-1 * var(--sp-6)); padding-left: var(--sp-6); }
+.cl-more { font-size: var(--fs-11); color: var(--muted); padding-left: var(--sp-4); }
+
+/* WEEK / DAY — each week is one snap page that fills the viewport (hours sized to fit) */
+.cl-pages { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; }
+.cl-page { height: 100%; padding-top: var(--bar); scroll-snap-align: start; display: flex; flex-direction: column; }
+.cl-phead, .cl-pallday, .cl-pbody { display: grid; grid-template-columns: 56px repeat(7, 1fr); }
+.cl-pages.single .cl-phead, .cl-pages.single .cl-pallday, .cl-pages.single .cl-pbody { grid-template-columns: 56px 1fr; }
+.cl-phead { border-bottom: 1px solid var(--hair); flex: none; }
+.cl-gutter-corner { border-right: 1px solid var(--hair); }
+.cl-col-head { padding: var(--sp-6) var(--sp-4); text-align: center; border-left: 1px solid var(--hair); }
+.cl-col-head .cl-wd { display: block; font-size: var(--fs-11); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.cl-col-head .cl-dn { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; margin-top: var(--sp-2); border-radius: 50%; font-size: var(--fs-15); font-weight: 600; }
+.cl-pallday { border-bottom: 1px solid var(--hair); min-height: 22px; max-height: 70px; overflow-y: auto; flex: none; }
+.cl-allday-label { padding: var(--sp-4) var(--sp-6); font-size: 10px; color: var(--muted); text-align: right; }
+.cl-allday-col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; padding: var(--sp-2); border-left: 1px solid var(--hair); }
+/* week-lane span segments: re-aim the month-cell bleed (−sp-6) at this lane's sp-2 padding, and pull
+   continuation segments one extra px left so they paint OVER the column border — the band reads as one bar */
+.cl-allday-col .cl-chip.cl-span-l { margin-right: calc(-1 * var(--sp-2)); }
+/* a SPANNING task keeps the band look — the bare no-bg task-chip idiom only reads on single-day chips */
+.cl-chip.task-block.cl-span { background: color-mix(in srgb, var(--cc) 16%, transparent); }
+/* invisible lane spacer — holds a band's row in columns it doesn't cover */
+.cl-chip.pad { visibility: hidden; pointer-events: none; min-height: calc(1.45em + 2px); }
+.cl-allday-col .cl-chip.cl-span-r { margin-left: calc(-1 * var(--sp-2) - 1px); padding-left: var(--sp-6); }
+.cl-allday-col .cl-chip.cl-span-mid { margin: 0 calc(-1 * var(--sp-2)) 0 calc(-1 * var(--sp-2) - 1px); padding-left: var(--sp-6); }
+.cl-pbody { flex: 1; min-height: 0; overflow: hidden; }
+/* Zoomed in: hours take a fixed pixel height (--clhh) so the day exceeds the viewport and scrolls inside the
+   page. Reaching the day's top/bottom chains to the outer pager, which snaps one whole week at a time. */
+.cl-pages.zoomed .cl-pbody { overflow-y: auto; }
+.cl-pages.zoomed .cl-hour, .cl-pages.zoomed .cl-hour-line { flex: none; height: var(--clhh); }
+.cl-pages.zoomed .cl-page { scroll-snap-stop: always; }   /* force-through advances exactly one week/day */
+.cl-gutter { display: flex; flex-direction: column; }
+.cl-hour { flex: 1; position: relative; }
+.cl-hour span { position: absolute; top: -7px; right: 6px; font-size: 10px; color: var(--muted); }
+.cl-pcol { position: relative; display: flex; flex-direction: column; border-left: 1px solid var(--hair); }
+.cl-hour-line { flex: 1; border-bottom: 1px solid color-mix(in srgb, var(--hair) 55%, transparent); }
+.cl-block { position: absolute; left: 0; right: 0; z-index: 1; cursor: pointer; background: color-mix(in srgb, var(--cc) 11%, transparent); border-top: 1px solid color-mix(in srgb, var(--cc) 32%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--cc) 18%, transparent); }
+.cl-block-drag { z-index: 3; pointer-events: none; background: color-mix(in srgb, var(--cc) 22%, transparent); border: 1px dashed color-mix(in srgb, var(--cc) 55%, transparent); }
+.cl-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--p1); z-index: 4; }
+.cl-now::before { content: ""; position: absolute; left: -3px; top: -4px; width: 7px; height: 7px; border-radius: 50%; background: var(--p1); }
+.cl-event { position: absolute; overflow: hidden; padding: 1px var(--sp-6); border-radius: var(--r-6); border-left: 3px solid var(--cc); background: color-mix(in srgb, var(--cc) 20%, var(--panel)); color: var(--ink); font-size: var(--fs-11); box-shadow: 0 1px 2px rgba(0,0,0,.1); z-index: 2; min-height: 13px; transform: translateZ(0); }   /* own persistent GPU layer → rasterized once, so text AA doesn't flip subpixel↔grayscale when the scroller (contain:paint) promotes/demotes on scroll */
+.cl-event.task-block { border-left-style: dashed; display: flex; align-items: flex-start; gap: var(--sp-4); }   /* scheduled tasks show a completion checkbox beside the title */
+.cl-event.task-block.done .cl-event-t { text-decoration: line-through; opacity: .55; }
+.cl-evt-check { position: relative; flex: none; width: 12px; height: 12px; margin-top: 1px; padding: 0; border-radius: 50%; border: 2px solid var(--cc); background: transparent; cursor: pointer; transition: background-color .12s ease; }
+.cl-evt-check:hover { background: color-mix(in srgb, var(--cc) 22%, transparent); }
+.cl-evt-check.done { background: var(--cc); border-color: var(--cc); }
+.cl-evt-check.done::after { content: ""; position: absolute; left: 2.5px; top: .5px; width: 3px; height: 6px; border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.cl-event-t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; -webkit-font-smoothing: antialiased; }   /* pin grayscale AA so the weight reads identically at rest and mid-scroll */
+/* the active week morphs between its month row and the full week page */
+.cl-wk, .cl-page { contain: paint; }
+
+/* DAY agenda — a side panel that slides in over the right edge in day view, listing the day's items */
+/* Side panel: scheduled (this view) + unscheduled + the relocated composer. Slides in from the right. */
+.cl-side { position: absolute; top: var(--bar); right: 0; bottom: 0; width: 412px; z-index: 12; padding: 12px 16px var(--sp-24); overflow-y: auto; background: color-mix(in srgb, var(--panel) 96%, transparent); backdrop-filter: blur(8px); border-left: 1px solid var(--edge); transform: translateX(100%); transition: transform .32s var(--ease-drawer); }
+.cl-side.open { transform: none; }
+.cl-pages.single { width: calc(100% - 412px); }   /* day column makes room for the panel */
+.cl-side-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sp-8); }
+.cl-side-h { font-size: 16px; font-weight: 700; }   /* sans, not display — calendar stays sans-serif per user */
+.cl-side-x { background: none; border: 0; color: var(--muted); font-size: var(--fs-20); line-height: 1; cursor: pointer; padding: 0 var(--sp-4); }
+.cl-side-composer:empty { display: none; }   /* the relocated composer lives here; nothing to show when idle */
+.cl-side-composer.list { margin: 0 0 var(--sp-8); }   /* cancel .list's negative bleed so the composer sits inside the panel padding, not touching the edges */
+.cl-side-sec { font-size: var(--fs-11); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: var(--sp-12) 0 var(--sp-6); display: flex; align-items: baseline; gap: var(--sp-8); }
+.cl-side-hint { font-size: var(--fs-11); font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--faint); }
+.cl-side-sec.resched { color: var(--p1); }   /* slipped tasks read as needing attention */
+/* the Scheduled list IS the real task list (rowBodyHtml .item rows) — cancel .list's topbar-alignment bleed for the panel */
+.cl-side-list.list { margin: 0; content-visibility: auto; contain-intrinsic-size: auto 400px; }
+.cl-side-list .item { padding-left: var(--sp-6); }
+/* Plan agenda (calendar side panel): rank + task-line + window/state badges, ranked order not clock time (see clPlanItems/nlp windowBadge) */
+.plan-list .item { align-items: center; }
+.plan-rank { flex: none; width: var(--sp-16); font-size: var(--fs-11); font-weight: 700; color: var(--faint); text-align: center; }
+.plan-item .task-line { flex: 1; min-width: 0; }
+.plan-item.blocked { opacity: .55; }
+.plan-item .lock-ico { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.plan-dim { flex: none; color: var(--faint); font-size: var(--fs-13); }
+.plan-day { margin-top: var(--sp-8); }
+.cl-side-empty { color: var(--faint); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
+
+/* YEAR — 12 mini-months, heat-tinted days */
+.cl-year { height: 100%; overflow-y: auto; padding: calc(var(--bar) + var(--sp-12)) var(--sp-16) var(--sp-16); display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-20); align-content: start; }
+.cl-mini { cursor: pointer; }
+.cl-mini-label { margin-bottom: var(--sp-6); font-size: var(--fs-13); font-weight: 700; color: var(--accent); }
+.cl-mini-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.cl-mini-whd { font-size: 9px; color: var(--muted); text-align: center; }
+.cl-mini-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 10px; color: var(--ink); }
+.cl-mini-cell.dim { color: transparent; }
+.cl-mini-cell.today { font-weight: 600; }
+/* Selected/active state — accent fill. The .on/.sel/.today hooks across pickers + calendar opt in here. */
+.cal-day.sel, .dur-preset.sel, .cl-seg.sel, .blk-wd.sel, .rep-freqs button.on, .seg button.on, .cl-cell.today .cl-dnum, .cl-col-head.today .cl-dn, .cl-mini-cell.today { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.cl-mini-cell.heat1 { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.cl-mini-cell.heat2 { background: color-mix(in srgb, var(--accent) 34%, transparent); }
+.cl-mini-cell.heat3 { background: color-mix(in srgb, var(--accent) 52%, transparent); }
+/* Unscheduled-task tray toggle button */
+.cl-tray-btn { display: inline-flex; align-items: center; justify-content: center; }
+.cl-tray-btn.on { background: var(--accent); color: var(--on-accent); }
+.cl-cell.cl-drop, .cl-allday-col.cl-drop { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }
+/* live drop preview in a week/day column: a dashed accent ghost at the snapped time, with a time readout */
+.cl-drop-ghost { position: absolute; left: 1px; right: 1px; z-index: 5; pointer-events: none; border-radius: var(--r-6); background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent); }
+.cl-drop-time { position: absolute; top: -2px; left: 3px; font-size: var(--fs-11); font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--bg) 84%, transparent); padding: 0 3px; border-radius: 3px; line-height: 1.5; white-space: nowrap; }
+/* clickable items open the event editor / drill to the day */
+.cl-chip.event, .cl-event.event { cursor: pointer; }
+/* Event editor dialog */
+.event-editor { width: 420px; }
+.ev-title { font-family: var(--font-display); width: 100%; border: none; border-bottom: 1px solid var(--edge); background: none; color: var(--ink); font-size: var(--fs-17); font-weight: 600; padding: var(--sp-2) 0 var(--sp-8); outline: none; }
+.ev-title::placeholder { color: var(--muted); }
+.ev-row { display: flex; align-items: center; gap: var(--sp-12); margin-top: var(--sp-12); }
+.ev-allday { display: inline-flex; align-items: center; gap: var(--sp-6); font-size: var(--fs-13); color: var(--ink); cursor: pointer; }
+/* .ev-field appearance is the shared .inp rule; only ev-specific layout lives here */
+.ev-times { display: inline-flex; align-items: center; gap: var(--sp-6); }
+.ev-dash { color: var(--muted); }
+.ev-colors { flex-wrap: wrap; gap: var(--sp-8); }
+.ev-color-label { margin-top: var(--sp-12); }
+/* Block editor extras: weekday repeat toggles + area condition chips */
+.block-editor { width: 420px; }
+.blk-field { margin-top: var(--sp-12); }
+/* Section label — the one uppercase-muted eyebrow. Use class="section-label" directly in markup.
+   .section-head = the same label as a flex row with a right-aligned action; .rl-sec = roller variant (padding, lives in the masked scroll list). */
+.section-label, .section-head, .rl-sec { font-size: var(--fs-11); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.section-label { display: block; margin-bottom: var(--sp-6); }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-10); margin-bottom: var(--sp-4); }
+.section-head .link { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--fs-12); }
+.blk-weekdays { display: flex; gap: var(--sp-6); }
+.blk-wd { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel); color: var(--ink); font-size: var(--fs-12); }
+.blk-chips { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
+.blk-chip { padding: var(--sp-4) var(--sp-10); border-radius: var(--r-lg); border: 1px solid var(--edge); background: var(--panel); color: var(--ink); font-size: var(--fs-12); }
+.blk-chip.sel { background: color-mix(in srgb, var(--accent) 18%, transparent); border-color: var(--accent); color: var(--accent); }
+
+/* Transient toast — bottom-center pill, calm, never blocks input (pointer-events none). */
+#toast-wrap { position: fixed; left: 0; right: 0; bottom: var(--sp-24); display: flex; flex-direction: column; align-items: center; gap: var(--sp-8); z-index: 60; pointer-events: none; }
+.toast { padding: var(--sp-8) var(--sp-16); border-radius: var(--r-pill); background: var(--ink); color: var(--bg);
+  font-size: var(--fs-13); font-weight: 600; box-shadow: var(--shadow); pointer-events: none; }
+.toast-undo { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--sp-12); }
+.undo-btn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; transition: transform 140ms var(--ease-out); }
+.undo-btn:hover { text-decoration: underline; }
+.undo-btn:active { transform: scale(.97); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } .undo-btn { transition: none; } }
+
+/* --- Mobile layout --- */
+@media (max-width: 640px) {
+  .hamburger { display: inline-flex; align-items: center; }
+  .app { max-width: none; padding: var(--sp-16) 14px 100px; }
+  .topbar { align-items: center; margin-bottom: var(--sp-16); h1 { font-size: var(--fs-22); } }
+  .list { margin: 0 -8px; }
+  /* Bigger touch targets: taller rows + a ~40px tappable area around the checkbox (visual size unchanged). */
+  .item { padding: var(--sp-12) var(--sp-8); }
+  .check::before { content: ""; position: absolute; inset: -11px; }
+  .add-task-btn { padding: var(--sp-12) 14px; font-size: var(--fs-15); }
+  /* Popovers/pickers never exceed the screen; clampX() (JS) then nudges them fully on-screen. */
+  .pop, .nav-pop, .area-autocomplete { max-width: calc(100vw - 16px); }
+  .pop.proj-pop, .pop.area-pop, .pop.rel-pop, .area-autocomplete { overflow-x: hidden; }
+  /* Composer touch targets: taller option chips + chunkier action buttons. */
+  .composer-opts { gap: var(--sp-8); }
+  .composer-opts .chip { height: 40px; padding: 0 var(--sp-12); font-size: var(--fs-13); }
+  .composer-actions { gap: var(--sp-8); }
+  .composer-actions .primary, .composer-actions .ghost { padding: var(--sp-12) var(--sp-16); font-size: var(--fs-15); }
+  .composer-actions .del-btn, .composer-actions .side-btn { padding: var(--sp-10); }
+  .composer-card .desc { font-size: var(--fs-15); }
+  /* Calendar on mobile: the controls float at the bottom of the screen (reachable), over the calendar — no bar
+     background. 90px top bar matches CL_BAR. */
+  .cl-bar { padding: 0 var(--sp-10); gap: var(--sp-8); }
+  .cl-period { font-size: 25px; }   /* smaller title to fit; padding-bottom inherits desktop (14px) */
+  .cl-menu { display: inline-flex; align-items: center; position: absolute; left: 10px; top: 7px; padding: 0; color: var(--muted); }   /* perfectly above the title — same 10px left edge */
+  .cl-menu .ico { width: 22px; height: 22px; }
+  .cl-actions {   /* float the controls at the bottom, over the calendar — Today fits, switcher text stays full size */
+    position: fixed; top: auto; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); z-index: 30;
+    height: auto; align-items: center; justify-content: center; gap: var(--sp-6); padding: 0 var(--sp-10);
+  }
+  .cl-wk { min-height: 78px; }
+  .cl-mband, .cl-mtitle { font-size: 25px; left: 10px; }
+  .cl-side { width: 86%; }              /* the task panel overlays most of the screen on mobile */
+  .cl-pages.single { width: 100%; }     /* on mobile the panel overlays rather than shrinking the day column */
+  .cl-pages.single { width: 100%; }
+  .topbar-title { min-width: 0; text-align: center; }   /* center the short heading over the wider date line */  
+}
