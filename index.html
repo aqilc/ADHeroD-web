@@ -101,38 +101,41 @@
      @keydown.window="onKey($event)"
      @keydown.escape.window="escape()">
 
-  <!-- Magic-link sign-in (opt-in sync); LocalStore is the offline default. Signed in → set app password. -->
-  <main class="auth" x-show="authOpen" x-cloak>
-    <div class="card">
-      <h1 x-text="session ? 'Phone sign-in' : 'Sync ADHeroD'"></h1>
-      <p class="sub" x-show="!session">Sign in with a magic link to sync across devices. Your local data stays available offline.</p>
+  <!-- Sign-in (opt-in sync); LocalStore is the offline default. Signed in → set the phone's app password. -->
+  <main class="auth" x-show="authOpen" x-cloak @click.self="closeAuth()">
+    <div class="card auth-card">
+      <div class="auth-ember" aria-hidden="true"><svg class="ico"><use href="#i-tag-flame"/></svg></div>
       <template x-if="session">
         <form @submit.prevent="setAppPassword()">
-          <p class="sub" x-text="authMsg || 'Set an app password — the phone app signs in with your email and this password.'"></p>
+          <h1>Phone sign-in</h1>
+          <p class="sub" :class="{ err: authErr }" x-text="authMsg || 'Your phone signs in with your email and this password.'"></p>
           <input class="inp" type="password" x-model="authPass" placeholder="new app password" autocomplete="new-password" required>
           <div class="dialog-actions">
-            <button type="button" class="ghost" @click="authOpen = false; authMsg = ''; authPass = ''">Close</button>
-            <button type="submit" class="primary">Set password</button>
+            <button type="button" class="ghost" @click="closeAuth()">Close</button>
+            <button type="submit" class="primary">Save password</button>
           </div>
         </form>
       </template>
       <template x-if="!session && !authSent">
         <form @submit.prevent="signIn()">
-          <p class="sub" x-show="authMsg" x-text="authMsg"></p>
+          <h1>Pick up where you left off</h1>
+          <p class="sub" :class="{ err: authErr }" x-text="authMsg || 'Everything lives on this device until you sign in — sync carries it with you.'"></p>
           <input class="inp" type="email" x-model="authEmail" placeholder="you@email.com" autocomplete="email" required>
-          <input class="inp" type="password" x-model="authPass" placeholder="app password — empty for a magic link" autocomplete="current-password">
+          <input class="inp" type="password" x-model="authPass" placeholder="app password" autocomplete="current-password">
           <div class="dialog-actions">
-            <button type="button" class="ghost" @click="authOpen = false; authMsg = ''; authPass = ''">Cancel</button>
-            <button type="submit" class="primary" x-text="authPass ? 'Sign in' : 'Send link'"></button>
+            <button type="button" class="ghost" @click="closeAuth()">Cancel</button>
+            <button type="submit" class="primary" :disabled="!authPass">Sign in</button>
           </div>
+          <button type="button" class="auth-alt" @click="authPass = ''; signIn()">Email me a sign-in link instead</button>
         </form>
       </template>
       <template x-if="!session && authSent">
         <form @submit.prevent="verifyCode()">
-          <p class="sub" x-text="authMsg"></p>
-          <input class="inp" inputmode="numeric" x-model="authCode" placeholder="6-digit code" autocomplete="one-time-code">
+          <h1>Check your email</h1>
+          <p class="sub" :class="{ err: authErr }" x-text="authMsg"></p>
+          <input class="inp" inputmode="numeric" x-model="authCode" placeholder="6-digit code, if your email shows one" autocomplete="one-time-code">
           <div class="dialog-actions">
-            <button type="button" class="ghost" @click="authOpen = false; authSent = false; authMsg = ''">Close</button>
+            <button type="button" class="ghost" @click="authSent = false; authMsg = ''; authErr = false">Back</button>
             <button type="submit" class="primary">Verify code</button>
           </div>
         </form>

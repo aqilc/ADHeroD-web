@@ -35,6 +35,23 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   h1 { margin: 0 0 var(--sp-4); font-size: var(--fs-22); }
   .sub { margin: 0; color: var(--muted); }
 }
+/* Sign-in = the hearth door: a breathing ember over an LT Remark line; calm, one accent. */
+.auth-card { max-width: 400px;
+  transition: transform .22s var(--ease-out), opacity .22s var(--ease-out);
+  @starting-style { transform: scale(.97); opacity: 0; }
+  h1 { font-family: "LT Remark", sans-serif; font-weight: 700; }
+  .sub { margin: 0 0 var(--sp-16); }
+  .sub.err { color: var(--deep); }
+  .inp { width: 100%; margin-bottom: var(--sp-8); }
+}
+.auth-ember { width: 44px; height: 44px; margin-bottom: var(--sp-8); display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: radial-gradient(circle at 50% 62%, color-mix(in srgb, var(--warm) 24%, transparent), transparent 72%);
+  animation: authEmber 3.2s ease-in-out infinite alternate;
+  .ico { width: 20px; height: 20px; flex: none; color: var(--warm); } }
+@keyframes authEmber { from { opacity: .78; transform: scale(1); } to { opacity: 1; transform: scale(1.06); } }
+@media (prefers-reduced-motion: reduce) { .auth-ember { animation: none; } }
+.auth-alt { display: block; width: 100%; margin-top: var(--sp-8); border: none; background: none; padding: var(--sp-6); color: var(--muted); font-size: var(--fs-12); cursor: pointer; text-align: center; }
+.auth-alt:hover { color: var(--warm-ink); }
 
 /* ---- Spatial canvas: home-centric shell of 5 surfaces in a translated flex track ---- */
 #shell { display: flex; flex-direction: column; height: 100dvh; }

@@ -94,7 +94,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('adherod', () => ({
     store: createLocalStore(),
     session: null,
-    authOpen: false, authEmail: '', authCode: '', authSent: false, authMsg: '', authPass: '',
+    authOpen: false, authEmail: '', authCode: '', authSent: false, authMsg: '', authPass: '', authErr: false,
     tasks: [],
     byId: new Map(),        // id → task, rebuilt in loadTasks → O(1) lookups (projName/blocked) instead of tasks.find
     areas: [],
@@ -2005,7 +2005,8 @@ document.addEventListener('alpine:init', () => {
     },
     escape() {
       // Anything that can stack ON TOP of the overview (dialogs, the roller ⋯ popover) closes first; the overview closes only when nothing is layered above it.
-      if (this.shortcutsOpen) this.shortcutsOpen = false;
+      if (this.authOpen) this.closeAuth();   // z-60 — above everything
+      else if (this.shortcutsOpen) this.shortcutsOpen = false;
       else if (this.palette.open) this.palette.open = false;
       else if (this.confirm) this.confirmNo();
       else if (this.graduateOffer) this.graduateOffer = null;   // pure close — no snooze; unlike confirm's ghost button, deliberate decline lives only in declineGraduation()
@@ -3809,30 +3810,35 @@ document.addEventListener('alpine:init', () => {
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       await this.loadStats();
     },
+    closeAuth() { this.authOpen = this.authSent = this.authErr = false; this.authMsg = this.authPass = ''; },
     async signIn() {
-      const sb = sbClient(); if (!sb || !this.authEmail) return;
+      const sb = sbClient(); if (!sb) return;
+      if (!this.authEmail) { this.authMsg = 'Enter your email first.'; this.authErr = true; return; }
       // password filled → direct sign-in, no email round-trip (the built-in mailer can't carry codes)
       if (this.authPass) {
         const { error } = await sb.auth.signInWithPassword({ email: this.authEmail, password: this.authPass });
-        this.authMsg = error ? error.message : ''; if (!error) this.authPass = '';   // success: onAuthStateChange takes over
+        this.authMsg = error ? error.message : ''; this.authErr = !!error;
+        if (!error) this.authPass = '';   // success: onAuthStateChange takes over
         return;
       }
       // one email = magic link (+ code once custom SMTP exists); shouldCreateUser:false blocks new-account creation
       const { error } = await sb.auth.signInWithOtp({ email: this.authEmail, options: { emailRedirectTo: location.href, shouldCreateUser: false } });
-      this.authMsg = error ? error.message : 'Check your email — tap the link, or enter the code below.';
+      this.authMsg = error ? error.message : 'Tap the link in the email to sign in here.';
+      this.authErr = !!error;
       this.authSent = !error;
     },
     async verifyCode() {
       const sb = sbClient(); if (!sb || !this.authCode) return;
       const { error } = await sb.auth.verifyOtp({ email: this.authEmail, token: this.authCode.trim(), type: 'email' });
-      if (error) this.authMsg = error.message;   // stay on the code form; onAuthStateChange handles success
+      if (error) { this.authMsg = error.message; this.authErr = true; }   // stay on the code form; onAuthStateChange handles success
       this.authCode = '';
     },
     // Supabase mail can't carry OTP without custom SMTP — use password for phone sign-in
     async setAppPassword() {
       const sb = sbClient(); if (!sb || !this.authPass) return;
       const { error } = await sb.auth.updateUser({ password: this.authPass });
-      this.authMsg = error ? error.message : 'Password set — use it to sign in on your phone.';
+      this.authMsg = error ? error.message : 'Password saved — use it to sign in on your phone.';
+      this.authErr = !!error;
       if (!error) this.authPass = '';
     },
     // Supabase re-emits SIGNED_IN on every tab focus — only uid change or sign-out recreates the store
