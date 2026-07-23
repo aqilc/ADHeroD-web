@@ -1,1 +1,56 @@
-../../design.json
+{
+  "priority": { "1": "#eb5545", "2": "#e8b62c", "3": "#3aa655", "4": "#2d7ff9" },
+  "palette": ["#eb5545", "#f0a23b", "#e8b62c", "#84cc16", "#3aa655", "#14b8a6", "#06b6d4", "#2d7ff9", "#6366f1", "#8b5cf6", "#a855f7", "#ec4899", "#f43f5e"],
+  "quick": { "today": "#3aa655", "tomorrow": "#e8862a", "weekend": "#2d7ff9", "nextweek": "#8b5cf6", "thisweek": "#14b8a6" },
+  "space": [2, 4, 6, 8, 10, 12, 16, 20, 24],
+  "type": [11, 12, 13, 15, 17, 22, 44],
+  "radius": { "r": "10px", "4": "4px", "6": "6px", "8": "8px", "lg": "14px", "pill": "999px" },
+  "font": {
+    "ui": "\"Instrument Sans\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", system-ui, sans-serif",
+    "display": "\"LT Remark\", \"Instrument Sans\", Georgia, serif"
+  },
+  "ease": { "out": "cubic-bezier(.23,1,.32,1)", "in-out": "cubic-bezier(.77,0,.175,1)", "drawer": "cubic-bezier(.32,.72,0,1)" },
+  "light": {
+    "bg": "oklch(.97 .005 58)", "panel": "oklch(.985 .006 65)", "ink": "oklch(.18 .012 55)", "ink-hi": "oklch(.13 .01 55)",
+    "muted": "oklch(.46 .012 56)", "faint": "oklch(.6 .012 58)", "edge": "hsl(30 40% 40% / .14)", "edge-hi": "hsl(30 45% 38% / .28)", "hair": "hsl(30 30% 30% / .09)",
+    "hover": "oklch(.91 .008 57)", "accent": "#df6b12", "accent-info": "#2670e6",
+    "warm": "#df6b12", "warm-ink": "#b4520c", "gold": "#b8791a", "hot": "#ffcf8a", "deep": "#e0430c",
+    "ember-cold": "oklch(.86 .02 70)", "ember-mid": "#e59a5a", "ember-hot": "#df6b12",
+    "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, oklch(.985 .012 60), var(--bg) 62%)",
+    "bg-foot": "linear-gradient(0deg, color-mix(in srgb, var(--warm) 7%, var(--bg)), transparent 22%)",
+    "on-accent": "var(--bg)",
+    "shadow": "0 0 0 1px hsl(30 30% 40% / .07), .5px 1px 1px hsl(30 55% 18% / .28), 1px 3px 6px hsl(30 55% 18% / .14), 2px 10px 28px hsl(30 55% 18% / .12)",
+    "shadow-sm": "0 0 0 1px hsl(30 30% 40% / .07), 0 1px 3px hsl(30 55% 18% / .16)",
+    "shadow-pop": "0 0 0 1px hsl(30 30% 40% / .08), 0 4px 10px hsl(30 55% 18% / .12), 0 18px 44px hsl(30 55% 18% / .16)"
+  },
+  "dark": {
+    "bg": "#0e0b09", "panel": "#1d1610", "ink": "#f2e7da", "ink-hi": "#f6ecdf", "muted": "rgba(242,231,218,.55)", "faint": "rgba(242,231,218,.35)",
+    "hair": "rgba(255,255,255,.045)", "edge": "rgba(255,196,138,.1)", "edge-hi": "rgba(255,196,138,.24)",
+    "hover": "#282217", "accent": "#ff9448", "accent-info": "#3f82ef",
+    "warm": "#ff9448", "warm-ink": "#ffb072", "gold": "#f0b64e", "hot": "#ffe1b0", "deep": "#ff5a1e",
+    "ember-cold": "#33261b", "ember-mid": "#96562b", "ember-hot": "#ff9448",
+    "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, #241a12 0%, #14100c 62%)",
+    "bg-foot": "linear-gradient(0deg, color-mix(in srgb, var(--warm) 13%, var(--bg)), transparent 22%)",
+    "shadow": "0 0 0 1px rgba(255,255,255,.05), inset 0 1px 0 rgba(255,255,255,.06), 0 1px 2px hsl(20 60% 3% / .5), 0 6px 14px hsl(20 60% 3% / .4), 0 18px 40px hsl(20 60% 3% / .35)",
+    "shadow-sm": "0 0 0 1px rgba(255,255,255,.045), inset 0 1px 0 rgba(255,255,255,.05), 0 1px 3px rgba(0,0,0,.4)",
+    "shadow-pop": "0 0 0 1px rgba(255,255,255,.06), inset 0 1px 0 rgba(255,255,255,.06), 0 6px 14px hsl(20 60% 3% / .5), 0 22px 48px hsl(20 60% 3% / .45)"
+  },
+  "lang": {
+    "labels": {
+      "today": "Today", "tmr": "Tmr", "yest": "Yest.", "yesterday": "Yesterday",
+      "dOver": "{n}d over", "dLeft": "{n}d left",
+      "quick": { "today": "Today", "tomorrow": "Tomorrow", "weekend": "This weekend", "nextweek": "Next week", "thisweek": "This week" }
+    },
+    "nlp": {
+      "dueToday": ["today", "tonight", "tod"],
+      "dueTomorrow": ["tomorrow", "tmrw", "tmr", "tom"],
+      "dueYesterday": ["yesterday", "yday"],
+      "weekend": ["weekend", "this weekend"],
+      "thisWeek": ["this week"],
+      "nextWeek": ["next week"],
+      "months": ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"],
+      "weekdays": ["sun", "mon", "tue", "wed", "thu", "fri", "sat"],
+      "weekdayLabels": ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    }
+  }
+}
