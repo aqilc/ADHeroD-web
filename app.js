@@ -3811,7 +3811,13 @@ document.addEventListener('alpine:init', () => {
     },
     async signIn() {
       const sb = sbClient(); if (!sb || !this.authEmail) return;
-      // one email = magic link + 6-digit code; shouldCreateUser:false blocks new-account creation
+      // password filled → direct sign-in, no email round-trip (the built-in mailer can't carry codes)
+      if (this.authPass) {
+        const { error } = await sb.auth.signInWithPassword({ email: this.authEmail, password: this.authPass });
+        this.authMsg = error ? error.message : ''; if (!error) this.authPass = '';   // success: onAuthStateChange takes over
+        return;
+      }
+      // one email = magic link (+ code once custom SMTP exists); shouldCreateUser:false blocks new-account creation
       const { error } = await sb.auth.signInWithOtp({ email: this.authEmail, options: { emailRedirectTo: location.href, shouldCreateUser: false } });
       this.authMsg = error ? error.message : 'Check your email — tap the link, or enter the code below.';
       this.authSent = !error;

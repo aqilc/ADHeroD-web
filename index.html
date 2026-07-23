@@ -118,10 +118,12 @@
       </template>
       <template x-if="!session && !authSent">
         <form @submit.prevent="signIn()">
+          <p class="sub" x-show="authMsg" x-text="authMsg"></p>
           <input class="inp" type="email" x-model="authEmail" placeholder="you@email.com" autocomplete="email" required>
+          <input class="inp" type="password" x-model="authPass" placeholder="app password — empty for a magic link" autocomplete="current-password">
           <div class="dialog-actions">
-            <button type="button" class="ghost" @click="authOpen = false; authMsg = ''">Cancel</button>
-            <button type="submit" class="primary">Send link</button>
+            <button type="button" class="ghost" @click="authOpen = false; authMsg = ''; authPass = ''">Cancel</button>
+            <button type="submit" class="primary" x-text="authPass ? 'Sign in' : 'Send link'"></button>
           </div>
         </form>
       </template>
