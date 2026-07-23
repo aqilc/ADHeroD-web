@@ -994,10 +994,5 @@ export function createSupabaseStore(client) {
         return true;
       },
     },
-
-    // server-materialized auto-plan (see pg reminders-brain) — read-only view state, never mutated from the client
-    plan: {
-      async list() { const { data } = await client.from('plan_items').select('*').order('rank'); return data || []; },
-    },
   };
 }

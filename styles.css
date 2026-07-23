@@ -27,31 +27,13 @@ h1, h2 { font-family: var(--font-display); }   /* topbar/auth/goal-empty heading
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }   /* keyboard focus ring, app-wide (one group, not per-element) */
 kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px solid var(--edge); border-radius: var(--r-6); padding: 1px var(--sp-6); margin: 0 1px; }
 
-/* ---- Auth seam (only shown by an auth-bearing adapter; hidden under LocalStore) ---- */
-.auth { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: var(--sp-24); background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(6px); }
+/* ---- Card shell (settings popup; formerly also the auth overlay) ---- */
 .card {
   background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow);
   padding: var(--sp-24); width: 100%; max-width: 360px;
   h1 { margin: 0 0 var(--sp-4); font-size: var(--fs-22); }
   .sub { margin: 0; color: var(--muted); }
 }
-/* Sign-in = the hearth door: a breathing ember over an LT Remark line; calm, one accent. */
-.auth-card { max-width: 400px;
-  transition: transform .22s var(--ease-out), opacity .22s var(--ease-out);
-  @starting-style { transform: scale(.97); opacity: 0; }
-  h1 { font-family: "LT Remark", sans-serif; font-weight: 700; }
-  .sub { margin: 0 0 var(--sp-16); }
-  .sub.err { color: var(--deep); }
-  .inp { width: 100%; margin-bottom: var(--sp-8); }
-}
-.auth-ember { width: 44px; height: 44px; margin-bottom: var(--sp-8); display: flex; align-items: center; justify-content: center; border-radius: 50%;
-  background: radial-gradient(circle at 50% 62%, color-mix(in srgb, var(--warm) 24%, transparent), transparent 72%);
-  animation: authEmber 3.2s ease-in-out infinite alternate;
-  .ico { width: 20px; height: 20px; flex: none; color: var(--warm); } }
-@keyframes authEmber { from { opacity: .78; transform: scale(1); } to { opacity: 1; transform: scale(1.06); } }
-@media (prefers-reduced-motion: reduce) { .auth-ember { animation: none; } }
-.auth-alt { display: block; width: 100%; margin-top: var(--sp-8); border: none; background: none; padding: var(--sp-6); color: var(--muted); font-size: var(--fs-12); cursor: pointer; text-align: center; }
-.auth-alt:hover { color: var(--warm-ink); }
 
 /* ---- Spatial canvas: home-centric shell of 5 surfaces in a translated flex track ---- */
 #shell { display: flex; flex-direction: column; height: 100dvh; }
@@ -164,7 +146,6 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .topbar-title { min-width: 0; }   /* when not on mobile, make title text left-aligned */
 .hamburger { display: none; background: none; border: none; padding: var(--sp-4); margin: var(--sp-2) var(--sp-10) 0 -4px; color: var(--ink); flex: none; cursor: pointer; }
 .hamburger .ico { width: 22px; height: 22px; display: block; }
-.link { background: none; border: none; color: var(--muted); font-size: var(--fs-13); &:hover { color: var(--ink); } }
 .empty { color: var(--muted); text-align: center; padding: 56px 0; font-size: 14px; }
 
 /* ---- Tasks: rows separated by space + hover tint, not lines (Things style) ---- */
@@ -723,7 +704,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 /* Location constraint popover */
 /* Location hybrid picker: sentence polarity + block-driven here-row + region chip rows (design: location-ui-explorations.html ★) */
 .pop.loc-pop { min-width: 232px; max-width: 264px; padding: var(--sp-6); }
-.lp-line { font-size: var(--fs-13); line-height: 1.45; color: var(--ink); padding: 0 var(--sp-4); }   /* single-line: no flowing-sentence room needed */
+.lp-line { font-size: var(--fs-13); line-height: 1.45; color: var(--ink); padding: 0 var(--sp-4); margin: var(--sp-4) 0 var(--sp-8) 0; }   /* single-line: no flowing-sentence room needed */
 .lp-colon { color: var(--muted); margin-left: 1px; }
 .lp-here {
   display: flex; align-items: center; gap: var(--sp-8); width: 100%; padding: var(--sp-4) var(--sp-8);
@@ -848,14 +829,6 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .now-today-row .pick { flex: none; font-size: var(--fs-11); font-weight: 600; color: var(--accent); background: var(--panel); border: 1px solid var(--edge-hi); border-radius: var(--r-pill); padding: 1px var(--sp-8); opacity: 0; transition: opacity .15s ease; }
 .now-today-row:hover .pick, .now-today-row:focus-within .pick { opacity: 1; }
 @media (hover: none) { .now-today-row .pick { opacity: .8; } }
-/* Now-plan rows: server auto-plan for today — rank prefix + fuzzy-window badge + blocked/flag treatment (see nowPlan()). */
-.now-plan-row { color: var(--ink); }
-.now-plan-row.blocked { opacity: .5; }
-.now-plan-rank { flex: none; font-size: var(--fs-11); font-weight: 700; color: var(--faint); font-variant-numeric: tabular-nums; min-width: var(--sp-12); }
-.now-plan-row .badge { flex: none; }
-.now-plan-row .lock-ico { width: 12px; height: 12px; flex: none; color: var(--muted); }
-.now-plan-flag { flex: none; font-size: var(--fs-11); color: var(--faint); }
-.now-plan-flag.warn { color: var(--p1); }
 
 /* Now-window: the day's hours on a locked, masked strip — the fire sits on the current minute. */
 .now-window { position: relative; flex: 1; min-height: 120px; overflow: hidden;
@@ -921,20 +894,20 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   padding: 0; cursor: pointer; display: inline-flex; align-items: center;
   &:hover { color: var(--p1); }
 }
-/* staged pick: name + relation-type toggle + Add */
-.rel-staged { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-2) 0; }
-/* staged name is a bordered button (fills the row so there's no empty gap; click → back to the picker) */
-.rel-staged-name { font-size: var(--fs-13); color: var(--ink); flex: 1; min-width: 0; text-align: left; cursor: pointer;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  border: 1px solid var(--edge); border-radius: var(--r-6); background: var(--panel); padding: var(--sp-4) var(--sp-8);
-  &:hover { border-color: var(--muted); } }
-.rel-type-toggle { display: inline-flex; border: 1px solid var(--edge); border-radius: var(--r-6); overflow: hidden; flex: none;
-  button { border: none; background: var(--panel); color: var(--muted); font-size: var(--fs-11); padding: var(--sp-4) var(--sp-8); cursor: pointer;
-    &.on { background: var(--accent); color: var(--on-accent); }
-    &[data-type="blocked_by"].on { background: var(--p1); }
-    &[data-type="relates"].on { background: var(--accent); } } }
-.rel-add { border: none; background: var(--accent); color: var(--on-accent); font-size: var(--fs-12); font-weight: 500;
-  border-radius: var(--r-6); padding: var(--sp-4) var(--sp-10); cursor: pointer; flex: none; &:hover { opacity: .9; } }
+/* Ledger wells: display existing links AND receive the highlighted candidate (← → ↓ keys, or click row then well) */
+.rel-pop .pop-item.hot { background: var(--hover); }
+.rel-wells { display: flex; gap: var(--sp-6); }
+.rel-well { flex: 1; min-width: 0; background: var(--hover); border-radius: var(--r-8); padding: var(--sp-6); min-height: 56px;
+  cursor: pointer; transition: background-color .2s var(--ease-out); }
+.rel-well.slim { min-height: 0; }
+.rel-well.lit { background: color-mix(in srgb, var(--warm) 14%, var(--hover)); }
+.rel-well.lit .rel-well-h { color: var(--warm-ink); }
+.rel-well-h { display: block; font-size: var(--fs-11); font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--faint); transition: color .2s var(--ease-out); }
+.rel-card { display: flex; align-items: center; gap: var(--sp-4); background: var(--panel); border-radius: var(--r-6);
+  padding: var(--sp-2) var(--sp-6); margin-top: var(--sp-4); font-size: var(--fs-12); color: var(--ink);
+  span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+.rel-hint { display: flex; gap: var(--sp-10); font-size: var(--fs-11); color: var(--faint); }
 /* Rich task line (check + title + areas + #project); see taskLine() in app.js. */
 .task-line { display: flex; align-items: center; gap: var(--sp-8); min-width: 0; }
 /* task-list rows delegate clicks via openFromTaskList; see taskListHtml() in app.js */
@@ -942,7 +915,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .task-list .task-line { width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: var(--sp-6) var(--sp-8); border-radius: var(--r-6); }
 .task-list .task-line:hover { background: var(--hover); }
 /* picker result rows: priority check + title + areas + dimmed project path (titles capped) */
-.rel-picker { display: flex; flex-direction: column; gap: 1px; max-height: 240px; overflow-y: auto; }
+.rel-picker { display: flex; flex-direction: column; gap: 1px; max-height: 150px; overflow-y: auto; }   /* shorter — the wells live below */
 .rel-picker .pop-item .check.sm { flex: none; }
 .pick-name { flex: none; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-tag { margin-left: auto; flex: none; font-size: var(--fs-11); color: var(--muted); text-transform: capitalize; }   /* surface/filter/goal/Action label */
@@ -1444,44 +1417,72 @@ textarea.goal-draft-identity { field-sizing: content; resize: none; overflow: hi
 
 /* Lists view-controls row: a calm search field + filter chips. */
 .list-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-8); padding: var(--sp-4) 0 var(--sp-12); }
-.list-search { display: flex; align-items: center; gap: var(--sp-6); flex: 1 1 180px; min-width: 0; max-width: 340px; padding: var(--sp-6) var(--sp-10); background: var(--hover); border-radius: var(--r-8); }
-.list-search .ico { width: 15px; height: 15px; flex: none; color: var(--muted); }
-.list-search input { flex: 1; min-width: 0; border: none; background: none; outline: none; font: inherit; font-size: var(--fs-13); color: var(--ink); }
+/* Search: a bare icon at rest — the input unfolds beside it (width animates) and collapses when empty on blur. */
+.list-search { display: flex; align-items: center; flex: none; min-width: 0; border-radius: var(--r-pill); transition: background-color .15s var(--ease-out);
+  margin-left: calc((15px - 30px) / 2); }   /* outdent by the icon's inset in its 30px button → glyph left-aligns with the page title */
+.ls-searchbtn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border: none; background: none; border-radius: var(--r-pill); color: var(--faint); cursor: pointer; transition: background-color .15s var(--ease-out), color .15s var(--ease-out); }
+.ls-searchbtn:hover { background: var(--hover); color: var(--ink); }
+.ls-searchbtn .ico { width: 15px; height: 15px; flex: none; }
+.list-search input { width: 0; opacity: 0; padding: 0; border: none; background: none; outline: none; font: inherit; font-size: var(--fs-13); color: var(--ink);
+  transition: width .18s var(--ease-out), opacity .15s var(--ease-out); }
 .list-search input::placeholder { color: var(--muted); }
 .list-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
-.list-filter { flex: none; padding: var(--sp-6) var(--sp-12); border: none; border-radius: var(--r-8); background: var(--hover); color: var(--muted); font: inherit; font-size: var(--fs-13); cursor: pointer; transition: background-color .12s, color .12s; }
-.list-filter:hover { background: var(--faint); }
-/* Selected filter: keeps the default chip shape, recolored + a color-matched border ring (project color on tinted pages, accent otherwise). */
-.list-filter.on { background: color-mix(in srgb, var(--list-tint, var(--accent)) 10%, var(--hover)); color: var(--list-tint, var(--accent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--list-tint, var(--accent)) 50%, transparent); }
-.list-controls .list-filter { margin-left: auto; }   /* completed toggle sits at the far right, separated from the filters */
-/* Sort + quick-filter dropdown chips (siblings of .list-filter). Reuse the .pop / .pop-item / .pri-chip shells for the menus. */
+.list-search.open { background: var(--hover); }
+.list-search.open .ls-searchbtn:hover { background: none; }
+.list-search.open input { width: 170px; opacity: 1; padding-right: var(--sp-10); }
+.app.tinted .list-search.open { background: color-mix(in srgb, var(--list-tint) 14%, var(--hover)); }
+/* Hearthsay sentence — the controls row reads as prose (design: filters-ui-explorations.html A).
+   Words are dotted-underline buttons; active filters grow into colored tokens with their own ×. */
 .lc-field { position: relative; flex: none; }
-.list-chip { display: inline-flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-10); border: none; border-radius: var(--r-8);
-  background: var(--hover); color: var(--muted); font: inherit; font-size: var(--fs-13); cursor: pointer; transition: background-color .12s, color .12s; }
-.list-chip:hover { background: var(--faint); }
-.list-chip.on { background: color-mix(in srgb, var(--list-tint, var(--accent)) 10%, var(--hover)); color: var(--list-tint, var(--accent)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--list-tint, var(--accent)) 50%, transparent); }
-/* Tinted project/area pages: filter controls pick up the page's color family (--list-tint from listTintStyle).
-   Scoped to :not(.on) so the accent active-state still wins; the untinted 'all' view is untouched (no --list-tint). */
-.app.tinted .list-search,
-.app.tinted .list-chip:not(.on),
-.app.tinted .list-filter:not(.on) { background: color-mix(in srgb, var(--list-tint) 14%, var(--hover)); }
-.app.tinted .list-chip:not(.on):hover,
-.app.tinted .list-filter:not(.on):hover { background: color-mix(in srgb, var(--list-tint) 22%, var(--faint)); }
-.app.tinted .list-chip.on,
-.app.tinted .list-filter.on { background: color-mix(in srgb, var(--list-tint) 16%, var(--hover)); color: var(--list-tint); }
-.list-chip .caret { width: 13px; height: 13px; flex: none; opacity: .7; transition: transform .15s var(--ease-out); }
-.lc-count { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 16px; padding: 0 var(--sp-4);
-  border-radius: var(--r-pill); background: var(--accent); color: var(--panel); font-size: var(--fs-11); font-weight: 600; }
-.lc-clear { flex: none; padding: var(--sp-6) var(--sp-8); border: none; background: none; color: var(--muted); font: inherit; font-size: var(--fs-13); cursor: pointer; }
-.lc-clear:hover { color: var(--ink); }
-/* Overlay: lighter than the shared .pop (hairline border + soft shadow) so it matches the light chips, not a heavy box. */
+.ls-sent { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-6); font-size: var(--fs-13); color: var(--faint); }
+.ls-verb { flex: none; }
+.ls-word { border: none; background: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-6); font: inherit; font-size: var(--fs-13); font-weight: 600; color: var(--muted); cursor: pointer;
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 45%, transparent); text-underline-offset: 4px; transition: background-color .12s, color .12s; }
+.ls-word:hover { color: var(--ink); background: var(--hover); text-decoration-color: transparent; }
+.ls-word.on { color: var(--list-tint, var(--accent)); }
+.ls-frag { display: contents; }   /* verb + token pair under one x-if root */
+.ls-comma { margin-left: calc(-1 * var(--sp-6) - var(--sp-4) + 1px); }   /* leading comma hugs the previous word (cancels flex gap + the word's own padding) */
+.ls-tok { display: inline-flex; align-items: center; border-radius: var(--r-pill); font-weight: 600;
+  background: color-mix(in srgb, var(--tc, var(--accent)) 13%, transparent); color: color-mix(in srgb, var(--tc, var(--accent)) 60%, var(--ink));
+  animation: ls-tok-in .2s var(--ease-out); }   /* unfurl: clip reveal + slide; neighbors flow over */
+@keyframes ls-tok-in { from { clip-path: inset(0 100% 0 0); transform: translateX(-6px); } }
+.ls-tok > button { display: inline-flex; align-items: center; gap: var(--sp-4); border: none; background: none; color: inherit; font: inherit; font-size: var(--fs-13); font-weight: 600; cursor: pointer;
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-10); min-width: 0; }
+.ls-tok > button > span:last-child { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* long area names truncate; full name in title */
+.ls-flag { width: 10px; height: 10px; border-radius: 3px; background: var(--tc); flex: none; }
+.ls-tok .ls-x { padding: var(--sp-2) var(--sp-8) var(--sp-2) var(--sp-2); color: color-mix(in srgb, var(--tc) 55%, var(--muted));
+  font-size: var(--fs-15); line-height: 1; opacity: .7; transition: opacity .15s var(--ease-out), color .15s var(--ease-out); }   /* always visible — × is the remove affordance (body click edits) */
+.ls-tok .ls-x:hover { color: var(--ink); opacity: 1; }
+.ls-more { text-decoration-line: none; font-weight: 500; color: var(--faint); }
+/* clear-all: a subtle trash — barely-there until hovered */
+.ls-clear { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border: none; background: none; border-radius: var(--r-pill);
+  color: var(--faint); opacity: .6; cursor: pointer; transition: background-color .15s var(--ease-out), color .15s var(--ease-out), opacity .15s var(--ease-out); }
+.ls-clear:hover { background: var(--hover); color: var(--ink); opacity: 1; }
+.ls-clear .ico { width: 13px; height: 13px; flex: none; }
+/* in-sentence lenses: "except done & archived" — toggled ON strikes the word (the exception is lifted) */
+.ls-lens.on { color: var(--warm-ink); text-decoration: line-through solid color-mix(in srgb, var(--warm-ink) 70%, transparent); text-decoration-thickness: 1.5px; }
+/* space budget: with tokens present the row must NEVER wrap — chrome yields (words dropped → title attrs) and
+   tokens compress (flex-shrink + ellipsis) instead. No overflow:hidden on .ls-sent — the popover anchors inside it. */
+.list-controls.crowded { flex-wrap: nowrap; }
+.list-controls.crowded .ls-sent { flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
+.list-controls.crowded .ls-verb, .list-controls.crowded .ls-word, .list-controls.crowded .lc-field { flex: none; }
+.list-controls.crowded .ls-tok { min-width: 0; }   /* labels ellipsize under pressure… */
+.list-controls.crowded .ls-tok > button > span:last-child { min-width: 3ch; }   /* …but never below a readable stub (span floor only — short tokens stay content-sized) */
+.list-controls.crowded .list-search.open { flex: 0 3 auto; min-width: 72px; }      /* search yields BEFORE token labels (shrink 3×) */
+.list-controls.crowded .list-search.open input { flex: 1 1 auto; min-width: 40px; }
+.ls-add-pop { min-width: 236px; max-height: 320px; overflow-y: auto; }
+.ls-prow { display: flex; gap: var(--sp-6); padding: var(--sp-2) var(--sp-4) var(--sp-6); }
+.pop-sub-head { padding: var(--sp-6) var(--sp-4) var(--sp-2); font-size: var(--fs-11); font-weight: 600; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+.ls-save { color: var(--accent); font-weight: 600; }
+/* lens cluster: Done/Archived change what EXISTS in view — quiet toggles past a hairline, far right */
+.ls-view { display: flex; gap: var(--sp-8); margin-left: auto; padding-left: var(--sp-8); border-left: 1px solid var(--hair); }
+/* Overlay: lighter than the shared .pop (hairline border + soft shadow) so it matches the light row, not a heavy box. */
 .lc-pop { transform-origin: top left; border-color: var(--hair); box-shadow: var(--shadow-sm); }
-/* Enter/leave for the pops (and the Clear button): ease-out both ways so the close decelerates instead of stopping abruptly. */
+/* Enter/leave for the pops: ease-out both ways so the close decelerates instead of stopping abruptly. */
 .lc-anim { transition: opacity .16s var(--ease-out), transform .16s var(--ease-out); }
 .lc-hide { opacity: 0; transform: scale(.96); }
 .lc-show { opacity: 1; transform: scale(1); }
-@media (prefers-reduced-motion: reduce) { .lc-hide { transform: none; } .lc-anim { transition: opacity .12s ease; } }
-.lc-area-pop { max-height: 280px; overflow-y: auto; }
+@media (prefers-reduced-motion: reduce) { .lc-hide { transform: none; } .lc-anim { transition: opacity .12s ease; } .ls-tok { animation: none; } .list-search input { transition: opacity .12s ease; } }
 .lc-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 /* Completed section — below the add-task button so the button stays visible + completed items are clearly separated */
 .list-done { margin-top: var(--sp-16); }
@@ -1492,7 +1493,6 @@ textarea.goal-draft-identity { field-sizing: content; resize: none; overflow: hi
 .goal-title { font-family: var(--font-display); display: block; width: 100%; font-size: var(--fs-22); font-weight: 700; background: none; border: none; color: var(--ink); padding: 0;
   &::placeholder { color: var(--muted); } }
 .goal-votes { color: var(--muted); font-size: var(--fs-12); }
-.link.danger { background: none; color: var(--p1); border-radius: 0; }
 
 /* ---- Locations manager ---- */
 .loc-manager { width: 520px; max-height: 80vh; overflow-y: auto; }
@@ -1703,14 +1703,6 @@ textarea.inp { resize: vertical; }
 /* the Scheduled list IS the real task list (rowBodyHtml .item rows) — cancel .list's topbar-alignment bleed for the panel */
 .cl-side-list.list { margin: 0; content-visibility: auto; contain-intrinsic-size: auto 400px; }
 .cl-side-list .item { padding-left: var(--sp-6); }
-/* Plan agenda (calendar side panel): rank + task-line + window/state badges, ranked order not clock time (see clPlanItems/nlp windowBadge) */
-.plan-list .item { align-items: center; }
-.plan-rank { flex: none; width: var(--sp-16); font-size: var(--fs-11); font-weight: 700; color: var(--faint); text-align: center; }
-.plan-item .task-line { flex: 1; min-width: 0; }
-.plan-item.blocked { opacity: .55; }
-.plan-item .lock-ico { width: 12px; height: 12px; flex: none; color: var(--muted); }
-.plan-dim { flex: none; color: var(--faint); font-size: var(--fs-13); }
-.plan-day { margin-top: var(--sp-8); }
 .cl-side-empty { color: var(--faint); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
 
 /* YEAR — 12 mini-months, heat-tinted days */
@@ -1755,7 +1747,6 @@ textarea.inp { resize: vertical; }
 .section-label, .section-head, .rl-sec { font-size: var(--fs-11); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .section-label { display: block; margin-bottom: var(--sp-6); }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-10); margin-bottom: var(--sp-4); }
-.section-head .link { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: var(--fs-12); }
 .blk-weekdays { display: flex; gap: var(--sp-6); }
 .blk-wd { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel); color: var(--ink); font-size: var(--fs-12); }
 .blk-chips { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
@@ -1809,3 +1800,89 @@ textarea.inp { resize: vertical; }
   .cl-pages.single { width: 100%; }
   .topbar-title { min-width: 0; text-align: center; }   /* center the short heading over the wider date line */  
 }
+
+/* ---- Account & settings: corner gear + popup (settings-ui-explorations "Corner hearth, composed") ---- */
+/* The gear — calm idiom: faint hover fill, no border, no glow; clearly apart from the centered dot strip */
+.settings-gear { position: absolute; left: var(--sp-12); bottom: 10px; z-index: 5;   /* 10px = .canvas-dots' bottom, same baseline */
+  width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
+  border: none; background: none; border-radius: var(--r-pill); color: var(--muted); cursor: pointer;
+  transition: background-color .15s var(--ease-out), color .15s var(--ease-out); }
+.settings-gear:hover { background: var(--hover); color: var(--ink); }
+.settings-gear svg { width: 17px; height: 17px; flex: none; }
+.settings-gear .st { position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }   /* signed in & syncing fine */
+.settings-gear .st.off { background: var(--faint); }              /* offline */
+/* The popup — app dims a step behind (lighter than the dialog backdrop); card rises from the gear */
+.settings { position: fixed; inset: 0; z-index: 56;   /* above the move-rail (55), below auth/overview (60) + dialogs (200) */
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  opacity: 1; transition: opacity .22s var(--ease-out);
+  @starting-style { opacity: 0; } }
+.settings-card { position: absolute; left: var(--sp-12); bottom: 48px;   /* clears the 30px gear + its 10px inset */
+  max-height: calc(100dvh - 64px); overflow-y: auto;
+  transform-origin: bottom left; transition: transform .22s var(--ease-out), opacity .22s var(--ease-out);
+  @starting-style { transform: scale(.95); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .settings-card { transition: opacity .2s ease; } }
+/* Account row — A's ember avatar; cold coal when signed out (never an error state) */
+.set-acct { display: flex; align-items: center; gap: var(--sp-12); padding: var(--sp-12); border-radius: var(--r);
+  background: color-mix(in srgb, var(--warm) 6%, var(--panel)); margin-top: var(--sp-10); }
+.set-ember { width: 26px; height: 26px; border-radius: 50%; flex: none;
+  background: radial-gradient(circle at 40% 35%, var(--ember-hot), var(--ember-mid) 62%, var(--ember-cold));
+  animation: set-breathe 3.2s ease-in-out infinite alternate; }
+.set-ember.cold { background: var(--ember-cold); animation: none; }
+@keyframes set-breathe { from { box-shadow: 0 0 6px color-mix(in srgb, var(--ember-hot) 35%, transparent); }
+  to { box-shadow: 0 0 13px color-mix(in srgb, var(--ember-hot) 60%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .set-ember { animation: none; } }
+.set-who { line-height: 1.3; min-width: 0; }
+.set-who b { display: block; font-size: var(--fs-13); color: var(--ink); }
+.set-who span { font-size: var(--fs-12); color: var(--muted); }
+.set-out { margin-left: auto; flex: none; border: none; background: none; color: var(--muted); font-size: var(--fs-12);
+  padding: var(--sp-4) var(--sp-10); border-radius: var(--r-6); cursor: pointer; white-space: nowrap; }
+.set-out:hover { background: var(--hover); color: var(--ink); }
+/* Inline sign-in / phone forms — reuse .inp/.primary; Sign in left, the magic-link alt hugs the right edge */
+.set-form { display: flex; flex-direction: column; gap: var(--sp-8); margin-top: var(--sp-10); }
+.set-form .set-msg { margin: 0; font-size: var(--fs-12); color: var(--muted); }
+.set-form .set-msg.err { color: var(--deep); }
+.set-actions { display: flex; align-items: center; gap: var(--sp-8); }
+.set-actions .set-alt { margin-left: auto; }
+.set-alt { border: none; background: none; color: var(--muted); font-size: var(--fs-12); padding: var(--sp-4) 0; cursor: pointer; }
+.set-alt:hover { color: var(--warm-ink); }
+.set-unfold { transition: opacity .25s var(--ease-out), transform .25s var(--ease-drawer);
+  @starting-style { opacity: 0; transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .set-unfold { transition: opacity .2s ease; } }
+/* Sections + rows */
+.set-sec { margin-top: var(--sp-16); }
+.set-row { display: flex; align-items: center; gap: var(--sp-10); width: 100%; padding: var(--sp-6) var(--sp-10);
+  border: none; background: none; border-radius: var(--r-8); font: inherit; font-size: var(--fs-13); color: var(--ink); text-align: left; }
+.set-rowbtn { cursor: pointer; }
+.set-rowbtn:hover { background: var(--hover); }
+.set-sub { margin-left: auto; font-size: var(--fs-12); color: var(--muted); }
+.set-row .seg { margin: 0 0 0 auto; }
+.set-row .seg button { flex: none; padding: var(--sp-4) var(--sp-10); }
+/* selected theme = quiet panel + shadow (design: settings-ui-explorations ★ b-seg), not the shared accent fill */
+.set-row .seg button.on { background: var(--panel); border-color: var(--edge); color: var(--ink-hi); font-weight: 600; box-shadow: var(--shadow-sm); }
+/* starter shortcuts: two quiet columns of label + kbd */
+.set-keys { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2) var(--sp-16); padding: 0 var(--sp-10) var(--sp-4); }   /* horizontal inset matches .set-row so labels align */
+.set-key { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-12); color: var(--muted); padding: var(--sp-2) 0; }
+/* Surface chips — off = struck through, never deleted */
+.set-chips { display: flex; gap: var(--sp-6); flex-wrap: wrap; }
+.set-chip { padding: var(--sp-4) var(--sp-12); border: none; border-radius: var(--r-pill); font-size: var(--fs-12);
+  font-weight: 600; background: var(--hover); color: var(--ink); cursor: pointer; }
+.set-chip.off { opacity: .45; text-decoration: line-through; }
+/* Manual theme override (settings → Appearance): #theme-override re-injects the token set; this pins the
+   browser color-scheme and re-keys the one prefers-color-scheme-dependent rule to the override. */
+html[data-theme="light"] { color-scheme: light; }
+html[data-theme="dark"] { color-scheme: dark; }
+html[data-theme="dark"] .goals-view-toggle button.active { color: #14100c; }
+@media (prefers-color-scheme: dark) { html[data-theme="light"] .goals-view-toggle button.active { color: #fff; } }
+
+/* Areas cluster (Threads): usage-weighted pills + ghost create chip in the composer area popover.
+   Scoped under .area-cluster so the goal popover's shared .area-grid/.area-opt stay untouched. */
+.area-cluster { align-items: center; }
+.area-cluster .area-opt { transition: transform .15s var(--ease-out); }
+@media (hover: hover) and (pointer: fine) { .area-cluster .area-opt:hover { transform: scale(1.03); } }
+.area-cluster .area-opt.s1 { font-size: var(--fs-15); padding: var(--sp-6) var(--sp-12); }
+.area-cluster .area-opt.s3 { font-size: var(--fs-11); padding: var(--sp-2) var(--sp-6); opacity: .75; }
+.area-ghost { display: inline-flex; align-items: center; border: 1px dashed var(--edge-hi); border-radius: var(--r-pill); padding: var(--sp-4) var(--sp-8); cursor: text;
+  &:focus-within { border-color: var(--muted); }
+  input { field-sizing: content; min-width: 70px; max-width: 160px; padding: 0; border: none; background: none; color: var(--ink); font-size: var(--fs-12);   /* 70px fits the placeholder; 160px caps growth inside the pop */
+    &::placeholder { color: var(--faint); } } }

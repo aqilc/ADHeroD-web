@@ -439,7 +439,7 @@ export function createLocalStore(opts = {}) {
       return {
         tasks: await this.tasks.list(), areas: await this.areas.list(), goals: await this.goals.list(),
         filters: await this.filters.list(), locations: await this.locations.list(), travel: await this.travel.list(),
-        events: await this.events.list(), blocks: await this.blocks.list(), plan: await this.plan.list(),
+        events: await this.events.list(), blocks: await this.blocks.list(),
       };
     },
 
@@ -828,8 +828,6 @@ export function createLocalStore(opts = {}) {
       async list() { return Object.entries(readTravel()).map(([k, minutes]) => { const [from, to] = k.split('>'); return { from, to, minutes }; }); },
       async remove(from, to) { const tv = readTravel(); delete tv[from + '>' + to]; writeTravel(tv); return true; },
     },
-    // auto-plan is server-only (Postgres brain) — local store has no plan_items, so the calendar's plan overlay just stays empty
-    plan: { async list() { return []; } },
     defaultTravel() { return readMeta().default_travel_min ?? 20; },
     setDefaultTravel(min) { const m = readMeta(); m.default_travel_min = min; writeMeta(m); },
     currentLocationId() { return readMeta().current_location_id ?? null; },

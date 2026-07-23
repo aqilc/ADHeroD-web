@@ -101,47 +101,6 @@
      @keydown.window="onKey($event)"
      @keydown.escape.window="escape()">
 
-  <!-- Sign-in (opt-in sync); LocalStore is the offline default. Signed in → set the phone's app password. -->
-  <main class="auth" x-show="authOpen" x-cloak @click.self="closeAuth()">
-    <div class="card auth-card">
-      <div class="auth-ember" aria-hidden="true"><svg class="ico"><use href="#i-tag-flame"/></svg></div>
-      <template x-if="session">
-        <form @submit.prevent="setAppPassword()">
-          <h1>Phone sign-in</h1>
-          <p class="sub" :class="{ err: authErr }" x-text="authMsg || 'Your phone signs in with your email and this password.'"></p>
-          <input class="inp" type="password" x-model="authPass" placeholder="new app password" autocomplete="new-password" required>
-          <div class="dialog-actions">
-            <button type="button" class="ghost" @click="closeAuth()">Close</button>
-            <button type="submit" class="primary">Save password</button>
-          </div>
-        </form>
-      </template>
-      <template x-if="!session && !authSent">
-        <form @submit.prevent="signIn()">
-          <h1>Pick up where you left off</h1>
-          <p class="sub" :class="{ err: authErr }" x-text="authMsg || 'Everything lives on this device until you sign in — sync carries it with you.'"></p>
-          <input class="inp" type="email" x-model="authEmail" placeholder="you@email.com" autocomplete="email" required>
-          <input class="inp" type="password" x-model="authPass" placeholder="app password" autocomplete="current-password">
-          <div class="dialog-actions">
-            <button type="button" class="ghost" @click="closeAuth()">Cancel</button>
-            <button type="submit" class="primary" :disabled="!authPass">Sign in</button>
-          </div>
-          <button type="button" class="auth-alt" @click="authPass = ''; signIn()">Email me a sign-in link instead</button>
-        </form>
-      </template>
-      <template x-if="!session && authSent">
-        <form @submit.prevent="verifyCode()">
-          <h1>Check your email</h1>
-          <p class="sub" :class="{ err: authErr }" x-text="authMsg"></p>
-          <input class="inp" inputmode="numeric" x-model="authCode" placeholder="6-digit code, if your email shows one" autocomplete="one-time-code">
-          <div class="dialog-actions">
-            <button type="button" class="ghost" @click="authSent = false; authMsg = ''; authErr = false">Back</button>
-            <button type="submit" class="primary">Verify code</button>
-          </div>
-        </form>
-      </template>
-    </div>
-  </main>
 
   <!-- App -->
   <div id="shell" x-show="!store.requiresAuth || session">
@@ -163,88 +122,132 @@
       <div class="topbar-title">
         <h1 x-text="navHeading()"></h1>
       </div>
-      <button class="link" x-show="!session" @click="authOpen = true; authMsg = ''">Sync</button>
-      <button class="link" x-show="session" @click="authOpen = true; authMsg = ''">Phone</button>
-      <button class="link" x-show="session" @click="signOut()">Sign out</button>
     </div>
 
     <!-- Lists view controls: search + sort + quick-filters, above the task list. Hidden off the Lists surface via listView().
          Sort/filter state is global + persisted; completed tasks are hidden by default and shown in a section below the add button. -->
-    <div class="list-controls" x-show="listView()">
-      <label class="list-search">
-        <svg class="ico"><use href="#i-search"/></svg>
-        <input type="search" placeholder="Search tasks" x-model="listQ" @keydown.escape.stop="listQ = ''; $event.target.blur()">
-      </label>
-
-      <!-- Sort -->
-      <div class="lc-field">
-        <button type="button" class="list-chip" :class="{ on: sortBy !== 'manual' }" @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'">
-          <span x-text="sortBy === 'manual' ? 'Sort' : sortLabel()"></span>
-          <svg class="ico caret" :style="sortBy !== 'manual' && sortDir === 'desc' ? 'transform:rotate(180deg)' : ''"><use href="#i-chev-d"/></svg>
+    <!-- .crowded = tokens present: chrome yields space in priority order so the row NEVER wraps
+         (default-sort text hides, +and…→+, lens pills go icon-only, long token labels truncate) -->
+    <div class="list-controls" :class="{ crowded: qfFacets() }" x-show="listView()">
+      <!-- search rests as a bare icon; the input unfolds on click or `/` and collapses when empty on blur -->
+      <div class="list-search" :class="{ open: listSearchOpen || listQ }">
+        <button type="button" class="ls-searchbtn" title="Search — /" aria-label="Search tasks"
+                @click="listSearchOpen = true; $nextTick(() => $refs.listSearch.focus())">
+          <svg class="ico"><use href="#i-search"/></svg>
         </button>
-        <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
-          <template x-for="o in [['manual','Manual'],['due','Due date'],['priority','Priority'],['deadline','Deadline'],['alpha','Alphabetical'],['created','Date added']]" :key="o[0]">
-            <button type="button" class="pop-item" @click="setSort(o[0])">
-              <span x-text="o[1]"></span>
-              <svg class="tick ico" x-show="sortBy === o[0]" :style="o[0] !== 'manual' && sortDir === 'desc' ? 'transform:rotate(180deg)' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path :d="o[0] === 'manual' ? 'M20 6 9 17l-5-5' : 'M12 19V5M5 12l7-7 7 7'"/></svg>
-            </button>
-          </template>
-        </div>
+        <input type="search" placeholder="Search tasks" x-ref="listSearch" x-model="listQ"
+               @keydown.escape.stop="listQ = ''; listSearchOpen = false; $event.target.blur()"
+               @blur="if (!listQ) listSearchOpen = false">
       </div>
 
-      <!-- Priority quick-filter -->
-      <div class="lc-field">
-        <button type="button" class="list-chip" :class="{ on: qfPri.length }" @click.stop="listMenu = listMenu === 'pri' ? null : 'pri'">
-          Priority<span class="lc-count" x-show="qfPri.length" x-text="qfPri.length"></span>
-        </button>
-        <div class="pop pri-pop lc-pop" x-show="listMenu === 'pri'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
-          <template x-for="p in availPri()" :key="p">
-            <button type="button" class="pri-chip" :class="{ sel: qfPri.includes(p) }" :style="'--pc:' + pc(p)" @click="toggleQfPri(p)">
-              <svg class="ico"><use href="#i-prio"/></svg><span x-text="'P' + p"></span>
-            </button>
-          </template>
-        </div>
-      </div>
+      <!-- Hearthsay sentence: the row reads as prose — "showing everything · sorted by hand". Words open menus;
+           active filters grow into colored tokens with their own ×. State + persistence unchanged (qf*/sortBy). -->
+      <div class="ls-sent">
+        <span class="ls-verb" x-text="qfArchived && (qfPri.length || qfAreas.length || qfDue) ? 'showing archived' : 'showing'"></span>
+        <!-- subject/+and… toggle via x-if, not x-show — x-show effects go stale in the e2e webview (see ui-conventions) -->
+        <template x-if="!(qfPri.length || qfAreas.length || qfDue)">
+          <button type="button" class="ls-word ls-subj" :class="{ on: qfArchived }"
+                  @click.stop="listMenu = listMenu === 'add' ? null : 'add'" x-text="qfArchived ? 'archived' : 'everything'" aria-label="Filter tasks"></button>
+        </template>
+        <!-- connectives ("in", "due") live OUTSIDE the tokens so the line reads as honest prose -->
+        <template x-if="qfPri.length">
+          <span class="ls-frag">
+            <span class="ls-tok ls-tok-pri" :style="'--tc:' + pc(Math.min.apply(null, qfPri))">
+              <button type="button" @click.stop="listMenu = listMenu === 'add' ? null : 'add'"><span class="ls-flag"></span><span x-text="qfPriLabel()"></span></button>
+              <button type="button" class="ls-x" aria-label="Clear priority filter" @click.stop="qfPri = []; _saveView()">×</button>
+            </span>
+          </span>
+        </template>
+        <template x-if="qfAreas.length">
+          <span class="ls-frag">
+            <span class="ls-verb">in</span>
+            <span class="ls-tok ls-tok-area" :style="'--tc:' + qfAreaCol()">
+              <button type="button" @click.stop="listMenu = listMenu === 'add' ? null : 'add'">
+                <span class="lc-dot" :style="'background:' + qfAreaCol()"></span><span x-text="qfAreaLabel()"></span>
+              </button>
+              <button type="button" class="ls-x" aria-label="Clear area filter" @click.stop="qfAreas = []; _saveView()">×</button>
+            </span>
+          </span>
+        </template>
+        <template x-if="qfDue">
+          <span class="ls-frag">
+            <span class="ls-verb" x-text="qfDueVerb()"></span>
+            <span class="ls-tok ls-tok-due" :style="'--tc:' + qfDueCol()">
+              <button type="button" @click.stop="listMenu = listMenu === 'add' ? null : 'add'"><span x-text="qfDueLabel()"></span></button>
+              <button type="button" class="ls-x" aria-label="Clear due filter" @click.stop="qfDue = null; _saveView()">×</button>
+            </span>
+          </span>
+        </template>
+        <template x-if="qfPri.length || qfAreas.length || qfDue">
+          <button type="button" class="ls-word ls-more" title="Add another filter"
+                  @click.stop="listMenu = listMenu === 'add' ? null : 'add'" aria-label="Add another filter"
+                  x-text="qfFacets() > 1 ? '+' : '+ and…'"></button>
+        </template>
 
-      <!-- Area quick-filter -->
-      <div class="lc-field" x-show="areas.length">
-        <button type="button" class="list-chip" :class="{ on: qfAreas.length }" @click.stop="listMenu = listMenu === 'area' ? null : 'area'">
-          Area<span class="lc-count" x-show="qfAreas.length" x-text="qfAreas.length"></span>
-        </button>
-        <div class="pop lc-pop lc-area-pop" x-show="listMenu === 'area'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
-          <template x-for="a in areas" :key="a.id">
-            <button type="button" class="pop-item" @click="toggleQfArea(a.id)">
-              <span class="lc-dot" :style="'background:' + (a.color || areaDefault)"></span>
-              <span x-text="a.name"></span>
-              <svg class="tick ico" x-show="qfAreas.includes(a.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-            </button>
+        <!-- unified filter menu: every fragment one click deep (replaces the 3 separate chip menus) -->
+        <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+          <div class="pop-sub-head">Priority</div>
+          <div class="ls-prow">
+            <template x-for="p in availPri()" :key="p">
+              <button type="button" class="pri-chip" :class="{ sel: qfPri.includes(p) }" :style="'--pc:' + pc(p)" @click="toggleQfPri(p)">
+                <svg class="ico"><use href="#i-prio"/></svg><span x-text="'P' + p"></span>
+              </button>
+            </template>
+          </div>
+          <template x-if="areas.length">
+            <div>
+              <div class="pop-sub-head">Area</div>
+              <template x-for="a in areas" :key="a.id">
+                <button type="button" class="pop-item" @click="toggleQfArea(a.id)">
+                  <span class="lc-dot" :style="'background:' + (a.color || areaDefault)"></span>
+                  <span x-text="a.name"></span>
+                  <svg class="tick ico" x-show="qfAreas.includes(a.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </button>
+              </template>
+            </div>
           </template>
-        </div>
-      </div>
-
-      <!-- Due quick-filter -->
-      <div class="lc-field">
-        <button type="button" class="list-chip" :class="{ on: qfDue }" @click.stop="listMenu = listMenu === 'due' ? null : 'due'">
-          Due<span class="lc-count" x-show="qfDue">1</span>
-        </button>
-        <div class="pop lc-pop" x-show="listMenu === 'due'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+          <div class="pop-sub-head">Due</div>
           <template x-for="o in [['today','Today'],['overdue','Overdue'],['has','Has a date'],['none','No date']]" :key="o[0]">
             <button type="button" class="pop-item" @click="setQfDue(o[0])">
               <span x-text="o[1]"></span>
               <svg class="tick ico" x-show="qfDue === o[0]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
             </button>
           </template>
+          <button type="button" class="pop-item ls-save" x-show="qfActive()" @click="lsSaveFilter()">Save as filter…</button>
         </div>
+
+        <!-- sort yields space to tokens: crowded+manual → a bare ⇅; crowded+set → "by X" (info survives, charm doesn't) -->
+        <span class="ls-verb ls-comma" x-text="qfFacets() ? '' : ', sorted by'"></span>
+        <div class="lc-field">
+          <button type="button" class="ls-word ls-sortw" :class="{ on: sortBy !== 'manual' }" title="Sort order"
+                  @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" aria-label="Sort order"
+                  x-text="!qfFacets() ? sortWord() : sortBy === 'manual' ? '⇅' : 'by ' + sortWord()"></button>
+          <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+            <template x-for="o in [['manual','Manual'],['due','Due date'],['priority','Priority'],['deadline','Deadline'],['alpha','Alphabetical'],['created','Date added']]" :key="o[0]">
+              <button type="button" class="pop-item" @click="setSort(o[0])">
+                <span x-text="o[1]"></span>
+                <svg class="tick ico" x-show="sortBy === o[0]" :style="o[0] !== 'manual' && sortDir === 'desc' ? 'transform:rotate(180deg)' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path :d="o[0] === 'manual' ? 'M20 6 9 17l-5-5' : 'M12 19V5M5 12l7-7 7 7'"/></svg>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- lenses live IN the sentence: "except done & archived"; toggling STRIKES the word (exception lifted) -->
+        <span class="ls-verb ls-comma" x-text="qfFacets() ? '' : ', except'"></span>
+        <button type="button" class="ls-word ls-lens" :class="{ on: showCompleted }" @click="toggleShowCompleted()"
+                :title="showCompleted ? 'Hide completed tasks' : 'Show completed tasks'">done</button>
+        <span class="ls-verb" x-text="qfFacets() ? '' : '&'"></span>
+        <button type="button" class="ls-word ls-lens" :class="{ on: qfArchived }" @click="toggleQfArchived()"
+                :title="qfArchived ? 'Exit archived view' : 'Show only archived tasks'">archived</button>
+
+        <!-- 2+ tokens: one × suffices below that (x-if, not x-show — stale-effect rule); subtle trash sweeps all -->
+        <template x-if="qfFacets() >= 2">
+          <button type="button" class="ls-clear" title="Clear all filters" aria-label="Clear all filters" @click="clearQf()"
+                  x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show"><svg class="ico"><use href="#i-trash"/></svg></button>
+        </template>
       </div>
 
-      <button type="button" class="lc-clear" x-show="qfActive()" x-cloak @click="clearQf()"
-              x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show"
-              x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">Clear</button>
 
-      <button type="button" class="list-filter" :class="{ on: showCompleted }" @click="toggleShowCompleted()"
-              :title="showCompleted ? 'Hide completed tasks' : 'Show completed tasks'">Done</button>
-      <button type="button" class="list-filter" :class="{ on: qfArchived }" @click="toggleQfArchived()"
-              :title="qfArchived ? 'Exit archived view' : 'Show only archived tasks'">Archived</button>
     </div>
 
     <div class="empty" x-show="listView() && visibleRows().length === 0 && !composer.open && !(showCompleted && completedRows().length)" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : 'No tasks yet.'"></div>
@@ -254,7 +257,7 @@
         @dragstart="listDragStart($event)" @dragover.prevent="listDragOver($event)" @dragleave="listDragLeave($event)" @drop.prevent="listDrop($event)" @dragend="dragEnd()">
       <!-- direct innerHTML (not x-html): x-html walks ~9000 nodes for Alpine directives — rows carry none -->
       <!-- preserve the scroller position across rebuilds: replacing every row (esp. while the composer's edit-row is mid-list) otherwise clamps scrollTop to 0 -->
-      <div class="rows" x-effect="const h = listHtml(); if ($el._h !== h) { const sc = $el.closest('.app'), st = sc ? sc.scrollTop : 0; $el._h = h; $el.innerHTML = h; if (sc) sc.scrollTop = st; queueMicrotask(() => { if (sc) sc.scrollTop = st; applyEditDom(); }); }"></div>
+      <div class="rows" x-effect="const h = listHtml(); if ($el._h !== h) { const sc = $el.closest('.app'), st = sc ? sc.scrollTop : 0; $el._h = h; $el.innerHTML = h; if (sc) sc.scrollTop = st; queueMicrotask(() => { if (sc) sc.scrollTop = st; applyEditDom(); }); if (st) requestAnimationFrame(() => { if (sc && !sc.scrollTop) sc.scrollTop = st; }); }"></div>
 
       <!-- drop ghost: flex order (rows i*2); left indent = depth (shallower = outdent vs reorder) -->
       <template x-if="ghostPos()">
@@ -520,18 +523,16 @@
               <span x-text="draft.areas.length ? draft.areas.join(', ') : 'Areas'"></span>
             </button>
             <div class="pop area-pop" x-show="pop === 'area'">
-              <div class="area-grid" x-show="areas.length">
+              <div class="area-grid area-cluster">
                 <template x-for="l in areas" :key="l.id">
-                  <button type="button" class="area-opt" :class="{ on: draft.areas.includes(l.name) }" :style="'--tc:' + (l.color || areaDefault)" @click="toggleArea(l.name)">
-                    <svg class="tick ico" x-show="draft.areas.includes(l.name)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.name) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="clusterPick($el, l.name)">
+                    <template x-if="draft.areas.includes(l.name)"><svg class="tick ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></template>
                     <template x-if="l.icon"><svg class="ico" style="width:12px;height:12px"><use :href="'#' + l.icon"/></svg></template>
                     <span x-text="l.name"></span>
                   </button>
                 </template>
+                <label class="area-ghost"><input type="text" placeholder="new area…" x-model="newAreaName" @keydown.enter.prevent="createAndToggleArea()" @keydown.stop></label>
               </div>
-              <input type="text" class="pop-input" placeholder="New area…" x-model="newAreaName"
-                @keydown.enter.prevent="createAndToggleArea()" @keydown.stop>
-              <button type="button" class="pop-item" x-show="newAreaName.trim()" @click="createAndToggleArea()">Create "<span x-text="newAreaName.trim()"></span>"</button>
             </div>
           </div>
           <!-- Goal attach -->
@@ -597,33 +598,41 @@
           </div>
           <!-- Relations (edit only) -->
           <div class="field" x-show="editing" @click.outside="pop === 'rel' && (pop = null)">
-            <button type="button" class="chip chip-rel" :class="{ set: (editingTask()?.blocked_by?.length || editingTask()?.relates?.length) }" @click="togglePop('rel'); relStaged = null; pickerQ = ''" :disabled="!editing">
+            <button type="button" class="chip chip-rel" :class="{ set: (editingTask()?.blocked_by?.length || editingTask()?.relates?.length) }" @click="togglePop('rel'); relSel = null; pickerQ = ''" :disabled="!editing">
               <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
               <span>Relations</span>
             </button>
+            <!-- Ledger wells: search once, ← / → / ↓ drop the highlighted task into a well; wells display + remove -->
             <div class="pop rel-pop" x-show="pop === 'rel'">
               <div class="relations-section">
-                <!-- staged pick: choose the relation type, then Add (no cancel — click outside closes) -->
-                <template x-if="relStaged">
-                  <div class="rel-staged">
-                    <button type="button" class="rel-staged-name" @click="relStaged = null" title="Pick a different task" x-text="projName(relStaged)"></button>
-                    <div class="rel-type-toggle">
-                      <button type="button" data-type="blocked_by" :class="{ on: relType === 'blocked_by' }" @click="relType = 'blocked_by'">Blocked</button>
-                      <button type="button" data-type="blocks" :class="{ on: relType === 'blocks' }" @click="relType = 'blocks'">Blocks</button>
-                      <button type="button" data-type="relates" :class="{ on: relType === 'relates' }" @click="relType = 'relates'">Relates</button>
-                    </div>
-                    <button type="button" class="rel-add" @click="submitRel()">Add</button>
-                  </div>
-                </template>
-                <!-- unified task picker (hidden while a pick is staged) -->
-                <template x-if="!relStaged">
-                  <div class="rel-picker">
-                    <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop>
-                    <template x-for="t in relationCandidates()" :key="t.id">
-                      <button type="button" class="pop-item task-line" @click="stageRel(t.id)" x-html="taskLine(t)"></button>
+                <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop
+                  @keydown.left="placeRelKey($event, 'blocked_by')" @keydown.right="placeRelKey($event, 'blocks')" @keydown.down="placeRelKey($event, 'relates')">
+                <div class="rel-picker">
+                  <template x-for="t in relationCandidates()" :key="t.id">
+                    <button type="button" class="pop-item task-line" :class="{ hot: relTarget() === t.id }" @click="relSel = t.id" x-html="taskLine(t)"></button>
+                  </template>
+                </div>
+                <div class="rel-wells">
+                  <div class="rel-well" data-well="blocked_by" :class="{ lit: relWarm === 'blocked_by' }" @click="placeRel('blocked_by')">
+                    <span class="rel-well-h">← Waiting on</span>
+                    <template x-for="r in relWell('blocked_by')" :key="r.id">
+                      <span class="rel-card"><span x-text="projName(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
                     </template>
                   </div>
-                </template>
+                  <div class="rel-well" data-well="blocks" :class="{ lit: relWarm === 'blocks' }" @click="placeRel('blocks')">
+                    <span class="rel-well-h">Holding up →</span>
+                    <template x-for="r in relWell('blocks')" :key="r.id">
+                      <span class="rel-card"><span x-text="projName(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
+                    </template>
+                  </div>
+                </div>
+                <div class="rel-well slim" data-well="relates" :class="{ lit: relWarm === 'relates' }" @click="placeRel('relates')">
+                  <span class="rel-well-h">↓ Relates</span>
+                  <template x-for="r in relWell('relates')" :key="r.id">
+                    <span class="rel-card"><span x-text="projName(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
+                  </template>
+                </div>
+                <div class="rel-hint"><span><kbd>←</kbd>/<kbd>→</kbd> place</span><span><kbd>↓</kbd> relates</span></div>
               </div>
             </div>
           </div>
@@ -770,23 +779,7 @@
 
       <!-- today, faint on the same surface: the day list (events first, then tasks) above a now-window timeline -->
       <aside class="now-today" aria-label="Today's shape">
-        <!-- server auto-plan: today's tasks in rank order (day-windows, not clock-times); falls back to the day list when there's no plan -->
-        <template x-if="nowPlan().length">
-          <div class="now-today-list">
-            <template x-for="p in nowPlan()" :key="p.t.id">
-              <div class="now-today-row now-plan-row" :class="{ blocked: p.blocked }">
-                <span class="now-plan-rank" x-text="p.rank"></span>
-                <span class="now-today-title" x-text="p.t.content"></span>
-                <span class="badge" :class="p.badge && p.badge.kind" x-show="p.badge"><span x-text="p.badge && p.badge.label"></span></span>
-                <svg class="ico lock-ico" x-show="p.blocked" :title="p.waiting ? 'Waiting on: ' + p.waiting : 'Blocked'"><use href="#i-lock"/></svg>
-                <span class="now-plan-flag warn" x-show="p.infeasible" title="Infeasible — window too tight for the estimate">⚠</span>
-                <span class="now-plan-flag" x-show="p.noEst" title="No estimate — the plan can’t size this yet">◌</span>
-                <button type="button" class="pick" @click="nowMainline(p.t.id, $event)">Pick</button>
-              </div>
-            </template>
-          </div>
-        </template>
-        <div class="now-today-list" x-show="!nowPlan().length && nowToday().length">
+        <div class="now-today-list" x-show="nowToday().length">
           <template x-for="it in nowToday()" :key="it.kind + it.id">
             <div class="now-today-row" :class="it.kind">
               <span class="now-today-title" x-text="it.title"></span>
@@ -927,15 +920,6 @@
         <div class="cl-side-top"><span class="cl-side-h" x-text="clSideLabel()"></span><button type="button" class="cl-side-x" @click="clSideOpen = false; if (composer.open) closeComposer()" aria-label="Close panel">×</button></div>
         <!-- the one real composer relocates in here when editing a task on this surface -->
         <ul class="list cl-side-composer"></ul>
-        <!-- Auto-plan: server-materialized rank order + fuzzy window (no clock-times); empty when offline/no plan -->
-        <template x-if="clPlanItems().length">
-          <div>
-            <div class="cl-side-sec">Plan <span class="cl-side-hint">rank order — day windows, not times</span></div>
-            <ul class="list cl-side-list plan-list" @click="clRowClick($event)">
-              <div class="rows" x-effect="clView; clAnchor; tasks; plan; _rowV; const h = clPlanListHtml(); if ($el._h !== h) { $el._h = h; $el.innerHTML = h; }"></div>
-            </ul>
-          </div>
-        </template>
         <!-- Reschedule: slipped tasks (past their time/due, not done) — drag them to a new slot -->
         <template x-if="clReschedule().length">
           <div>
@@ -1409,6 +1393,12 @@
      </div><!-- /canvas-track -->
      <div class="canvas-dots" @click="dotStripClick($event)"
           x-html="dotStripHtml(surfaceOrder.map(s => ({ label: surfaceLabel(s) })), surfaceIndex())"></div>
+     <!-- Account & settings: a gear in the corner, apart from the dots (a door over the app, not a place in it).
+          Status dot only when signed in — accent = syncing fine, gray = offline. -->
+     <button class="settings-gear" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">
+       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+       <template x-if="session"><span class="st" :class="{ off: !online }"></span></template>
+     </button>
     </div><!-- /canvas -->
 
   </div><!-- .shell -->
@@ -1484,6 +1474,92 @@
         <button class="nav-pop-item del" @click="deleteArea(navPopArea().id)">Delete</button>
       </div>
     </template>
+  </div>
+
+  <!-- Account & settings popup: the card rises from the corner gear (transform-origin bottom-left), the app dims a
+       step behind. Escape via the central escape() chain; backdrop click closes. Sign-in renders the EXISTING auth
+       machine inline (authEmail/authPass/signIn) — the .auth overlay stays for its own entry paths. Phone = the honest
+       app-password flow (no SMS infra). No Automations section: none exist yet. -->
+  <div class="settings" x-show="settingsOpen" x-cloak @click.self="settingsOpen = false"
+       x-init="theme !== 'system' && setTheme(theme)"
+       @online.window="online = true" @offline.window="online = false">
+    <div class="card settings-card" @click.stop>
+      <h1>Account &amp; settings</h1>
+      <template x-if="session">
+        <div class="set-acct">
+          <span class="set-ember" aria-hidden="true"></span>
+          <span class="set-who"><b x-text="(session.user.email || '').split('@')[0]"></b><span x-text="(session.user.email || '') + (online ? ' &#183; synced' : ' &#183; offline')"></span></span>
+          <button type="button" class="set-out" @click="signOut()">Sign out</button>
+        </div>
+      </template>
+      <template x-if="!session">
+        <div>
+          <div class="set-acct">
+            <span class="set-ember cold" aria-hidden="true"></span>
+            <span class="set-who"><b>This device only</b><span>everything works offline</span></span>
+          </div>
+          <template x-if="!authSent">
+            <form class="set-form" @submit.prevent="signIn()">
+              <p class="set-msg" :class="{ err: authErr }" x-text="authMsg" :style="authMsg ? '' : 'display:none'"></p>
+              <input class="inp" type="email" x-model="authEmail" placeholder="you@email.com" autocomplete="email" required>
+              <input class="inp" type="password" x-model="authPass" placeholder="password" autocomplete="current-password">
+              <div class="set-actions">
+                <button type="submit" class="primary" :disabled="!authPass">Sign in</button>
+                <button type="button" class="set-alt" @click="authPass = ''; signIn()">Email me a link instead</button>
+              </div>
+            </form>
+          </template>
+          <template x-if="authSent">
+            <form class="set-form" @submit.prevent="verifyCode()">
+              <p class="set-msg" :class="{ err: authErr }" x-text="authMsg"></p>
+              <input class="inp" inputmode="numeric" x-model="authCode" placeholder="6-digit code, if your email shows one" autocomplete="one-time-code">
+              <div class="set-actions">
+                <button type="submit" class="primary">Verify code</button>
+                <button type="button" class="set-alt" @click="authSent = false; authMsg = ''; authErr = false">Back</button>
+              </div>
+            </form>
+          </template>
+        </div>
+      </template>
+      <div class="set-sec"><span class="section-label">Surfaces</span>
+        <div class="set-chips">
+          <template x-for="s in surfAll" :key="s">
+            <button type="button" class="set-chip" :class="{ off: surfOff.includes(s) }" @click="toggleSurface(s)" x-text="surfaceLabel(s)"></button>
+          </template>
+        </div>
+      </div>
+      <div class="set-sec"><span class="section-label">Appearance</span>
+        <div class="set-row">Theme
+          <div class="seg">
+            <button type="button" :class="{ on: theme === 'light' }" @click="setTheme('light')">Light</button>
+            <button type="button" :class="{ on: theme === 'system' }" @click="setTheme('system')">System</button>
+            <button type="button" :class="{ on: theme === 'dark' }" @click="setTheme('dark')">Dark</button>
+          </div>
+        </div>
+      </div>
+      <!-- starter shortcuts: teach the power path by keeping it visible (full sheet stays on ?) -->
+      <div class="set-sec"><span class="section-label">Keyboard</span>
+        <div class="set-keys">
+          <div class="set-key"><span>Add a task</span><kbd>q</kbd></div>
+          <div class="set-key"><span>Search</span><kbd>/</kbd></div>
+          <div class="set-key"><span>Filter</span><kbd>f</kbd></div>
+          <div class="set-key"><span>Jump anywhere</span><kbd>Space</kbd></div>
+        </div>
+        <button type="button" class="set-row set-rowbtn" @click="shortcutsOpen = true">Every shortcut<span class="set-sub"><kbd>?</kbd></span></button>
+      </div>
+      <template x-if="session">
+        <div class="set-sec"><span class="section-label">Connections</span>
+          <button type="button" class="set-row set-rowbtn" @click="phoneOpen = !phoneOpen">Phone<span class="set-sub">sign in on your phone</span></button>
+          <template x-if="phoneOpen">
+            <form class="set-form set-unfold" @submit.prevent="setAppPassword()">
+              <p class="set-msg" :class="{ err: authErr }" x-text="authMsg || 'Your phone signs in with your email and this password.'"></p>
+              <input class="inp" type="password" x-model="authPass" placeholder="new app password" autocomplete="new-password" required>
+              <div class="set-actions"><button type="submit" class="primary" :disabled="!authPass">Save password</button></div>
+            </form>
+          </template>
+        </div>
+      </template>
+    </div>
   </div>
 
   <!-- All modal dialogs live in one backdrop; clicking it closes every open dialog (closeDialogs). -->

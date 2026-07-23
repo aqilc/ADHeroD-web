@@ -17,7 +17,7 @@ import { createLocalStore, descendantIds, projectDepth, subtreeDepth, nextOccurr
 import { goalProgress, goalWarmth, homeWarmth, firstShowUpDay, HEARTH, goalLaneFull, laneComparator, goalArc, finishReady } from './stats.js';
 import { parseDateText, parseRecurrence, quickDate, quickRange, isoDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, tokenizeAll, parseLogNote, recurrenceLabel, logDayLabel } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank } from './search.js';
-import { calendarItems, blocksInRange, daypartOf, eventsFirst, planAgenda, occurrencesInRange } from './calendar.js';
+import { calendarItems, blocksInRange, daypartOf, eventsFirst, occurrencesInRange } from './calendar.js';
 import { esc as escHtml, mdLive as mdLiveRender, chkLive as chkLiveRender, byDone, raw, taskRowHtml, taskListHtml as taskListMarkup, dotStripHtml as dotStripMarkup, rollerBoxHtml as rollerBoxMarkup, rowBodyHtml, mdTitle as mdTitleFn } from './ui.js';
 import { makeSortable } from './sortable.js';
 import { SUPABASE, SURFACES } from './config.js';
@@ -94,7 +94,7 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('adherod', () => ({
     store: createLocalStore(),
     session: null,
-    authOpen: false, authEmail: '', authCode: '', authSent: false, authMsg: '', authPass: '', authErr: false,
+    authEmail: '', authCode: '', authSent: false, authMsg: '', authPass: '', authErr: false,   // inline sign-in (settings popup)
     tasks: [],
     byId: new Map(),        // id → task, rebuilt in loadTasks → O(1) lookups (projName/blocked) instead of tasks.find
     areas: [],
@@ -138,7 +138,6 @@ document.addEventListener('alpine:init', () => {
     dragOverRegion: null,   // region currently hovered as a drop target
     events: [],             // calendar events, loaded from store
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
-    plan: [],               // server-materialized auto-plan rows (plan_items) — VIEW state only, never mutates tasks; empty offline/local-store
     clView: 'month',        // calendar view: day | week | month | year
     clSideOpen: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle + drop-hover day iso
     clDropPreview: null,   // { iso, min, h, label } — live ghost of where a drag will land in a week/day column
@@ -163,9 +162,18 @@ document.addEventListener('alpine:init', () => {
     travel: [],
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
-    surfaceOrder: SURFACES ?? ['lists', 'plan', 'now', 'goals'],   // Now centered (index 2), flanked by Plan/Goals; SURFACES trims the deployed shell
-    surface: SURF_HOME,
-    visited: { [SURF_HOME]: true },   // lazy-mount memory — heavy surfaces (Plan) mount on first visit, stay mounted
+    ...(() => {   // settings popup persists surface order + struck-off set (adherod.surfaces) over the config default
+      const all = SURFACES ?? ['lists', 'plan', 'now', 'goals'];   // Now centered (index 2), flanked by Plan/Goals; SURFACES trims the deployed shell
+      let p = {}; try { p = JSON.parse(localStorage.getItem('adherod.surfaces')) || {}; } catch {}
+      const ord = Array.isArray(p.order) ? p.order : [];
+      const surfAll = ord.filter(s => all.includes(s)).concat(all.filter(s => !ord.includes(s)));   // full known set, user order first
+      let surfOff = (Array.isArray(p.off) ? p.off : []).filter(s => surfAll.includes(s));
+      let surfaceOrder = surfAll.filter(s => !surfOff.includes(s));
+      if (!surfaceOrder.length) { surfOff = []; surfaceOrder = surfAll.slice(); }   // never zero lit surfaces
+      const home = surfaceOrder.includes(SURF_HOME) ? SURF_HOME : surfaceOrder.includes('lists') ? 'lists' : surfaceOrder[0];
+      return { surfAll, surfOff, surfaceOrder, surface: home,
+        visited: { [home]: true } };   // lazy-mount memory — heavy surfaces (Plan) mount on first visit, stay mounted
+    })(),
     nowFocusId: null,        // VIEW state only — never mutates data
     _nowTickV: 0,            // keeps now-window clock honest
     drag: { active: false, x0: 0, y0: 0, w: 0, t0: 0, id: null, axis: null },
@@ -183,7 +191,8 @@ document.addEventListener('alpine:init', () => {
     showCompleted: false,   // view-controls toggle; completed tasks hidden by default, persisted to localStorage
     sortBy: 'manual',   // Lists sort: manual|due|priority|alpha|created|deadline (manual = drag/position order); persisted
     sortDir: 'asc',     // asc|desc — ignored for manual
-    listMenu: null,     // open toolbar dropdown: 'sort'|'pri'|'area'|'due'|null (kept separate from the composer's `pop`)
+    listMenu: null,     // open toolbar dropdown: 'add'|'sort'|null (kept separate from the composer's `pop`)
+    listSearchOpen: false,   // Hearthsay search: icon at rest, input unfolds on click or `/`
     qfPri: [],          // quick-filter: priorities to keep (1..4); empty = all
     qfAreas: [],        // quick-filter: area ids to keep; empty = all
     qfDue: null,        // quick-filter: 'today'|'overdue'|'has'|'none'|null
@@ -230,8 +239,8 @@ document.addEventListener('alpine:init', () => {
     L: DESIGN.lang.labels,
     areaDefault: '#9aa0a6',
     areaIcons: ['i-tag-tag','i-tag-home','i-tag-briefcase','i-tag-star','i-tag-heart','i-tag-book','i-tag-cart','i-tag-dollar','i-tag-code','i-tag-dumbbell','i-tag-plane','i-tag-bell','i-tag-flame','i-tag-leaf','i-tag-music','i-tag-map','i-tag-zap','i-tag-globe','i-tag-camera','i-tag-gift'],
-    relStaged: null,
-    relType: 'blocked_by',
+    relSel: null,             // clicked relation candidate (overrides the top hit)
+    relWarm: '', _relWarmT: 0, // well flashing amber as a link lands
     // Task-list drag state
     taskDropHint: null,
     _dragX0: 0, _dragDepth: 0,
@@ -489,6 +498,27 @@ document.addEventListener('alpine:init', () => {
     setQfDue(v) { this.qfDue = this.qfDue === v ? null : v; this._saveView(); },
     toggleQfArchived() { this.qfArchived = !this.qfArchived; this._saveView(); },
     clearQf() { this.qfPri = []; this.qfAreas = []; this.qfDue = null; this.qfArchived = false; this._saveView(); },
+    // ---- Hearthsay sentence labels (design: filters-ui-explorations.html A) ----
+    qfPriLabel() { const s = [...this.qfPri].sort((a, b) => a - b); return s.length === 1 ? 'P' + s[0]
+      : s.length === s[s.length - 1] - s[0] + 1 ? `P${s[0]}–P${s[s.length - 1]}` : s.map(p => 'P' + p).join('·'); },   // contiguous → range, else P1·P4
+    _qfArea() { return this.areas.find(a => a.id === this.qfAreas[0]); },
+    qfAreaCol() { return this._qfArea()?.color || this.areaDefault; },
+    qfAreaLabel() { const n = this.qfAreas.length; return (this._qfArea()?.name || '?') + (n > 1 ? ` +${n - 1}` : ''); },
+    qfDueVerb() { return ({ today: 'due', has: 'that', none: 'with' })[this.qfDue] || ''; },   // connective before the token; '' for overdue
+    qfDueLabel() { return ({ today: 'today', overdue: 'overdue', has: 'has a date', none: 'no date' })[this.qfDue]; },
+    qfDueCol() { return ({ today: 'var(--q-today)', overdue: 'var(--p1)', has: 'var(--accent)', none: 'var(--faint)' })[this.qfDue]; },
+    qfFacets() { return (this.qfPri.length ? 1 : 0) + (this.qfAreas.length ? 1 : 0) + (this.qfDue ? 1 : 0); },
+    sortWord() { return ({ manual: 'hand', due: 'due date', priority: 'priority', deadline: 'deadline', alpha: 'a-z', created: 'date added' })[this.sortBy]; },   // follows the "· sorted by" verb
+    // Escalate the ad-hoc sentence into a saved filter: prefill the editor with the equivalent query.
+    lsSaveFilter() {
+      const or = xs => xs.length > 1 ? `(${xs.join(' OR ')})` : xs[0];
+      const aq = id => { const n = this.areas.find(a => a.id === id)?.name || ''; return '@' + (/\s/.test(n) ? `"${n}"` : n); };
+      const parts = [];
+      if (this.qfPri.length) parts.push(or([...this.qfPri].sort((a, b) => a - b).map(p => 'p:' + p)));
+      if (this.qfAreas.length) parts.push(or(this.qfAreas.map(aq)));
+      if (this.qfDue) parts.push('due:' + ({ has: 'any' }[this.qfDue] || this.qfDue));
+      this.listMenu = null; this.filterEdit = { name: '', query: parts.join(' '), color: null };
+    },
     // Only offer priority levels that actually appear on tasks (+ any currently selected, so they stay unselectable-visible)
     // — e.g. P5 stays hidden until a P5 task exists. Uses the composer's P1–P5 chips.
     availPri() {
@@ -1098,18 +1128,29 @@ document.addEventListener('alpine:init', () => {
       if (await this.store.tasks.move(dragId, parentId, toIndex)) await this.store.tasks.reorder([...sibs.map(x => x.id), dragId]);
       await this.loadTasks();
     },
+    // List mutations while the composer is open reflow the tall editor row — the browser drags scrollTop
+    // to ~0 BEFORE any rebuild-time restore can read it. Snapshot first, re-assert until layout settles.
+    async _keepListScroll(fn) {
+      const sc = document.querySelector('.surface-lists .app'), st = sc?.scrollTop || 0;
+      await fn();
+      if (!sc || !st) return;
+      const put = () => { if (sc.scrollTop !== st) sc.scrollTop = st; };
+      put(); requestAnimationFrame(put); setTimeout(put, 200); setTimeout(put, 450);   // past the grow-close transition
+    },
     async deleteEditing() {
       const task = this.byId.get(this.editing);
-      if (task) {
-        if (this.askDeleteTask(task.id, 'editing')) return;   // has subtasks → the prompt finishes the job (incl. closing)
-        this.pushUndo('Deleted');
-        const ok = await this.store.tasks.remove(task.id);    // leaf: no reparent target needed
-        if (ok) {
-          this.tasks = this.tasks.filter(x => x.id !== task.id);
-          await this.loadTasks();
+      if (task && this.askDeleteTask(task.id, 'editing')) return;   // has subtasks → the prompt finishes the job (incl. closing)
+      await this._keepListScroll(async () => {
+        if (task) {
+          this.pushUndo('Deleted');
+          const ok = await this.store.tasks.remove(task.id);    // leaf: no reparent target needed
+          if (ok) {
+            this.tasks = this.tasks.filter(x => x.id !== task.id);
+            await this.loadTasks();
+          }
         }
-      }
-      this.closeComposer();
+        this.closeComposer();
+      });
     },
     // Task 26 — deleting a task that has subtasks asks: delete them too, or move them to a destination
     // (default = the parent's parent, i.e. the deleted task's parent; the top-level project if none).
@@ -1145,8 +1186,14 @@ document.addEventListener('alpine:init', () => {
     },
     closeComposer() {
       this.pop = null;
+      // Snapshot the list scroll BEFORE the grow-close mutates layout — native clamping/anchoring during the
+      // height collapse silently drags scrollTop toward 0, and the rebuild's restore then re-saves that 0.
+      const sc = document.querySelector('.surface-lists .app'), st = sc?.scrollTop;
       const end = this.editing ? this.blockH : 0;
-      this._growClose(() => this.$refs.grow, end, () => { this.composer.open = false; this.editing = null; this._editDescs = null; this.resetDraft(); this.applyEditDom(); });
+      this._growClose(() => this.$refs.grow, end, () => {
+        this.composer.open = false; this.editing = null; this._editDescs = null; this.resetDraft(); this.applyEditDom();
+        if (sc && st) { sc.scrollTop = st; queueMicrotask(() => { sc.scrollTop = st; }); }
+      });
     },
     composerMt() { return (this.editing ? -this.startH : 0) + 'px'; },
     editDone() { const t = this.byId.get(this.editing); return !!(t && t.completed_at); },
@@ -1177,7 +1224,7 @@ document.addEventListener('alpine:init', () => {
       this.editing = t.id;
       this._editDescs = new Set(descendantIds(this.tasks, t.id).slice(1));   // O(1) hiddenInEdit checks (reactive :style)
       this.pop = null;
-      this.relStaged = null; this.relType = 'blocked_by'; this.pickerQ = '';
+      this.relSel = null; this.pickerQ = '';
       this.openComposer();
     },
     // sidebar project → navigate, not edit
@@ -1350,6 +1397,23 @@ document.addEventListener('alpine:init', () => {
       await this.loadAreas();
       if (!this.draft.areas.includes(name)) this.draft.areas.push(name);
       this.newAreaName = '';
+    },
+    // Areas cluster: usage-weighted size tier (s1 big → s3 small) by rank thirds over tasks touching
+    // the area in the last 30 LOCAL days. Ties share the better tier; flat usage → all s2.
+    areaTier(id) {
+      const cut = new Date(); cut.setHours(0, 0, 0, 0); cut.setDate(cut.getDate() - 30);
+      const use = Object.fromEntries(this.areas.map(l => [l.id, 0]));
+      for (const t of this.tasks) if (new Date(t.updated_at || t.created_at || 0) >= cut)
+        for (const a of t.area_ids || []) if (a in use) use[a]++;
+      const ranked = Object.keys(use).sort((a, b) => use[b] - use[a]);
+      if (use[ranked[0]] === use[ranked.at(-1)]) return 's2';
+      const third = Math.ceil(ranked.length / 3);
+      return 's' + (Math.min(Math.floor(ranked.findIndex(r => use[r] === use[id]) / third), 2) + 1);
+    },
+    clusterPick(el, name) {   // toggle + soft scale pop on select (reduced-motion: none)
+      this.toggleArea(name);
+      if (this.draft.areas.includes(name) && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+        el.animate({ transform: ['scale(1)', 'scale(1.06)', 'scale(1)'] }, { duration: 180, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() || 'ease-out' });
     },
     endPicking: false, tpop: false, tpopStyle: '', hdrPulse: false, repIdx: 0,
     repRules() { return recRules(this.draft.recurrence); },
@@ -1997,6 +2061,8 @@ document.addEventListener('alpine:init', () => {
       else if ((e.key === 'Enter' || e.key === 'e') && this.focusId) { e.preventDefault(); this.openFocused(); }
       else if (e.key === 'x' && this.focusId) { e.preventDefault(); this.toggleFocused(); }   // complete focused row (Space now opens the palette)
       else if (e.key === '?') { e.preventDefault(); this.shortcutsOpen = true; }
+      else if (e.key === '/' && this.listView()) { e.preventDefault(); this.listSearchOpen = true; this.$nextTick(() => this.$refs.listSearch?.focus()); }   // Hearthsay: / → search unfolds
+      else if (e.key === 'f' && this.listView()) { e.preventDefault(); this.listMenu = this.listMenu === 'add' ? null : 'add'; }   // f → filter sentence menu
       else if (e.key >= '1' && e.key <= '4') { e.preventDefault(); this.goSurface(this.surfaceOrder[(+e.key) - 1]); }   // jump to a surface
       else if (e.key === 'ArrowLeft') { e.preventDefault(); this.goSurface(this.surfaceOrder[Math.max(0, this.surfaceIndex() - 1)]); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); this.goSurface(this.surfaceOrder[Math.min(this.surfaceOrder.length - 1, this.surfaceIndex() + 1)]); }
@@ -2005,8 +2071,7 @@ document.addEventListener('alpine:init', () => {
     },
     escape() {
       // Anything that can stack ON TOP of the overview (dialogs, the roller ⋯ popover) closes first; the overview closes only when nothing is layered above it.
-      if (this.authOpen) this.closeAuth();   // z-60 — above everything
-      else if (this.shortcutsOpen) this.shortcutsOpen = false;
+      if (this.shortcutsOpen) this.shortcutsOpen = false;
       else if (this.palette.open) this.palette.open = false;
       else if (this.confirm) this.confirmNo();
       else if (this.graduateOffer) this.graduateOffer = null;   // pure close — no snooze; unlike confirm's ghost button, deliberate decline lives only in declineGraduation()
@@ -2017,7 +2082,9 @@ document.addEventListener('alpine:init', () => {
       else if (this.filterEdit) this.filterEdit = null;
       else if (this.eventEdit) this.eventEdit = null;
       else if (this.blockEdit) this.blockEdit = null;
+      else if (this.settingsOpen) this.settingsOpen = false;   // corner settings popup — own light backdrop, below the dialogs
       else if (this.navPop) this.navPop = null;
+      else if (this.listMenu) this.listMenu = null;   // Hearthsay sentence menus (add/sort)
       else if (this.navRename) this.navRename = null;
       else if (this.logWhenOpen) this.logWhenOpen = null;
       else if (this.identMenuId) this.identMenuId = null;
@@ -3182,8 +3249,16 @@ document.addEventListener('alpine:init', () => {
     relChips() { return this.taskRels(this.editingTask()); },
     relTypeLabel(type) { return { blocked_by: 'blocked', blocks: 'blocks', relates: 'relates' }[type]; },
     relIcon(type) { return type === 'relates' ? 'i-link' : 'i-stop'; },
-    stageRel(id) { this.relStaged = id; },
-    async submitRel() { const id = this.relStaged; this.relStaged = null; this.pickerQ = ''; if (id) await this.addRelation(id, this.relType); },
+    // Ledger wells: relWell partitions taskRels per well; relTarget = clicked candidate (if still listed) else top hit
+    relWell(type) { return this.taskRels(this.editingTask()).filter(r => r.type === type); },
+    relTarget() { const c = this.relationCandidates(); return c.some(t => t.id === this.relSel) ? this.relSel : (c[0]?.id ?? null); },
+    placeRelKey(e, type) { if (this.relTarget()) { e.preventDefault(); this.placeRel(type); } },   // arrows keep editing the query when there's nothing to place
+    async placeRel(type) {
+      const id = this.relTarget(); if (!id) return;
+      this.relSel = null; this.pickerQ = '';
+      this.relWarm = type; clearTimeout(this._relWarmT); this._relWarmT = setTimeout(() => this.relWarm = '', 650);
+      await this.addRelation(id, type);
+    },
     editingTask() { return this.byId.get(this.editing) ?? null; },
     // 'blocks' writes blocked_by on the OTHER task (swapped link direction) — no separate stored type
     async addRelation(otherId, type) { if (!otherId) return; const ok = type === 'blocks' ? await this.store.tasks.link(otherId, this.editing, 'blocked_by') : await this.store.tasks.link(this.editing, otherId, type); if (ok) await this.loadTasks(); },
@@ -3241,20 +3316,6 @@ document.addEventListener('alpine:init', () => {
       return overdue ? "A few things slipped by — the hearth's still warm. Pick one and begin." : "Today's yours to shape. Pick the one that fits.";
     },
     nowAlts() { return this.nowListRows().slice(0, 2); },   // the next 2 real tasks — no energy/feeling model (LATER)
-    // Today's slice of the server auto-plan (plan_items), rank-ordered with fuzzy day-windows (no clock-times).
-    // planAgenda is pure (calendar.js); enriched here into calm today-list rows. Empty offline/local → the day list stands.
-    nowPlan() {
-      const now = new Date(), iso = isoDate(now);
-      return planAgenda(this.plan, this.byId, iso, iso).map(p => {
-        const flags = p.flags || [], blocked = flags.includes('blocked');
-        return {
-          t: p.t, rank: p.rank,
-          badge: windowBadge({ due_from: p.earliest, due_at: p.latest }, now),
-          blocked, infeasible: flags.includes('infeasible'), noEst: flags.includes('no_estimate'),
-          waiting: blocked ? (p.after || []).map(id => this.byId.get(id)?.content).filter(Boolean).join(', ') : '',
-        };
-      });
-    },
     nowVote(t) {
       const g = t && this.goalsForTask(t).find(x => (this.identityStatement(x) || '').trim());
       if (!g) return null;
@@ -3723,31 +3784,6 @@ document.addEventListener('alpine:init', () => {
         .sort((a, b) => (a.scheduled_at || a.due_at || '').localeCompare(b.scheduled_at || b.due_at || ''));
     },
     clReschedListHtml() { return this._clListHtml('res', this.clReschedule(), isoDate(new Date()) + '|' + this._nowTickV); },
-    // Server auto-plan (plan_items) over the visible calendar range — same pure planAgenda + badge vocab as nowPlan().
-    clPlanItems() { const [from, to] = this.clViewRange(); return planAgenda(this.plan, this.byId, from, to); },
-    _clPlanRowsHtml(items) {
-      const multiDay = new Set(items.map(p => p._day)).size > 1;
-      let s = '', lastDay = null;
-      for (const p of items) {
-        if (multiDay && p._day !== lastDay) {
-          lastDay = p._day;
-          s += '<div class="cl-side-sec plan-day">' + this.esc(new Date(p._day + 'T00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })) + '</div>';
-        }
-        const win = windowBadge({ due_from: p.earliest, due_at: p.latest }, new Date());
-        const flags = p.flags || [], blocked = flags.includes('blocked'), infeasible = flags.includes('infeasible'), noEst = flags.includes('no_estimate');
-        const waiting = blocked ? (p.after || []).map(id => this.byId.get(id)?.content).filter(Boolean).join(', ') : '';
-        s += '<li class="item plan-item' + (blocked ? ' blocked' : '') + '" data-id="' + p.t.id + '">'
-          + '<span class="plan-rank">' + p.rank + '</span>'
-          + '<div class="task-line">' + this.taskLine(p.t) + '</div>'
-          + (win ? '<span class="badge ' + this.esc(win.kind) + '">' + this.esc(win.label) + '</span>' : '')
-          + (infeasible ? '<span class="badge overdue" title="Infeasible — window too tight for the estimate">⚠</span>' : '')
-          + (blocked ? '<svg class="ico lock-ico" title="' + (waiting ? 'Waiting on: ' + this.esc(waiting) : 'Blocked') + '"><use href="#i-lock"/></svg>' : '')
-          + (noEst ? '<span class="plan-dim" title="No estimate">◌</span>' : '')
-          + '</li>';
-      }
-      return s;
-    },
-    clPlanListHtml() { return this._clPlanRowsHtml(this.clPlanItems()); },
     clSideLabel() { return this.clView === 'week' ? 'This week' : this._clDate().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }); },
     clSideVisible() { return this.clSideOpen || this.clView === 'day'; },   // the panel is up in day view (auto) or when toggled
     _clRowsHtml(tasks) {
@@ -3802,7 +3838,6 @@ document.addEventListener('alpine:init', () => {
       this.tasks = b.tasks; this.byId = new Map(b.tasks.map(t => [t.id, t]));   // ← list renders (reactive) from here
       this.filters = b.filters; this.locations = b.locations; this.travel = b.travel;
       this.events = b.events; this.blocks = b.blocks;
-      try { this.plan = await this.store.plan.list(); } catch { this.plan = []; }   // server-only; degrade gracefully offline
       this.currentLocationId = this.store.currentLocationId(); this.homeLocationId = this.store.homeLocationId(); this.currentRegion = this.store.currentRegion();
       this._rowV++; _calDataV++; _calMemo.clear(); _goalStepsMemo.clear(); _goalMilestonesMemo.clear();
       await this.loadIdentities();
@@ -3810,7 +3845,7 @@ document.addEventListener('alpine:init', () => {
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       await this.loadStats();
     },
-    closeAuth() { this.authOpen = this.authSent = this.authErr = false; this.authMsg = this.authPass = ''; },
+
     async signIn() {
       const sb = sbClient(); if (!sb) return;
       if (!this.authEmail) { this.authMsg = 'Enter your email first.'; this.authErr = true; return; }
@@ -3848,12 +3883,35 @@ document.addEventListener('alpine:init', () => {
       if (nextUid === prevUid) return;
       this.store.unsubscribe?.();   // tear down the old adapter's realtime channel before swapping
       this.store = session ? createSupabaseStore(sbClient()) : createLocalStore();
-      this.authOpen = false; this.authSent = false; this.authEmail = ''; this.authCode = '';
+      this.authSent = false; this.authEmail = ''; this.authCode = '';
       await this.reloadAll();
       this._subscribeStore();       // re-arm realtime on the new store
     },
     // realtime → app: a 'tasks' change re-pulls the task list, an 'areas' change re-pulls areas (both off the warm cache)
     _subscribeStore() { this.store.subscribe?.((kind) => kind === 'areas' ? this.loadAreas() : this.loadTasks()); },
     async signOut() { const sb = sbClient(); if (sb) await sb.auth.signOut(); },   // onAuthStateChange → onAuth(null) swaps to LocalStore
+
+    // ---- Account & settings popup (corner gear). Sign-in/phone reuse the auth machine above; surfaces + theme persist locally. ----
+    settingsOpen: false,
+    phoneOpen: false,                 // Connections → Phone row unfolded in place
+    online: navigator.onLine,         // gear status dot + account-row sub (listeners live on the popup markup)
+    theme: localStorage.getItem('adherod.theme') || 'system',
+    toggleSurface(s) {   // strike/unstrike a surface chip — never deleted; at least one stays lit
+      const off = this.surfOff.includes(s) ? this.surfOff.filter(x => x !== s) : [...this.surfOff, s];
+      if (off.length === this.surfAll.length) return;
+      this.surfOff = off;
+      this.surfaceOrder = this.surfAll.filter(x => !off.includes(x));
+      if (!this.surfaceOrder.includes(this.surface)) this.goSurface(this.surfaceOrder[0]);
+      localStorage.setItem('adherod.surfaces', JSON.stringify({ order: this.surfAll, off }));
+    },
+    setTheme(t) {   // 'light'|'system'|'dark' — honest override: re-inject the token vars + color-scheme; system removes it
+      this.theme = t;
+      t === 'system' ? localStorage.removeItem('adherod.theme') : localStorage.setItem('adherod.theme', t);
+      let el = document.getElementById('theme-override');
+      if (t === 'system') { el?.remove(); delete document.documentElement.dataset.theme; return; }
+      if (!el) { el = document.createElement('style'); el.id = 'theme-override'; document.head.appendChild(el); }
+      el.textContent = `:root{${_vars(DESIGN[t])}}`;   // later in <head> than #design-tokens → wins both scheme directions
+      document.documentElement.dataset.theme = t;      // drives color-scheme + the one scheme-keyed rule (see styles.css)
+    },
   }));
 });

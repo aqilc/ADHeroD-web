@@ -63,19 +63,6 @@ export function calendarItems(events, tasks, fromIso, toIso, now) {
   return items.sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
 }
 
-// ---- Plan agenda (pure) ----
-// Server auto-plan (plan_items) → an ordered, window-aware agenda for a visible date range.
-// Day-granular windows only (earliest/latest) — no clock-times. Anchors each row to a day within
-// [fromIso, toIso] (clamped) so callers can group by day; ranked within a day by daypart then rank.
-const DAYPART_ORDER = { morning: 0, afternoon: 1, evening: 2, night: 3 };
-export function planAgenda(plan, byId, fromIso, toIso) {
-  return (plan || [])
-    .map(p => ({ p, t: byId.get ? byId.get(p.task_id) : byId[p.task_id] }))
-    .filter(({ p, t }) => t && !t.completed_at && !t.archived_at && p.earliest <= toIso && (!p.latest || p.latest >= fromIso))
-    .map(({ p, t }) => ({ ...p, t, _day: p.earliest < fromIso ? fromIso : (p.earliest > toIso ? toIso : p.earliest) }))
-    .sort((a, b) => a._day.localeCompare(b._day) || (DAYPART_ORDER[a.daypart] ?? 4) - (DAYPART_ORDER[b.daypart] ?? 4) || a.rank - b.rank);
-}
-
 // ---- Now Room (pure) ----
 export function daypartOf(hour) {
   return hour < 5 ? 'night' : hour < 11 ? 'dawn' : hour < 16 ? 'day' : hour < 20 ? 'dusk' : 'night';
