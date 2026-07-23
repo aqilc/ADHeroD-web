@@ -20,7 +20,9 @@ import { markTitle, makeFuzzy, fuzzyRank } from './search.js';
 import { calendarItems, blocksInRange, daypartOf, eventsFirst, planAgenda, occurrencesInRange } from './calendar.js';
 import { esc as escHtml, mdLive as mdLiveRender, chkLive as chkLiveRender, byDone, raw, taskRowHtml, taskListHtml as taskListMarkup, dotStripHtml as dotStripMarkup, rollerBoxHtml as rollerBoxMarkup, rowBodyHtml, mdTitle as mdTitleFn } from './ui.js';
 import { makeSortable } from './sortable.js';
-import { SUPABASE } from './config.js';
+import { SUPABASE, SURFACES } from './config.js';
+// landing surface: now when present (local default), else lists, else the leftmost of the trimmed set
+const SURF_HOME = !SURFACES || SURFACES.includes('now') ? 'now' : SURFACES.includes('lists') ? 'lists' : SURFACES[0];
 import { createSupabaseStore } from './supabase-store.js';
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
@@ -161,9 +163,9 @@ document.addEventListener('alpine:init', () => {
     travel: [],
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
-    surfaceOrder: ['lists', 'plan', 'now', 'goals'],   // Now centered (index 2), flanked by Plan/Goals
-    surface: 'now',
-    visited: { now: true },           // lazy-mount memory — heavy surfaces (Plan) mount on first visit, stay mounted
+    surfaceOrder: SURFACES ?? ['lists', 'plan', 'now', 'goals'],   // Now centered (index 2), flanked by Plan/Goals; SURFACES trims the deployed shell
+    surface: SURF_HOME,
+    visited: { [SURF_HOME]: true },   // lazy-mount memory — heavy surfaces (Plan) mount on first visit, stay mounted
     nowFocusId: null,        // VIEW state only — never mutates data
     _nowTickV: 0,            // keeps now-window clock honest
     drag: { active: false, x0: 0, y0: 0, w: 0, t0: 0, id: null, axis: null },
@@ -294,6 +296,7 @@ document.addEventListener('alpine:init', () => {
       this.navPop = null;
     },
     surfaceIndex() { return this.surfaceOrder.indexOf(this.surface); },
+    surfaceStyle(name) { const i = this.surfaceOrder.indexOf(name); return i < 0 ? 'display:none' : 'order:' + i; },   // visual order follows surfaceOrder; trimmed surfaces vanish
     mounted(name) { return this.surface === name || !!this.visited[name]; },   // gate lazy-mounted heavy surfaces
     goSurface(name) {
       if (!this.surfaceOrder.includes(name)) return;

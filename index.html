@@ -148,7 +148,7 @@
      <div class="canvas-track" :class="{ dragging }" :style="`transform: translateX(calc(-${surfaceIndex() * 100}% + ${dragDx}px))`">
 
       <!-- Lists surface: task-list views (All/Backlog/projects/areas/filters); project-picker lives in the overview roller -->
-      <section class="surface surface-lists" data-surface="lists" :inert="surface !== 'lists'" @wheel.passive="onOverscroll($event)">
+      <section class="surface surface-lists" data-surface="lists" :style="surfaceStyle('lists')" :inert="surface !== 'lists'" @wheel.passive="onOverscroll($event)">
 
     <main class="app" :class="{ tinted: !!listTintCol() }" :style="listTintStyle()">
     <div class="topbar">
@@ -702,7 +702,7 @@
       </section><!-- /surface-lists -->
 
     <!-- Now: Room (hero + 2 alternates) + today list. nowFocusId is transient view state only. -->
-    <section class="surface surface-now" data-surface="now" :inert="surface !== 'now'" @wheel.passive="onOverscroll($event)">
+    <section class="surface surface-now" data-surface="now" :style="surfaceStyle('now')" :inert="surface !== 'now'" @wheel.passive="onOverscroll($event)">
     <main class="app now-room" :data-daypart="daypart()" :class="{ mainlined: nowFocusId }">
       <section class="room" aria-label="Now">
         <header class="room-head"><span class="eyebrow" x-text="nowGreeting() + ' · ' + today()"></span></header>
@@ -812,7 +812,7 @@
       </section><!-- /surface-now -->
 
     <!-- Plan surface: the calendar. Lazy-mounted (heavy subtree + effects) on first visit; x-init centers it on mount. -->
-    <section class="surface surface-plan" data-surface="plan" :inert="surface !== 'plan'">
+    <section class="surface surface-plan" data-surface="plan" :style="surfaceStyle('plan')" :inert="surface !== 'plan'">
     <template x-if="mounted('plan')">
     <section class="calendar" :class="'view-' + clView + (clScrolling ? ' cl-scrolling' : '')" x-init="clOpenCalendar()">
       <!-- Overlaid top chrome: month/period label + controls, translucent over the scrolling calendar -->
@@ -973,7 +973,7 @@
       </section><!-- /surface-plan -->
 
     <!-- Goals surface -->
-    <section class="surface surface-goals" data-surface="goals" :inert="surface !== 'goals'" @wheel.passive="onOverscroll($event)">
+    <section class="surface surface-goals" data-surface="goals" :style="surfaceStyle('goals')" :inert="surface !== 'goals'" @wheel.passive="onOverscroll($event)">
     <template x-if="mounted('goals')">
     <section class="goals-view" :style="'--home-warmth:' + homeW" x-init="initFireObserver()">
       <!-- Empty state: no active goals -->
