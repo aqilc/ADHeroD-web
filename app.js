@@ -184,7 +184,7 @@ document.addEventListener('alpine:init', () => {
     rollerSel: 0,
     navPopXY: null,                   // escapes overflow clip
     collapsed: {},
-    draft: { content: '', notes: '', priority: 4, due_at: '', due_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } },
+    draft: { content: '', notes: '', priority: 4, due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } },
     composer: { open: false },
     palette: { open: false, q: '', sel: 0 },
     listQ: '',          // ⌘K escalates to palette
@@ -633,7 +633,7 @@ document.addEventListener('alpine:init', () => {
       const hasKids = kids.length > 0, hasCl = cl.length > 0;
       const rel = (ids, type) => (ids ?? []).map(id => ({ id, type, icon: this.relIcon(type), name: byId.get(id)?.content || '' }));
       const em = edMemo ? this.effDurMin(t, byParent, edMemo) : (t.est_minutes || 0);   // roll up subtasks when no own duration
-      const dueB = (t.due_from || t.due_at) ? windowBadge(t, now) : null;
+      const dueB = (t.available_from || t.due_at) ? windowBadge(t, now) : null;
       return {
         t, depth, pc: this.pc(t.priority), collapsed: !!this.collapsed[t.id],
         // Precomputed here (cached in _visMemo) so glint-only re-renders don't redo the title regex / checklist split per row.
@@ -834,7 +834,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     resetDraft() {
-      this.draft = { content: '', notes: '', priority: 4, due_at: '', due_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } };
+      this.draft = { content: '', notes: '', priority: 4, due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } };
       this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.endPicking = false; this.tpop = false;
       this.areaPicker = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this.goalPicker = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
@@ -1214,7 +1214,7 @@ document.addEventListener('alpine:init', () => {
       this.draft = {
         content: t.content, notes: t.notes || '', priority: Math.min(t.priority ?? 4, 4),   // legacy P5 → P4 on edit (lazy migration)
         due_at: (t.due_at || '').slice(0, 10),
-        due_from: t.due_from || '',
+        available_from: t.available_from || '',
         dueTime: (t.due_at && t.due_at.length > 10) ? t.due_at.slice(11, 16) : '',
         deadline_at: (t.deadline_at || '').slice(0, 10),
         durH: Math.floor(min / 60), durM: min % 60, dateText: '',
@@ -1322,7 +1322,7 @@ document.addEventListener('alpine:init', () => {
         content: d.content.trim(),
         notes: d.notes || null, priority: d.priority,
         due_at: d.due_at ? (d.dueTime ? d.due_at + 'T' + d.dueTime : d.due_at) : null,
-        due_from: d.due_from || null,
+        available_from: d.available_from || null,
         deadline_at: d.deadline_at || null,
         est_minutes: this.durMinNow() || null,
         project: d.project || null,
@@ -1609,11 +1609,11 @@ document.addEventListener('alpine:init', () => {
         : d.toLocaleDateString([], { weekday: 'short' });
     },
     setQuick(key) {
-      if (this.pop === 'due') { const r = quickRange(key, new Date()); this.draft.due_from = r.from; this.draft.due_at = r.to; }
+      if (this.pop === 'due') { const r = quickRange(key, new Date()); this.draft.available_from = r.from; this.draft.due_at = r.to; }
       else this.draft.deadline_at = quickDate(key);
       this.pop = null;
     },
-    quickActive(key) { const r = quickRange(key, new Date()); return !!this.draft.due_at && this.draft.due_at.slice(0, 10) === r.to && (this.draft.due_from || '').slice(0, 10) === r.from; },
+    quickActive(key) { const r = quickRange(key, new Date()); return !!this.draft.due_at && this.draft.due_at.slice(0, 10) === r.to && (this.draft.available_from || '').slice(0, 10) === r.from; },
     applyDateText(close) {
       // a recurrence phrase ("every 10 days") sets the repeat rule rather than a one-off date (due popover only)
       if (this.pop === 'due') {
@@ -1748,7 +1748,7 @@ document.addEventListener('alpine:init', () => {
       }
       else if (kind === 'rec') { d.recurrence = value; this.refreshRecurrenceDue(); }
       else if (kind === 'deadline') d.deadline_at = value.iso;
-      else if (kind === 'date') { d.due_at = value.iso || d.due_at || isoDate(new Date()); if (value.iso) d.due_from = value.from ?? null; if (value.time) d.dueTime = value.time; }
+      else if (kind === 'date') { d.due_at = value.iso || d.due_at || isoDate(new Date()); if (value.iso) d.available_from = value.from ?? null; if (value.time) d.dueTime = value.time; }
     },
     // Revert the field a removed pill had set. `raw` is the pill's data-value (string form).
     clearPillField(kind, raw) {
@@ -1761,7 +1761,7 @@ document.addEventListener('alpine:init', () => {
       else if (kind === 'loc') d.location = { mode: 'any', ids: [] };
       else if (kind === 'rec') d.recurrence = null;
       else if (kind === 'deadline') d.deadline_at = '';
-      else if (kind === 'date') { d.due_at = ''; d.due_from = ''; d.dueTime = ''; }
+      else if (kind === 'date') { d.due_at = ''; d.available_from = ''; d.dueTime = ''; }
     },
     // Snapshot the draft field(s) a `kind` pill owns — stored on the pill at insert, restored on backspace.
     _fieldSnapshot(kind) {
@@ -1775,7 +1775,7 @@ document.addEventListener('alpine:init', () => {
         case 'loc': return { mode: d.location.mode, ids: [...d.location.ids] };
         case 'rec': return d.recurrence ? JSON.parse(JSON.stringify(d.recurrence)) : null;
         case 'deadline': return d.deadline_at;
-        case 'date': return { due_at: d.due_at, due_from: d.due_from, dueTime: d.dueTime };
+        case 'date': return { due_at: d.due_at, available_from: d.available_from, dueTime: d.dueTime };
       }
     },
     _restoreField(kind, s) {
@@ -1789,7 +1789,7 @@ document.addEventListener('alpine:init', () => {
         case 'loc': d.location = s ? { mode: s.mode, ids: [...s.ids] } : { mode: 'any', ids: [] }; break;
         case 'rec': d.recurrence = s || null; if (d.recurrence) this.refreshRecurrenceDue(); break;
         case 'deadline': d.deadline_at = s || ''; break;
-        case 'date': d.due_at = s?.due_at || ''; d.due_from = s?.due_from || ''; d.dueTime = s?.dueTime || ''; break;
+        case 'date': d.due_at = s?.due_at || ''; d.available_from = s?.available_from || ''; d.dueTime = s?.dueTime || ''; break;
       }
     },
     // Build a configured pill span (no DOM insertion). Single source of truth for pill markup.
@@ -2033,13 +2033,15 @@ document.addEventListener('alpine:init', () => {
     async submitAndClose() { await this.submitComposer(); if (!this.projRequired) this.closeComposer(); },
     onKey(e) {
       const tag = (e.target.tagName || '').toLowerCase();
-      // ⌘/Ctrl+Z → walk the undo buffer back. Outside the composer, let native text-undo win inside real fields;
-      // but WHILE the composer is open its editors re-render live (native undo is already gone), so route it to
-      // the app stack so a checklist/subtask/field edit undoes regardless of where focus sits.
+      // ⌘/Ctrl+Z → NATIVE text undo owns edits whenever focus is in a real field (input/textarea/contenteditable);
+      // the app undo stack only takes over outside fields (list-level actions: complete, delete, move…).
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
         const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
-        if (this.composer.open || !inField) { e.preventDefault(); this.doUndo(); return; }
+        if (!inField) { e.preventDefault(); this.doUndo(); }
+        return;
       }
+      // ⌘/Ctrl+Enter saves & closes the open composer from ANYWHERE — no input focus needed.
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && this.composer.open) { e.preventDefault(); this.submitAndClose(); return; }
       // Single-key shortcuts — only when not typing, composing, or in the palette, and unmodified.
       if (e.metaKey || e.ctrlKey || e.altKey || this.composer.open || this.palette.open
           || tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -2860,6 +2862,22 @@ document.addEventListener('alpine:init', () => {
       const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
       const s = getSelection(); s.removeAllRanges(); s.addRange(r);
     },
+    // Enter → sibling item below · Shift+Enter → newline INSIDE the item (execCommand drops '\n' in this
+    // WebView — splice like descKeydown) · ⌘/Ctrl+Enter → save & close the composer.
+    chkEnter(e, item) {
+      e.preventDefault();
+      if (e.metaKey || e.ctrlKey) return this.submitAndClose();
+      if (!e.shiftKey) return this.insertChkAfter(item);
+      const el = e.target, off = this._caretOffset(el); if (off == null) return;
+      // at the very end, a LONE trailing \n collapses the caret back before it — double it so the caret
+      // lands on a real empty line (the extra \n is trimmed away by renameChecklistItem on blur)
+      const text = el.textContent, nt = text.slice(0, off) + '\n' + text.slice(off) + (off === text.length ? '\n' : '');
+      item.text = nt;
+      el.innerHTML = chkLiveRender(nt);
+      this._setCaret(el, off + 1);
+    },
+    // Ghost enter: Shift+Enter falls through to the textarea's native newline; plain Enter commits.
+    ghostEnter(e, kind) { if (e.shiftKey) return; e.preventDefault(); if (e.metaKey || e.ctrlKey) this.submitAndClose(); else this.commitGhostStay(kind); },
     // Enter on a checklist row inserts a new empty OPEN item just below it and focuses it. A new open item can't
     // live in the done bucket, so a row Entered from the done bucket lands at the end of the open bucket (the stable re-sort pulls it up).
     insertChkAfter(item) {

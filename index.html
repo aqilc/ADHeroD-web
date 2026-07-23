@@ -339,13 +339,13 @@
             <div class="entry-list" x-init="initEntrySort($el, 'chk')">
               <div class="entry chk ghost" :class="{ active: chkGhost.length }">
                 <span class="chk-rect ghost-check"></span>
-                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter.prevent="commitGhostStay('chk')" @paste="chkPaste($event)" @keydown.stop></textarea>
+                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event, 'chk')" @paste="chkPaste($event)" @keydown.stop></textarea>
               </div>
               <template x-for="(item, idx) in draft.checklist" :key="item.id">
                 <div class="entry chk" :class="{ done: item.done && !chkPlain(), 'chk-alt': idx % 2 }" :data-id="item.id">
                   <span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>
-                  <button type="button" class="chk-rect" x-show="!chkPlain()" :class="{ done: item.done }" @click="toggleChecklistItem(item)"></button>
-                  <div class="entry-txt" role="textbox" tabindex="0" x-init="$el.innerHTML = chkLive(item.text)" @pointerdown="chkRowDown($event)" @pointerup="chkRowUp($el, $event)" @focus="chkFocus($el)" @input="chkInput(item, $event)" @keydown="entryKey($event)" @keydown.backspace="chkBackspace(item, $event)" @keydown.enter.prevent="insertChkAfter(item)" @keydown.escape="$el.innerHTML = chkLive(item.text); $el.blur()" @blur="$el.contentEditable = 'false'; renameChecklistItem(item, $event.target.textContent)" @paste="chkPaste($event, item)" @keydown.stop></div>
+                  <button type="button" class="chk-rect" :class="{ done: item.done && !chkPlain(), plain: chkPlain() }" @click="chkPlain() || toggleChecklistItem(item)"></button>
+                  <div class="entry-txt" role="textbox" tabindex="0" x-init="$el.innerHTML = chkLive(item.text)" @pointerdown="chkRowDown($event)" @pointerup="chkRowUp($el, $event)" @focus="chkFocus($el)" @input="chkInput(item, $event)" @keydown="entryKey($event)" @keydown.backspace="chkBackspace(item, $event)" @keydown.enter="chkEnter($event, item)" @keydown.escape="$el.innerHTML = chkLive(item.text); $el.blur()" @blur="$el.contentEditable = 'false'; renameChecklistItem(item, $event.target.textContent)" @paste="chkPaste($event, item)" @keydown.stop></div>
                   <button type="button" class="entry-del" @click="removeChecklistItem(item)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
                 </div>
               </template>
@@ -361,7 +361,7 @@
               <span class="entry-or" x-show="editing && !subGhost.length && !chkGhost.length" x-transition.opacity.duration.150ms>OR</span>
               <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length" x-transition.opacity.duration.150ms>
                 <span class="chk-rect ghost-check"></span>
-                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter.prevent="commitGhostStay('chk')" @paste="chkPaste($event)" @keydown.stop></textarea>
+                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event, 'chk')" @paste="chkPaste($event)" @keydown.stop></textarea>
               </div>
             </div>
           </template>

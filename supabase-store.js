@@ -27,7 +27,7 @@ export function hydrateTask(row) {
     position: row.position ?? 0,
     completed_at: row.completed_at ?? null,
     archived_at: row.archived_at ?? null,
-    blocked_by: rel.filter(r => r.type === 'blocks').map(r => r.related_id),
+    blocked_by: rel.filter(r => r.type === 'needs').map(r => r.related_id),
     relates: rel.filter(r => r.type === 'relates').map(r => r.related_id),
     sidebar: row.sidebar ?? false,
     milestone: row.milestone ?? false,
@@ -71,7 +71,7 @@ export function dehydrateTask(task) {
     },
     // task↔task edges live in one table now, discriminated by `type`.
     task_relations: [
-      ...(task.blocked_by ?? []).map(related_id => ({ related_id, type: 'blocks' })),
+      ...(task.blocked_by ?? []).map(related_id => ({ related_id, type: 'needs' })),
       ...(task.relates ?? []).map(related_id => ({ related_id, type: 'relates' })),
     ],
   };
@@ -570,7 +570,7 @@ export function createSupabaseStore(client) {
           });
           if (error) return null;
           markEcho(id);
-          if (fields.blocked_by?.length) await setRelationType(id, uid, 'blocks', fields.blocked_by);
+          if (fields.blocked_by?.length) await setRelationType(id, uid, 'needs', fields.blocked_by);
           if (fields.relates?.length) await setRelationType(id, uid, 'relates', fields.relates);
           const task = await fetchTask(id); putTask(task);
           if (task?.sidebar !== true) await pushActivity('create', task);
@@ -595,7 +595,7 @@ export function createSupabaseStore(client) {
           if (error) return null;
           markEcho(id);
           // edges in task_relations; replace per-type when key is present
-          if ('blocked_by' in fields) await setRelationType(id, uid, 'blocks', fields.blocked_by ?? []);
+          if ('blocked_by' in fields) await setRelationType(id, uid, 'needs', fields.blocked_by ?? []);
           if ('relates' in fields) await setRelationType(id, uid, 'relates', fields.relates ?? []);
           const task = await fetchTask(id); putTask(task); return task;
         } catch { return null; }
@@ -760,7 +760,7 @@ export function createSupabaseStore(client) {
           ]);
           await refreshTasks([id, otherId]);
         } else {   // directional: id is blocked_by otherId
-          await client.from('task_relations').upsert({ task_id: id, related_id: otherId, type: 'blocks', user_id: uid }, { onConflict: 'task_id,related_id,type' });
+          await client.from('task_relations').upsert({ task_id: id, related_id: otherId, type: 'needs', user_id: uid }, { onConflict: 'task_id,related_id,type' });
           await refreshTasks([id]);
         }
         return true;
@@ -775,7 +775,7 @@ export function createSupabaseStore(client) {
           ]);
           await refreshTasks([id, otherId]);
         } else {
-          await client.from('task_relations').delete().eq('task_id', id).eq('related_id', otherId).eq('type', 'blocks').eq('user_id', uid);
+          await client.from('task_relations').delete().eq('task_id', id).eq('related_id', otherId).eq('type', 'needs').eq('user_id', uid);
           await refreshTasks([id]);
         }
         return true;

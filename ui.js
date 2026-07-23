@@ -150,9 +150,9 @@ export const rowBodyHtml = (r, opts = {}) => {
   const cl = r.chk || (t.checklist || []).map((c, ci) => { const sep = c.text.indexOf('::'); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; });
   // Display-only sort: done below open (stable); data-ci = original index so toggling never reorders the stored array.
   const clView = cl.slice().sort(byDone);
-  const plain = !!t.checklist_plain;   // uncheckable: plain notes list — no boxes, no done styling
+  const plain = !!t.checklist_plain;   // uncheckable: plain notes list — bullets instead of boxes, no done styling
   const chk = cl.length ? `<div class="chk-list">${(plain ? cl : clView).map(({ ci, done, txt, desc }) =>
-    `<div class="chk-row${done && !plain ? ' done' : ''}" data-ci="${ci}">${plain ? '' : `<span class="chk-rect${done ? ' done' : ''}"></span>`}<span class="chk-txt">${esc(txt)}</span>${desc ? `<span class="chk-desc">${esc(desc)}</span>` : ''}</div>`).join('')}</div>` : '';
+    `<div class="chk-row${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt">${esc(txt)}</span>${desc ? `<span class="chk-desc">${esc(desc)}</span>` : ''}</div>`).join('')}</div>` : '';
   const titleHtml = r.titleHtml ?? mdTitle(t.content);   // precomputed in mkRow (regex-cached); fall back for bare rows
   return chev + check + `<div class="body"><div class="row1"><div class="r1l"><span class="title">${titleHtml}</span>${areas}${proj}${goals}</div><div class="r1r">${sched}${est}${dl}${loc}${due}${rep}</div></div>${rels}${notes}${chk}</div>`;
 };

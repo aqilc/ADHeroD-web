@@ -46,11 +46,11 @@ export function deadlineLeft(deadline, now = new Date()) {
   return diff < 0 ? { label: L.dOver.replace('{n}', n), overdue: true } : { label: L.dLeft.replace('{n}', n), overdue: false };
 }
 
-// Pure lifecycle of a task relative to its window [due_from, due_at] + effective (own-or-inherited) deadline.
+// Pure lifecycle of a task relative to its window [available_from, due_at] + effective (own-or-inherited) deadline.
 // Deadline states take precedence over window states. nearDays = how close counts as "deadline nearing".
 export function dueState(task, now = new Date(), effDeadline = task?.deadline_at || null, nearDays = 1) {
   const today = isoDate(now);
-  const from = task?.due_from ? task.due_from.slice(0, 10) : null;
+  const from = task?.available_from ? task.available_from.slice(0, 10) : null;
   const to = task?.due_at ? task.due_at.slice(0, 10) : null;
   const dl = effDeadline ? effDeadline.slice(0, 10) : null;
   if (dl && today > dl) return 'deadline_passed';
@@ -64,7 +64,7 @@ export function dueState(task, now = new Date(), effDeadline = task?.deadline_at
 
 // Badge for a window: point/open-start reuse dueBadge (keyed on the latest); a true range shows its span.
 export function windowBadge(task, now = new Date()) {
-  const from = task?.due_from ? task.due_from.slice(0, 10) : null;
+  const from = task?.available_from ? task.available_from.slice(0, 10) : null;
   const to = task?.due_at ? task.due_at.slice(0, 10) : null;
   if (!to && !from) return null;
   if (!from || !to || from === to) return dueBadge(to || from, now);

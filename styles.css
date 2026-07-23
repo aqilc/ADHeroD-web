@@ -264,12 +264,17 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 /* 2px indent guide spans to item bottom (no padding-bottom when chk-list present); matches subtask guide */
 .chk-list::before { content: ""; position: absolute; left: -14px; top: 2px; bottom: 0;
   width: 2px; background: color-mix(in srgb, var(--faint) 55%, transparent); border-radius: 2px; }
-.chk-row { display: flex; align-items: center; gap: var(--sp-8); cursor: pointer; padding: 1px 0; }
+.chk-row { display: flex; align-items: flex-start; gap: var(--sp-8); cursor: pointer; padding: 1px 0; }
+.chk-row .chk-rect { margin-top: calc((1lh - 16px) / 2); }   /* box centers on the first line (top-anchored for multiline) */
 /* dragged checklist row lifts above its siblings + the indent guide; siblings' shift transition is set inline by the sortable helper */
 .chk-row.sorting { position: relative; z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
 .chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 2px solid color-mix(in srgb, var(--faint) 60%, transparent); background: none; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check */
 .chk-list .chk-rect { background: color-mix(in srgb, var(--faint) 8%, transparent); }   /* faint tint on the LIST checklist boxes only (composer entry boxes stay transparent) */
 .chk-row:hover .chk-rect { border-color: var(--muted); }   /* hovering the checkbox OR its text highlights the box */
+/* uncheckable list: the box becomes a plain bullet — same footprint, no interaction */
+.chk-rect.plain { border-color: transparent; background: none; pointer-events: none; cursor: default; }
+.chk-row:hover .chk-rect.plain { border-color: transparent; }
+.chk-rect.plain::after { content: ""; position: absolute; inset: 0; margin: auto; width: 5px; height: 5px; border-radius: 50%; background: var(--muted); }
 .chk-rect.done { background: var(--accent); border-color: var(--accent); }
 .chk-rect.done::after { content: ""; position: absolute; left: 4px; top: 2px; width: 3px; height: 6px; border: solid var(--on-accent); border-width: 0 2px 2px 0; transform: rotate(45deg); }
 /* title-first: no width cap, so a long title spans the whole row and truncates only when it alone overflows;
@@ -460,6 +465,10 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 /* checklist buckets: ghost (DOM-first) → open (default order 0) → done. Only done needs an order override to sink;
    the ghost leads by DOM position, so freshly-added items (which unshift to the top) share the top just below it. */
 .entry.chk.done { order: 2; }
+/* multiline items: box + grip anchor to the FIRST text line, not the row middle (1lh = the row's line box) */
+.entry.chk { align-items: flex-start; }
+.entry.chk .chk-rect, .entry.chk .ghost-check { margin-top: calc((1lh - 16px) / 2); }
+.entry.chk .entry-grip { align-items: flex-start; padding-top: calc(var(--sp-4) + (1lh - 14px) / 2); }
 /* checklist item live "::" editor. At rest: one line, title-first — the title shows fully and the ":: description"
    tail (small/faded, chkLive) is what clips at the edge. While editing: wrap to multiple lines so no text hides. */
 .entry.chk .entry-txt { white-space: nowrap; overflow: hidden; cursor: text; }   /* editable-on-demand: plain-selectable until clicked, so a drag spans rows */
@@ -482,7 +491,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-16)); opacity: 0; transition: opacity .15s var(--ease-out); }
 @media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del { opacity: 1; } }
 /* a cross-row drag-select tints the rows it spans — what ⌘C will copy (chkCopy kicks in at ≥2 rows) */
-.entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-6); }
+.entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
 /* small round check for subtask entries (smaller than the row .check) */
 .check.sm { width: 16px; height: 16px; border-width: 2px; }
 .ghost-check { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px dashed var(--faint); }

@@ -10,7 +10,7 @@ export const MAX_DEPTH = 4;
 export const baseTask = () => {
   const ts = new Date().toISOString();
   return {
-    id: crypto.randomUUID(), content: '', notes: null, priority: 4, due_at: null, due_from: null, deadline_at: null,
+    id: crypto.randomUUID(), content: '', notes: null, priority: 4, due_at: null, available_from: null, deadline_at: null,
     scheduled_at: null, est_minutes: null, parent_id: null, area_ids: [], goal_ids: [], color: null, favorite: false, place: null,
     location: { mode: 'any', ids: [] }, milestone: false,
     position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], sidebar: false, checklist: [], checklist_plain: false,
@@ -567,7 +567,7 @@ export function createLocalStore(opts = {}) {
             notes: fields.notes ?? null,
             priority: fields.priority ?? 4,
             due_at,
-            due_from: fields.due_from ?? null,
+            available_from: fields.available_from ?? null,
             deadline_at: fields.deadline_at || null,
             scheduled_at: fields.scheduled_at ?? null,
             est_minutes: fields.est_minutes || null,
