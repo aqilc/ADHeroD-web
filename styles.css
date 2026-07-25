@@ -139,7 +139,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 /* full-width padding (not max-width+margin) so margin-area wheel events scroll natively, not via JS */
 .app { flex: 1; min-width: 0; padding: 64px max(var(--sp-24), calc((100% - 680px) / 2)) 120px; height: 100%; overflow-y: auto; overflow-x: hidden; }
 .topbar {
-  display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--sp-24);
+  display: flex; align-items: flex-start; justify-content: space-between; /* margin-bottom: var(--sp-24); */
   h1 { margin: 0; font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
   .date { margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-13); }
 }
@@ -173,7 +173,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   }
   &:hover .del { opacity: 1; }
 }
-/* Priority encoded in the checkbox color, Todoist-style (--pc set per task) */
+/* Importance encoded in the checkbox color, Todoist-style (--pc set per task from importance) */
 .check {
   position: relative; width: 18px; height: 18px; border-radius: 50%; border: 2.25px solid var(--pc, var(--faint));
   background: transparent; flex: none; transition: background-color .12s ease;
@@ -341,7 +341,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .r1l.rolled .areas::after { content: "…"; display: inline-flex; align-items: center;
   font-size: var(--fs-12); font-weight: 700; color: var(--muted); line-height: 15px; padding: 0 1px; }
 /* Goal chips: same rhythm as .area but a dashed outline (no fill) reads as a goal, not a label. */
-.goals-chips { display: inline-flex; align-items: center; gap: var(--sp-6); min-width: 0; }
+.goals-chips { display: inline-flex; align-items: center; gap: var(--sp-6); min-width: 0; flex: none; }   /* sits in r1r (right-aligned metadata), holds its size */
 .goal { border: 1px dashed color-mix(in srgb, var(--tc, var(--muted)) 45%, transparent);
   color: color-mix(in srgb, var(--tc, var(--muted)) 65%, var(--muted)); }
 /* Completion echo (DAILY tier — tens/day, so subtle): the row's goal chip glints warm for ~250ms, transform+opacity only. */
@@ -700,7 +700,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .pop .ico { width: 16px; height: 16px; }
 .proj-row { gap: var(--sp-8); }
 .hash-ico { width: 15px; height: 15px; flex: none; color: var(--muted); }
-/* Area picker: a wrapping grid of color-tinted chips with checkmarks (like the priority picker) */
+/* Area picker: a wrapping grid of color-tinted chips with checkmarks (like the importance picker) */
 .area-grid { display: flex; flex-wrap: wrap; gap: var(--sp-6); padding: var(--sp-2) var(--sp-2) var(--sp-6); }
 .area-opt { display: inline-flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-8); border-radius: var(--r-pill);
   font-size: var(--fs-12); font-weight: 600; white-space: nowrap;
@@ -708,6 +708,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   color: color-mix(in srgb, var(--tc) 62%, var(--muted));
   background: color-mix(in srgb, var(--tc) 10%, transparent);
   .ico { width: 12px; height: 12px; }
+  .goal-opt-emoji { font-size: 13px; line-height: 1; flex: none; }   /* emoji goal icon sits where the .ico would */
   &.on { border-color: var(--tc); background: color-mix(in srgb, var(--tc) 22%, transparent);
     color: color-mix(in srgb, var(--tc) 82%, var(--ink)); } }
 /* Location constraint popover */
@@ -770,8 +771,8 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
     &:hover { color: var(--accent); } }
   .more-wrap { position: relative; display: inline-flex; align-items: center; }
   .more-btn { display: inline-flex; align-items: center; background: none; border: none; cursor: pointer;
-    color: var(--ink); border-radius: var(--r-8); padding: var(--sp-6);
-    .ico { width: 17px; height: 17px; }
+    color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);   /* match side-/del-btn shade */
+    .ico { width: 17px; height: 17px; fill: currentColor; stroke: none; }   /* solid dots — the global .ico fill:none would otherwise render them as outlines */
     &:hover { color: var(--accent); } }
 }
 /* Composer parent (project) chip caps long names */
@@ -923,7 +924,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .task-list { display: flex; flex-direction: column; }
 .task-list .task-line { width: 100%; text-align: left; background: none; border: none; cursor: pointer; padding: var(--sp-6) var(--sp-8); border-radius: var(--r-6); }
 .task-list .task-line:hover { background: var(--hover); }
-/* picker result rows: priority check + title + areas + dimmed project path (titles capped) */
+/* picker result rows: check + title + areas + dimmed project path (titles capped) */
 .rel-picker { display: flex; flex-direction: column; gap: 1px; max-height: 150px; overflow-y: auto; }   /* shorter — the wells live below */
 .rel-picker .pop-item .check.sm { flex: none; }
 .pick-name { flex: none; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1425,7 +1426,7 @@ textarea.goal-draft-identity { field-sizing: content; resize: none; overflow: hi
 @media (prefers-reduced-motion: reduce) { .goal-col.goal-pulse .goal-card.goal-card, .goal-col.goal-pulse .goal-card::after, .goal-col.goal-pulse .fire, .goal-col.goal-pulse .fire .bloom, .goal-col.goal-pulse .fire .log-ember { animation: none; } }
 
 /* Lists view-controls row: a calm search field + filter chips. */
-.list-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-8); padding: var(--sp-4) 0 var(--sp-12); }
+.list-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-8); padding: 0 0 var(--sp-20); }
 /* Search: a bare icon at rest — the input unfolds beside it (width animates) and collapses when empty on blur. */
 .list-search { display: flex; align-items: center; flex: none; min-width: 0; border-radius: var(--r-pill); transition: background-color .15s var(--ease-out);
   margin-left: calc((15px - 30px) / 2); }   /* outdent by the icon's inset in its 30px button → glyph left-aligns with the page title */
@@ -1443,14 +1444,14 @@ textarea.goal-draft-identity { field-sizing: content; resize: none; overflow: hi
 /* Hearthsay sentence — the controls row reads as prose (design: filters-ui-explorations.html A).
    Words are dotted-underline buttons; active filters grow into colored tokens with their own ×. */
 .lc-field { position: relative; flex: none; }
-.ls-sent { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-6); font-size: var(--fs-13); color: var(--faint); }
+.ls-sent { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) 0; font-size: var(--fs-13); color: var(--faint); }
 .ls-verb { flex: none; }
 .ls-word { border: none; background: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-6); font: inherit; font-size: var(--fs-13); font-weight: 600; color: var(--muted); cursor: pointer;
   text-decoration: underline dotted color-mix(in srgb, var(--muted) 45%, transparent); text-underline-offset: 4px; transition: background-color .12s, color .12s; }
 .ls-word:hover { color: var(--ink); background: var(--hover); text-decoration-color: transparent; }
 .ls-word.on { color: var(--list-tint, var(--accent)); }
 .ls-frag { display: contents; }   /* verb + token pair under one x-if root */
-.ls-comma { margin-left: calc(-1 * var(--sp-6) - var(--sp-4) + 1px); }   /* leading comma hugs the previous word (cancels flex gap + the word's own padding) */
+.ls-comma { margin-left: calc(-1 * var(--sp-2) - var(--sp-2) + 2px); }   /* leading comma hugs the previous word (cancels flex gap + the word's own padding) */
 .ls-tok { display: inline-flex; align-items: center; border-radius: var(--r-pill); font-weight: 600;
   background: color-mix(in srgb, var(--tc, var(--accent)) 13%, transparent); color: color-mix(in srgb, var(--tc, var(--accent)) 60%, var(--ink));
   animation: ls-tok-in .2s var(--ease-out); }   /* unfurl: clip reveal + slide; neighbors flow over */

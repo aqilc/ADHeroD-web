@@ -12,7 +12,7 @@ export function hydrateTask(row) {
     id: row.id,
     content: row.content,
     notes: row.notes ?? null,
-    priority: row.priority ?? 4,
+    importance: row.importance ?? 'none',
     due_at: row.due_at ?? null,
     deadline_at: row.deadline_at ?? null,
     scheduled_at: row.scheduled_at ?? null,
@@ -48,7 +48,6 @@ export function dehydrateTask(task) {
     row: {
       content: task.content,
       notes: task.notes ?? null,
-      priority: task.priority ?? 4,
       due_at: task.due_at ?? null,
       deadline_at: task.deadline_at ?? null,
       scheduled_at: task.scheduled_at ?? null,
@@ -229,7 +228,7 @@ export function createSupabaseStore(client) {
     await insertActivity({
       user_id: uid, type, ts: new Date().toISOString(),
       subject_type: 'task', subject_id: task.id, void: false,
-      ctx: { project_id: task.parent_id ?? null, area_ids: task.area_ids ?? [], place: task.place ?? null, priority: task.priority ?? 4, est_minutes: task.est_minutes ?? null, goal_ids: task.goal_ids ?? [], milestone: task.milestone ?? false },
+      ctx: { project_id: task.parent_id ?? null, area_ids: task.area_ids ?? [], place: task.place ?? null, importance: task.importance ?? 'none', est_minutes: task.est_minutes ?? null, goal_ids: task.goal_ids ?? [], milestone: task.milestone ?? false },
     });
   }
 
@@ -556,15 +555,15 @@ export function createSupabaseStore(client) {
           const id = crypto.randomUUID();
           const { error } = await client.from('tasks').insert({
             id, user_id: uid, content: fields.content ?? '', notes: fields.notes ?? null,
-            priority: fields.priority ?? 4, due_at, deadline_at: fields.deadline_at ?? null,
+            due_at, deadline_at: fields.deadline_at ?? null,
             scheduled_at: fields.scheduled_at ?? null, est_minutes: fields.est_minutes ?? null,
             parent_id, color: fields.color ?? null, favorite: fields.favorite ?? false,
             place: fields.place ?? null, location_mode: fields.location?.mode ?? 'any', location_ids: fields.location?.ids ?? [],
             area_ids: await resolveAreaIds(fields), goal_ids: fields.goal_ids ?? [],
             position, completed_at: null, archived_at: null, sidebar: fields.sidebar ?? false,
             milestone: fields.milestone ?? false,
-            // checklist_plain deliberately NOT sent on create: the column may not exist before db:apply, and an
-            // unknown column fails the WHOLE insert. New tasks default false server-side; the flag only writes on update.
+            // checklist_plain / importance deliberately NOT sent on create: the column may not exist before db:apply, and an
+            // unknown column fails the WHOLE insert. New tasks default server-side; these fields only write on update.
             checklist: cleanChecklist(fields.checklist), completions: [], recurrence: rec,
             created_at: ts, updated_at: ts,
           });
@@ -582,7 +581,7 @@ export function createSupabaseStore(client) {
         try {
           const uid = await userId(); const ts = new Date().toISOString();
           const upd = { updated_at: ts };
-          for (const c of ['content', 'notes', 'priority', 'due_at', 'deadline_at', 'scheduled_at', 'est_minutes', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'sidebar', 'milestone', 'checklist_plain']) {
+          for (const c of ['content', 'notes', 'importance', 'due_at', 'deadline_at', 'scheduled_at', 'est_minutes', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'sidebar', 'milestone', 'checklist_plain']) {
             if (c in fields) upd[c] = fields[c] ?? null;
           }
           if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;   // one jsonb column now

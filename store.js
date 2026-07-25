@@ -10,7 +10,7 @@ export const MAX_DEPTH = 4;
 export const baseTask = () => {
   const ts = new Date().toISOString();
   return {
-    id: crypto.randomUUID(), content: '', notes: null, priority: 4, due_at: null, available_from: null, deadline_at: null,
+    id: crypto.randomUUID(), content: '', notes: null, importance: 'none', due_at: null, available_from: null, deadline_at: null,
     scheduled_at: null, est_minutes: null, parent_id: null, area_ids: [], goal_ids: [], color: null, favorite: false, place: null,
     location: { mode: 'any', ids: [] }, milestone: false,
     position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], sidebar: false, checklist: [], checklist_plain: false,
@@ -205,7 +205,7 @@ export function createLocalStore(opts = {}) {
   const readWindows = () => readKey(WINDOWS_KEY);   // read-only: legacy presence windows, migrated into blocks
   const readTravel = () => JSON.parse(storage.getItem(TRAVEL_KEY) || '{}');
   const writeTravel = v => writeKey(TRAVEL_KEY, v);
-  const mkCtx = (t, rows, byId) => ({ project_id: t.parent_id ?? null, area_ids: t.area_ids ?? [], place: t.place ?? null, priority: t.priority ?? 4, est_minutes: t.est_minutes ?? null, goal_ids: rows ? effectiveGoalIds(rows, t.id, byId) : (t.goal_ids ?? []), milestone: t.milestone ?? false });
+  const mkCtx = (t, rows, byId) => ({ project_id: t.parent_id ?? null, area_ids: t.area_ids ?? [], place: t.place ?? null, importance: t.importance ?? 'none', est_minutes: t.est_minutes ?? null, goal_ids: rows ? effectiveGoalIds(rows, t.id, byId) : (t.goal_ids ?? []), milestone: t.milestone ?? false });
   function pushActivity(type, task) {
     if (!task) return;
     const log = readActivity();
@@ -397,7 +397,7 @@ export function createLocalStore(opts = {}) {
       let t = tasks.find(x => x.parent_id === null && x.content === fields.project);
       if (!t) {
         const pos = tasks.length ? Math.min(...tasks.map(x => x.position ?? 0)) - 1 : 0;
-        t = { id: uuid(), content: fields.project, notes: null, priority: 4, due_at: null, deadline_at: null,
+        t = { id: uuid(), content: fields.project, notes: null, due_at: null, deadline_at: null,
           est_minutes: null, parent_id: null, area_ids: [], color: null, favorite: false, place: null,
           position: pos, completed_at: null, blocked_by: [], relates: [], sidebar: true, created_at: ts, updated_at: ts };
         tasks.push(t);
@@ -565,7 +565,7 @@ export function createLocalStore(opts = {}) {
             id: uuid(),
             content: fields.content,
             notes: fields.notes ?? null,
-            priority: fields.priority ?? 4,
+            importance: fields.importance ?? 'none',
             due_at,
             available_from: fields.available_from ?? null,
             deadline_at: fields.deadline_at || null,

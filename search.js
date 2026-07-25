@@ -1,5 +1,5 @@
 import uFuzzy from './vendor/uFuzzy.esm.js';
-import { parseDate, isoDate } from './nlp.js';
+import { parseDate, isoDate, impRank } from './nlp.js';
 
 const SEP = '';   // field separator: a word boundary uFuzzy won't match across, kept out of display
 
@@ -14,7 +14,7 @@ export const fuzzyRank = (uf, hay, q) => {
   return (info && order) ? order.map(o => info.idx[o]) : idxs;
 };
 
-// field order = rank priority: title · areas · path · notes · checklist
+// field order = rank order: title · areas · path · notes · checklist
 export function buildSearchDocs(tasks, areas, defaultProjectId) {
   const byId = new Map(tasks.map(t => [t.id, t]));
   const areaName = id => (areas.find(g => g.id === id) || {}).name || '';
@@ -88,15 +88,17 @@ const EMPTY_SET = new Set();
 const unq = s => s.replace(/^"(.*)"$/, '$1');
 export function tokenize(str) { return String(str || '').match(TOKEN_RE) || []; }
 
-const KEYS = ['p', 'priority', 'due', 'deadline', 'is', 'in'];
+const KEYS = ['importance', 'due', 'deadline', 'is', 'in'];
 function leaf(t) {
   if ((t[0] === '-' || t[0] === '!') && t.length > 1) return { op: 'not', kid: leaf(t.slice(1)) };
   if (t[0] === '#') { const sub = t[1] === '#'; return { q: 'project', sub, val: unq(t.slice(sub ? 2 : 1)) }; }
   if (t[0] === '@') return { q: 'area', val: unq(t.slice(1)) };
   const c = t.indexOf(':');
-  if (c > 0) { const k = t.slice(0, c).toLowerCase(); if (KEYS.includes(k)) return { q: k === 'priority' ? 'p' : k, val: unq(t.slice(c + 1)).toLowerCase() }; }
+  if (c > 0) { const k = t.slice(0, c).toLowerCase(); if (KEYS.includes(k)) return { q: k === 'importance' ? 'imp' : k, val: unq(t.slice(c + 1)).toLowerCase() }; }
   return { term: unq(t).toLowerCase() };
 }
+// importance:must|focus|none|someday (comma-separated OR); absent flag reads as 'none'
+const impMatch = (imp, spec) => spec.split(',').includes(imp || 'none');
 
 // Tiny recursive descent: or → and → not → atom. OR loosest, NOT tightest. Never throws.
 export function parseQuery(str) {
@@ -127,14 +129,6 @@ function resolveDate(word, now) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(w)) return w;
   return parseDate(word, now) || null;
 }
-function cmpNum(n, spec) {
-  if (n == null) return false;
-  return spec.split(',').some(p => {
-    if (p.includes('..')) { const [a, b] = p.split('..').map(Number); return n >= a && n <= b; }
-    const m = p.match(/^(>=|<=|>|<|=)?(\d+)$/); if (!m) return false; const v = +m[2], op = m[1] || '=';
-    return op === '=' ? n === v : op === '>' ? n > v : op === '>=' ? n >= v : op === '<' ? n < v : n <= v;
-  });
-}
 function cmpDate(iso, spec, now) {
   const has = !!iso, day = has ? iso.slice(0, 10) : null;
   if (spec === 'none') return !has;
@@ -163,6 +157,7 @@ export function matchQuery(query, tasks, ctx) {
   const isFlag = (t, f) => ({
     done: () => !!t.completed_at, open: () => !t.completed_at && !t.archived_at, archived: () => !!t.archived_at, any: () => true,
     recurring: () => !!t.recurrence, project: () => !!t.sidebar, leaf: () => !hasChild.has(t.id),
+    must: () => t.importance === 'must', focus: () => t.importance === 'focus', someday: () => t.importance === 'someday',
     daily: () => t.recurrence?.freq === 'day', weekly: () => t.recurrence?.freq === 'week',
     monthly: () => t.recurrence?.freq === 'month', yearly: () => t.recurrence?.freq === 'year',
     blocked: () => (t.blocked_by || []).some(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; }),
@@ -176,7 +171,7 @@ export function matchQuery(query, tasks, ctx) {
     if (n.term != null) { if (n.term === '') return () => true; const s = termSets[n.term] || EMPTY_SET; return t => s.has(t.id); }
     if (n.q === 'project') return t => inProject(t, n.val, n.sub);
     if (n.q === 'area') return t => areaMatch(t.area_ids, n.val);
-    if (n.q === 'p') return t => cmpNum(t.priority, n.val);
+    if (n.q === 'imp') return t => impMatch(t.importance, n.val);
     if (n.q === 'due') return t => cmpDate(t.due_at, n.val, ctx.now);
     if (n.q === 'deadline') return t => cmpDate(t.deadline_at, n.val, ctx.now);
     if (n.q === 'in') return () => true;
@@ -188,6 +183,6 @@ export function matchQuery(query, tasks, ctx) {
   const pred = compile(ast);
   // Archived excluded by default (like completed); surfaced only via is:archived / is:any.
   const res = tasks.filter(t => t.id !== ctx.defaultProjectId && (includeDone || !t.completed_at) && (includeArchived || !t.archived_at) && (wantProject || !t.sidebar) && pred(t));
-  const key = t => [t.completed_at ? 1 : 0, t.due_at ? t.due_at.slice(0, 10) : '9999', t.priority].join('|');
+  const key = t => [t.completed_at ? 1 : 0, t.due_at ? t.due_at.slice(0, 10) : '9999', impRank(t.importance)].join('|');
   return res.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0).map(t => t.id);
 }

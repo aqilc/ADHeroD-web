@@ -126,9 +126,9 @@
 
     <!-- Lists view controls: search + sort + quick-filters, above the task list. Hidden off the Lists surface via listView().
          Sort/filter state is global + persisted; completed tasks are hidden by default and shown in a section below the add button. -->
-    <!-- .crowded = tokens present: chrome yields space in priority order so the row NEVER wraps
+    <!-- .crowded = tokens present: chrome yields space, in order, so the row NEVER wraps
          (default-sort text hides, +and…→+, lens pills go icon-only, long token labels truncate) -->
-    <div class="list-controls" :class="{ crowded: qfFacets() }" x-show="listView()">
+    <div class="list-controls" :class="{ crowded: qfFacets() >= 2 }" x-show="listView()">
       <!-- search rests as a bare icon; the input unfolds on click or `/` and collapses when empty on blur -->
       <div class="list-search" :class="{ open: listSearchOpen || listQ }">
         <button type="button" class="ls-searchbtn" title="Search — /" aria-label="Search tasks"
@@ -143,18 +143,18 @@
       <!-- Hearthsay sentence: the row reads as prose — "showing everything · sorted by hand". Words open menus;
            active filters grow into colored tokens with their own ×. State + persistence unchanged (qf*/sortBy). -->
       <div class="ls-sent">
-        <span class="ls-verb" x-text="qfArchived && (qfPri.length || qfAreas.length || qfDue) ? 'showing archived' : 'showing'"></span>
+        <span class="ls-verb" x-text="qfArchived && (qfImp.length || qfAreas.length || qfDue) ? 'showing archived' : 'showing'"></span>
         <!-- subject/+and… toggle via x-if, not x-show — x-show effects go stale in the e2e webview (see ui-conventions) -->
-        <template x-if="!(qfPri.length || qfAreas.length || qfDue)">
+        <template x-if="!(qfImp.length || qfAreas.length || qfDue)">
           <button type="button" class="ls-word ls-subj" :class="{ on: qfArchived }"
                   @click.stop="listMenu = listMenu === 'add' ? null : 'add'" x-text="qfArchived ? 'archived' : 'everything'" aria-label="Filter tasks"></button>
         </template>
         <!-- connectives ("in", "due") live OUTSIDE the tokens so the line reads as honest prose -->
-        <template x-if="qfPri.length">
+        <template x-if="qfImp.length">
           <span class="ls-frag">
-            <span class="ls-tok ls-tok-pri" :style="'--tc:' + pc(Math.min.apply(null, qfPri))">
-              <button type="button" @click.stop="listMenu = listMenu === 'add' ? null : 'add'"><span class="ls-flag"></span><span x-text="qfPriLabel()"></span></button>
-              <button type="button" class="ls-x" aria-label="Clear priority filter" @click.stop="qfPri = []; _saveView()">×</button>
+            <span class="ls-tok ls-tok-pri" :style="'--tc:' + qfImpCol()">
+              <button type="button" @click.stop="listMenu = listMenu === 'add' ? null : 'add'"><span class="ls-flag"></span><span x-text="qfImpLabel()"></span></button>
+              <button type="button" class="ls-x" aria-label="Clear importance filter" @click.stop="qfImp = []; _saveView()">×</button>
             </span>
           </span>
         </template>
@@ -178,7 +178,7 @@
             </span>
           </span>
         </template>
-        <template x-if="qfPri.length || qfAreas.length || qfDue">
+        <template x-if="qfImp.length || qfAreas.length || qfDue">
           <button type="button" class="ls-word ls-more" title="Add another filter"
                   @click.stop="listMenu = listMenu === 'add' ? null : 'add'" aria-label="Add another filter"
                   x-text="qfFacets() > 1 ? '+' : '+ and…'"></button>
@@ -186,11 +186,11 @@
 
         <!-- unified filter menu: every fragment one click deep (replaces the 3 separate chip menus) -->
         <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
-          <div class="pop-sub-head">Priority</div>
+          <div class="pop-sub-head">Importance</div>
           <div class="ls-prow">
-            <template x-for="p in availPri()" :key="p">
-              <button type="button" class="pri-chip" :class="{ sel: qfPri.includes(p) }" :style="'--pc:' + pc(p)" @click="toggleQfPri(p)">
-                <svg class="ico"><use href="#i-prio"/></svg><span x-text="'P' + p"></span>
+            <template x-for="v in availImp()" :key="v">
+              <button type="button" class="pri-chip" :class="{ sel: qfImp.includes(v) }" :style="'--pc:' + pc(v)" @click="toggleQfImp(v)">
+                <svg class="ico"><use href="#i-prio"/></svg><span x-text="impName(v)"></span>
               </button>
             </template>
           </div>
@@ -217,13 +217,13 @@
         </div>
 
         <!-- sort yields space to tokens: crowded+manual → a bare ⇅; crowded+set → "by X" (info survives, charm doesn't) -->
-        <span class="ls-verb ls-comma" x-text="qfFacets() ? '' : ', sorted by'"></span>
+        <span class="ls-verb ls-comma" x-text="qfFacets() >= 2 ? '' : ', sorted by'"></span>
         <div class="lc-field">
           <button type="button" class="ls-word ls-sortw" :class="{ on: sortBy !== 'manual' }" title="Sort order"
                   @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" aria-label="Sort order"
-                  x-text="!qfFacets() ? sortWord() : sortBy === 'manual' ? '⇅' : 'by ' + sortWord()"></button>
+                  x-text="qfFacets() < 2 ? sortWord() : sortBy === 'manual' ? '⇅' : 'by ' + sortWord()"></button>
           <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
-            <template x-for="o in [['manual','Manual'],['due','Due date'],['priority','Priority'],['deadline','Deadline'],['alpha','Alphabetical'],['created','Date added']]" :key="o[0]">
+            <template x-for="o in [['manual','Manual'],['due','Due date'],['importance','Importance'],['deadline','Deadline'],['alpha','Alphabetical'],['created','Date added']]" :key="o[0]">
               <button type="button" class="pop-item" @click="setSort(o[0])">
                 <span x-text="o[1]"></span>
                 <svg class="tick ico" x-show="sortBy === o[0]" :style="o[0] !== 'manual' && sortDir === 'desc' ? 'transform:rotate(180deg)' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path :d="o[0] === 'manual' ? 'M20 6 9 17l-5-5' : 'M12 19V5M5 12l7-7 7 7'"/></svg>
@@ -233,10 +233,10 @@
         </div>
 
         <!-- lenses live IN the sentence: "except done & archived"; toggling STRIKES the word (exception lifted) -->
-        <span class="ls-verb ls-comma" x-text="qfFacets() ? '' : ', except'"></span>
+        <span class="ls-verb ls-comma" x-text="qfFacets() >= 2 ? '' : ', except'"></span>
         <button type="button" class="ls-word ls-lens" :class="{ on: showCompleted }" @click="toggleShowCompleted()"
                 :title="showCompleted ? 'Hide completed tasks' : 'Show completed tasks'">done</button>
-        <span class="ls-verb" x-text="qfFacets() ? '' : '&'"></span>
+        <span class="ls-verb" x-text="qfFacets() >= 2 ? '' : '&'"></span>
         <button type="button" class="ls-word ls-lens" :class="{ on: qfArchived }" @click="toggleQfArchived()"
                 :title="qfArchived ? 'Exit archived view' : 'Show only archived tasks'">archived</button>
 
@@ -269,7 +269,7 @@
           @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); submitAndClose(); }">
         <div class="composer-grow" x-ref="grow" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
         <form class="composer-card" @submit.prevent="submitComposer()">
-        <button type="button" class="check" :class="{ done: editDone() }" :style="'--pc:' + pc(draft.priority) + (editing ? '' : ';display:none')" @click="toggleEditing()"></button>
+        <button type="button" class="check" :class="{ done: editDone() }" :style="'--pc:' + pc(draft.importance) + (editing ? '' : ';display:none')" @click="toggleEditing()"></button>
         <div class="composer-body">
         <div class="content" x-ref="content" contenteditable="true" role="textbox" aria-label="Task name"
              @input="syncTitle(); refreshAreaPicker(); refreshGoalPicker()" @keydown="editorKeydown($event)" @paste="onPaste($event)"></div>
@@ -322,7 +322,7 @@
               <template x-for="c in childTasks(editing)" :key="c.id">
                 <div class="entry" :class="{ done: c.completed_at }">
                   <span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>
-                  <button type="button" class="check sm" :class="{ done: c.completed_at, prog: hasProgress(c) && !c.completed_at }" :style="'--pc:' + pc(c.priority) + (hasProgress(c) ? ';--p:' + rowProgress(c) : '')" @click="toggle(c)"></button>
+                  <button type="button" class="check sm" :class="{ done: c.completed_at, prog: hasProgress(c) && !c.completed_at }" :style="'--pc:' + pc(c.importance) + (hasProgress(c) ? ';--p:' + rowProgress(c) : '')" @click="toggle(c)"></button>
                   <input type="text" class="entry-txt" :value="c.content" @keydown="entryKey($event)" @keydown.enter.prevent="focusEntryGhost($event.target)" @keydown.escape="$event.target.value = c.content; $event.target.blur()" @blur="renameChild(c, $event.target.value)" @keydown.stop>
                   <button type="button" class="entry-kids" x-show="childTasks(c.id).length" @click.stop="editTask(c)" title="Open this task"><svg class="ico"><use href="#i-chev-r"/></svg></button>
                   <button type="button" class="entry-del" @click="removeChild(c)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
@@ -369,17 +369,17 @@
         <!-- pickers gated in x-if so Alpine doesn't init the whole block at boot -->
         <template x-if="composer.open">
         <div class="composer-opts">
-          <!-- Priority -->
-          <div class="field" @click.outside="pop === 'pri' && (pop = null)">
-            <button type="button" class="chip set" @click="togglePop('pri')">
-              <svg class="ico" :style="'color:' + pc(draft.priority)"><use href="#i-prio"/></svg>
-              <span x-text="'P' + draft.priority"></span>
+          <!-- Importance (app-behavior flag, not a rank) -->
+          <div class="field" @click.outside="pop === 'imp' && (pop = null)">
+            <button type="button" class="chip" :class="{ set: draft.importance !== 'none' }" @click="togglePop('imp')">
+              <svg class="ico"><use href="#i-prio"/></svg>
+              <span x-text="impLabel(draft.importance)"></span>
             </button>
-            <div class="pop pri-pop" x-show="pop === 'pri'">
-              <template x-for="p in [1, 2, 3, 4]" :key="p">
-                <button type="button" class="pri-chip" :class="{ sel: draft.priority === p }" :style="'--pc:' + pc(p)" @click="draft.priority = p; pop = null">
+            <div class="pop pri-pop" x-show="pop === 'imp'">
+              <template x-for="o in [['none','None','Default — no special handling'],['focus','Focus','Keep it in front of me'],['must','Must','The app fights for it'],['someday','Someday','Park it for later']]" :key="o[0]">
+                <button type="button" class="pri-chip" :class="{ sel: draft.importance === o[0] }" :title="o[2]" @click="draft.importance = o[0]; pop = null">
                   <svg class="ico"><use href="#i-prio"/></svg>
-                  <span x-text="'P' + p"></span>
+                  <span x-text="o[1]"></span>
                 </button>
               </template>
             </div>
@@ -546,7 +546,9 @@
                 <template x-for="g in goals.filter(g => !g.archived)" :key="g.id">
                   <button type="button" class="area-opt" :class="{ on: draft.goal_ids.includes(g.id) }" :style="g.color ? '--tc:' + g.color : ''" @click="toggleGoal(g.id)">
                     <svg class="tick ico" x-show="draft.goal_ids.includes(g.id)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                    <svg class="ico"><use :href="'#' + (g.icon || 'i-target')"/></svg>
+                    <!-- goal icons are emoji (like the goals surface); only fall back to the SVG target when it's a symbol id or unset -->
+                    <template x-if="goalGlyph(g)"><span class="goal-opt-emoji" x-text="goalGlyph(g)"></span></template>
+                    <template x-if="!goalGlyph(g)"><svg class="ico"><use :href="'#' + (g.icon || 'i-target')"/></svg></template>
                     <span x-text="g.name"></span>
                   </button>
                 </template>

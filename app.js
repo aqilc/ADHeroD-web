@@ -15,7 +15,7 @@ document.head.insertAdjacentHTML('beforeend',
 
 import { createLocalStore, descendantIds, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, effectiveGoalIds, MAX_DEPTH } from './store.js';
 import { goalProgress, goalWarmth, homeWarmth, firstShowUpDay, HEARTH, goalLaneFull, laneComparator, goalArc, finishReady } from './stats.js';
-import { parseDateText, parseRecurrence, quickDate, quickRange, isoDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, tokenizeAll, parseLogNote, recurrenceLabel, logDayLabel } from './nlp.js';
+import { parseDateText, parseRecurrence, quickDate, quickRange, isoDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, tokenizeAll, parseLogNote, recurrenceLabel, logDayLabel, impRank } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank } from './search.js';
 import { calendarItems, blocksInRange, daypartOf, eventsFirst, occurrencesInRange } from './calendar.js';
 import { esc as escHtml, mdLive as mdLiveRender, chkLive as chkLiveRender, byDone, raw, taskRowHtml, taskListHtml as taskListMarkup, dotStripHtml as dotStripMarkup, rollerBoxHtml as rollerBoxMarkup, rowBodyHtml, mdTitle as mdTitleFn } from './ui.js';
@@ -184,16 +184,16 @@ document.addEventListener('alpine:init', () => {
     rollerSel: 0,
     navPopXY: null,                   // escapes overflow clip
     collapsed: {},
-    draft: { content: '', notes: '', priority: 4, due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } },
+    draft: { content: '', notes: '', importance: 'none', due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } },
     composer: { open: false },
     palette: { open: false, q: '', sel: 0 },
     listQ: '',          // ⌘K escalates to palette
     showCompleted: false,   // view-controls toggle; completed tasks hidden by default, persisted to localStorage
-    sortBy: 'manual',   // Lists sort: manual|due|priority|alpha|created|deadline (manual = drag/position order); persisted
+    sortBy: 'manual',   // Lists sort: manual|due|importance|alpha|created|deadline (manual = drag/position order); persisted
     sortDir: 'asc',     // asc|desc — ignored for manual
     listMenu: null,     // open toolbar dropdown: 'add'|'sort'|null (kept separate from the composer's `pop`)
     listSearchOpen: false,   // Hearthsay search: icon at rest, input unfolds on click or `/`
-    qfPri: [],          // quick-filter: priorities to keep (1..4); empty = all
+    qfImp: [],          // quick-filter: importance values to keep (must/focus/none/someday); empty = all
     qfAreas: [],        // quick-filter: area ids to keep; empty = all
     qfDue: null,        // quick-filter: 'today'|'overdue'|'has'|'none'|null
     qfArchived: false,  // quick-filter: when on, show ONLY archived tasks (a flat "Archived" view)
@@ -256,6 +256,8 @@ document.addEventListener('alpine:init', () => {
       try { this.collapsed = JSON.parse(localStorage.getItem('adherod.nav.collapsed') || '{}'); } catch { this.collapsed = {}; }
       this.showCompleted = localStorage.getItem('adherod.list.showCompleted') === '1';   // persists the view setting across sessions
       try { Object.assign(this, JSON.parse(localStorage.getItem('adherod.list.view') || '{}')); } catch {}   // restore sort + quick-filters
+      if (this.sortBy === 'priority') this.sortBy = 'importance';   // legacy sort key → importance cutover
+      if (!Array.isArray(this.qfImp)) this.qfImp = [];              // legacy qfPri (numeric) doesn't map — clears
       const sb = sbClient();
       if (sb) {
         const { data } = await sb.auth.getSession();
@@ -463,10 +465,10 @@ document.addEventListener('alpine:init', () => {
       return (t.content || '').toLowerCase().includes(q) || this.areaObjs(t.area_ids).some(l => (l.name || '').toLowerCase().includes(q));
     },
     // Quick-filters (Priority / Area / Due) layer on top of any view; ANDed with the search hit.
-    qfActive() { return this.qfPri.length > 0 || this.qfAreas.length > 0 || !!this.qfDue || this.qfArchived; },
+    qfActive() { return this.qfImp.length > 0 || this.qfAreas.length > 0 || !!this.qfDue || this.qfArchived; },
     filtering() { return !!this.listQ.trim() || this.qfActive(); },   // narrowing active → show matches + ancestor context
     qfPass(t) {
-      if (this.qfPri.length && !this.qfPri.includes(Math.min(t.priority ?? 4, 4))) return false;   // 4 levels; legacy P5 clamps to P4
+      if (this.qfImp.length && !this.qfImp.includes(t.importance || 'none')) return false;   // unset importance reads as 'none'
       if (this.qfAreas.length && !(t.area_ids || []).some(id => this.qfAreas.includes(id))) return false;
       if (this.qfDue) {
         const d = (t.due_at || '').slice(0, 10), today = isoDate(new Date());
@@ -485,51 +487,45 @@ document.addEventListener('alpine:init', () => {
       const base =
         by === 'due'      ? (a, b) => (a.due_at || FAR).localeCompare(b.due_at || FAR)
       : by === 'deadline' ? (a, b) => (a.deadline_at || FAR).localeCompare(b.deadline_at || FAR)
-      : by === 'priority' ? (a, b) => (Math.min(a.priority ?? 4, 4)) - (Math.min(b.priority ?? 4, 4)) || (a.due_at || FAR).localeCompare(b.due_at || FAR)
+      : by === 'importance' ? (a, b) => impRank(a.importance) - impRank(b.importance) || (a.due_at || FAR).localeCompare(b.due_at || FAR)
       : by === 'created'  ? (a, b) => (a.created_at || '').localeCompare(b.created_at || '')
       :                     (a, b) => (a.content || '').localeCompare(b.content || '', undefined, { sensitivity: 'base' });   // alpha
       return (a, b) => dir * base(a, b) || (a.position ?? 0) - (b.position ?? 0);
     },
-    _saveView() { localStorage.setItem('adherod.list.view', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir, qfPri: this.qfPri, qfAreas: this.qfAreas, qfDue: this.qfDue, qfArchived: this.qfArchived })); },
-    sortLabel() { return ({ manual: 'Manual', due: 'Due date', priority: 'Priority', alpha: 'Alphabetical', created: 'Date added', deadline: 'Deadline' })[this.sortBy]; },
+    _saveView() { localStorage.setItem('adherod.list.view', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir, qfImp: this.qfImp, qfAreas: this.qfAreas, qfDue: this.qfDue, qfArchived: this.qfArchived })); },
+    sortLabel() { return ({ manual: 'Manual', due: 'Due date', importance: 'Importance', alpha: 'Alphabetical', created: 'Date added', deadline: 'Deadline' })[this.sortBy]; },
     setSort(key) { if (this.sortBy === key && key !== 'manual') this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'; else { this.sortBy = key; this.sortDir = 'asc'; } this._saveView(); },
-    toggleQfPri(p) { const i = this.qfPri.indexOf(p); i < 0 ? this.qfPri.push(p) : this.qfPri.splice(i, 1); this._saveView(); },
+    toggleQfImp(v) { const i = this.qfImp.indexOf(v); i < 0 ? this.qfImp.push(v) : this.qfImp.splice(i, 1); this._saveView(); },
     toggleQfArea(id) { const i = this.qfAreas.indexOf(id); i < 0 ? this.qfAreas.push(id) : this.qfAreas.splice(i, 1); this._saveView(); },
     setQfDue(v) { this.qfDue = this.qfDue === v ? null : v; this._saveView(); },
     toggleQfArchived() { this.qfArchived = !this.qfArchived; this._saveView(); },
-    clearQf() { this.qfPri = []; this.qfAreas = []; this.qfDue = null; this.qfArchived = false; this._saveView(); },
+    clearQf() { this.qfImp = []; this.qfAreas = []; this.qfDue = null; this.qfArchived = false; this._saveView(); },
     // ---- Hearthsay sentence labels (design: filters-ui-explorations.html A) ----
-    qfPriLabel() { const s = [...this.qfPri].sort((a, b) => a - b); return s.length === 1 ? 'P' + s[0]
-      : s.length === s[s.length - 1] - s[0] + 1 ? `P${s[0]}–P${s[s.length - 1]}` : s.map(p => 'P' + p).join('·'); },   // contiguous → range, else P1·P4
+    qfImpLabel() { return [...this.qfImp].sort((a, b) => impRank(a) - impRank(b)).map(v => this.impName(v)).join('·'); },   // e.g. Must·Focus, importance order
     _qfArea() { return this.areas.find(a => a.id === this.qfAreas[0]); },
     qfAreaCol() { return this._qfArea()?.color || this.areaDefault; },
     qfAreaLabel() { const n = this.qfAreas.length; return (this._qfArea()?.name || '?') + (n > 1 ? ` +${n - 1}` : ''); },
     qfDueVerb() { return ({ today: 'due', has: 'that', none: 'with' })[this.qfDue] || ''; },   // connective before the token; '' for overdue
     qfDueLabel() { return ({ today: 'today', overdue: 'overdue', has: 'has a date', none: 'no date' })[this.qfDue]; },
     qfDueCol() { return ({ today: 'var(--q-today)', overdue: 'var(--p1)', has: 'var(--accent)', none: 'var(--faint)' })[this.qfDue]; },
-    qfFacets() { return (this.qfPri.length ? 1 : 0) + (this.qfAreas.length ? 1 : 0) + (this.qfDue ? 1 : 0); },
-    sortWord() { return ({ manual: 'hand', due: 'due date', priority: 'priority', deadline: 'deadline', alpha: 'a-z', created: 'date added' })[this.sortBy]; },   // follows the "· sorted by" verb
+    qfFacets() { return (this.qfImp.length ? 1 : 0) + (this.qfAreas.length ? 1 : 0) + (this.qfDue ? 1 : 0); },
+    sortWord() { return ({ manual: 'hand', due: 'due date', importance: 'importance', deadline: 'deadline', alpha: 'a-z', created: 'date added' })[this.sortBy]; },   // follows the "· sorted by" verb
     // Escalate the ad-hoc sentence into a saved filter: prefill the editor with the equivalent query.
     lsSaveFilter() {
       const or = xs => xs.length > 1 ? `(${xs.join(' OR ')})` : xs[0];
       const aq = id => { const n = this.areas.find(a => a.id === id)?.name || ''; return '@' + (/\s/.test(n) ? `"${n}"` : n); };
       const parts = [];
-      if (this.qfPri.length) parts.push(or([...this.qfPri].sort((a, b) => a - b).map(p => 'p:' + p)));
+      if (this.qfImp.length) parts.push(or([...this.qfImp].sort((a, b) => impRank(a) - impRank(b)).map(v => 'importance:' + v)));
       if (this.qfAreas.length) parts.push(or(this.qfAreas.map(aq)));
       if (this.qfDue) parts.push('due:' + ({ has: 'any' }[this.qfDue] || this.qfDue));
       this.listMenu = null; this.filterEdit = { name: '', query: parts.join(' '), color: null };
     },
-    // Only offer priority levels that actually appear on tasks (+ any currently selected, so they stay unselectable-visible)
-    // — e.g. P5 stays hidden until a P5 task exists. Uses the composer's P1–P5 chips.
-    availPri() {
-      const s = new Set(this.qfPri);
-      for (const t of this.tasks) s.add(Math.min(t.priority ?? 4, 4));   // every task has an effective 1..4 (legacy P5 → P4)
-      return [...s].sort((a, b) => a - b);
-    },
+    // All values, always — a filter you can't reach reads as missing, not tidy (user 2026-07-23). Importance order.
+    availImp() { return ['must', 'focus', 'none', 'someday']; },
     visibleRows() {
       // Reads here register Alpine deps so the x-for re-runs on change. Completed rows split into _doneMemo (rendered below the add button).
       const key = this._rowV + '|' + this.navSel.type + '|' + this.navSel.id + '|' + this.listQ + '|' + this.showCompleted
-        + '|' + this.sortBy + this.sortDir + '|' + this.qfPri + '|' + this.qfAreas + '|' + this.qfDue + '|' + this.qfArchived;
+        + '|' + this.sortBy + this.sortDir + '|' + this.qfImp + '|' + this.qfAreas + '|' + this.qfDue + '|' + this.qfArchived;
       if (_visKey === key) return _visMemo;
       const filtering = this.filtering();
       const now = new Date(), byId = this.byId, def = this.store.defaultProject();
@@ -635,7 +631,7 @@ document.addEventListener('alpine:init', () => {
       const em = edMemo ? this.effDurMin(t, byParent, edMemo) : (t.est_minutes || 0);   // roll up subtasks when no own duration
       const dueB = (t.available_from || t.due_at) ? windowBadge(t, now) : null;
       return {
-        t, depth, pc: this.pc(t.priority), collapsed: !!this.collapsed[t.id],
+        t, depth, pc: this.pc(t.importance), collapsed: !!this.collapsed[t.id],
         // Precomputed here (cached in _visMemo) so glint-only re-renders don't redo the title regex / checklist split per row.
         titleHtml: mdTitleFn(t.content),
         chk: cl.map((c, ci) => { const sep = c.text.indexOf('::'); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; }),
@@ -665,7 +661,7 @@ document.addEventListener('alpine:init', () => {
       const edMemo = new Map();
       return this.tasks
         .filter(t => !t.completed_at && !t.archived_at && !this.isSidebar(t) && t.due_at && t.due_at.slice(0, 10) <= today)
-        .sort((a, b) => (a.due_at || '').localeCompare(b.due_at || '') || (Math.min(a.priority ?? 4, 4)) - (Math.min(b.priority ?? 4, 4)))
+        .sort((a, b) => (a.due_at || '').localeCompare(b.due_at || '') || impRank(a.importance) - impRank(b.importance))
         .map(t => this.mkRow(t, 0, byParent, byId, def, now, edMemo));
     },
     nowListRows() { const hero = this.nowTask(); return this.nowRows().filter(r => r.t.id !== hero?.id); },
@@ -834,13 +830,16 @@ document.addEventListener('alpine:init', () => {
     },
 
     resetDraft() {
-      this.draft = { content: '', notes: '', priority: 4, due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } };
+      this.draft = { content: '', notes: '', importance: 'none', due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } };
       this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.endPicking = false; this.tpop = false;
       this.areaPicker = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this.goalPicker = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this._noPillOnce = false;   // the un-chip→no-re-pill guard is per-session; never leak it across composer opens
     },
-    pc(p) { return `var(--p${p >= 1 && p <= 4 ? p : 4})`; },   // 4 levels; legacy P5 clamps to P4 (both = lowest)
+    pc(imp) { return `var(--p${({ must: 1, focus: 2, someday: 3 })[imp] || 4})`; },   // check color by importance — PLACEHOLDER map (user will remap): must→p1, focus→p2, someday→p3, none→p4
+    impLabel(v) { return ({ focus: 'Focus', must: 'Must', someday: 'Someday' })[v] || 'Importance'; },   // 'none' → picker's unset label
+    impName(v) { return ({ none: 'None', focus: 'Focus', must: 'Must', someday: 'Someday' })[v] || 'None'; },   // proper name incl. None (filter tokens/chips)
+    qfImpCol() { return this.pc([...this.qfImp].sort((a, b) => impRank(a) - impRank(b))[0]); },   // token color = the most-important selected value
     durMinNow() { return this.draft.durH * 60 + this.draft.durM; },
     durLabel() { return this.durMinNow() ? this.durFmt(this.durMinNow()) : 'Dur'; },
     setDur(min) { this.draft.durH = Math.floor(min / 60); this.draft.durM = min % 60; this.scrollWheels(); },
@@ -983,7 +982,7 @@ document.addEventListener('alpine:init', () => {
     // x-html; relation picker + cascade-complete use the same markup (ui.js)
     taskLine(t, markedTitle) {
       return taskRowHtml({
-        priorityColor: this.pc(t.priority),
+        checkColor: this.pc(t.importance),
         title: markedTitle != null ? raw(markedTitle) : raw(mdTitleFn(t.content)),
         areas: this.areaObjs(t.area_ids).map(l => ({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })),
         projName: this.projName(t.parent_id) || '',
@@ -1212,7 +1211,7 @@ document.addEventListener('alpine:init', () => {
       this.blockH = h;
       const min = t.est_minutes || 0;
       this.draft = {
-        content: t.content, notes: t.notes || '', priority: Math.min(t.priority ?? 4, 4),   // legacy P5 → P4 on edit (lazy migration)
+        content: t.content, notes: t.notes || '', importance: t.importance ?? 'none',
         due_at: (t.due_at || '').slice(0, 10),
         available_from: t.available_from || '',
         dueTime: (t.due_at && t.due_at.length > 10) ? t.due_at.slice(11, 16) : '',
@@ -1320,7 +1319,7 @@ document.addEventListener('alpine:init', () => {
       const d = this.draft;
       const fields = {
         content: d.content.trim(),
-        notes: d.notes || null, priority: d.priority,
+        notes: d.notes || null, importance: d.importance,
         due_at: d.due_at ? (d.dueTime ? d.due_at + 'T' + d.dueTime : d.due_at) : null,
         available_from: d.available_from || null,
         deadline_at: d.deadline_at || null,
@@ -1722,7 +1721,7 @@ document.addEventListener('alpine:init', () => {
       const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
     },
     pillLabel(kind, value) {
-      if (kind === 'pri') return 'P' + value;
+      if (kind === 'imp') return this.impLabel(value);
       if (kind === 'dur') return this.durFmt(value);
       if (kind === 'proj') return '#' + value;
       if (kind === 'area') return '@' + value;
@@ -1736,7 +1735,7 @@ document.addEventListener('alpine:init', () => {
     },
     commitPill(kind, value) {
       const d = this.draft;
-      if (kind === 'pri') d.priority = value;
+      if (kind === 'imp') d.importance = value;
       else if (kind === 'dur') this.setDur(value);
       else if (kind === 'proj') { d.project = value; d.project_id = null; this.projRequired = false; }
       else if (kind === 'area') { if (!d.areas.includes(value)) d.areas.push(value); }
@@ -1753,7 +1752,7 @@ document.addEventListener('alpine:init', () => {
     // Revert the field a removed pill had set. `raw` is the pill's data-value (string form).
     clearPillField(kind, raw) {
       const d = this.draft;
-      if (kind === 'pri') d.priority = 5;
+      if (kind === 'imp') d.importance = 'none';
       else if (kind === 'dur') { d.durH = 0; d.durM = 0; }
       else if (kind === 'proj') d.project = null;
       else if (kind === 'area') { const i = d.areas.indexOf(raw); if (i >= 0) d.areas.splice(i, 1); }
@@ -1767,7 +1766,7 @@ document.addEventListener('alpine:init', () => {
     _fieldSnapshot(kind) {
       const d = this.draft;
       switch (kind) {
-        case 'pri': return d.priority;
+        case 'imp': return d.importance;
         case 'dur': return { durH: d.durH, durM: d.durM };
         case 'proj': return { project: d.project, project_id: d.project_id };
         case 'area': return [...d.areas];
@@ -1781,7 +1780,7 @@ document.addEventListener('alpine:init', () => {
     _restoreField(kind, s) {
       const d = this.draft;
       switch (kind) {
-        case 'pri': d.priority = s ?? 5; break;
+        case 'imp': d.importance = s ?? 'none'; break;
         case 'dur': d.durH = s?.durH || 0; d.durM = s?.durM || 0; break;
         case 'proj': d.project = s?.project ?? null; d.project_id = s?.project_id ?? null; break;
         case 'area': d.areas = s || []; break;
@@ -1799,7 +1798,6 @@ document.addEventListener('alpine:init', () => {
       pill.dataset.value = (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.stringify(value) : String(value);
       pill.dataset.token = token; pill.contentEditable = 'false'; pill.textContent = this.pillLabel(kind, value);
       pill.dataset.prior = JSON.stringify(this._fieldSnapshot(kind));   // field value BEFORE this chip — restored on backspace (non-destructive)
-      if (kind === 'pri') pill.style.setProperty('--rc', this.pc(value));
       return pill;
     },
     // Build + insert a pill span replacing text [start..end] of the caret's text node, leaving the caret
@@ -1870,7 +1868,7 @@ document.addEventListener('alpine:init', () => {
       }
       if (!prev || !(prev instanceof HTMLElement) || !prev.classList.contains('nlp-pill')) return false;
       const kind = prev.dataset.kind, raw = prev.dataset.value;
-      const value = (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.parse(raw) : (kind === 'pri' || kind === 'dur' ? +raw : raw);
+      const value = (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.parse(raw) : (kind === 'dur' ? +raw : raw);   // imp/proj/area/loc stay strings
       const prior = prev.dataset.prior != null ? JSON.parse(prev.dataset.prior) : null;
       this.clearPillField(kind, kind === 'area' ? raw : value);
       const text = document.createTextNode(prev.dataset.token || prev.textContent);
@@ -1879,7 +1877,7 @@ document.addEventListener('alpine:init', () => {
       const remaining = this.$refs.content.querySelectorAll('.nlp-pill[data-kind="' + kind + '"]');
       for (const p of remaining) {
         const pr = p.dataset.value;
-        this.commitPill(kind, (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.parse(pr) : (kind === 'pri' || kind === 'dur' ? +pr : pr));
+        this.commitPill(kind, (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.parse(pr) : (kind === 'dur' ? +pr : pr));
       }
       // Non-destructive: with no same-kind chip left, restore the value the field held BEFORE this chip (a
       // picker selection, an earlier chip, or empty) rather than leaving it cleared. Areas are additive (splice only).
@@ -2142,6 +2140,7 @@ document.addEventListener('alpine:init', () => {
       this.goals.splice(0, this.goals.length, ...fresh); this._rowV++; await this.loadIdentities();
     },
     goalById(id) { return this.goals.find(g => g.id === id); },
+    goalGlyph(g) { return g?.icon && !g.icon.startsWith('i-') ? g.icon : ''; },   // emoji icon → render as text; symbol ids/none fall back to the SVG
     identityById(id) { return this.identities.find(i => i.id === id); },
     identityStatement(g) { return this.identityById(g?.identity_id)?.statement ?? g?.identity ?? null; },
     identitySuggestions() {
@@ -2432,7 +2431,7 @@ document.addEventListener('alpine:init', () => {
     goalNextSteps(id) {
       void this.tasks;   // touch the reactive dep on every call (even a cache hit below) so x-show/x-html/count all stay subscribed to task changes
       const sig = id + '|' + _calDataV, hit = _goalStepsMemo.get(sig); if (hit) return hit;
-      const out = [...this.goalTasks(id)].sort((a, b) => (a.due_at || '\uffff').localeCompare(b.due_at || '\uffff') || (Math.min(a.priority ?? 4, 4)) - (Math.min(b.priority ?? 4, 4)));
+      const out = [...this.goalTasks(id)].sort((a, b) => (a.due_at || '\uffff').localeCompare(b.due_at || '\uffff') || impRank(a.importance) - impRank(b.importance));
       _goalStepsMemo.set(sig, out);
       return out;
     },
@@ -2713,7 +2712,8 @@ document.addEventListener('alpine:init', () => {
     // "here" = the CURRENT BLOCK's location — the app's only location source for now (tracker precedence lands later)
     hereLocationId() {
       const now = new Date(), iso = isoDate(now);
-      const inst = blocksInRange(this.blocks || [], iso, iso).find(i => i.location_id && new Date(i.start) <= now && now < new Date(i.end));
+      const prev = isoDate(new Date(now.getTime() - 864e5));   // a block active now may have started yesterday (spans midnight)
+      const inst = blocksInRange(this.blocks || [], prev, iso).find(i => i.location_id && new Date(i.start) <= now && now < new Date(i.end));
       return inst?.location_id ?? null;
     },
     // Region rows: order frozen at open (see openLoc) — toggles flip the flag, never the position.
@@ -2772,7 +2772,7 @@ document.addEventListener('alpine:init', () => {
 
     // --- Saved filters ---
     activeFilter() { return this.navSel.type === 'filter' ? this.filters.find(f => f.id === this.navSel.id) : null; },
-    isFilterQuery(q) { return /(^|\s)(#|@|due:|deadline:|priority:|p:|is:|in:)|[&|!()]/i.test((q || '').trim()); },
+    isFilterQuery(q) { return /(^|\s)(#|@|due:|deadline:|importance:|is:|in:)|[&|!()]/i.test((q || '').trim()); },
     saveQueryAsFilter() {
       const q = (this.palette.q || '').trim(); if (!q || !this.isFilterQuery(q)) return;
       this.palette.open = false; this.openFilterEditor({ name: q, query: q });
@@ -3289,7 +3289,7 @@ document.addEventListener('alpine:init', () => {
     _actionable() {
       const def = this.store.defaultProject();
       return this.tasks.filter(t => !t.completed_at && !t.archived_at && !this.isSidebar(t) && t.id !== def && !this.hasChildren(t.id))
-        .sort((a, b) => (a.due_at || '9999').slice(0, 10).localeCompare((b.due_at || '9999').slice(0, 10)) || a.priority - b.priority);
+        .sort((a, b) => (a.due_at || '9999').slice(0, 10).localeCompare((b.due_at || '9999').slice(0, 10)) || impRank(a.importance) - impRank(b.importance));
     },
     nowTask() { return this._actionable()[0] || null; },
     nowNext() {

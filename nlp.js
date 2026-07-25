@@ -6,6 +6,10 @@ const V = DESIGN.lang.nlp;
 
 export const isoDate = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
+// Importance ordering (must > focus > none > someday). impRank: 0 = most important; unset → 'none'.
+export const IMPORTANCE = ['must', 'focus', 'none', 'someday'];
+export const impRank = v => { const i = IMPORTANCE.indexOf(v); return i < 0 ? 2 : i; };
+
 // Client half of the reminders future-only rule (server: pg/functions/reject_past_reminder.sql):
 // a user-created absolute reminder's floating local `at` ('YYYY-MM-DDTHH:MM') must not be in the past.
 // Lexicographic string comparison — same convention as the Android client.
@@ -201,13 +205,14 @@ export function parseRecurrence(s, now = new Date()) {
 // hybrid tokenizer: live preview keeps tokens; strips on save. `locations` guards "at <name>" — only known names pill.
 export function parseQuick(raw, now = new Date(), locations = []) {
   let s = ' ' + (raw || '') + ' ';
-  const o = { priority: null, dueIso: null, dueFromIso: null, deadlineIso: null, dueTime: '', durMin: null, project: null, areas: [], recurrence: null, location: null, locationExcept: false };
+  const o = { importance: null, dueIso: null, dueFromIso: null, deadlineIso: null, dueTime: '', durMin: null, project: null, areas: [], recurrence: null, location: null, locationExcept: false };
   const setTime = (h, m) => o.dueTime = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
   const DPRE = '(?:(?:on|due|by)\\s+)?';   // filler prepositions swallowed before a date
   const TPRE = '(?:(?:at|by|due)\\s+)?';   // ... and before a time
   const re = (body, flags = 'gi') => new RegExp('\\s' + body + '\\b', flags);
 
-  s = s.replace(/\sp([1-4])\b/gi, (_, n) => (o.priority = +n, ' '));
+  // importance flag (app-behavior, not a rank): ! = focus, !! = must, ~ = someday
+  s = s.replace(/\s(!{1,2}|~)(?=\s|$)/g, (_, t) => (o.importance = t === '~' ? 'someday' : t === '!!' ? 'must' : 'focus', ' '));
   s = s.replace(/\s@([\w-]+)/g, (_, l) => (o.areas.push(l), ' '));
   s = s.replace(/\s#([\w-]+)/g, (_, p) => (o.project = p, ' '));
 
@@ -231,7 +236,7 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   });
 
   // consumed before due-date matchers so the keyword's date isn't also taken as a due date
-  s = s.replace(/\s(?:deadline|ddl|dl)\s+(.+?)(?=\s+p[1-5]\b|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
+  s = s.replace(/\s(?:deadline|ddl|dl)\s+(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
     const iso = parseDate(dateStr.trim(), now);
     if (!iso) return m;                 // not a date → leave the text untouched
     o.deadlineIso = iso; return ' ';
@@ -302,7 +307,7 @@ export function classifyToken(text, now = new Date(), locations = []) {
   if (p.content !== '') return null;                                  // leftover text → not one token
   if (p.areas.length > 1) return null;                               // multiple areas ≠ one token
   const hits = [];
-  if (p.priority != null) hits.push({ kind: 'pri', value: p.priority });
+  if (p.importance != null) hits.push({ kind: 'imp', value: p.importance });
   if (p.dueIso || p.dueTime) hits.push({ kind: 'date', value: { iso: p.dueIso, from: p.dueFromIso, time: p.dueTime } });
   if (p.deadlineIso) hits.push({ kind: 'deadline', value: { iso: p.deadlineIso } });
   if (p.durMin != null) hits.push({ kind: 'dur', value: p.durMin });

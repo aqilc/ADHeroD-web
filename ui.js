@@ -98,10 +98,10 @@ export const areaChipHtml = ({ name, icon, color }) => html`<span class="area" s
 )}<span class="nm">${name}</span></span>`;
 
 // `title` is escaped or raw() pre-marked HTML (search highlight)
-export const taskRowHtml = ({ priorityColor, title, areas = [], projName = '', done = false }) => {
+export const taskRowHtml = ({ checkColor, title, areas = [], projName = '', done = false }) => {
   const chips = areas.map(areaChipHtml).join('');
   const proj = projName ? html`<span class="pick-path">#${projName}</span>` : '';
-  return html`<span class="check sm${done ? ' done' : ''}" style="--pc:${priorityColor}"></span><span class="pick-name">${title}</span>${chips ? raw(`<span class="areas">${chips}</span>`) : raw('')}${raw(proj)}`;
+  return html`<span class="check sm${done ? ' done' : ''}" style="--pc:${checkColor}"></span><span class="pick-name">${title}</span>${chips ? raw(`<span class="areas">${chips}</span>`) : raw('')}${raw(proj)}`;
 };
 
 // opts.ms wraps rows in .goal-step-row with a ◆ milestone toggle (data-act="milestone" for delegation)
@@ -154,7 +154,7 @@ export const rowBodyHtml = (r, opts = {}) => {
   const chk = cl.length ? `<div class="chk-list">${(plain ? cl : clView).map(({ ci, done, txt, desc }) =>
     `<div class="chk-row${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt">${esc(txt)}</span>${desc ? `<span class="chk-desc">${esc(desc)}</span>` : ''}</div>`).join('')}</div>` : '';
   const titleHtml = r.titleHtml ?? mdTitle(t.content);   // precomputed in mkRow (regex-cached); fall back for bare rows
-  return chev + check + `<div class="body"><div class="row1"><div class="r1l"><span class="title">${titleHtml}</span>${areas}${proj}${goals}</div><div class="r1r">${sched}${est}${dl}${loc}${due}${rep}</div></div>${rels}${notes}${chk}</div>`;
+  return chev + check + `<div class="body"><div class="row1"><div class="r1l"><span class="title">${titleHtml}</span>${areas}${proj}</div><div class="r1r">${goals}${sched}${est}${dl}${loc}${due}${rep}</div></div>${rels}${notes}${chk}</div>`;
 };
 
 // data-ridx on box = focus index; data-more="kind:id" on ··· button

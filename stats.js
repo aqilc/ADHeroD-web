@@ -1,8 +1,8 @@
 // Pure productivity aggregates over the activity stream. No DOM. Mirrors query.js/nlp.js.
 import { effectiveGoalIds } from './store.js';
 export const EXP = {
-  priorityBonus: { 1: 10, 2: 8, 3: 7, 4: 6, 5: 5 },   // the completion award (p1 highest → 10, default p5 → 5)
-  effortStepMin: 30, effortStepExp: 1, effortCap: 10,  // + effort bonus from est_minutes, capped into priority's range
+  importanceBonus: { must: 10, focus: 8, none: 6, someday: 5 },   // completion award by importance (must → 10, default none → 6)
+  effortStepMin: 30, effortStepExp: 1, effortCap: 10,  // + effort bonus from est_minutes, capped into importance's range
   streakDailyBonus: 5,                                 // once per streak-qualifying day (streak ≥ 2)
   createBonus: 3,                                      // capturing a task earns a small base reward
 };
@@ -13,7 +13,7 @@ const weekKey = day => { const d = new Date(day + 'T00:00:00Z'); d.setUTCDate(d.
 const monthKey = day => day.slice(0, 7);
 
 export function expForComplete(ctx) {
-  const p = EXP.priorityBonus[ctx?.priority] ?? EXP.priorityBonus[5];
+  const p = EXP.importanceBonus[ctx?.importance] ?? EXP.importanceBonus.none;
   const eff = Math.min(EXP.effortCap, Math.floor((ctx?.est_minutes || 0) / EXP.effortStepMin) * EXP.effortStepExp);
   return p + eff;
 }
