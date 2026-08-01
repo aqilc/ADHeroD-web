@@ -1,13 +1,13 @@
 // Pure read-model (no DOM, no store): calendar recurrence, items, blocks, and locations.
 import { _d, _iso, recurStep } from './store.js';
 
-const timeOf = iso => iso.length > 10 ? iso.slice(10) : '';   // "THH:MM" or ""
+export const timeOf = (iso, fb = '') => iso.length > 10 ? iso.slice(11, 16) : fb;   // "HH:MM" or fb — the ONE date-vs-timed ISO decode (full-ISO round-trips once blanked Plan)
 const dateOf = iso => iso.slice(0, 10);
 
 // Occurrences within [from, to] inclusive; date-only from/to expand to start/end-of-day.
 export function occurrencesInRange(rule, startsAtIso, fromIso, toIso, max = 400) {
   const from = dateOf(fromIso), to = dateOf(toIso), clock = timeOf(startsAtIso);
-  const at = d => _iso(d) + clock;
+  const at = d => _iso(d) + (clock ? 'T' + clock : '');
   if (!rule || !rule.freq) { const day = dateOf(startsAtIso); return day >= from && day <= to ? [startsAtIso] : []; }   // null/malformed → one-off
   const out = [];
   let cur = _d(startsAtIso), count = 0;   // anchor always matches by construction
@@ -30,7 +30,9 @@ export function occurrencesInRange(rule, startsAtIso, fromIso, toIso, max = 400)
 
 // Wall-clock datetime math, parsed as UTC so it's timezone-agnostic (no DST drift) — matching _d/_iso.
 const p2 = n => String(n).padStart(2, '0');
-const wall = iso => new Date((iso.length > 10 ? iso : iso + 'T00:00') + ':00Z');
+// Read the wall-clock DIGITS (like app.js _clMin) — a stored time can arrive as full ISO from a timestamptz
+// round-trip or an external import; appending ':00Z' to that made an Invalid Date that blanked the calendar.
+const wall = iso => new Date(iso.slice(0, 10) + 'T' + (iso.length > 10 ? iso.slice(11, 16) : '00:00') + ':00Z');
 const fmtDT = d => `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}T${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
 const minutesBetween = (a, b) => (wall(b) - wall(a)) / 60000;
 const addMinutes = (iso, mins) => fmtDT(new Date(wall(iso).getTime() + mins * 60000));   // timed result
@@ -39,11 +41,16 @@ const addMinutesDate = (iso, mins) => _iso(new Date(wall(iso).getTime() + mins *
 // pure — all data comes from args
 export function calendarItems(events, tasks, fromIso, toIso, now) {
   const from = dateOf(fromIso), to = dateOf(toIso), items = [];
+  // Membership is OVERLAP, not "starts inside": a window can be narrower than the item (day view asks for one
+  // day), and a 4-day conference must still be visible on days 2-4. Occurrence search therefore looks back by
+  // the item's own length, and anything that ended before the window is dropped again.
+  const overlaps = (s, e) => dateOf(s) <= to && dateOf(e) >= from;
+  const back = days => { const d = _d(from); d.setUTCDate(d.getUTCDate() - days); return _iso(d); };
   for (const ev of events || []) {
-    const dur = minutesBetween(ev.starts_at, ev.ends_at);
-    for (const start of occurrencesInRange(ev.recurrence, ev.starts_at, fromIso, toIso)) {
+    const dur = minutesBetween(ev.starts_at, ev.ends_at) || 0;   // one unparseable row degrades to a zero-length item, never a blank surface
+    for (const start of occurrencesInRange(ev.recurrence, ev.starts_at, back(Math.ceil(Math.max(0, dur) / 1440) + 1), toIso)) {
       const end = ev.all_day ? addMinutesDate(start, dur) : addMinutes(start, dur);   // all-day ends stay date-only
-      items.push({ kind: 'event', id: ev.id, title: ev.title, start, end, allDay: ev.all_day, color: ev.color });
+      if (overlaps(start, end)) items.push({ kind: 'event', id: ev.id, title: ev.title, start, end, allDay: ev.all_day, color: ev.color });
     }
   }
   const inRange = iso => { const day = dateOf(iso); return day >= from && day <= to; };
@@ -54,9 +61,13 @@ export function calendarItems(events, tasks, fromIso, toIso, now) {
       const ad = t.scheduled_at.length <= 10;   // date-only scheduled_at ⇒ all-day block (dropped into the all-day row)
       // a later due date stretches the all-day block into a multi-day band (scheduled → due = the window to do it)
       const adEnd = ad && t.due_at && t.due_at.slice(0, 10) > t.scheduled_at ? t.due_at.slice(0, 10) : t.scheduled_at;
-      if (inRange(t.scheduled_at)) items.push({ kind: 'task-block', id: t.id, title: t.content, start: t.scheduled_at, end: ad ? adEnd : addMinutes(t.scheduled_at, t.est_minutes ?? 60), allDay: ad, color: t.color || null });
+      const end = ad ? adEnd : addMinutes(t.scheduled_at, t.est_minutes ?? 60);
+      if (overlaps(t.scheduled_at, end)) items.push({ kind: 'task-block', id: t.id, title: t.content, start: t.scheduled_at, end, allDay: ad, color: t.color || null });
     } else if (t.due_at && inRange(t.due_at)) {
       items.push({ kind: 'task-due', id: t.id, title: t.content, start: t.due_at, end: t.due_at, allDay: t.due_at.length <= 10, color: t.color || null });
+    }
+    if (t.deadline_at && inRange(t.deadline_at)) {
+      items.push({ kind: 'task-deadline', id: t.id, title: t.content, start: t.deadline_at, end: t.deadline_at, allDay: t.deadline_at.length <= 10, color: t.color || null });
     }
   }
   // string sort on `start`: date-only ("2026-06-20") sorts before any same-day timed ("…T09:00") → all-day first.

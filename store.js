@@ -1,5 +1,6 @@
 import { isoDate } from './nlp.js';
 import { makeFuzzy, buildSearchDocs, rankDocs, defaultDocs, matchQuery } from './search.js';
+import { nextTs } from './recovery.js';
 
 // Store framework: swap adapters to change backend (LocalStore now, Postgres later).
 // Interface: requiresAuth; tasks.{list,create,update,remove,reorder,move,link,unlink,setCompleted}; areas.*
@@ -17,7 +18,7 @@ export const baseTask = () => {
     recurrence: null, completions: [], created_at: ts, updated_at: ts,
   };
 };
-export function children(rows, id) { return rows.filter(r => r.parent_id === id); }
+function children(rows, id) { return rows.filter(r => r.parent_id === id); }
 // Depth of the subtree rooted at id (id alone = 1). Cycle-safe.
 export function subtreeDepth(rows, id, seen = new Set()) {
   if (seen.has(id)) return 1;
@@ -53,6 +54,7 @@ export function effectiveGoalIds(rows, id, byId = new Map(rows.map(t => [t.id, t
   return [...out];
 }
 
+// planner: not yet wired
 // Hard deadline a task is bound by: its own if set, else the nearest ancestor's (own-or-inherit, NO min()).
 export function effectiveDeadline(rows, id, byId = new Map(rows.map(t => [t.id, t]))) {
   let cur = byId.get(id); const seen = new Set();
@@ -156,11 +158,71 @@ export function nextOccurrence(recurrence, fromIso, now, { inclusive = false } =
   return _iso(cur);
 }
 
+// --- shared helpers (imported by supabase-store.js) ---
+// Build activity context — walks the parent chain for goal_ids (effectiveGoalIds). byId optional for batch efficiency.
+export function buildCtx(t, rows, byId) {
+  const bid = byId || (rows?.length ? new Map(rows.map(x => [x.id, x])) : null);
+  return { project_id: t.parent_id ?? null, area_ids: t.area_ids ?? [], place: t.place ?? null, importance: t.importance ?? 'none', est_minutes: t.est_minutes ?? null, goal_ids: bid ? effectiveGoalIds(rows, t.id, bid) : (t.goal_ids ?? []), milestone: t.milestone ?? false };
+}
+// Normalize area field shorthand: explicit ids win; else return trimmed names for per-store create.
+export function resolveAreaNames(fields) {
+  if (fields.area_ids) return { ids: fields.area_ids };
+  return { ids: null, names: (fields.areas ?? []).map(n => (n ?? '').trim()) };
+}
+// Unified search: fuzzy when query, recency-first default otherwise.
+export function searchDocs(query, limit, uf, idx, recent) {
+  return (query || '').trim() ? rankDocs(uf, idx.haystack, idx.meta, query, limit) : defaultDocs(idx.meta, recent, limit);
+}
+// Build the freeText closure for matchQuery: fuzzy ids + optional scope-aware substring filter.
+export function buildFreeText(uf, idx, tasks) {
+  return (term, scope) => {
+    const [idxs] = uf.search(idx.haystack, term, 1, 1e4);
+    const ids = new Set((idxs || []).map(i => idx.meta[i].id));
+    if (!scope) return ids;
+    return new Set([...ids].filter(id => { const t = tasks.find(x => x.id === id); if (!t) return false; return ((scope === 'notes' ? t.notes : t.content) || '').toLowerCase().includes(term); }));
+  };
+}
+// Prepend id to a recent list, dedup, cap at 12.
+export const updateRecent = (id, recent) => [id, ...(recent || []).filter(x => x !== id)].slice(0, 12);
+// Compute recurrence advance patch for a completed occurrence (non-mutating; returns {recurrence,due_at,completed_at}).
+export function advanceRecurrence(target, ts) {
+  const wasArray = Array.isArray(target.recurrence);
+  const rules = recRules(target.recurrence).map(r => ({ ...r }));
+  const anchor = target.due_at || isoDate(new Date(ts));
+  const src = rules.find(r => r.gen_due && !r.paused) || rules.find(r => !r.paused);
+  src.done_count = (src.done_count ?? 0) + 1;
+  const srcNext = nextOccurrence(src, anchor, ts);
+  if ((src.ends?.count != null && src.done_count >= src.ends.count) || (src.ends?.date && srcNext > src.ends.date)) src.paused = true;
+  rules.forEach(r => delete r.gen_due);
+  const rec = wasArray ? rules : rules[0];
+  const best = nextAcrossRules(rec, anchor, ts);
+  let completed_at = null, due_at = target.due_at;
+  if (!best) completed_at = ts;
+  else { best.rule.gen_due = true; due_at = best.iso + (best.rule.at ? 'T' + best.rule.at : (target.due_at?.length > 10 ? target.due_at.slice(10) : '')); }
+  return { recurrence: rec, due_at, completed_at };
+}
+// Pause all rules in a recurrence (non-mutating).
+export const pauseRecurrence = rec => Array.isArray(rec) ? rec.map(x => ({ ...x, paused: true })) : { ...rec, paused: true };
+// Seed initial due_at for a new recurring task (mutates rec's rule to mark gen_due). Returns due_at string or null.
+export function seedRecurrenceDue(rec, ts) {
+  const b = nextAcrossRules(rec, isoDate(new Date(ts)), ts, { inclusive: true });
+  if (!b) return null;
+  b.rule.gen_due = true;
+  return b.iso + (b.rule.at ? 'T' + b.rule.at : '');
+}
+// Auto-complete moved-out parents — callback-parameterized for LocalStore (sync) and SupabaseStore (async).
+// markCompleted(p, ts): set completed state. onActivity(type, p): log the event.
+export async function sweepMovedOut(toComplete, lookupRows, ts, markCompleted, onActivity) {
+  for (const pid of toComplete) {
+    const p = lookupRows.find(r => r.id === pid);
+    if (p && !p.completed_at) { await markCompleted(p, ts); if (p.sidebar !== true) await onActivity('complete', p); }
+  }
+}
+
 export function createLocalStore(opts = {}) {
   const storage = opts.storage || globalThis.localStorage;
   const TASKS_KEY = opts.key || 'adherod.tasks';
   const AREAS_KEY = 'adherod.areas';
-  const LEGACY_AREAS_KEY = 'adherod.tags';   // pre-rebrand key (areas were "tags"); migrated on init
   const META_KEY = 'adherod.meta';
   const FILTERS_KEY = 'adherod.filters';
   const uuid = opts.uuid || (() => crypto.randomUUID());
@@ -185,6 +247,9 @@ export function createLocalStore(opts = {}) {
   const BLOCKS_KEY = 'adherod.blocks';                // condition-bearing time regions (subsume presence windows)
   const readBlocks = () => readKey(BLOCKS_KEY);
   const writeBlocks = v => writeKey(BLOCKS_KEY, v);
+  const SCHEDULE_ITEMS_KEY = 'adherod.schedule_items';
+  const readScheduleItems = () => readKey(SCHEDULE_ITEMS_KEY);
+  const writeScheduleItems = v => writeKey(SCHEDULE_ITEMS_KEY, v);
   const ACTIVITY_KEY = 'adherod.activity';
   const readActivity = () => readKey(ACTIVITY_KEY);
   const writeActivity = v => writeKey(ACTIVITY_KEY, v);   // no reindex
@@ -197,19 +262,16 @@ export function createLocalStore(opts = {}) {
   const writeIdentities = v => writeKey(IDENTITIES_KEY, v);
   const mkIdentity = f => { const ts = now(); return { id: uuid(), statement: (f.statement || '').trim(), position: f.position ?? 0, created_at: ts, updated_at: ts }; };
   const LOCATIONS_KEY = 'adherod.locations';
-  const WINDOWS_KEY = 'adherod.windows';
   const TRAVEL_KEY = 'adherod.travel';
   const readLocations = () => readKey(LOCATIONS_KEY);
   const writeLocations = v => writeKey(LOCATIONS_KEY, v);   // no reindex
   const mkLocation = (name, region = 'Home', position = 0) => { const ts = now(); return { id: uuid(), name, icon: null, color: null, region, position, created_at: ts, updated_at: ts }; };
-  const readWindows = () => readKey(WINDOWS_KEY);   // read-only: legacy presence windows, migrated into blocks
   const readTravel = () => JSON.parse(storage.getItem(TRAVEL_KEY) || '{}');
   const writeTravel = v => writeKey(TRAVEL_KEY, v);
-  const mkCtx = (t, rows, byId) => ({ project_id: t.parent_id ?? null, area_ids: t.area_ids ?? [], place: t.place ?? null, importance: t.importance ?? 'none', est_minutes: t.est_minutes ?? null, goal_ids: rows ? effectiveGoalIds(rows, t.id, byId) : (t.goal_ids ?? []), milestone: t.milestone ?? false });
   function pushActivity(type, task) {
     if (!task) return;
     const log = readActivity();
-    log.push({ id: uuid(), type, ts: now(), subject_type: 'task', subject_id: task.id, ctx: mkCtx(task, readTasks()), void: false });
+    log.push({ id: uuid(), type, ts: now(), subject_type: 'task', subject_id: task.id, ctx: buildCtx(task, readTasks()), void: false });
     writeActivity(log);
   }
 
@@ -231,13 +293,6 @@ export function createLocalStore(opts = {}) {
     meta.default_project_id = backlog.id; writeMeta(meta);
   }
 
-  // One-time: adherod.tags → adherod.areas (pre-rebrand).
-  function migrateAreas() {
-    if (storage.getItem(AREAS_KEY) == null && storage.getItem(LEGACY_AREAS_KEY) != null) {
-      writeKey(AREAS_KEY, JSON.parse(storage.getItem(LEGACY_AREAS_KEY) || '[]'));
-    }
-  }
-
   // --- initialization ---
   function normalize() {
     const ts = now();
@@ -248,29 +303,13 @@ export function createLocalStore(opts = {}) {
     };
     const tasks = readTasks(), areas = readAreas();
     const def = readMeta().default_project_id;
-    // tag_ids → area_ids (rebrand); preserve old caches.
-    let migrated = false;
-    for (const t of tasks) if (t.tag_ids !== undefined) { if (t.area_ids === undefined) t.area_ids = t.tag_ids; delete t.tag_ids; migrated = true; }
     const { id: _id, created_at: _c, updated_at: _u, ...taskDefaults } = baseTask();
     const filled = fill(tasks, { ...taskDefaults, parent_id: def, created_at: ts, updated_at: ts });
     const repaired = repairTree(tasks, def);
-    if (filled || repaired || migrated) writeTasks(tasks);
+    if (filled || repaired) writeTasks(tasks);
     if (fill(areas, { color: null, icon: null, position: 0, favorite: false, created_at: ts, updated_at: ts })) writeAreas(areas);
     const goals = readGoals();
-    let goalsChanged = fill(goals, { identity: null, identity_id: null, cue: null, log_default: null, color: null, icon: null, targets: [], target_date: null, favorite: false, archived: false, position: 0, sustained_at: null, sustain_snoozed_until: null, shape: 'process', shelved_at: null, finished_at: null, created_at: ts, updated_at: ts });
-    // one-time: identity strings → entities (lossless, idempotent)
-    const idents = readIdentities();
-    const byStatement = new Map(idents.map(i => [i.statement, i]));
-    let identsChanged = false, linksChanged = false;
-    for (const g of goals) {
-      const st = (g.identity || '').trim();
-      if (!st || g.identity_id) continue;
-      let ent = byStatement.get(st);
-      if (!ent) { ent = mkIdentity({ statement: st, position: idents.length }); idents.push(ent); byStatement.set(st, ent); identsChanged = true; }
-      g.identity_id = ent.id; linksChanged = true;
-    }
-    if (identsChanged) writeIdentities(idents);
-    if (goalsChanged || linksChanged) writeGoals(goals);
+    if (fill(goals, { identity: null, identity_id: null, cue: null, log_default: null, color: null, icon: null, targets: [], target_date: null, favorite: false, archived: false, position: 0, sustained_at: null, sustain_snoozed_until: null, shape: 'process', shelved_at: null, finished_at: null, created_at: ts, updated_at: ts })) writeGoals(goals);
   }
 
   // Repair broken parent links (self-parent, dangling, cycles).
@@ -291,17 +330,14 @@ export function createLocalStore(opts = {}) {
     return changed;
   }
 
-  migrateAreas();
   ensureBacklog();
   normalize();
   reindex();
 
-  // One-time (meta-flagged): rename Inbox→Backlog, seed default filters.
+  // One-time (meta-flagged): seed default filters.
   {
     const meta = readMeta();
     if (!meta.default_filters_seeded) {
-      const tasks = readTasks(), def = tasks.find(t => t.id === meta.default_project_id);
-      if (def && def.content === 'Inbox') { def.content = 'Backlog'; writeTasks(tasks); }
       if (readFilters().length === 0) {
         const ts = now();
         writeFilters([
@@ -323,25 +359,6 @@ export function createLocalStore(opts = {}) {
     }
   }
 
-  // one-time: synthesize completion history from legacy completed_at + recurring completions[]
-  {
-    const meta = readMeta();
-    if (!meta.activity_backfilled) {
-      if (readActivity().length === 0) {
-        const log = [];
-        const tasksList = readTasks();
-        const byId = new Map(tasksList.map(t => [t.id, t]));   // build ONCE — mkCtx→effectiveGoalIds reuses it (was O(n²) rebuilding per task)
-        for (const t of tasksList) {
-          const ctx = mkCtx(t, tasksList, byId);
-          if (t.completed_at && !t.recurrence) log.push({ id: uuid(), type: 'complete', ts: t.completed_at, subject_type: 'task', subject_id: t.id, ctx, void: false });
-          for (const c of (t.completions || [])) log.push({ id: uuid(), type: 'complete', ts: c, subject_type: 'task', subject_id: t.id, ctx, void: false });
-        }
-        writeActivity(log);
-      }
-      meta.activity_backfilled = true; writeMeta(meta);
-    }
-  }
-
   // Seed Home location + travel once.
   {
     const meta = readMeta();
@@ -356,37 +373,6 @@ export function createLocalStore(opts = {}) {
       meta.home_seeded = true; writeMeta(meta);
     }
   }
-  // One-time: task.place → location with 'only' constraint.
-  {
-    const meta = readMeta();
-    if (!meta.locations_migrated) {
-      const tasks = readTasks(), locs = readLocations(); let changed = false;
-      const findOrAdd = name => { let l = locs.find(x => x.name === name); if (!l) { l = mkLocation(name, 'Home', locs.length); locs.push(l); } return l.id; };
-      for (const t of tasks) if (typeof t.place === 'string' && t.place.trim()) { t.location = { mode: 'only', ids: [findOrAdd(t.place.trim())] }; t.place = null; changed = true; }
-      if (changed) { writeLocations(locs); writeTasks(tasks); }
-      meta.locations_migrated = true; writeMeta(meta);
-    }
-  }
-  // migrate presence windows → recurring blocks (one-time, idempotent)
-  {
-    const meta = readMeta();
-    if (!meta.blocks_from_windows) {
-      const ts = now();
-      const blocks = readWindows().map(w => {
-        const wds = (w.weekdays || []).slice().sort((a, b) => a - b);
-        const anchor = '2024-01-' + String(7 + (wds[0] ?? 0)).padStart(2, '0');   // 2024-01-07 = Sunday; offset by weekday → anchor matches rule
-        return {
-          id: uuid(), title: '', starts_at: anchor + 'T' + (w.typical_start || '09:00'), ends_at: anchor + 'T' + (w.typical_end || '17:00'),
-          all_day: false, recurrence: { freq: 'week', interval: 1, weekdays: wds },
-          location_id: w.location_id, areas: [], energy: null, availability: 'busy',
-          color: null, source: 'local', created_at: ts, updated_at: ts,
-        };
-      });
-      if (blocks.length) writeBlocks([...readBlocks(), ...blocks]);
-      meta.blocks_from_windows = true; writeMeta(meta);
-    }
-  }
-
   // --- name resolution helpers (used in tasks.create/update) ---
   function resolveParent(fields) {
     if (fields.parent_id !== undefined && fields.parent_id !== null) return fields.parent_id;
@@ -409,23 +395,16 @@ export function createLocalStore(opts = {}) {
   }
 
   function resolveAreas(fields) {
-    if (fields.area_ids) return fields.area_ids;
-    if (fields.areas && fields.areas.length) {
-      const areas = readAreas();
-      const ts = now();
-      const ids = fields.areas.map(name => {
-        let l = areas.find(x => x.name === name);
-        if (!l) {
-          const pos = areas.length ? Math.max(...areas.map(x => x.position)) + 1 : 0;
-          l = { id: uuid(), name, color: null, position: pos, favorite: false, created_at: ts, updated_at: ts };
-          areas.push(l);
-        }
-        return l.id;
-      });
-      writeAreas(areas);
-      return ids;
-    }
-    return [];
+    const { ids, names } = resolveAreaNames(fields);
+    if (ids) return ids;
+    if (!names.length) return [];
+    const areas = readAreas(); const ts = now();
+    const result = names.map(nm => {   // trim so "Work " reuses "Work" (mirrors the DB unique index) — done by resolveAreaNames
+      let l = areas.find(x => x.name === nm);
+      if (!l) { const pos = areas.length ? Math.max(...areas.map(x => x.position)) + 1 : 0; l = { id: uuid(), name: nm, color: null, position: pos, favorite: false, created_at: ts, updated_at: ts }; areas.push(l); }
+      return l.id;
+    });
+    writeAreas(areas); return result;
   }
 
   function resolveGoals(fields) { return Array.isArray(fields.goal_ids) ? fields.goal_ids : []; }
@@ -443,33 +422,23 @@ export function createLocalStore(opts = {}) {
       };
     },
 
-    // reversible undo: snapshot/restore tasks + activity + areas
-    snapshot() { return { tasks: JSON.stringify(readTasks()), activity: JSON.stringify(readActivity()), areas: JSON.stringify(readAreas()) }; },
-    restore(snap) { if (!snap) return false; writeTasks(JSON.parse(snap.tasks)); writeActivity(JSON.parse(snap.activity)); if (snap.areas !== undefined) writeAreas(JSON.parse(snap.areas)); return true; },
+    // Trash restore: re-insert previously-deleted rows (dedup by id, order-preserving). Powers "Recently deleted".
+    reinsert(kind, rows) {
+      const rw = { task: [readTasks, writeTasks], area: [readAreas, writeAreas], goal: [readGoals, writeGoals],
+        event: [readEvents, writeEvents], block: [readBlocks, writeBlocks], filter: [readFilters, writeFilters], location: [readLocations, writeLocations] }[kind];
+      if (!rw || !rows?.length) return false;
+      const [read, write] = rw, cur = read(), have = new Set(cur.map(r => r.id));
+      write([...cur, ...rows.filter(r => !have.has(r.id))]);
+      return true;
+    },
 
     defaultProject() { return readMeta().default_project_id || null; },
-    search(query, limit = 50) {
-      return (query || '').trim()
-        ? rankDocs(uf, _search.haystack, _search.meta, query, limit)
-        : defaultDocs(_search.meta, readMeta().recent || [], limit);
-    },
-    recordSearchPick(id) { const meta = readMeta(); meta.recent = [id, ...(meta.recent || []).filter(x => x !== id)].slice(0, 12); writeMeta(meta); },
+    search(query, limit = 50) { return searchDocs(query, limit, uf, _search, readMeta().recent || []); },
+    recordSearchPick(id) { const meta = readMeta(); meta.recent = updateRecent(id, meta.recent); writeMeta(meta); },
     setDefaultProject(id) { const meta = readMeta(); meta.default_project_id = id; writeMeta(meta); reindex(); },
-    globalTargets() { return readMeta().global_targets || []; },
-    setGlobalTargets(targets) { const meta = readMeta(); meta.global_targets = targets || []; writeMeta(meta); },
     runFilter(query, limit = 200) {
       const tasks = readTasks(), areas = readAreas(), def = readMeta().default_project_id || null;
-      const freeText = (term, scope) => {
-        const [idxs] = uf.search(_search.haystack, term, 1, 1e4);
-        const ids = new Set((idxs || []).map(i => _search.meta[i].id));
-        if (!scope) return ids;
-        return new Set([...ids].filter(id => {
-          const t = tasks.find(x => x.id === id); if (!t) return false;
-          const hay = scope === 'notes' ? (t.notes || '') : (t.content || '');
-          return hay.toLowerCase().includes(term);
-        }));
-      };
-      return matchQuery(query, tasks, { now: now(), areas, defaultProjectId: def, freeText }).slice(0, limit);
+      return matchQuery(query, tasks, { now: now(), areas, defaultProjectId: def, freeText: buildFreeText(uf, _search, tasks) }).slice(0, limit);
     },
 
     activity: {
@@ -537,6 +506,18 @@ export function createLocalStore(opts = {}) {
       async remove(id) { return dropRow(readBlocks, writeBlocks, id); },
     },
 
+    scheduleItems: {
+      async list() { return readScheduleItems(); },
+      async add({ task_id, block_id, role, position }) {
+        const ts = now();
+        const item = { id: uuid(), task_id, block_id, role: role ?? 'during', position: position ?? 0, created_at: ts, updated_at: ts };
+        writeScheduleItems([...readScheduleItems(), item]);
+        return item;
+      },
+      async remove(id) { return dropRow(readScheduleItems, writeScheduleItems, id); },
+      async setRole(id, role) { return patchRow(readScheduleItems, writeScheduleItems, id, { role }); },
+    },
+
     tasks: {
       async list() {
         const tasks = readTasks(), def = readMeta().default_project_id || null;
@@ -556,10 +537,7 @@ export function createLocalStore(opts = {}) {
           const rows = readTasks(); // read after resolveParent (may write a new root task)
           const recurrence = fields.recurrence ?? null;
           let due_at = fields.due_at || null;
-          if (recurrence && !fields.due_at) {
-            const b = nextAcrossRules(recurrence, isoDate(new Date(now())), now(), { inclusive: true });
-            if (b) { b.rule.gen_due = true; due_at = b.iso + (b.rule.at ? 'T' + b.rule.at : ''); }   // seeded due is rule-generated; a rule may carry its own time
-          }
+          if (recurrence && !due_at) { const seeded = seedRecurrenceDue(recurrence, now()); if (seeded) due_at = seeded; }   // seeded due is rule-generated; a rule may carry its own time
           const row = {
             ...baseTask(),
             id: uuid(),
@@ -591,7 +569,7 @@ export function createLocalStore(opts = {}) {
           writeTasks(rows);
           if (row.sidebar !== true) pushActivity('create', row);
           return row;
-        } catch { return null; }
+        } catch (e) { console.error('[store] create failed', e); return null; }
       },
       async reorder(orderedIds) {
         const rows = readTasks();
@@ -615,7 +593,7 @@ export function createLocalStore(opts = {}) {
         }
         if (fields.goal_ids !== undefined) { resolved.goal_ids = resolveGoals(fields); delete fields.goal_ids; }
         const prevDue = row.due_at;
-        Object.assign(row, fields, resolved, { updated_at: now() });
+        Object.assign(row, fields, resolved, { updated_at: nextTs(now(), row.updated_at) });
         writeTasks(rows);
         if (fields.due_at !== undefined && prevDue && row.due_at && row.due_at.slice(0, 10) > prevDue.slice(0, 10)) pushActivity('postpone', row);
         return row;
@@ -624,7 +602,7 @@ export function createLocalStore(opts = {}) {
         const rows = readTasks();
         const row = rows.find(r => r.id === id); if (!row) return false;
         const it = (row.checklist || []).find(c => c.id === itemId); if (!it) return false;
-        it.done = done; row.updated_at = now();
+        it.done = done; row.updated_at = nextTs(now(), row.updated_at);
         writeTasks(rows);
         return true;
       },
@@ -640,27 +618,29 @@ export function createLocalStore(opts = {}) {
           }
           const oldParentId = t.parent_id;
           const ts = now();
-          t.parent_id = parentId ?? null; t.position = toIndex; t.updated_at = ts; _treeDirty = true;
+          t.parent_id = parentId ?? null; t.position = toIndex; t.updated_at = nextTs(ts, t.updated_at); _treeDirty = true;
           // Auto-complete old parent chain (ancestors whose remaining children are all done).
           if (oldParentId && oldParentId !== (parentId ?? null)) {
-            for (const pid of movedOutParents(rows, id, oldParentId, ts)) {
-              const p = rows.find(r => r.id === pid);
-              if (p && !p.completed_at) { p.completed_at = ts; p.updated_at = ts; if (p.sidebar !== true) pushActivity('complete', p); }
-            }
+            const toComplete = movedOutParents(rows, id, oldParentId, ts);   // same non-empty guard as remove(): no yield before writeTasks
+            if (toComplete.length) await sweepMovedOut(toComplete, rows, ts,
+              (p, t) => { p.completed_at = t; p.updated_at = nextTs(t, p.updated_at); }, pushActivity);
           }
           writeTasks(rows); return t;
-        } catch { return null; }
+        } catch (e) { console.error('[store] move failed', e); return null; }
       },
       async remove(id, targetId) {
         try {
           _treeDirty = true;
           const rows = readTasks();
+          const task = rows.find(r => r.id === id); if (!task) return false;
+          const oldParentId = task.parent_id;
           const kids = rows.filter(r => r.parent_id === id);
           if (kids.length) {
             if (!targetId || !rows.some(r => r.id === targetId)) return false;
             if (descendantIds(rows, id).includes(targetId)) return false;
             for (const k of kids) k.parent_id = targetId;
           }
+          const ts = now();
           const meta = readMeta();
           if (meta.default_project_id === id && targetId) { meta.default_project_id = targetId; writeMeta(meta); }
           const remaining = rows.filter(r => r.id !== id);
@@ -668,38 +648,34 @@ export function createLocalStore(opts = {}) {
             if (r.blocked_by?.includes(id)) r.blocked_by = r.blocked_by.filter(x => x !== id);
             if (r.relates?.includes(id)) r.relates = r.relates.filter(x => x !== id);
           }
+          // Auto-complete old parent chain after id is removed (same rule as move-out).
+          // Guard: only await when toComplete is non-empty — parallel remove() calls (e.g. convertToChecklist)
+          // must not yield before writeTasks or each write overwrites the previous one.
+          if (oldParentId) {
+            const toComplete = movedOutParents(rows, id, oldParentId, ts);
+            if (toComplete.length) await sweepMovedOut(toComplete, remaining, ts,
+              (p, t) => { p.completed_at = t; p.updated_at = nextTs(t, p.updated_at); }, pushActivity);
+          }
           writeTasks(remaining);
           return true;
-        } catch { return false; }
+        } catch (e) { console.error('[store] remove failed', e); return false; }
       },
       async setCompleted(id, done) {
         const rows = readTasks(); const ts = now();
         const voidComplete = sid => { const log = readActivity(); for (let i = log.length - 1; i >= 0; i--) if (log[i].subject_id === sid && log[i].type === 'complete' && !log[i].void) { log[i].void = true; writeActivity(log); break; } };
-        const mark = (tid, val) => { const r = rows.find(x => x.id === tid); if (r) { const was = r.completed_at; r.completed_at = val; r.updated_at = ts; if (val && !was && r.sidebar !== true) pushActivity('complete', r); } };
-        const target = rows.find(r => r.id === id);
+        const mark = (tid, val) => { const r = rows.find(x => x.id === tid); if (r) { const was = r.completed_at; r.completed_at = val; r.updated_at = nextTs(ts, r.updated_at); if (val && !was && r.sidebar !== true) pushActivity('complete', r); } };
+        const target = rows.find(r => r.id === id); if (!target) return false;
         // Recurring: log + advance due_at unless every statement ends (all-paused falls through to permanent complete).
-        const rules = recRules(target?.recurrence);
-        if (done && rules.some(r => !r.paused) && !target.completed_at && !rows.some(r => r.parent_id === id)) {
-          target.completions.push(ts); target.updated_at = ts;
+        if (done && recActive(target.recurrence) && !target.completed_at && !rows.some(r => r.parent_id === id)) {
+          target.completions.push(ts); target.updated_at = nextTs(ts, target.updated_at);
           if (target.sidebar !== true) pushActivity('complete', target);
-          const anchor = target.due_at || isoDate(new Date(ts));
-          // The completed occurrence belongs to the rule that generated the current due (gen_due marker; legacy fallback: first active).
-          const src = rules.find(r => r.gen_due && !r.paused) || rules.find(r => !r.paused);
-          src.done_count = (src.done_count ?? 0) + 1;
-          const srcNext = nextOccurrence(src, anchor, ts);
-          // Per-rule ends (count reached, or next past "until"): PAUSE (never destroy) the exhausted statement.
-          if ((src.ends?.count != null && src.done_count >= src.ends.count) || (src.ends?.date && srcNext > src.ends.date)) src.paused = true;
-          rules.forEach(r => delete r.gen_due);
-          const best = nextAcrossRules(target.recurrence, anchor, ts);
-          if (!best) target.completed_at = ts;   // every statement ended → permanent complete (rules stay, paused)
-          else { best.rule.gen_due = true; target.due_at = best.iso + (best.rule.at ? 'T' + best.rule.at : (target.due_at && target.due_at.length > 10 ? target.due_at.slice(10) : '')); }
-          writeTasks(rows);
-          return true;
+          Object.assign(target, advanceRecurrence(target, ts));
+          writeTasks(rows); return true;
         }
         if (done) {
           for (const x of pendingSweep(rows, id)) {
             const r = rows.find(row => row.id === x);
-            if (r?.recurrence && recActive(r.recurrence)) r.recurrence = Array.isArray(r.recurrence) ? r.recurrence.map(x => ({ ...x, paused: true })) : { ...r.recurrence, paused: true };   // permanent completion pauses (never destroys) the rule(s)
+            if (r?.recurrence && recActive(r.recurrence)) r.recurrence = pauseRecurrence(r.recurrence);   // permanent completion pauses (never destroys) the rule(s)
             mark(x, ts);
           }
           mark(id, ts);
@@ -719,8 +695,8 @@ export function createLocalStore(opts = {}) {
         const rows = readTasks(); const ts = now();
         const t = rows.find(r => r.id === id); if (!t) return false;
         const was = t.archived_at;
-        t.archived_at = val ? ts : null; t.updated_at = ts;
-        if (val && recActive(t.recurrence)) t.recurrence = Array.isArray(t.recurrence) ? t.recurrence.map(x => ({ ...x, paused: true })) : { ...t.recurrence, paused: true };   // pause, never destroy
+        t.archived_at = val ? ts : null; t.updated_at = nextTs(ts, t.updated_at);
+        if (val && recActive(t.recurrence)) t.recurrence = pauseRecurrence(t.recurrence);   // pause, never destroy
         if (t.sidebar !== true && !!was !== !!val) pushActivity(val ? 'archive' : 'unarchive', t);
         writeTasks(rows);
         return true;
@@ -731,8 +707,8 @@ export function createLocalStore(opts = {}) {
         const a = rows.find(r => r.id === id), b = rows.find(r => r.id === otherId);
         if (!a || !b) return false;
         const key = type === 'relates' ? 'relates' : 'blocked_by';
-        if (!a[key].includes(otherId)) { a[key].push(otherId); a.updated_at = ts; }
-        if (key === 'relates' && !b.relates.includes(id)) { b.relates.push(id); b.updated_at = ts; }
+        if (!a[key].includes(otherId)) { a[key].push(otherId); a.updated_at = nextTs(ts, a.updated_at); }
+        if (key === 'relates' && !b.relates.includes(id)) { b.relates.push(id); b.updated_at = nextTs(ts, b.updated_at); }
         writeTasks(rows);
         return true;
       },
@@ -740,8 +716,8 @@ export function createLocalStore(opts = {}) {
         const rows = readTasks(); const ts = now();
         const a = rows.find(r => r.id === id), b = rows.find(r => r.id === otherId);
         const key = type === 'relates' ? 'relates' : 'blocked_by';
-        if (a) { a[key] = a[key].filter(x => x !== otherId); a.updated_at = ts; }
-        if (key === 'relates' && b) { b.relates = b.relates.filter(x => x !== id); b.updated_at = ts; }
+        if (a) { a[key] = a[key].filter(x => x !== otherId); a.updated_at = nextTs(ts, a.updated_at); }
+        if (key === 'relates' && b) { b.relates = b.relates.filter(x => x !== id); b.updated_at = nextTs(ts, b.updated_at); }
         writeTasks(rows);
         return true;
       },
@@ -753,9 +729,12 @@ export function createLocalStore(opts = {}) {
       },
       async create({ name, color }) {
         const areas = readAreas();
+        const nm = (name ?? '').trim();
+        const existing = areas.find(a => a.name === nm);   // reuse — no local equivalent of the DB unique index (areas_user_name_idx)
+        if (existing) return existing;
         const ts = now();
         const pos = areas.length ? Math.max(...areas.map(l => l.position)) + 1 : 0;
-        const area = { id: uuid(), name, color: color ?? null, icon: null, position: pos, favorite: false, created_at: ts, updated_at: ts };
+        const area = { id: uuid(), name: nm, color: color ?? null, icon: null, position: pos, favorite: false, created_at: ts, updated_at: ts };
         areas.push(area);
         writeAreas(areas);
         return area;
@@ -823,7 +802,6 @@ export function createLocalStore(opts = {}) {
     },
 
     travel: {
-      async get(from, to) { const tv = readTravel(); return tv[from + '>' + to] ?? tv[to + '>' + from] ?? (readMeta().default_travel_min ?? 20); },
       async set(from, to, minutes) { const tv = readTravel(); tv[from + '>' + to] = minutes; writeTravel(tv); return true; },
       async list() { return Object.entries(readTravel()).map(([k, minutes]) => { const [from, to] = k.split('>'); return { from, to, minutes }; }); },
       async remove(from, to) { const tv = readTravel(); delete tv[from + '>' + to]; writeTravel(tv); return true; },
@@ -834,14 +812,10 @@ export function createLocalStore(opts = {}) {
     homeLocationId() { return readMeta().home_location_id ?? null; },   // user's designated "home" place ("at home" NLP)
     setHomeLocation(id) { const m = readMeta(); m.home_location_id = m.home_location_id === id ? null : id; writeMeta(m); },
     currentRegion() { return readMeta().current_region ?? 'Home'; },
-    presenceActuals() { return readMeta().presence_actuals ?? {}; },
     setCurrentLocation(id) {
       const m = readMeta();
       if (m.current_location_id !== id) { const log = readActivity(); log.push({ id: uuid(), type: 'location', ts: now(), subject_type: 'location', subject_id: id, ctx: { from: m.current_location_id ?? null }, void: false }); writeActivity(log); }
       m.current_location_id = id;
-      const today = isoDate(new Date(now()));
-      m.presence_actuals = m.presence_actuals || {}; m.presence_actuals[today] = m.presence_actuals[today] || {};
-      m.presence_actuals[today][id] = { ...(m.presence_actuals[today][id] || {}), start: m.presence_actuals[today][id]?.start || now().slice(11, 16) };
       writeMeta(m);
     },
     setCurrentRegion(name) {
@@ -849,7 +823,5 @@ export function createLocalStore(opts = {}) {
       if (m.current_region !== name) { const log = readActivity(); log.push({ id: uuid(), type: 'region', ts: now(), subject_type: 'region', subject_id: name, ctx: { from: m.current_region ?? null }, void: false }); writeActivity(log); }
       m.current_region = name; writeMeta(m);
     },
-    stampActual(dateIso, locId, bounds) { const m = readMeta(); m.presence_actuals = m.presence_actuals || {}; m.presence_actuals[dateIso] = m.presence_actuals[dateIso] || {}; m.presence_actuals[dateIso][locId] = { ...(m.presence_actuals[dateIso][locId] || {}), ...bounds }; writeMeta(m); },
-    subscribe() {},   // no-op: local store needs no realtime subscription
   };
 }

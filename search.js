@@ -25,7 +25,7 @@ export function buildSearchDocs(tasks, areas, defaultProjectId) {
     const title = t.content || '';
     if (t.sidebar) {
       haystack.push(title + SEP + pathOf(t));
-      meta.push({ id: t.id, type: 'project', completed: !!t.completed_at, titleLen: title.length });
+      meta.push({ id: t.id, type: 'project', completed: !!t.completed_at, titleLen: title.length, title });
       continue;
     }
     const areaNames = (t.area_ids || []).map(areaName).join(' ');
@@ -33,25 +33,38 @@ export function buildSearchDocs(tasks, areas, defaultProjectId) {
     const path = parent && parent.id !== defaultProjectId ? pathOf(parent) : '';
     const checklist = (t.checklist || []).map(c => c.text).join(' ');
     haystack.push([title, areaNames, path, t.notes || '', checklist].join(SEP));
-    meta.push({ id: t.id, type: 'task', completed: !!t.completed_at, titleLen: title.length });
+    meta.push({ id: t.id, type: 'task', completed: !!t.completed_at, titleLen: title.length, title });
   }
   for (const g of areas) {
     haystack.push(g.name || '');
-    meta.push({ id: g.id, type: 'area', completed: false, titleLen: (g.name || '').length });
+    meta.push({ id: g.id, type: 'area', completed: false, titleLen: (g.name || '').length, title: g.name || '' });
   }
   return { haystack, meta };
 }
 
-// completed tasks partitioned to the bottom, relevance preserved within each block
+// tier: 0 exact title, 1 title starts with query, 2 title contains query, 3 fuzzy hit inside title, 4 match only outside title
+const titleTier = (title, ql, ranges, titleLen) => {
+  const t = (title || '').toLowerCase();
+  if (t === ql) return 0;
+  if (t.startsWith(ql)) return 1;
+  if (t.includes(ql)) return 2;
+  if (ranges.length && ranges[0] < titleLen) return 3;
+  return 4;
+};
+
+// completed tasks partitioned to the bottom; within each block: title-tier, then sidebar projects/areas over tasks, then uFuzzy order/shorter title
 export function rankDocs(uf, haystack, meta, query, limit = 50) {
   const q = (query || '').trim();
   if (!q) return [];
+  const ql = q.toLowerCase();
   const [idxs, info, order] = uf.search(haystack, q, 1, 1e4);
   if (!idxs || !idxs.length) return [];
   const ranked = (info && order)
     ? order.map(oi => ({ ...meta[info.idx[oi]], ranges: info.ranges[oi] || [] }))
     : idxs.map(i => ({ ...meta[i], ranges: [] }));
-  const open = ranked.filter(r => !r.completed), done = ranked.filter(r => r.completed);
+  const cmp = (a, b) => titleTier(a.title, ql, a.ranges, a.titleLen) - titleTier(b.title, ql, b.ranges, b.titleLen)
+    || (a.type === 'task') - (b.type === 'task') || a.titleLen - b.titleLen;
+  const open = ranked.filter(r => !r.completed).sort(cmp), done = ranked.filter(r => r.completed).sort(cmp);
   return [...open, ...done].slice(0, limit);
 }
 

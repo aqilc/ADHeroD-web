@@ -10,7 +10,7 @@ export const isoDate = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000
 export const IMPORTANCE = ['must', 'focus', 'none', 'someday'];
 export const impRank = v => { const i = IMPORTANCE.indexOf(v); return i < 0 ? 2 : i; };
 
-// Client half of the reminders future-only rule (server: pg/functions/reject_past_reminder.sql):
+// Client half of the reminders future-only rule (server: pg_mail/functions/reject_past_reminder.sql):
 // a user-created absolute reminder's floating local `at` ('YYYY-MM-DDTHH:MM') must not be in the past.
 // Lexicographic string comparison — same convention as the Android client.
 export const isPastAt = (at, now = new Date()) => !!at && at.length >= 16 && at < isoDate(now) + 'T' + now.toTimeString().slice(0, 5);
@@ -339,9 +339,46 @@ export function tokenizeAll(text, now = new Date(), locations = []) {
   return segs;
 }
 
-// longest token at trailing end — "every" waits, "every 2 weeks" pills
+// Natural-language importance (conservative): prefix `must X` / `focus on X` / `someday X`; suffix
+// `X focus|someday|must` UNLESS the word before it is a connector (so "improve my focus" / "read up on
+// focus" stay literal). Positional — it can't ride classifyToken (a title always leaves leftover), so
+// it's parsed as a start/end pass by the composer's live trailing pill + the save-flush.
+const IMP_CONNECTORS = new Set('a an the this that these those my your our their its his her on in of for to at by up about with into from is are was were be am no'.split(' '));
+
+// Trailing importance word for the LIVE composer pill (consumes only the word). must/someday may lead
+// (no word before); focus needs a real, non-connector word before it — so bare "focus …" never pills.
+export function matchTrailingImportanceWord(text) {
+  const m = (text || '').match(/(^|\s)(focus|someday|must)\s*$/i);
+  if (!m) return null;
+  const word = m[2].toLowerCase();
+  const before = (text.slice(0, m.index + m[1].length)).trim();
+  const prev = before ? before.split(/\s+/).pop().toLowerCase() : '';
+  if (word === 'focus' ? (!prev || IMP_CONNECTORS.has(prev)) : (prev && IMP_CONNECTORS.has(prev))) return null;
+  return { value: word, start: m.index + m[1].length };
+}
+
+// Whole-title importance from natural language — the save-flush backstop (catches prefix "focus on X",
+// which can't pill trailing). Returns { importance, content } or null; caller only applies it when no
+// importance was set explicitly (pill/picker), so it never overrides a deliberate choice.
+export function parseImportanceWords(text) {
+  const t = (text || '').trim();
+  let m;
+  if ((m = t.match(/^must\s+(\S.*)$/i))) return { importance: 'must', content: m[1].trim() };
+  if ((m = t.match(/^focus\s+on\s+(\S.*)$/i))) return { importance: 'focus', content: m[1].trim() };
+  if ((m = t.match(/^someday\s+(\S.*)$/i))) return { importance: 'someday', content: m[1].trim() };
+  if ((m = t.match(/^(\S.*?)\s+(focus|someday|must)$/i))) {
+    const prev = m[1].trim().split(/\s+/).pop().toLowerCase();
+    if (!IMP_CONNECTORS.has(prev)) return { importance: m[2].toLowerCase(), content: m[1].trim() };
+  }
+  return null;
+}
+
+// longest token at trailing end — "every" waits, "every 2 weeks" pills. A qualifying trailing
+// importance WORD wins first (focus/someday/must aren't otherwise tokens, so no conflict).
 export function matchTrailingToken(pending, now = new Date(), locations = []) {
   const text = pending || '';
+  const imp = matchTrailingImportanceWord(text);
+  if (imp) return { kind: 'imp', value: imp.value, start: imp.start };
   const offsets = []; const re = /\S+/g; let m;
   while ((m = re.exec(text))) offsets.push(m.index);
   for (const start of offsets) {

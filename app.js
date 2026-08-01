@@ -13,13 +13,14 @@ const _scale = (d) => [
 document.head.insertAdjacentHTML('beforeend',
   `<style id="design-tokens">:root{${_scale(DESIGN)};${_vars(DESIGN.light)}}@media (prefers-color-scheme: dark){:root{${_vars(DESIGN.dark)}}}</style>`);
 
-import { createLocalStore, descendantIds, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, effectiveGoalIds, MAX_DEPTH } from './store.js';
+import { createLocalStore, descendantIds, ancestorIds, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, effectiveGoalIds, isBlocked, MAX_DEPTH } from './store.js';
+import { guardedFields, trashView, pruneJournal, JOURNAL_MAX } from './recovery.js';
 import { goalProgress, goalWarmth, homeWarmth, firstShowUpDay, HEARTH, goalLaneFull, laneComparator, goalArc, finishReady } from './stats.js';
-import { parseDateText, parseRecurrence, quickDate, quickRange, isoDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, tokenizeAll, parseLogNote, recurrenceLabel, logDayLabel, impRank } from './nlp.js';
+import { parseDateText, parseRecurrence, quickDate, quickRange, isoDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, tokenizeAll, parseImportanceWords, parseLogNote, recurrenceLabel, logDayLabel, impRank } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank } from './search.js';
-import { calendarItems, blocksInRange, daypartOf, eventsFirst, occurrencesInRange } from './calendar.js';
-import { esc as escHtml, mdLive as mdLiveRender, chkLive as chkLiveRender, byDone, raw, taskRowHtml, taskListHtml as taskListMarkup, dotStripHtml as dotStripMarkup, rollerBoxHtml as rollerBoxMarkup, rowBodyHtml, mdTitle as mdTitleFn } from './ui.js';
-import { makeSortable } from './sortable.js';
+import { calendarItems, blocksInRange, daypartOf, eventsFirst, occurrencesInRange, timeOf } from './calendar.js';
+import { esc as escHtml, mdLive as mdLiveRender, chkLive as chkLiveRender, byDone, chkVisible, raw, taskRowHtml, taskListHtml as taskListMarkup, dotStripHtml as dotStripMarkup, rollerBoxHtml as rollerBoxMarkup, rowBodyHtml, mdTitle as mdTitleFn, areaChipHtml } from './ui.js';
+import { makeSortable, edgeScrollStep } from './sortable.js';
 import { SUPABASE, SURFACES } from './config.js';
 // landing surface: now when present (local default), else lists, else the leftmost of the trimmed set
 const SURF_HOME = !SURFACES || SURFACES.includes('now') ? 'now' : SURFACES.includes('lists') ? 'lists' : SURFACES[0];
@@ -31,26 +32,81 @@ const sbClient = () => { if (_sb === undefined) _sb = (globalThis.supabase && SU
 
 // Module-scope: kept outside Alpine state so render reads/writes don't loop. _calDataV busts on any task/event change.
 const CL_WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const SURF_META = { now: { label: 'Now', icon: 'i-clock' }, plan: { label: 'Plan', icon: 'i-cal' }, lists: { label: 'Lists', icon: 'i-all' }, goals: { label: 'Goals', icon: 'i-target' } };
 const CL_HOURS = Array.from({ length: 24 }, (_, h) => h);
 const CL_WAKING_START = 8;   // default waking day start (h); future: from sleep data
 const CL_WAKING_END = 24;    // waking day end (h)
 const CL_EPOCH = new Date(2000, 0, 2);   // a (local) Sunday — week 0 of the virtual timeline
 const CL_TOTAL_WEEKS = 5217;             // ~100 years: a fixed scroll height (no reflow) ⇒ effectively infinite
 const CL_BUFFER = 10;                     // weeks rendered beyond the viewport each side (blank-free on fast flings)
+const CL_ALLDAY = 22;                     // ONE band row in the pinned lane (day/week) — chrome, not part of a block
+const CL_AD_ROWS = 3;                     // rows the chrome RESERVES for it. Constant on purpose: the reserve feeds
+                                          // the day's page height, so a lane that resized would jitter the timeline.
+                                          // Bands past this show as +N rather than growing over the grid.
+const CL_FOOT = 56;                       // bottom nav strip the timeline stops short of (must match --foot in CSS)
+// The timeline spacer is WINDOWED, unlike month's: a period is ~1150px (vs a ~113px week row), so the full
+// 100-year range would be 42M px in day view — past Chrome's 33,554,428px scroll cap, which silently clamps
+// scrollTop (zoom 4× put TODAY out of reach). 4001 periods = ±5.5y (day) / ±38y (week), 18M px even at 4× zoom.
+// Blocks sit at (idx − clTLBase)·ph; the base only re-centers on a programmatic jump, never mid-scroll.
+const CL_TL_SPAN = 4001;
+const CL_GESTURE_GAP = 140;               // ms of quiet that ends a scroll gesture (trackpad momentum fires continuously, so this only trips when the fingers are done)
+const CL_AG_ROW = 46;                     // agenda row height (full tier); rows FLOW — proportion is the rail's job
+const CL_AG_GAP = 30;                     // a hole in the day big enough to be worth naming ("1h free")
 const CL_BAR = 90, CL_HEAD = 32;          // overlaid toolbar + weekday-header heights (must match --bar/--head in CSS)
-const _calMemo = new Map();
 const _groupMemo = new Map();   // byDay cache; busts on any task/event change
 const _clListMemo = new Map();   // keyed on kind|_rowV|range — Map hit on scroll/nav instead of rebuild
-let _calDataV = 0, _clRecenter = false, _clScrollT;
-const _goalStepsMemo = new Map();   // per-goal id, unlike _calMemo's single-entry; same _calDataV bust
+let _clBlocksSig = null, _clBlocksCache = [];   // clBlocks() single-entry memo — a view switch/scroll settle re-fires it ~100×; returning the SAME array ref lets Alpine's x-for no-op instead of re-diffing 500+ nodes
+let _calDataV = 0, _clScrollT;
+const _goalStepsMemo = new Map();   // per-goal id; same _calDataV bust
 const _goalMilestonesMemo = new Map();   // all milestone tasks incl. completed
 const ARC_LATE = 0.67;   // project arc threshold: above this pct, status line foregrounds the goal/why
-const UNDO_MAX = 100;   // oldest drop past this
 const IDENTITY_WHO_RE = /^i(?:'m| am)\s+someone who\s+/i;   // shared strip prefix for identity statements
 // visibleRows() memo: O(n) tree walk called many times per render; cache on _rowV+navSel+listQ so drag/animation don't recompute per frame.
 let _visMemo = null, _visKey = '', _doneMemo = [];   // _doneMemo: completed rows for the section below the add-task button
 // Raw DOM refs — kept outside Alpine state so they're never proxied.
-let _hoverEls = [], _fitQ = 0, _dropEl = null, _kbEl = null;
+let _hoverEls = [], _fitQ = 0, _dropEl = null, _kbEl = null, _selSet = new Set();
+// The pill-NLP engine runs on an ACTIVE target: { el, draft } = the editor + the draft its pills write to.
+// Null = the title (the default: $refs.content → this.draft); a focused subtask row swaps in its own editor +
+// sub-draft so the SAME engine drives NLP there. Kept OUT of Alpine's reactive data (holds a live DOM node).
+let _nlpFocus = null;
+// Every field kind the pill engine can commit — used to rebuild a draft wholesale from an editor's DOM pills.
+const PILL_KINDS = ['imp', 'dur', 'proj', 'area', 'goal', 'loc', 'rec', 'deadline', 'date'];
+// Per-kind spec: json flag (value stored as JSON in dataset), optional num (cast raw to number),
+// and the four draft operations — all receive (self, draft, ...) so helpers like setDur/refreshRecurrenceDue are reachable.
+const PILL_SPEC = {
+  imp:      { json: 0, label: (s, v) => s.impName(v, 'Importance'),
+              commit: (s, d, v) => { d.importance = v; }, clear: (s, d) => { d.importance = 'none'; }, snapshot: (s, d) => d.importance, restore: (s, d, x) => { d.importance = x ?? 'none'; } },
+  dur:      { json: 0, num: 1, label: (s, v) => s.durFmt(v),
+              commit: (s, d, v) => s.setDur(v), clear: (s, d) => { d.durH = 0; d.durM = 0; }, snapshot: (s, d) => ({ durH: d.durH, durM: d.durM }), restore: (s, d, x) => { d.durH = x?.durH || 0; d.durM = x?.durM || 0; } },
+  proj:     { json: 0, label: (s, v) => '#' + v,
+              commit: (s, d, v) => { d.project = v; d.project_id = null; s.projRequired = false; }, clear: (s, d) => { d.project = null; }, snapshot: (s, d) => ({ project: d.project, project_id: d.project_id }), restore: (s, d, x) => { d.project = x?.project ?? null; d.project_id = x?.project_id ?? null; } },
+  area:     { json: 0, multi: 'areas', label: (s, v) => '@' + (s.areaById(v)?.name ?? v),
+              commit: (s, d, v) => { if (!d.areas.includes(v)) d.areas.push(v); }, clear: (s, d, r) => { const i = d.areas.indexOf(r); if (i >= 0) d.areas.splice(i, 1); }, snapshot: (s, d) => [...d.areas], restore: (s, d, x) => { d.areas = x || []; } },
+  goal:     { json: 0, multi: 'goal_ids', label: (s, v) => '🔥 ' + (s.goalById(v)?.name || ''),
+              commit: (s, d, v) => { if (!d.goal_ids.includes(v)) d.goal_ids.push(v); }, clear: (s, d, r) => { const i = d.goal_ids.indexOf(r); if (i >= 0) d.goal_ids.splice(i, 1); }, snapshot: (s, d) => [...d.goal_ids], restore: (s, d, x) => { d.goal_ids = x || []; } },
+  loc:      { json: 0, label: (s, v) => '📍 ' + v,
+              commit: (s, d, v) => { const neg = /^away from /i.test(v), nm = String(v).replace(/^away from /i, ''); const l = s.locByName(nm); d.location = { mode: neg ? 'except' : 'only', ids: l ? [l.id] : [] }; }, clear: (s, d) => { d.location = { mode: 'any', ids: [] }; }, snapshot: (s, d) => ({ mode: d.location.mode, ids: [...d.location.ids] }), restore: (s, d, x) => { d.location = x ? { mode: x.mode, ids: [...x.ids] } : { mode: 'any', ids: [] }; } },
+  rec:      { json: 1, label: (s, v) => s.recurrenceLabel(v),
+              commit: (s, d, v) => { d.recurrence = v; s.refreshRecurrenceDue(); }, clear: (s, d) => { d.recurrence = null; }, snapshot: (s, d) => d.recurrence ? JSON.parse(JSON.stringify(d.recurrence)) : null, restore: (s, d, x) => { d.recurrence = x || null; if (d.recurrence) s.refreshRecurrenceDue(); } },
+  deadline: { json: 1, label: (s, v) => { const b = dueBadge(v.iso); return '⚑ ' + b.label; },
+              commit: (s, d, v) => { d.deadline_at = v.iso; }, clear: (s, d) => { d.deadline_at = ''; }, snapshot: (s, d) => d.deadline_at, restore: (s, d, x) => { d.deadline_at = x || ''; } },
+  date:     { json: 1, label: (s, v) => { if (v.iso) { const b = dueBadge(v.iso); return b.label + (v.time ? ' ' + s.fmtTime(v.time) : ''); } return s.fmtTime(v.time); },
+              commit: (s, d, v) => { d.due_at = v.iso || d.due_at || isoDate(new Date()); if (v.iso) d.available_from = v.from ?? null; if (v.time) d.dueTime = v.time; }, clear: (s, d) => { d.due_at = ''; d.available_from = ''; d.dueTime = ''; }, snapshot: (s, d) => ({ due_at: d.due_at, available_from: d.available_from, dueTime: d.dueTime }), restore: (s, d, x) => { d.due_at = x?.due_at || ''; d.available_from = x?.available_from || ''; d.dueTime = x?.dueTime || ''; } },
+};
+// Decode a pill's dataset.value back to its typed JS value (JSON-encoded kinds vs string vs number).
+function pillValue(kind, raw) { const sp = PILL_SPEC[kind]; return sp.json ? JSON.parse(raw) : sp.num ? +raw : raw; }
+const DIALOG_KEYS = ['shortcutsOpen', 'trashOpen', 'locMgr', 'filterEdit', 'eventEdit', 'blockEdit', 'delAsk', 'goalOffer'];
+// Completion-relevant fields for undo/redo fx diff — shared across _captureCompletionFx and _performOne task-delete path.
+const FX_FIELDS = t => ({ completed_at: t.completed_at ?? null, due_at: t.due_at ?? null, completions: t.completions, recurrence: t.recurrence });
+// Picker specs — drives openPicker/refreshPicker/pickPill/pickerKeydown generically.
+const PICKERS = {
+  area: { key: 'areaPicker', char: '@', sel: '.area-autocomplete', kind: 'area', name: (s, id) => s.areaById(id)?.name,
+          onCreate: s => s.areaPicker.frag.trim() ? (s.createAreaFromPicker(), true) : false },
+  goal: { key: 'goalPicker', char: '^', sel: '.goal-autocomplete', kind: 'goal', name: (s, id) => s.goalById(id)?.name },
+};
+// The composer draft's empty shape — one source of truth for the title draft, resetDraft, and subtask sub-drafts.
+const emptyDraft = () => ({ content: '', notes: '', importance: 'none', due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } });
+const QF_DUE = { today: { verb: 'due', label: 'today', col: 'var(--q-today)' }, overdue: { verb: '', label: 'overdue', col: 'var(--p1)' }, has: { verb: 'that', label: 'has a date', col: 'var(--accent)' }, none: { verb: 'with', label: 'no date', col: 'var(--faint)' } };
 let _nowFocusEl = null;   // refocused on back/Escape
 
 // Activity memo keyed on _activityV (bumped by every loadStats call) — logGoal/addGoalNote refresh via loadStats alone, so _calDataV would go stale.
@@ -59,8 +115,14 @@ const _goalLogMemo = new Map(), _goalLastActiveMemo = new Map();
 const _recentMemo = new Map();   // home-wide, keyed on _activityV alone
 const _identVotesMemo = new Map();   // keyed on ident.id+'|'+_activityV
 
+// Memoize fn() keyed on sig; cap>0 bounds cache size (clear on overflow — stale-version entries never hit).
+// Uses undefined-not-truthy so callers that legitimately cache null (e.g. goalLastActive) get real hits.
+// DEP-TOUCH invariant: callers must read reactive deps BEFORE calling _memo so they run on every call.
+const _memo = (map, sig, fn, cap = 0) => { const hit = map.get(sig); if (hit !== undefined) return hit; const out = fn(); if (cap && map.size >= cap) map.clear(); map.set(sig, out); return out; };
+
 // local HH:MM — shared by log-when-popover defaults
 const hhmm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+// Extract "HH:MM" from a stored ISO string; returns fb (default '') for date-only
 
 // shared by goalLog + arriving goal-stream
 const groupByDay = (rows, dayLabel) => {
@@ -97,6 +159,7 @@ document.addEventListener('alpine:init', () => {
     authEmail: '', authCode: '', authSent: false, authMsg: '', authPass: '', authErr: false,   // inline sign-in (settings popup)
     tasks: [],
     byId: new Map(),        // id → task, rebuilt in loadTasks → O(1) lookups (projName/blocked) instead of tasks.find
+    parentIds: new Set(),   // ids that have children, rebuilt with byId — hasChildren was O(n) per call and rode every flush via the Now getters (stage-4 profile: 12,800 calls = 2.1s of a 2.2s save)
     areas: [],
     goals: [],              // all goals, loaded from store (mirrors areas)
     identities: [],         // identity entities, kept in sync alongside goals
@@ -108,24 +171,25 @@ document.addEventListener('alpine:init', () => {
     _pulseT: null,          // pulse timeout id, reset on each Log so a rapid re-log doesn't clear early
     ignitingGoal: null,     // transient: id of the goal whose fire just caught (unlit/undefined→kindling), ~950ms
     _ignitingT: null,       // igniting timeout id, reset each time so a rapid re-catch doesn't clear early
-    graduateOffer: null,    // id of the goal shown in the "let it run?" dialog; null = closed
+    goalOffer: null,         // { kind: 'graduate'|'finish'|'reflect', id } of open offer dialog; null = closed
     graduatingGoal: null,   // transient: id of the goal playing the graduation celebration (~2050ms, full .graduating choreography)
     _graduatingT: null,     // graduating timeout id, reset each time so a rapid re-graduate doesn't clear early
-    finishOffer: null,      // id of the goal shown in the finish dialog; null = closed
     msBeatGid: null,        // transient: id of the goal showing the milestone reorientation line (~1400ms)
     _msBeatT: null,         // msBeat timeout id
-    reflectGoal: null,      // GS15: id of the goal shown in the "sit with this?" reflection dialog; null = closed
     logWhenOpen: null,      // GS13: id of the goal whose "log at a specific time" pop is open; null = closed
     logWhenT1: '', logWhenT2: '', logWhenDT: '',   // pop inputs: earlier-today time, yesterday time, pick datetime-local
-    toastMsg: '', toastOn: false, _toastT: null,   // transient bottom toast (e.g. +1 identity vote)
-    undo: { on: false, label: '', stack: [], timer: null },   // multi-level buffer: up to UNDO_MAX tasks+activity snapshots
+    notifs: [],   // bottom-right notification stack: [{ id, msg, actions:[{label, fn}], leaving }]
+    journal: [], cursor: 0, _jV: 0,   // inverse-op recovery engine (⌘Z/⌘⇧Z drive undo()/redo())
+    draftRestored: false,   // an unsaved composer draft was recovered on open → show the restore banner
+    _draftBase: '',         // pristine draft serialization at open — dirty = current !== this; drives persist/keep-on-close
+    trashOpen: false,   // "Recently deleted" popup (keybound like ?) — trashItems() reads the journal, reactive on _jV
     chipGlintId: null, _chipGlintT: null,   // GS9: task id whose goal chip briefly glints warm on completion
+    chkOpen: new Set(),     // task ids whose collapsed "…N more" done checklist items are expanded in the list
     goalOpenId: null,       // inline-expand: ID of the goal whose composer is currently open; null = all collapsed
     _newGoalId: null,       // FIX6: id of a just-created goal via newGoalComposer; removed on Cancel if left untouched
     logWhenNote: '',        // FIX8: optional "what did you do" note for a show-up log; cleared after logging
     goalDraft: null,        // {name,identity,targets,target_date,favorite,color,icon} while a goal composer is open
-    _identSugSel: -1,       // keyboard-selected suggestion index (-1 = none)
-    _identSugFocus: false,  // textarea focus flag (drives pop visibility)
+    identSug: { open: false, sel: -1 },   // identity suggestion pop state
     identMenuId: null,      // ID5: identity ⋯ menu pop currently open; null = all closed
     identEditId: null,      // ID5: identity block currently in inline-edit mode; null = none
     goalDetailId: null,     // inline-expand: ID of the goal whose READ detail is open; mutually exclusive with goalOpenId
@@ -138,6 +202,7 @@ document.addEventListener('alpine:init', () => {
     dragOverRegion: null,   // region currently hovered as a drop target
     events: [],             // calendar events, loaded from store
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
+    scheduleItems: [],      // task↔block attachments; [] before migration is applied
     clView: 'month',        // calendar view: day | week | month | year
     clSideOpen: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle + drop-hover day iso
     clDropPreview: null,   // { iso, min, h, label } — live ghost of where a drag will land in a week/day column
@@ -147,6 +212,10 @@ document.addEventListener('alpine:init', () => {
     clVisCount: 0,          // number of week rows rendered (visible + buffer); the rest is empty spacer
     clTopMonth: '',         // scroll-driven month label for the toolbar period (month view)
     clScrolling: false,     // true briefly during/after scroll → month bands visible; idle → they fade out
+    clVT: false,            // a view transition is capturing — see .calendar.vt (view-transition-name is layer-promoting, so it may not linger)
+    clSettling: false, clPlaced: null,   // E3 arrival stagger · E4/F4 the block that just landed springs into place
+    clPVisStart: 0, clPVisCount: 3, clTLBase: 0, clTLView: '',   // virtualization window + spacer origin (and the view it belongs to) over the continuous day/week timeline
+    clTopPeriod: '',        // scroll-driven day/week heading (mirrors clTopMonth)
     clScrollTop: 0,         // drives band rise/fade in clMonthBands
     clFocusYM: null,        // dominant month at center — others dim when idle
     clZoom: 1,              // 1 = whole day fits; >1 scrolls
@@ -154,7 +223,6 @@ document.addEventListener('alpine:init', () => {
     eventEdit: null,        // null = closed
     blockEdit: null,        // null = closed
     clDragBand: null,       // preview while drag-creating a block
-    currentLocationId: null,
     homeLocationId: null,   // designated home place (mirror of store)
     currentRegion: 'Home',
     locMgr: false,
@@ -184,7 +252,8 @@ document.addEventListener('alpine:init', () => {
     rollerSel: 0,
     navPopXY: null,                   // escapes overflow clip
     collapsed: {},
-    draft: { content: '', notes: '', importance: 'none', due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } },
+    draft: emptyDraft(),
+    subDraft: emptyDraft(),           // scratch draft the focused subtask editor's pills write to (rebuilt from that row's DOM on focus)
     composer: { open: false },
     palette: { open: false, q: '', sel: 0 },
     listQ: '',          // ⌘K escalates to palette
@@ -209,12 +278,15 @@ document.addEventListener('alpine:init', () => {
     chkGhost: '',
     hoverId: null,      // highlights row + direct subtasks as one block
     focusId: null,      // keyboard-focused list row (j/k/↑↓); Enter/e opens it, x/Space completes it
+    sel: [],            // multi-select: ids of selected task rows (drives the edit bar; the row .selected class is painted imperatively, never a per-row reactive :class — list-perf)
+    selAnchor: null,    // range anchor for Shift-click / Shift+↑↓
+    selMenu: null,      // open edit-bar sub-menu: 'move'|'prio'|'due'|null
     _rowV: 0,           // visibleRows() memo key — bump on any task/area/goal/collapse change
     dragId: null,
     railList: [],           // move-rail drop targets, populated while a task row is dragged
     railHot: null,          // rail target currently under the drag (kind+id), for the tint highlight
     _t: null,
-    pop: null,
+    pop: null, popXY: { left: 0, top: 0 },
     titleEmpty: true,
     areaPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
     goalPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
@@ -226,14 +298,7 @@ document.addEventListener('alpine:init', () => {
     // Nav management state
     navPop: null,
     navRename: null,
-    addingRootProject: false,
-    newRootName: '',
-    deletingProject: null,
-    deleteTarget: null,
-    deleteProjMode: 'move',   // 'move' (reparent tasks inside) | 'delete' (cascade the whole subtree)
-    deleteSub: null,          // { id, source } — task-with-subtasks being deleted (composer trash / subtask row)
-    deleteSubMode: 'move',    // 'move' (reparent subtasks) | 'delete' (cascade)
-    deleteSubTarget: null,    // destination id when moving subtasks
+    delAsk: null,   // null | { kind:'project'|'task', id, mode:'move'|'delete', target, name, count, source? }
     // Global color list (user-extendable via settings later) + the gray default for areas with no color.
     colors: DESIGN.palette,
     L: DESIGN.lang.labels,
@@ -241,6 +306,7 @@ document.addEventListener('alpine:init', () => {
     areaIcons: ['i-tag-tag','i-tag-home','i-tag-briefcase','i-tag-star','i-tag-heart','i-tag-book','i-tag-cart','i-tag-dollar','i-tag-code','i-tag-dumbbell','i-tag-plane','i-tag-bell','i-tag-flame','i-tag-leaf','i-tag-music','i-tag-map','i-tag-zap','i-tag-globe','i-tag-camera','i-tag-gift'],
     relSel: null,             // clicked relation candidate (overrides the top hit)
     relWarm: '', _relWarmT: 0, // well flashing amber as a link lands
+    relDragOver: '',          // which well is being dragged over (drag-over affordance)
     // Task-list drag state
     taskDropHint: null,
     _dragX0: 0, _dragDepth: 0,
@@ -265,9 +331,32 @@ document.addEventListener('alpine:init', () => {
         sb.auth.onAuthStateChange((e, session) => { if (e !== 'INITIAL_SESSION') this.onAuth(session); });
       }
       await this.reloadAll();
+      this._journalLoad();
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
       setInterval(() => { this._nowTickV++; }, 60000);   // keeps the Now-window's now-line/leave-by honest with the real clock
       document.addEventListener('selectionchange', () => this._chkSelTint());   // checklist cross-row selection tint
+      // defer-to-blur decoration: desc and checklist items show raw text while focused, decorated on blur.
+      // chk handlers use item.text (authoritative) not el.textContent (potentially stale on reused elements).
+      const chkItem = (el) => {
+        const id = el.closest?.('.entry.chk')?.dataset.id;
+        return id ? this.draft.checklist.find(c => c.id === id) : null;
+      };
+      document.addEventListener('focus', (e) => {
+        const el = e.target;
+        if (el === this.$refs.desc) { this.onDescFocus(el); return; }
+        if (el.matches?.('.composer-entries .entry.chk:not(.ghost) .entry-txt')) {
+          const item = chkItem(el);
+          if (item) el.textContent = item.text;   // restore raw text from authoritative item
+        }
+      }, true);
+      document.addEventListener('blur', (e) => {
+        const el = e.target;
+        if (el === this.$refs.desc) { this.onDescBlur(el); return; }
+        if (el.matches?.('.composer-entries .entry.chk:not(.ghost) .entry-txt')) {
+          const item = chkItem(el);
+          if (item) el.innerHTML = chkLiveRender(item.text);   // decorate from authoritative item.text
+        }
+      }, true);
       this.$nextTick(() => {
         const list = document.querySelector('.list');
         if (list) new ResizeObserver(() => this.fitRows()).observe(list);
@@ -322,7 +411,7 @@ document.addEventListener('alpine:init', () => {
       this.ovSel = this.surfaceIndex(); this.rollerSel = 0; this.overview = true; this.rollerCenter();
     },
     closeOverview() { this.overview = false; },
-    surfaceLabel(s) { const M = {lists:'Lists',plan:'Plan',now:'Now',goals:'Goals'}; return M[s] || s; },
+    surfaceLabel(s) { return SURF_META[s]?.label || s; },
     dotStripHtml(surfaces, idx) { return dotStripMarkup(surfaces, idx); },
     rollerBoxHtml(it) { return rollerBoxMarkup(it); },
     dotStripClick(e) { const b = e.target.closest('[data-idx]'); if (!b) return; const i = +b.dataset.idx; if (i === this.surfaceIndex()) this.openOverview(); else this.goSurface(this.surfaceOrder[i]); },
@@ -339,16 +428,30 @@ document.addEventListener('alpine:init', () => {
       return false;
     },
     // Mirror of the pull-up: down-scroll past threshold dismisses the overview.
+    // Walk from→to checking overflow on axis; if delta given, also checks current scroll position (canvas only)
+    _ownedByScroller(from, to, axis, delta = 0) {
+      const [ov, sz, cl, pos] = axis === 'x'
+        ? ['overflowX', 'scrollWidth', 'clientWidth', 'scrollLeft']
+        : ['overflowY', 'scrollHeight', 'clientHeight', 'scrollTop'];
+      for (let n = from; n && n !== to; n = n.parentElement) {
+        if (n.nodeType !== 1) continue;
+        const o = getComputedStyle(n)[ov];
+        if ((o === 'auto' || o === 'scroll') && n[sz] - n[cl] > 1) {
+          if (!delta) return true;
+          const max = n[sz] - n[cl];
+          if ((delta < 0 && n[pos] > 0) || (delta > 0 && n[pos] < max)) return true;
+        }
+      }
+      return false;
+    },
     onOverviewWheel(e) {
       const s = this._ovd = this._ovd || {};
       const now = performance.now(), gap = now - (s.t || 0); s.t = now;
       if (e.deltaY <= 0) { s.accum = 0; return; }          // scrolling up → reset
-      // a nested list (the project/area/location roller) that can still scroll DOWN owns the gesture — don't dismiss
-      for (let n = e.target; n && n !== e.currentTarget; n = n.parentElement) {
-        if (n.nodeType !== 1) continue;
-        const oy = getComputedStyle(n).overflowY;
-        if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight - n.clientHeight > 2 && n.scrollTop < n.scrollHeight - n.clientHeight - 1) { s.accum = 0; return; }
-      }
+      // A nested list (the project/area/location roller) owns the gesture whenever it is scrollable — you
+      // over-scroll a short roller constantly, and that bounce must never dismiss the overview. Dismiss only
+      // fires from a down-scroll over the non-scrollable overview background.
+      if (this._ownedByScroller(e.target, e.currentTarget, 'y')) { s.accum = 0; return; }
       if (gap > 500) { s.accum = 0; return; }              // fresh after idle → swallow the leading edge (inertial tail)
       s.accum = (s.accum || 0) + e.deltaY;
       if (s.accum > 220) { s.accum = 0; this.closeOverview(); }
@@ -359,13 +462,7 @@ document.addEventListener('alpine:init', () => {
       const sc = ct.scrollHeight > ct.clientHeight + 1 ? ct : (ct.querySelector('.app, .goals-view, .now-home') || ct);   // the actual scroller (handler may sit on the full-width surface)
       if (sc !== ct && !sc.contains(e.target)) sc.scrollTop += e.deltaY;   // wheel over the surface margins (outside the centered scroller) → forward it so the list still scrolls
       // Bail if gesture originates inside an inner scrollable (dropdown, popup) — never let those bleed to the overview.
-      if (e.deltaY < 0) {
-        for (let n = e.target; n && n !== sc; n = n.parentElement) {
-          if (n.nodeType !== 1) continue;
-          const oy = getComputedStyle(n).overflowY;
-          if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 1) return;
-        }
-      }
+      if (e.deltaY < 0 && this._ownedByScroller(e.target, sc, 'y')) return;
       if (this._pullUp(this._os = this._os || {}, e.deltaY, sc.scrollTop <= 0)) this.openOverview();
     },
     onCalTitleWheel(e) {   // deliberate up-scroll over the calendar TITLE bar pulls up the overview (onOverscroll bails on 'plan')
@@ -376,14 +473,7 @@ document.addEventListener('alpine:init', () => {
       if (this.overview || this.anyDialog() || this.dragging) return;
       if (e.target.closest('input, textarea, [contenteditable], .inp')) return;                      // don't hijack scroll started over an editable field
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;                                          // horizontal-dominant gestures only
-      for (let n = e.target; n && n !== e.currentTarget; n = n.parentElement) {                      // defer ONLY to a real horizontal scroller that can still scroll (not text overflow)
-        if (n.nodeType !== 1) continue;
-        const ox = getComputedStyle(n).overflowX;
-        if ((ox === 'auto' || ox === 'scroll') && n.scrollWidth - n.clientWidth > 2) {
-          const max = n.scrollWidth - n.clientWidth;
-          if ((e.deltaX < 0 && n.scrollLeft > 0) || (e.deltaX > 0 && n.scrollLeft < max)) return;
-        }
-      }
+      if (this._ownedByScroller(e.target, e.currentTarget, 'x', e.deltaX)) return;                   // defer to a real horizontal scroller that can still scroll
       // One page per swipe: after a switch, stay locked through the inertial tail. Release when deltaX ≈0, user pauses, or deltaX doubles back (only a genuine new flick reverses).
       const adx = Math.abs(e.deltaX), prev = this._whPrev || 0; this._whPrev = adx;
       const gap = e.timeStamp - (this._whT || 0); this._whT = e.timeStamp;
@@ -442,7 +532,7 @@ document.addEventListener('alpine:init', () => {
       if (this.surface === 'goals') return 'Goals';
       return 'All';
     },
-    hasChildren(id) { return this.tasks.some(t => t.parent_id === id); },
+    hasChildren(id) { return this.parentIds.has(id); },
     isSidebar(t) { return !!t.sidebar; },
     // Filter view: runFilter's ordered ids mapped to live task objects (order preserved).
     filterTasks() {
@@ -465,7 +555,7 @@ document.addEventListener('alpine:init', () => {
       return (t.content || '').toLowerCase().includes(q) || this.areaObjs(t.area_ids).some(l => (l.name || '').toLowerCase().includes(q));
     },
     // Quick-filters (Priority / Area / Due) layer on top of any view; ANDed with the search hit.
-    qfActive() { return this.qfImp.length > 0 || this.qfAreas.length > 0 || !!this.qfDue || this.qfArchived; },
+    qfActive() { return this.qfImp.length > 0 || this.qfAreas.length > 0 || !!this.qfDue; },   // narrowing filters only; done/archived are additive LENSES (like showCompleted), not narrowers
     filtering() { return !!this.listQ.trim() || this.qfActive(); },   // narrowing active → show matches + ancestor context
     qfPass(t) {
       if (this.qfImp.length && !this.qfImp.includes(t.importance || 'none')) return false;   // unset importance reads as 'none'
@@ -493,7 +583,6 @@ document.addEventListener('alpine:init', () => {
       return (a, b) => dir * base(a, b) || (a.position ?? 0) - (b.position ?? 0);
     },
     _saveView() { localStorage.setItem('adherod.list.view', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir, qfImp: this.qfImp, qfAreas: this.qfAreas, qfDue: this.qfDue, qfArchived: this.qfArchived })); },
-    sortLabel() { return ({ manual: 'Manual', due: 'Due date', importance: 'Importance', alpha: 'Alphabetical', created: 'Date added', deadline: 'Deadline' })[this.sortBy]; },
     setSort(key) { if (this.sortBy === key && key !== 'manual') this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'; else { this.sortBy = key; this.sortDir = 'asc'; } this._saveView(); },
     toggleQfImp(v) { const i = this.qfImp.indexOf(v); i < 0 ? this.qfImp.push(v) : this.qfImp.splice(i, 1); this._saveView(); },
     toggleQfArea(id) { const i = this.qfAreas.indexOf(id); i < 0 ? this.qfAreas.push(id) : this.qfAreas.splice(i, 1); this._saveView(); },
@@ -505,9 +594,9 @@ document.addEventListener('alpine:init', () => {
     _qfArea() { return this.areas.find(a => a.id === this.qfAreas[0]); },
     qfAreaCol() { return this._qfArea()?.color || this.areaDefault; },
     qfAreaLabel() { const n = this.qfAreas.length; return (this._qfArea()?.name || '?') + (n > 1 ? ` +${n - 1}` : ''); },
-    qfDueVerb() { return ({ today: 'due', has: 'that', none: 'with' })[this.qfDue] || ''; },   // connective before the token; '' for overdue
-    qfDueLabel() { return ({ today: 'today', overdue: 'overdue', has: 'has a date', none: 'no date' })[this.qfDue]; },
-    qfDueCol() { return ({ today: 'var(--q-today)', overdue: 'var(--p1)', has: 'var(--accent)', none: 'var(--faint)' })[this.qfDue]; },
+    qfDueVerb()  { return QF_DUE[this.qfDue]?.verb ?? ''; },   // connective before the token; '' for overdue
+    qfDueLabel() { return QF_DUE[this.qfDue]?.label; },
+    qfDueCol()   { return QF_DUE[this.qfDue]?.col; },
     qfFacets() { return (this.qfImp.length ? 1 : 0) + (this.qfAreas.length ? 1 : 0) + (this.qfDue ? 1 : 0); },
     sortWord() { return ({ manual: 'hand', due: 'due date', importance: 'importance', deadline: 'deadline', alpha: 'a-z', created: 'date added' })[this.sortBy]; },   // follows the "· sorted by" verb
     // Escalate the ad-hoc sentence into a saved filter: prefill the editor with the equivalent query.
@@ -522,29 +611,28 @@ document.addEventListener('alpine:init', () => {
     },
     // All values, always — a filter you can't reach reads as missing, not tidy (user 2026-07-23). Importance order.
     availImp() { return ['must', 'focus', 'none', 'someday']; },
+    // Children index (O(n) tree walk) + mkRow closure — shared by visibleRows and nowRows. Hot path: no per-row work added.
+    _mkRowFn(sort, cmp) {
+      const byId = this.byId, def = this.store.defaultProject(), now = new Date(), byParent = buildByParent(this.tasks, sort);
+      if (cmp) for (const a of byParent.values()) a.sort(cmp);
+      const edMemo = new Map();
+      return { mkRow: (t, depth) => this.mkRow(t, depth, byParent, byId, def, now, edMemo), byParent, now, byId };
+    },
     visibleRows() {
       // Reads here register Alpine deps so the x-for re-runs on change. Completed rows split into _doneMemo (rendered below the add button).
       const key = this._rowV + '|' + this.navSel.type + '|' + this.navSel.id + '|' + this.listQ + '|' + this.showCompleted
         + '|' + this.sortBy + this.sortDir + '|' + this.qfImp + '|' + this.qfAreas + '|' + this.qfDue + '|' + this.qfArchived;
       if (_visKey === key) return _visMemo;
-      const filtering = this.filtering();
-      const now = new Date(), byId = this.byId, def = this.store.defaultProject();
-      // Children index (O(n)) — drives the tree walk AND each row's childCount/progress without per-row filters.
-      const byParent = buildByParent(this.tasks);
-      const cmp = this.sibCmp();
-      if (cmp) for (const arr of byParent.values()) arr.sort(cmp);   // sort siblings within each parent; manual leaves position order
-      const edMemo = new Map();
-      const mkRow = (t, depth) => this.mkRow(t, depth, byParent, byId, def, now, edMemo);
-      const out = [], done = [], archv = [];   // active rows (main list) + completed + archived (both below the add button, archived after done)
-      // Archived quick-filter: a flat "seen alone" view of every archived task (dash rows), across the account.
-      if (this.qfArchived) {
-        let rows = this.tasks.filter(t => t.archived_at && !this.isSidebar(t) && t.id !== def && this.rowPass(t));
-        if (cmp) rows = rows.slice().sort(cmp); else rows.sort((a, b) => (b.archived_at || '').localeCompare(a.archived_at || ''));
-        rows.forEach(t => out.push(mkRow(t, 0)));
-        for (let k = 0; k < out.length; k++) { out[k].prevId = out[k - 1]?.t.id; out[k].prevPid = out[k - 1]?.t.parent_id; out[k].nextId = out[k + 1]?.t.id; out[k].nextPid = out[k + 1]?.t.parent_id; }
-        _visKey = key; _visMemo = out; _doneMemo = []; return out;
-      }
-      const sink = (r) => { if (r.t.completed_at) { if (this.showCompleted) done.push(r); } else if (r.t.archived_at) { if (this.showCompleted) archv.push(r); } else out.push(r); };
+      const filtering = this.filtering(), cmp = this.sibCmp();
+      const { mkRow, byParent, now, byId } = this._mkRowFn(true, cmp);
+      const out = [], done = [];   // active rows (main list) + below-the-line (completed via 'done' lens, archived via 'archived' lens)
+      // Additive lenses: OPEN tasks always fill the main list; the 'done' lens adds completed tasks and the
+      // 'archived' lens adds archived tasks to the below-the-line section (both, when both are on).
+      const sink = (r) => {
+        if (r.t.archived_at) { if (this.qfArchived) done.push(r); }
+        else if (r.t.completed_at) { if (this.showCompleted) done.push(r); }
+        else out.push(r);
+      };
       // Filter view is a FLAT list (depth 0) — runFilter's order is the base; a chosen sort overrides it.
       if (this.navSel.type === 'filter') {
         let rows = filtering ? this.filterTasks().filter(t => this.rowPass(t)) : this.filterTasks();
@@ -567,15 +655,14 @@ document.addEventListener('alpine:init', () => {
             for (let a = byId.get(t.parent_id); a && !seen.has(a.id); a = byId.get(a.parent_id)) { keep.add(a.id); seen.add(a.id); }
           }
         }
-        // a completed root + its whole subtree → the Done list, kept tree-structured (so subtasks show, indented)
+        // a completed (non-archived) root + its whole subtree → the Done list, tree-structured
         const visitDone = (t, depth) => { done.push(mkRow(t, depth)); for (const c of (byParent.get(t.id) || [])) visitDone(c, depth + 1); };
-        const visitArch = (t, depth) => { archv.push(mkRow(t, depth)); for (const c of (byParent.get(t.id) || [])) visitArch(c, depth + 1); };
         const visit = (t, depth) => {
           if (keep && !keep.has(t.id)) return;
-          // A completed/archived ROOT (+ its subtree) goes to the Done section (archived after done). A completed/archived
+          // A completed/archived ROOT (+ its subtree) goes to the Done section or is hidden. A completed/archived
           // SUBTASK under an ACTIVE parent stays inline (struck / dashed) so it keeps its place in the tree.
+          if (t.archived_at && depth === 0) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
           if (t.completed_at && depth === 0) { if (this.showCompleted) visitDone(t, 0); return; }
-          if (t.archived_at && depth === 0) { if (this.showCompleted) visitArch(t, 0); return; }
           out.push(mkRow(t, depth));
           if (this.isSidebar(t) && depth > 0) return;
           if (!filtering && this.collapsed[t.id]) return;   // searching/filtering reveals matches regardless of collapse
@@ -585,8 +672,7 @@ document.addEventListener('alpine:init', () => {
         if (cmp) roots = roots.slice().sort(cmp);
         for (const r of roots) visit(r, 0);
       }
-      // Done section = completed rows, then archived rows (dash) grouped after.
-      const doneAll = done.concat(archv);
+      const doneAll = done;
       // Neighbor ids so itemBlock (the hover "block" highlight) is O(1)/row — for both the active and Done lists.
       for (const arr of [out, doneAll]) for (let k = 0; k < arr.length; k++) {
         arr[k].prevId = arr[k - 1]?.t.id; arr[k].prevPid = arr[k - 1]?.t.parent_id;
@@ -598,13 +684,25 @@ document.addEventListener('alpine:init', () => {
     completedRows() { this.visibleRows(); return _doneMemo; },   // computed alongside visibleRows; the Done list below the add button
     // Same pure row markup as listHtml (order + depth padding so it aligns with the active list), so the single
     // composer can relocate into the Done list and open inline on a completed task. Edit styling via applyEditDom().
+    // Shared <li> builder — used by _rowsHtml (list/done, with depth style + drag) and _clRowsHtml (tray, draggable always).
+    _itemLi(r, { style = '', drag = '', schedTime = null } = {}) {
+      const t = r.t;
+      return '<li class="item' + (t.completed_at ? ' done' : t.archived_at ? ' archived' : '') + ' flex gap-10" data-id="' + t.id + '"' + (style ? ' style="' + style + '"' : '') + drag + '>' + this.rowBody(r, { schedTime }) + '</li>';
+    },
+    // Per-row height estimate for contain-intrinsic-size. `auto` only remembers a row once it has actually
+    // rendered, so a never-seen row falls back to this — one flat 38px guess against real 34/46/54+ rows made
+    // the scrollbar lurch on the way down (#307). Same content the row builder renders, so it tracks it.
+    _rowCis(r) {
+      const chk = r.chk || r.t.checklist || [];
+      const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id)) : null;
+      return 34 + (r.t.notes ? 17 : 0) + (r.rels?.length ? 19 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * 19 : 0);
+    },
     // Rows → one <li> html string. completedRows() always carry completed_at OR archived_at, so the trailing '' never fires there.
     _rowsHtml(rows, drag = '') {
       let s = '';
       for (let i = 0; i < rows.length; i++) {
-        const r = rows[i], t = r.t;
-        const style = 'order:' + (i * 2) + ';padding-left:calc(18px + ' + (r.depth * 22) + 'px);--d:' + r.depth;
-        s += '<li class="item' + (t.completed_at ? ' done' : t.archived_at ? ' archived' : '') + '" data-id="' + t.id + '" style="' + style + '"' + drag + '>' + this.rowBody(r) + '</li>';
+        const r = rows[i];
+        s += this._itemLi(r, { style: 'order:' + (i * 2) + ';padding-left:calc(18px + ' + (r.depth * 22) + 'px);--d:' + r.depth + ';--ci:' + this._rowCis(r) + 'px', drag });
       }
       return s;
     },
@@ -614,6 +712,37 @@ document.addEventListener('alpine:init', () => {
     // list (a rebuild recreates every row, drops content-visibility size memory, and teleports the scroll).
     // The edited-row crossfade + subtree-hide are applied imperatively by applyEditDom().
     listHtml() { return this._rowsHtml(this.visibleRows(), this.navSel.type !== 'area' ? ' draggable="true"' : ''); },
+    // Keyed morph of a rows-html string into `container`, REUSING unchanged <li>s by data-id. A blanket
+    // `container.innerHTML = h` recreates every row, so off-screen rows lose content-visibility's remembered size
+    // (contain-intrinsic-size:auto) → they collapse to the estimate → the list reflows and the scroll teleports on a
+    // single-field save (#306). Here only genuinely-changed rows are replaced; the rest keep their element identity —
+    // and thus their size memory AND their imperative classes (hover/select/edit persist through the render).
+    // `_sig` = the CLEAN template outerHTML at creation; imperative classes are added afterwards so they never enter
+    // the compare (a stale live class would otherwise force a needless replace).
+    // Cache-keyed morph with scroll preservation (fixes scroll teleport on save, #306). All 4 rows containers use this.
+    renderRows(el, h) {
+      if (el._h === h) return;
+      const sc = el.closest('.app'), st = sc ? sc.scrollTop : 0;
+      el._h = h; this.morphRows(el, h);
+      if (sc) sc.scrollTop = st;
+      queueMicrotask(() => { if (sc) sc.scrollTop = st; this.applyEditDom(); });
+      if (st) requestAnimationFrame(() => { if (sc && !sc.scrollTop) sc.scrollTop = st; });
+    },
+    morphRows(container, html) {
+      const tpl = document.createElement('template');
+      tpl.innerHTML = html;
+      const old = new Map();
+      for (const el of container.children) old.set(el.dataset.id, el);
+      let cursor = container.firstElementChild;
+      for (const nw of [...tpl.content.children]) {
+        const cur = old.get(nw.dataset.id);
+        old.delete(nw.dataset.id);
+        const node = (cur && cur._sig === nw.outerHTML) ? cur : Object.assign(nw, { _sig: nw.outerHTML });
+        if (cur === cursor) { cursor = cursor.nextElementSibling; if (node !== cur) container.replaceChild(node, cur); }   // same slot: keep or swap in place
+        else { if (cur && node !== cur) cur.remove(); container.insertBefore(node, cursor); }                             // reorder: drop the stale node (a fresh one replaces it), then place; new id → just insert
+      }
+      for (const el of old.values()) el.remove();
+    },
     // Effective duration (min): own est_minutes, else the rolled-up sum of subtasks' effective durations. Memoized (O(n)).
     effDurMin(t, byParent, memo) {
       if (memo.has(t.id)) return memo.get(t.id);
@@ -652,28 +781,100 @@ document.addEventListener('alpine:init', () => {
         childCount: kids.length,
         hasProgress: hasKids || hasCl,
         progress: hasKids ? Math.round(kids.filter(c => c.completed_at || c.archived_at).length / kids.length * 100) : (hasCl ? Math.round(cl.filter(c => c.done).length / cl.length * 100) : 0),
-        blocked: (t.blocked_by ?? []).some(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; }),
+        blocked: (t.blocked_by ?? []).some(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; }), // inline isBlocked over byId — hot per-row path
       };
     },
     nowRows() {
-      const now = new Date(), today = isoDate(now), byId = this.byId, def = this.store.defaultProject();
-      const byParent = buildByParent(this.tasks, false);
-      const edMemo = new Map();
+      const { mkRow, byParent, now, byId } = this._mkRowFn(false);
+      const today = isoDate(now);
       return this.tasks
         .filter(t => !t.completed_at && !t.archived_at && !this.isSidebar(t) && t.due_at && t.due_at.slice(0, 10) <= today)
         .sort((a, b) => (a.due_at || '').localeCompare(b.due_at || '') || impRank(a.importance) - impRank(b.importance))
-        .map(t => this.mkRow(t, 0, byParent, byId, def, now, edMemo));
+        .map(t => mkRow(t, 0));
     },
     nowListRows() { const hero = this.nowTask(); return this.nowRows().filter(r => r.t.id !== hero?.id); },
     // Keyboard focus over the visible list rows (j/k/↑↓ move; Enter/e open; x/Space complete).
     moveFocus(d) {
-      const rows = this.visibleRows().filter(r => r.t);
+      const rows = this.visibleRows();
       if (!rows.length) { this._setKbFocus(null); return; }
       const cur = rows.findIndex(r => r.t.id === this.focusId);
       const next = cur < 0 ? (d > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, cur + d));
       this._setKbFocus(rows[next].t.id);
     },
     focusedTask() { return this.byId.get(this.focusId); },
+    // ── Multi-select (Ctrl/Cmd-click toggle, Shift-click / Shift+↑↓ range) ─────────────────────────
+    // TODO(touch): long-press to enter selection. Desktop-first for now.
+    selTasks() { return this.sel.map(id => this.byId.get(id)).filter(Boolean); },
+    toggleSel(id) { const i = this.sel.indexOf(id); this.sel = i >= 0 ? this.sel.filter(x => x !== id) : [...this.sel, id]; this.selAnchor = id; },
+    clearSel() { this.sel = []; this.selAnchor = null; this.selMenu = null; },
+    selectRange(id) {   // anchor..id in visibleRows order (anchor stays put so repeated Shift-clicks pivot from it)
+      const rows = this.visibleRows();
+      const a = rows.findIndex(r => r.t.id === (this.selAnchor ?? id)), b = rows.findIndex(r => r.t.id === id);
+      if (a < 0 || b < 0) return this.toggleSel(id);
+      const [lo, hi] = a <= b ? [a, b] : [b, a];
+      this.sel = rows.slice(lo, hi + 1).map(r => r.t.id);
+      this._setKbFocus(id);
+    },
+    selExtend(d) {   // Shift+↑/↓ — grow/shrink the anchor..focus range by one row
+      const rows = this.visibleRows(); if (!rows.length) return;
+      if (this.selAnchor == null || !this.sel.length) { this.selAnchor = this.focusId ?? rows[0].t.id; this.focusId = this.selAnchor; }
+      let cur = rows.findIndex(r => r.t.id === this.focusId); if (cur < 0) cur = rows.findIndex(r => r.t.id === this.selAnchor);
+      this.selectRange(rows[Math.max(0, Math.min(rows.length - 1, cur + d))].t.id);
+    },
+    // Paint .selected + run-position classes imperatively — O(selected) diff.
+    // Contiguous selected rows form a rounded group: sel-top/sel-mid/sel-bot/sel-single (mirrors .inblock rounding).
+    paintSel() {
+      const ns = new Set(this.sel);   // reactive dep — x-effect re-runs when sel changes
+      this.$nextTick(() => {
+        const list = document.querySelector('.surface-lists .list');
+        if (!list) { _selSet = ns; return; }
+        const RUN = ['sel-top', 'sel-mid', 'sel-bot', 'sel-single'];
+        const ps = _selSet;
+        for (const id of ps) if (!ns.has(id)) { const el = list.querySelector(`.item[data-id="${id}"]`); if (el) { el.classList.remove('selected'); el.classList.remove(...RUN); } }
+        if (ns.size) {
+          // Build id→position map from visible task rows (visibleRows() is cached — O(1) hit on memo)
+          const rows = this.visibleRows();
+          const posMap = new Map();
+          for (let i = 0; i < rows.length; i++) if (ns.has(rows[i].t.id)) posMap.set(rows[i].t.id, i);
+          for (const [id, pos] of posMap) {
+            const el = list.querySelector(`.item[data-id="${id}"]`);
+            if (!el) continue;
+            el.classList.add('selected');
+            el.classList.remove(...RUN);
+            const p = pos > 0 && ns.has(rows[pos - 1]?.t.id);
+            const n = pos < rows.length - 1 && ns.has(rows[pos + 1]?.t.id);
+            el.classList.add(!p && n ? 'sel-top' : p && n ? 'sel-mid' : p && !n ? 'sel-bot' : 'sel-single');
+          }
+        }
+        _selSet = ns;
+      });
+    },
+    // Bulk actions — each routes through perform() as ONE composite op, so a single ⌘Z reverses the whole batch.
+    async _bulk(label, ops) { this.clearSel(); if (ops.length) await this.perform(label, { kind: 'composite', target: 'task', ops }, { bin: true }); },
+    async selComplete() {
+      const ops = this.selTasks().filter(t => !t.completed_at && !t.archived_at).map(t => ({ kind: 'complete', target: 'task', mode: 'forward', fwd: { id: t.id, done: true } }));
+      await this._bulk(`Completed ${ops.length} tasks`, ops);
+    },
+    async selDelete() {
+      await this._bulk(`Deleted ${this.sel.length} tasks`, [...this.sel].map(id => ({ kind: 'delete', target: 'task', id })));
+    },
+    async selSetPrio(v) {
+      await this._bulk(`Set priority · ${this.sel.length}`, [...this.sel].map(id => ({ kind: 'update', target: 'task', id, after: { importance: v } })));
+    },
+    async selMoveToProject(p) {
+      await this._bulk(`Moved ${this.sel.length} to ${p.content}`, [...this.sel].map(id => ({ kind: 'update', target: 'task', id, after: { parent_id: p.id } })));
+    },
+    async selAddArea(a) {
+      const ops = this.selTasks().filter(t => !(t.area_ids || []).includes(a.id)).map(t => ({ kind: 'update', target: 'task', id: t.id, after: { area_ids: [...(t.area_ids || []), a.id] } }));
+      await this._bulk(`Tagged ${ops.length} · ${a.name}`, ops);
+    },
+    // shift each selected task's due_at by the SAME delta (relative spacing preserved); only tasks that HAVE a date move
+    _shiftIso(iso, days) { const dateOnly = iso.length <= 10; const d = new Date(dateOnly ? iso + 'T00:00' : iso); d.setDate(d.getDate() + days); const day = isoDate(d); return dateOnly ? day : day + iso.slice(10); },
+    async selShiftDue(days) {
+      const ops = this.selTasks().filter(t => t.due_at).map(t => ({ kind: 'update', target: 'task', id: t.id, after: { due_at: this._shiftIso(t.due_at, days) } }));
+      if (!ops.length) { this.clearSel(); return this.toast('No due dates to shift'); }
+      await this._bulk(`Shifted ${ops.length} due date${ops.length > 1 ? 's' : ''}`, ops);
+    },
     openFocused() { const t = this.focusedTask(); if (t) this.editTask(t); },
     toggleFocused() { const t = this.focusedTask(); if (t) this.toggle(t); },
     toggleShowCompleted() {
@@ -765,10 +966,12 @@ document.addEventListener('alpine:init', () => {
       if (!ids.length) return 0;
       return Math.round(ids.filter(x => this.byId.get(x)?.completed_at).length / ids.length * 100);
     },
+    startRename(id) { this.navRename = id; this.navPop = null; this.$nextTick(() => this.$nextTick(() => { const i = document.querySelector('.nav-pop .pop-input'); if (i) i.focus(); })); },
     async saveRename(p, name) {
       name = name.trim(); this.navRename = null;
-      if (!name || name === p.content) return;
-      if (await this.store.tasks.update(p.id, { content: name })) await this.loadTasks();
+      if (!name) return;
+      if ('name' in p) { if (name !== p.name) if (await this.store.areas.update(p.id, { name })) await this.loadAreas(); }
+      else { if (name !== p.content) if (await this.store.tasks.update(p.id, { content: name })) await this.loadTasks(); }
     },
     async patchTask(id, fields) { if (await this.store.tasks.update(id, fields)) await this.loadTasks(); this.navPop = null; },
     async patchArea(id, fields) { if (await this.store.areas.update(id, fields)) await this.loadAreas(); this.navPop = null; },
@@ -778,47 +981,73 @@ document.addEventListener('alpine:init', () => {
     async deleteArea(id) {
       this.navPop = null;
       if (this.navSel.type === 'area' && this.navSel.id === id) this.setNav('all');
-      this.pushUndo('Deleted area');
-      if (await this.store.areas.remove(id)) {
-        await this.loadAreas();
-        await this.loadTasks();
-      }
-    },
-    async confirmAddRoot() {
-      const name = this.newRootName.trim();
-      this.addingRootProject = false; this.newRootName = '';
-      if (!name) return;
-      const project = await this.store.tasks.create({ content: name, parent_id: null, sidebar: true });
-      if (!project) return;
-      await this.loadTasks();
-      this.setNav('project', project.id);
+      const area = this.areas.find(a => a.id === id);
+      if (!area) return;
+      const areaRow = JSON.parse(JSON.stringify(area));
+      // store.areas.remove also strips this area's id out of every task's area_ids — a plain reinsert
+      // of the area row wouldn't put that reference back, so capture + restore it via a composite too.
+      const affected = this.tasks.filter(t => (t.area_ids || []).includes(id)).map(t => ({ id: t.id, area_ids: t.area_ids.slice() }));
+      await this.store.areas.remove(id);
+      await this.loadAreas(); await this.loadTasks();
+      // was = each task's CURRENT (stripped) area_ids → the staleness guard skips a task whose membership was edited after the delete
+      // (deleteArea is bin:true, restored out-of-band, so the sub-op would otherwise FULL-overwrite that later edit).
+      this._pushEntry('Deleted area', { kind: 'composite', target: 'area', ops: [
+        { kind: 'reinsert', target: 'area', id, rows: [areaRow] },
+        ...affected.map(t => ({ kind: 'update', target: 'task', id: t.id, after: { area_ids: t.area_ids }, was: { area_ids: (this.byId.get(t.id)?.area_ids) || [] } })),
+      ] }, { bin: true });
     },
     descendantCount(id) { return id ? descendantIds(this.tasks, id).length - 1 : 0; },   // tasks INSIDE (excl. the project itself)
-    deletionTargets() {
-      if (!this.deletingProject) return [];
-      const excluded = descendantIds(this.tasks, this.deletingProject);
-      return this.tasks.filter(p => !excluded.includes(p.id) && this.hasChildren(p.id));
+    delTargets() {
+      if (!this.delAsk) return [];
+      const excluded = descendantIds(this.tasks, this.delAsk.id), def = this.store.defaultProject();
+      if (this.delAsk.kind === 'project') return this.tasks.filter(p => !excluded.includes(p.id) && this.hasChildren(p.id));
+      return this.tasks.filter(p => !excluded.includes(p.id) && (p.id === def || p.sidebar || this.hasChildren(p.id)));
     },
     startDeleteProject(id) {
       this.navPop = null;
       const project = this.byId.get(id);
-      this.deletingProject = id;
-      this.deleteProjMode = 'move';
       const excluded = descendantIds(this.tasks, id);
       const candidates = this.tasks.filter(x => !excluded.includes(x.id));
       const parentInList = project && project.parent_id && candidates.find(x => x.id === project.parent_id);
-      this.deleteTarget = parentInList ? project.parent_id : (candidates[0] && candidates[0].id) || null;
+      this.delAsk = { kind: 'project', id, mode: 'move', target: parentInList ? project.parent_id : (candidates[0]?.id) || null, name: this.projName(id), count: this.descendantCount(id) };
     },
-    async confirmDeleteProject() {
-      const id = this.deletingProject, mode = this.deleteProjMode, target = this.deleteTarget;
-      this.deletingProject = null; this.deleteTarget = null;
-      if (!id || (mode === 'move' && !target)) return;
-      if (this.navSel.type === 'project' && descendantIds(this.tasks, id).includes(this.navSel.id)) this.setNav('all');
-      if (mode === 'delete') {
-        this.pushUndo('Deleted project + tasks');
-        for (const tid of [...descendantIds(this.tasks, id)].reverse()) await this.store.tasks.remove(tid);   // leaves→root
-        await this.loadTasks();
-      } else if (await this.store.tasks.remove(id, target)) await this.loadTasks();
+    // Shared by confirmDelete's "move" mode (both project and task): store.tasks.remove(id,
+    // target) reparents id's DIRECT children onto target, then removes id — one call, not move+delete. Build the
+    // journal entry by hand (a composite of "reinsert id" + "move each child back") since perform's generic
+    // composite executor has no rollback and this call's DB-level atomicity must not be split across two ops.
+    async _deleteReparent(label, id, target) {
+      const row = this.byId.get(id); if (!row) return false;
+      const taskRow = JSON.parse(JSON.stringify(row));
+      const kids = this.tasks.filter(t => t.parent_id === id).map(c => ({ id: c.id, parent: c.parent_id ?? null, pos: c.position }));
+      // Snapshot ancestor chain to detect auto-completions; use loadTasks() (not reloadAll) to avoid rAF racing the composer close.
+      const ancSnap = new Map();
+      for (let a = this.byId.get(row.parent_id); a; a = this.byId.get(a.parent_id)) ancSnap.set(a.id, a.completed_at ?? null);
+      const ok = await this.store.tasks.remove(id, target);
+      if (!ok) return false;
+      await this.loadTasks();
+      // Build update ops to reopen any ancestors that just auto-completed (undo reverses them).
+      const autoOps = [];
+      for (const [pid, was] of ancSnap) { const p = this.byId.get(pid); if (p && !was && p.completed_at) autoOps.push({ kind: 'update', target: 'task', id: pid, after: { completed_at: null } }); }
+      this._pushEntry(label, { kind: 'composite', target: 'task', ops: [
+        { kind: 'reinsert', target: 'task', id, rows: [taskRow] },
+        ...kids.map(k => ({ kind: 'move', target: 'task', id: k.id, after: { parent: k.parent, pos: k.pos } })),
+        ...autoOps,
+      ] }, { bin: true });
+      return true;
+    },
+    async confirmDelete() {
+      const info = this.delAsk;
+      this.delAsk = null;
+      if (!info || (info.mode === 'move' && !info.target)) return;
+      if (info.kind === 'project') {
+        if (this.navSel.type === 'project' && descendantIds(this.tasks, info.id).includes(this.navSel.id)) this.setNav('all');
+        if (info.mode === 'delete') await this.perform('Deleted project + tasks', { target: 'task', kind: 'delete', id: info.id });
+        else if (this.byId.get(info.id)) await this._deleteReparent('Deleted project', info.id, info.target);
+      } else {
+        if (info.mode === 'delete') await this.perform('Deleted task', { target: 'task', kind: 'delete', id: info.id });
+        else await this._deleteReparent('Deleted task, moved subtasks', info.id, info.target);
+        if (info.source === 'editing') this.closeComposer(true);
+      }
     },
 
     // top/bottom 30% = above/below, middle = into; "into" downgrades at MAX_DEPTH
@@ -830,15 +1059,14 @@ document.addEventListener('alpine:init', () => {
     },
 
     resetDraft() {
-      this.draft = { content: '', notes: '', importance: 'none', due_at: '', available_from: '', deadline_at: '', durH: 0, durM: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] } };
+      this.draft = emptyDraft(); this.subDraft = emptyDraft(); _nlpFocus = null;
       this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.endPicking = false; this.tpop = false;
       this.areaPicker = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this.goalPicker = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this._noPillOnce = false;   // the un-chip→no-re-pill guard is per-session; never leak it across composer opens
     },
     pc(imp) { return `var(--p${({ must: 1, focus: 2, someday: 3 })[imp] || 4})`; },   // check color by importance — PLACEHOLDER map (user will remap): must→p1, focus→p2, someday→p3, none→p4
-    impLabel(v) { return ({ focus: 'Focus', must: 'Must', someday: 'Someday' })[v] || 'Importance'; },   // 'none' → picker's unset label
-    impName(v) { return ({ none: 'None', focus: 'Focus', must: 'Must', someday: 'Someday' })[v] || 'None'; },   // proper name incl. None (filter tokens/chips)
+    impName(v, unset = 'None') { return ({ none: 'None', focus: 'Focus', must: 'Must', someday: 'Someday' })[v] || unset; },   // proper name incl. None; pass 'Importance' for picker's unset label
     qfImpCol() { return this.pc([...this.qfImp].sort((a, b) => impRank(a) - impRank(b))[0]); },   // token color = the most-important selected value
     durMinNow() { return this.draft.durH * 60 + this.draft.durM; },
     durLabel() { return this.durMinNow() ? this.durFmt(this.durMinNow()) : 'Dur'; },
@@ -849,7 +1077,7 @@ document.addEventListener('alpine:init', () => {
         if (this.$refs.wheelM) this.$refs.wheelM.scrollTop = (this.draft.durM / 5) * 30;
       });
     },
-    openDur() { this.togglePop('dur'); if (this.pop === 'dur') this.scrollWheels(); },
+    openDur(anchor) { this.togglePop('dur', anchor); if (this.pop === 'dur') this.scrollWheels(); },
 
     reduceMotion() { return matchMedia('(prefers-reduced-motion: reduce)').matches; },
     // measured via clone so live card is never touched; height lands where auto settles
@@ -896,6 +1124,16 @@ document.addEventListener('alpine:init', () => {
       this._t = setTimeout(() => { if (!this._closing) return; this.clip = false; this.growH = null; done && done(); }, 240);
     },
     openComposer() {
+      // If the tapped task's TOP is in view, DON'T scroll — grow it in place (its bottom may extend below the
+      // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. We test the
+      // top only (not full visibility): getBoundingClientRect().top is layout-accurate, whereas offsetHeight is
+      // unreliable under content-visibility. Close never scrolls either, so an in-view edit leaves the list put.
+      if (!this.composer.open) {
+        const sc = this.editing && this._listScroller(), r = sc && this._rowEl(this.editing);
+        const top = r ? r.getBoundingClientRect().top - sc.getBoundingClientRect().top : null;
+        this._skipOpenScroll = top != null && top >= -1 && top <= sc.clientHeight - 20;
+      }
+      this._closingComposer = false;   // re-arm draft persistence (closeComposer set it while animating out)
       this.relocateComposer();   // move the single composer into the active surface's list before it grows
       this.applyEditDom();       // style the edited row (crossfade) + hide its subtree imperatively — no list rebuild, so the scroll stays put
       const wasOpen = this.composer.open, start = this.editing ? this.blockH : 0;
@@ -906,30 +1144,29 @@ document.addEventListener('alpine:init', () => {
       this.setDescText(this.draft.notes);
       this.$nextTick(() => {
         this.syncChkRows();   // reused rows keep stale live-editor markup across reopens — refresh from the draft
+        this.syncSubRows();   // ditto for subtask pill editors (keyed x-for rows reuse across reopen/reload)
         const c = this.$refs.content; c?.focus({ preventScroll: true });
         // Editing → caret at the END of the title (ready to append a chip); adding starts empty so it's moot.
-        if (c && this.editing) { const r = document.createRange(); r.selectNodeContents(c); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
-        const comp = this.$refs.composer;
-        if (comp) {
+        if (c && this.editing) this._caret(c);
+        if (!this._skipOpenScroll) {   // in-view opens grow in place — never scroll the list (user rule)
+          const comp = this.$refs.composer, sc = this._listScroller(); if (!comp || !sc) return;
           const smooth = !this.reduceMotion();
           comp.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' });
-          // Interruptible: mark the smooth scroll in-flight so the first keystroke can cancel it (editorKeydown).
-          if (smooth) { this._composerScrolling = true; clearTimeout(this._scrollSettleT); this._scrollSettleT = setTimeout(() => { this._composerScrolling = false; }, 500); }
-          // The first scroll ran while the composer was still mid-grow (small), so a composer that grows below the
-          // fold stays cut off. After the grow settles, scroll DOWN just enough to reveal its bottom (Save/Cancel).
-          // Down-only: never scroll up — that would fight the caret and jar the list's scroll position on a mid-list open.
-          clearTimeout(this._revealT);
-          this._revealT = setTimeout(() => {
-            if (!this.composer.open || (smooth && !this._composerScrolling)) return;
-            const el = this.$refs.composer; if (!el) return;
-            let sc = el.parentElement; while (sc && sc.scrollHeight <= sc.clientHeight + 1 && sc !== document.body) sc = sc.parentElement;
-            if (!sc || sc === document.body) return;
-            const cr = el.getBoundingClientRect(), sr = sc.getBoundingClientRect();
-            // Taller than the view: revealing the bottom would push the title off-screen — align the TOP instead.
+          // After the grow transition settles, scroll DOWN only if the bottom is still cut off (initial scroll ran while still short).
+          // Down-only: never scroll up — would fight the caret and jar the list position.
+          const reveal = () => {
+            if (!this.composer.open) return;
+            const cr = comp.getBoundingClientRect(), sr = sc.getBoundingClientRect();
             if (cr.height > sc.clientHeight) { sc.scrollBy({ top: cr.top - sr.top - 8, behavior: smooth ? 'smooth' : 'auto' }); return; }
             const overhang = cr.bottom - sr.bottom;
             if (overhang > 4) sc.scrollBy({ top: overhang + 12, behavior: smooth ? 'smooth' : 'auto' });
-          }, smooth ? 300 : 0);
+          };
+          const grow = this.$refs.grow; if (!grow) { reveal(); return; }
+          clearTimeout(this._revealT);
+          const onEnd = () => { clearTimeout(this._revealT); grow.removeEventListener('transitionend', onEnd); grow.removeEventListener('transitioncancel', onEnd); reveal(); };
+          grow.addEventListener('transitionend', onEnd, { once: true });
+          grow.addEventListener('transitioncancel', onEnd, { once: true });
+          this._revealT = setTimeout(onEnd, 400);   // fallback: 400ms > 220ms grow transition
         }
       });
     },
@@ -955,7 +1192,7 @@ document.addEventListener('alpine:init', () => {
         : document.querySelector('.surface-lists .list');
       if (dest && el.parentElement !== dest) dest.appendChild(el);
     },
-    startAdd() { this.editing = null; this._editDescs = null; this.resetDraft(); this.openComposer(); },
+    startAdd() { this.editing = null; this._editDescs = null; this.resetDraft(); this._initDraftSafety(); this.openComposer(); },
     durFmt(min) {
       const h = Math.floor(min / 60), m = min % 60;
       return (h ? h + 'h' : '') + (h && m ? ' ' : '') + (m ? m + 'm' : '');
@@ -978,6 +1215,7 @@ document.addEventListener('alpine:init', () => {
     // page-wide wash + expose the tint so the filter chips can pick up the same color family (--list-tint)
     listTintStyle() { const col = this.listTintCol(); return col ? `background:color-mix(in srgb,${col} 5%,var(--bg));--list-tint:${col}` : ''; },
     areaObjs(ids) { return (ids || []).map(id => this.areas.find(x => x.id === id)).filter(Boolean); },
+    areaChipsHtml(ids) { return this.areaObjs(ids).map(l => areaChipHtml({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })).join(''); },
     esc(s) { return escHtml(s); },
     // x-html; relation picker + cascade-complete use the same markup (ui.js)
     taskLine(t, markedTitle) {
@@ -989,22 +1227,25 @@ document.addEventListener('alpine:init', () => {
         done: !!t.completed_at,
       });
     },
-    // x-html; click delegated via openFromTaskList(ev)
+    // x-html; click delegated via finishStepClick(ev, gid)
     taskListHtml(tasks, opts = {}) {
       return taskListMarkup((tasks || []).map(t => ({ id: t.id, line: this.taskLine(t), milestone: t.milestone })), opts);
     },
-    openFromTaskList(ev, after) { const id = ev.target.closest('.task-line')?.dataset.tid; if (id) { this.openTaskById(id); after && after(); } },
     // static body — shell <li> keeps reactive bindings
-    rowBody(r, opts) { return rowBodyHtml(r, { navType: this.navSel.type, glintId: this.chipGlintId, ...opts }); },
+    rowBody(r, opts) { return rowBodyHtml(r, { navType: this.navSel.type, glintId: this.chipGlintId, chkOpen: this.chkOpen.has(r.t.id), ...opts }); },
     // body is inert x-html — delegate here; editTask measures .item
     onRowClick(r, e) {
       if (e.target.closest('a')) return;   // markdown link — let the browser follow it
+      if (e.metaKey || e.ctrlKey) return this.toggleSel(r.t.id);                                  // Ctrl/Cmd-click toggles selection
+      if (e.shiftKey) { getSelection()?.removeAllRanges(); return this.selectRange(r.t.id); }     // Shift-click extends the range (drop any accidental text highlight)
+      this.selAnchor = r.t.id;   // a plain click seeds the range anchor for a later Shift-click
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'collapse') return this.toggleTaskCollapse(r.t.id);
       if (act === 'check') return this.toggle(r.t);
-      // the checkbox OR its text toggles a checklist item; empty space falls through to editTask (composer)
+      if (act === 'chk-more') { this.chkOpen.has(r.t.id) ? this.chkOpen.delete(r.t.id) : this.chkOpen.add(r.t.id); return; }   // reveal/re-hide the collapsed done items
+      // the checkbox OR its text toggles a checklist item; plain (uncheckable) items fall through to editTask
       const chk = e.target.closest('.chk-rect, .chk-txt')?.closest('.chk-row');
-      if (chk) return this.toggleChk(r.t.id, +chk.dataset.ci);
+      if (chk && !r.t.checklist_plain) return this.toggleChk(r.t.id, +chk.dataset.ci);
       this.editTask(r.t, e);
     },
     // first swatch = clear; '' → null; shared by editors + nav popovers
@@ -1027,7 +1268,7 @@ document.addEventListener('alpine:init', () => {
     dragOver(t, e, depth) {
       if (!this.dragId) return;
       if (t.id === this.dragId) { this.taskDropHint = null; this._setDropInto(null); return; }
-      if (descendantIds(this.tasks, this.dragId).includes(t.id)) { this.taskDropHint = null; this._setDropInto(null); return; }
+      if (this._dragDescs?.has(t.id)) { this.taskDropHint = null; this._setDropInto(null); return; }
       let mode = this._dropMode(e, t.id, this.dragId);
       // drag-left outdent only in above/below zones — prevents nest-drag from hijacking into
       const dt = this.byId.get(this.dragId);
@@ -1047,7 +1288,7 @@ document.addEventListener('alpine:init', () => {
       const h = this.taskDropHint;
       if (!this.dragId || !h) return null;   // ghost for every mode incl. into (deeper indent) so it never vanishes
       const rows = this.visibleRows();
-      const gi = rows.findIndex(r => r.t && r.t.id === h.id);
+      const gi = rows.findIndex(r => r.t.id === h.id);
       if (gi < 0) return null;
       const at = h.mode === 'above' ? gi : gi + 1;
       return { order: at * 2 - 1, depth: h.depth ?? rows[gi].depth };
@@ -1060,43 +1301,46 @@ document.addEventListener('alpine:init', () => {
         this.taskDropHint = null; this._setDropInto(null);
       }
     },
-    async drop(t) {
+    async drop() {
       const hint = this.taskDropHint, dragId = this.dragId;
       this.taskDropHint = null; this.dragId = null; this._clearDrag();
       if (!hint || !dragId) return;
-      if (hint.mode === 'outdent') {   // reparent to grandparent, just after the former parent
+      if (hint.mode === 'outdent') {   // reparent to grandparent, just after the former parent — always a real move
         const dt = this.byId.get(dragId);
         const par = dt && this.byId.get(dt.parent_id);
         if (!par || par.sidebar) return;
-        this.pushUndo('Moved');
         const newParentId = par.parent_id ?? null;
         const sibs = this.tasks.filter(x => x.parent_id === newParentId && x.id !== dragId).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
         const insertAt = sibs.findIndex(x => x.id === par.id) + 1;
         sibs.splice(insertAt, 0, { id: dragId });
-        if (await this.store.tasks.move(dragId, newParentId, insertAt)) await this.store.tasks.reorder(sibs.map(x => x.id));
-        await this.loadTasks();
-        return;
+        return this._moveTask(dragId, newParentId, insertAt, sibs.map(x => x.id));
       }
       if (hint.id === dragId) return;
       const target = this.byId.get(hint.id);
       if (!target) return;
       const _dragTask = this.byId.get(dragId);
       const _isReorder = (hint.mode === 'above' || hint.mode === 'below') && !!_dragTask && (_dragTask.parent_id ?? null) === (target.parent_id ?? null);
-      this.pushUndo(_isReorder ? 'Reordered' : 'Moved');
       if (hint.mode === 'into') {
         const children = this.tasks.filter(x => x.parent_id === target.id);
         const toIndex = children.length ? Math.max(...children.map(x => x.position)) + 1 : 0;
-        if (await this.store.tasks.move(dragId, target.id, toIndex))
-          await this.store.tasks.reorder([...children.map(x => x.id), dragId]);
-      } else {
-        const parentId = target.parent_id ?? null;
-        const siblings = this.tasks.filter(x => x.parent_id === parentId).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-        const ordered = siblings.filter(x => x.id !== dragId);
-        const targetIdx = ordered.findIndex(x => x.id === target.id);
-        const insertAt = hint.mode === 'above' ? targetIdx : targetIdx + 1;
-        ordered.splice(insertAt, 0, { id: dragId });
-        if (await this.store.tasks.move(dragId, parentId, insertAt)) await this.store.tasks.reorder(ordered.map(x => x.id));
+        return this._moveTask(dragId, target.id, toIndex, [...children.map(x => x.id), dragId]);
       }
+      const parentId = target.parent_id ?? null;
+      const siblings = this.tasks.filter(x => x.parent_id === parentId).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+      const ordered = siblings.filter(x => x.id !== dragId);
+      const targetIdx = ordered.findIndex(x => x.id === target.id);
+      const insertAt = hint.mode === 'above' ? targetIdx : targetIdx + 1;
+      ordered.splice(insertAt, 0, { id: dragId });
+      if (_isReorder) {   // same parent — non-lossy reorder, not journaled
+        if (await this.store.tasks.move(dragId, parentId, insertAt)) await this.store.tasks.reorder(ordered.map(x => x.id));
+        return this.loadTasks();
+      }
+      return this._moveTask(dragId, parentId, insertAt, ordered.map(x => x.id));
+    },
+    // journaled move + sibling normalization; `pos` journals the drop intent, `order` is the full normalized sibling order
+    async _moveTask(id, parent, pos, order) {
+      await this.perform('Moved', { target: 'task', kind: 'move', id, after: { parent, pos } });
+      await this.store.tasks.reorder(order);   // normalize sibling positions — not journaled, a reorder loses nothing
       await this.loadTasks();
     },
     dragEnd() { this._clearDrag(); this.dragId = null; this.taskDropHint = null; this._dragDescs = null; this.railHot = null; },
@@ -1112,44 +1356,48 @@ document.addEventListener('alpine:init', () => {
       const dragId = this.dragId;
       this.railHot = null; this.taskDropHint = null; this.dragId = null; this._clearDrag();
       const t = this.byId.get(dragId); if (!t) return;
-      if (kind === 'area') {   // areas are tags (many-to-many), not parents — add the tag, keep existing
+      if (kind === 'area') {   // areas are tags (many-to-many), not parents — add the tag, keep existing (a field update, not a parent move)
         const ids = t.area_ids || [];
         if (ids.includes(id)) return;
-        this.pushUndo('Moved');
-        if (await this.store.tasks.update(dragId, { area_ids: [...ids, id] })) await this.loadTasks();
+        await this.perform('Moved', { target: 'task', kind: 'update', id: dragId, after: { area_ids: [...ids, id] } });
         return;
       }
       const parentId = kind === 'backlog' ? this.store.defaultProject() : id;
       if (parentId === dragId) return;   // can't file a project under itself
       const sibs = this.tasks.filter(x => (x.parent_id ?? null) === (parentId ?? null) && x.id !== dragId);
       const toIndex = sibs.length ? Math.max(...sibs.map(x => x.position ?? 0)) + 1 : 0;   // bottom of the project
-      this.pushUndo('Moved');
-      if (await this.store.tasks.move(dragId, parentId, toIndex)) await this.store.tasks.reorder([...sibs.map(x => x.id), dragId]);
-      await this.loadTasks();
+      await this._moveTask(dragId, parentId, toIndex, [...sibs.map(x => x.id), dragId]);
     },
-    // List mutations while the composer is open reflow the tall editor row — the browser drags scrollTop
-    // to ~0 BEFORE any rebuild-time restore can read it. Snapshot first, re-assert until layout settles.
-    async _keepListScroll(fn) {
-      const sc = document.querySelector('.surface-lists .app'), st = sc?.scrollTop || 0;
-      await fn();
-      if (!sc || !st) return;
-      const put = () => { if (sc.scrollTop !== st) sc.scrollTop = st; };
-      put(); requestAnimationFrame(put); setTimeout(put, 200); setTimeout(put, 450);   // past the grow-close transition
+    // ── The ONE list-surface scroll model ──────────────────────────────────────────────────────
+    // The scroll STAYS. Opening an in-view task doesn't scroll (grow in place), so closing has nothing to
+    // un-do — we never write scrollTop on close; the list stays exactly where the reader left it (if the
+    // collapse shrinks the range past the end the browser clamps up a touch, which is fine). The ONLY
+    // deliberate scroll is `_revealRow`: bring a task in when it's OFF-SCREEN (an off-screen open, or a save
+    // that re-sorted the row out of view). Rows use content-visibility, so we never trust absolute scrollTop.
+    _listScroller() { return document.querySelector('.surface-lists .app'); },
+    _rowOffscreen(sc, el) { const r = el.getBoundingClientRect().top - sc.getBoundingClientRect().top; return r < -1 || r + el.offsetHeight > sc.clientHeight + 1; },
+    _revealRow(id) { const sc = this._listScroller(), el = id && this._rowEl(id); if (sc && el && this._rowOffscreen(sc, el)) el.scrollIntoView({ block: 'nearest', behavior: this.reduceMotion() ? 'auto' : 'smooth' }); },
+    // A just-saved row morphs in place (keyed morph, #306) with no motion cue — a brief warm wash marks WHICH row
+    // took the edit. Imperative (like hover/edit state) so it never enters the morph's _sig compare. Color-only, so
+    // it's reduced-motion-safe (comprehension aid, not movement). Re-trigger by removing+reflowing before re-adding.
+    _flashSaved(id) {
+      const el = this._rowEl(id); if (!el) return;
+      el.classList.remove('just-saved'); void el.offsetWidth; el.classList.add('just-saved');
+      el.addEventListener('animationend', () => el.classList.remove('just-saved'), { once: true });
+    },
+    // "Action pending" spinner on a row's checkmark — but ONLY if the store op is actually slow (≥150ms), so instant
+    // local writes never flicker; a real wait (remote sync) morphs the check into a spinner until it resolves. Imperative,
+    // by data-id, matching the list's other interaction state. Wrap any per-task async store call: _withPending(id, fn).
+    _setCheckPending(id, on) { const c = this._rowEl(id)?.querySelector('.check'); if (c) c.classList.toggle('pending', on); },
+    async _withPending(id, fn) {
+      const t = setTimeout(() => this._setCheckPending(id, true), 150);
+      try { return await fn(); } finally { clearTimeout(t); this._setCheckPending(id, false); }
     },
     async deleteEditing() {
       const task = this.byId.get(this.editing);
       if (task && this.askDeleteTask(task.id, 'editing')) return;   // has subtasks → the prompt finishes the job (incl. closing)
-      await this._keepListScroll(async () => {
-        if (task) {
-          this.pushUndo('Deleted');
-          const ok = await this.store.tasks.remove(task.id);    // leaf: no reparent target needed
-          if (ok) {
-            this.tasks = this.tasks.filter(x => x.id !== task.id);
-            await this.loadTasks();
-          }
-        }
-        this.closeComposer();
-      });
+      if (task) await this.perform('Deleted', { target: 'task', kind: 'delete', id: task.id });
+      this.closeComposer(true);   // row is gone → native overflow-anchor holds the surrounding content in place
     },
     // Task 26 — deleting a task that has subtasks asks: delete them too, or move them to a destination
     // (default = the parent's parent, i.e. the deleted task's parent; the top-level project if none).
@@ -1157,46 +1405,74 @@ document.addEventListener('alpine:init', () => {
     askDeleteTask(id, source) {
       if (!this.hasChildren(id)) return false;
       const task = this.byId.get(id); if (!task) return false;
-      this.deleteSub = { id, source, count: descendantIds(this.tasks, id).length - 1 };   // descendants (excl. the task itself)
-      this.deleteSubMode = 'move';
-      this.deleteSubTarget = (task.parent_id && this.byId.has(task.parent_id)) ? task.parent_id : this.store.defaultProject();
+      this.delAsk = { kind: 'task', id, source, mode: 'move', target: (task.parent_id && this.byId.has(task.parent_id)) ? task.parent_id : this.store.defaultProject(), name: task.content || '', count: descendantIds(this.tasks, id).length - 1 };
       return true;
     },
-    // Valid move destinations: any container (project/parent) that isn't the deleted task or its subtree.
-    deleteSubTargets() {
-      const info = this.deleteSub; if (!info) return [];
-      const excluded = [info.id, ...descendantIds(this.tasks, info.id)], def = this.store.defaultProject();
-      return this.tasks.filter(p => !excluded.includes(p.id) && (p.id === def || p.sidebar || this.hasChildren(p.id)));
-    },
-    async confirmDeleteTask() {
-      const info = this.deleteSub, mode = this.deleteSubMode, target = this.deleteSubTarget;
-      this.deleteSub = null;
-      if (!info) return;
-      // ONE undo entry for the whole op (snapshot before) — undo restores the task AND its subtasks.
-      this.pushUndo(mode === 'delete' ? 'Deleted task' : 'Deleted task, moved subtasks');
-      if (mode === 'delete') {
-        // descendantIds includes the task itself; reversed BFS = leaves→root so each removes with no children left
-        for (const tid of [...descendantIds(this.tasks, info.id)].reverse()) await this.store.tasks.remove(tid);
-      } else {
-        await this.store.tasks.remove(info.id, target);   // reparents direct subtasks (with their subtrees), removes the task
-      }
-      await this.loadTasks();
-      if (info.source === 'editing') this.closeComposer();
-    },
-    closeComposer() {
+    closeComposer(saved = false, revealId = null, manageScroll = true, revealGuard = null) {
       this.pop = null;
-      // Snapshot the list scroll BEFORE the grow-close mutates layout — native clamping/anchoring during the
-      // height collapse silently drags scrollTop toward 0, and the rebuild's restore then re-saves that 0.
-      const sc = document.querySelector('.surface-lists .app'), st = sc?.scrollTop;
+      // Draft safety: a close that ISN'T a save/delete keeps any unsaved edits — they stay persisted (already
+      // autosaved via the watch effect) and reopening this task's composer restores them. A saved/handled
+      // close clears the pending draft so it can't resurrect over the save.
+      if (this.composer.open) {
+        const key = this._draftKey();
+        if (saved || this._draftSig() === this._draftBase) this._clearPending(key);
+        else {
+          // dropped-but-kept dirty draft → a recoverable "Draft" bin row + ⌘Z reopen (pending autosave stays too)
+          const title = (this.draft.content || '').trim() || (this.chkGhost || this.subGhost || '').trim() || 'Untitled draft';
+          this._pushDraftBin(key, 'Draft — ' + title);
+        }
+      }
+      this._closingComposer = true;   // stop persistDraft re-writing during the async grow-close
+      this.draftRestored = false;
+      // Keep the list PUT across the collapse. applyEditDom re-renders the edited row's subtree, which
+      // (content-visibility) can nudge scrollTop — so we hold the pre-close position and re-assert as it
+      // settles. The save path passes manageScroll:false and owns this itself (it must wait out its reloadAll).
+      const sc = manageScroll ? this._listScroller() : null, stBefore = sc ? sc.scrollTop : 0;
+      // Hold the pre-close position against collapse/applyEditDom drift — but YIELD to the user: real input
+      // (wheel/touch) during the collapse means they own the scroll now, so the hold stands down.
+      let userScrolled = false; const mark = () => { userScrolled = true; };
+      const unmark = () => { if (sc) for (const evt of ['wheel', 'touchmove']) sc.removeEventListener(evt, mark); };
+      if (sc) for (const evt of ['wheel', 'touchmove']) sc.addEventListener(evt, mark, { passive: true });
       const end = this.editing ? this.blockH : 0;
       this._growClose(() => this.$refs.grow, end, () => {
         this.composer.open = false; this.editing = null; this._editDescs = null; this.resetDraft(); this.applyEditDom();
-        if (sc && st) { sc.scrollTop = st; queueMicrotask(() => { sc.scrollTop = st; }); }
+        if (sc) {
+          const el = revealId && this._rowEl(revealId);
+          if (el && this._rowOffscreen(sc, el)) { unmark(); el.scrollIntoView({ block: 'nearest', behavior: this.reduceMotion() ? 'auto' : 'smooth' }); return; }
+          // content-visibility re-measure can nudge scroll 1–2 frames after the callback — hold through them,
+          // still yielding to any real user input the moment it arrives.
+          let stable = 0, frames = 0;
+          const hold = () => {
+            if (userScrolled) return unmark();
+            if (sc.scrollTop !== stBefore) { sc.scrollTop = stBefore; stable = 0; } else stable++;
+            (stable >= 2 || ++frames > 12) ? unmark() : requestAnimationFrame(hold);   // until 2 quiet frames (bounded)
+          };
+          hold();
+        } else if (revealId) requestAnimationFrame(() => {
+          // Guard: skip if user scrolled significantly during the async save (> 300px = deliberate, not DOM drift from collapse)
+          const gs = this._listScroller();
+          if (revealGuard != null && gs && Math.abs(gs.scrollTop - revealGuard) > 300) return;
+          this._revealRow(revealId);
+        });
       });
     },
     composerMt() { return (this.editing ? -this.startH : 0) + 'px'; },
     editDone() { const t = this.byId.get(this.editing); return !!(t && t.completed_at); },
     toggleEditing() { const t = this.byId.get(this.editing); if (t) this.toggle(t); },
+    // A task's stored fields → a fresh composer draft (shared by editTask + subtask editors).
+    taskToDraft(t) {
+      const min = t.est_minutes || 0;
+      return { ...emptyDraft(),
+        content: t.content, notes: t.notes || '', importance: t.importance ?? 'none',
+        due_at: (t.due_at || '').slice(0, 10),
+        available_from: t.available_from || '',
+        dueTime: timeOf(t.due_at || ''),
+        deadline_at: (t.deadline_at || '').slice(0, 10),
+        durH: Math.floor(min / 60), durM: min % 60,
+        project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: [...(t.area_ids || [])], goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })).sort(byDone), recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
+        location: t.location ? { ...t.location, ids: [...(t.location.ids || [])] } : { mode: 'any', ids: [] },
+      };
+    },
     editTask(t, ev) {
       // ev.currentTarget is the list (<ul>); resolve the actual row by id
       const row = ev?.currentTarget?.classList.contains('item') ? ev.currentTarget : this._rowEl(t.id);
@@ -1209,33 +1485,22 @@ document.addEventListener('alpine:init', () => {
         h += el.offsetHeight; el = el.nextElementSibling;
       }
       this.blockH = h;
-      const min = t.est_minutes || 0;
-      this.draft = {
-        content: t.content, notes: t.notes || '', importance: t.importance ?? 'none',
-        due_at: (t.due_at || '').slice(0, 10),
-        available_from: t.available_from || '',
-        dueTime: (t.due_at && t.due_at.length > 10) ? t.due_at.slice(11, 16) : '',
-        deadline_at: (t.deadline_at || '').slice(0, 10),
-        durH: Math.floor(min / 60), durM: min % 60, dateText: '',
-        project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: this.areaObjs(t.area_ids).map(l => l.name), goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })).sort(byDone), recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
-        location: t.location ? { ...t.location, ids: [...(t.location.ids || [])] } : { mode: 'any', ids: [] },
-      };
+      this.draft = this.taskToDraft(t);
       this.editing = t.id;
       this._editDescs = new Set(descendantIds(this.tasks, t.id).slice(1));   // O(1) hiddenInEdit checks (reactive :style)
       this.pop = null;
       this.relSel = null; this.pickerQ = '';
+      this._initDraftSafety();   // baseline + restore any unsaved draft for this task
       this.openComposer();
     },
     // sidebar project → navigate, not edit
     openTaskById(id) { const t = this.byId.get(id); if (!t) return; this.isSidebar(t) ? this.setNav('project', t.id) : this.editTask(t); },
     navTargets() {   // non-corpus palette targets: surfaces + filters + goals + action commands
-      const SURF = { now: ['Now', 'i-clock'], plan: ['Plan', 'i-cal'], lists: ['Lists', 'i-all'], goals: ['Goals', 'i-target'] };
-      const t = this.surfaceOrder.map(s => ({ kind: 'nav', type: 'surface', id: s, title: SURF[s][0], icon: SURF[s][1] }));
+      const t = this.surfaceOrder.map(s => ({ kind: 'nav', type: 'surface', id: s, title: SURF_META[s].label, icon: SURF_META[s].icon }));
       for (const f of this.filters) t.push({ kind: 'nav', type: 'filter', id: f.id, title: f.name, color: f.color || 'var(--muted)' });
       for (const g of this.goals.filter(x => !x.archived)) t.push({ kind: 'nav', type: 'goal', id: g.id, title: g.name, icon: 'i-target' });
       t.push(
         { kind: 'cmd', type: 'command', id: 'new-task', title: 'New task', icon: 'i-edit', kw: 'add create' },
-        { kind: 'cmd', type: 'command', id: 'new-project', title: 'New project', icon: 'i-promote', kw: 'add create' },
         { kind: 'cmd', type: 'command', id: 'new-goal', title: 'New goal', icon: 'i-target', kw: 'add create' },
         { kind: 'cmd', type: 'command', id: 'new-filter', title: 'New filter', icon: 'i-search', kw: 'add create query' },
         { kind: 'cmd', type: 'command', id: 'today', title: 'Jump to Today', icon: 'i-cal', kw: 'calendar now' },
@@ -1308,24 +1573,26 @@ document.addEventListener('alpine:init', () => {
     },
     runCommand(id) {
       if (id === 'new-task') { this.goSurface('lists'); this.startAdd(); }
-      else if (id === 'new-project') { this.goSurface('lists'); this.addingRootProject = true; this.newRootName = ''; this.$nextTick(() => this.$refs.newRootInput?.focus()); }
       else if (id === 'new-goal') { this.setNav('goals'); this.newGoalComposer(); }
       else if (id === 'new-filter') { this.openFilterEditor(); }
       else if (id === 'save-filter') this.saveQueryAsFilter();
       else if (id === 'today') { this.setNav('calendar'); this.$nextTick(() => this.clToday && this.clToday()); }
       else if (id === 'locations') { this.locMgr = true; this.loadLocations(); }
     },
-    draftFields() {
-      const d = this.draft;
+    draftFields(d = this.draft) {
+      // save-flush: catch a natural-language importance word the live pilling couldn't (prefix "focus
+      // on X" can't pill trailing) — only when none was set explicitly, so a pill/picker choice wins.
+      let content = d.content.trim(), importance = d.importance;
+      if (importance === 'none') { const p = parseImportanceWords(content); if (p) { content = p.content; importance = p.importance; } }
       const fields = {
-        content: d.content.trim(),
-        notes: d.notes || null, importance: d.importance,
+        content,
+        notes: d.notes || null, importance,
         due_at: d.due_at ? (d.dueTime ? d.due_at + 'T' + d.dueTime : d.due_at) : null,
         available_from: d.available_from || null,
         deadline_at: d.deadline_at || null,
-        est_minutes: this.durMinNow() || null,
+        est_minutes: ((d.durH || 0) * 60 + (d.durM || 0)) || null,
         project: d.project || null,
-        areas: d.areas?.length ? d.areas : null,
+        area_ids: d.areas || [],   // draft.areas holds area IDs now; the store prefers explicit area_ids
         goal_ids: d.goal_ids ?? [],
         checklist: d.checklist,
         recurrence: d.recurrence,
@@ -1339,17 +1606,68 @@ document.addEventListener('alpine:init', () => {
       return fields;
     },
 
-    togglePop(name) {
+    // The ONE owner of teleported-pop placement + outside-close (11 pops bind these; fix positioning here, once)
+    popStyle(name) { return 'display:' + (this.pop === name ? 'flex' : 'none') + ';position:fixed;left:' + this.popXY.left + 'px;top:' + this.popXY.top + 'px;bottom:auto'; },
+    popAway(name, e) { if (this.pop === name && !e.target.closest('.pop')) this.pop = null; },
+    togglePop(name, anchor) {
       this.pop = this.pop === name ? null : name;
-      if (this.pop) this.$nextTick(() => {
-        const open = [...document.querySelectorAll('.composer .pop')].find(p => getComputedStyle(p).display !== 'none');
-        if (open) { this.clampX(open); open.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+      // Remove any existing scroll/resize tracker before opening a new pop
+      if (this._popTrack) { this._popTrack(); this._popTrack = null; }
+      if (!this.pop || !anchor) return;
+      const r = anchor.getBoundingClientRect(), m = 8;
+      this.popXY = { left: r.left, top: r.bottom + 5 };
+      this.$nextTick(() => {
+        const findPop = () => [...document.querySelectorAll('.pop')].find(p => getComputedStyle(p).display !== 'none');
+        const el = findPop();
+        if (!el) return;
+        const _pos = (ar) => {
+          // Flip above if pop overflows the bottom edge, or if marked data-pos="up"
+          const vh = window.innerHeight, vw = document.documentElement.clientWidth, ph = el.offsetHeight, pw = el.offsetWidth;
+          let top = ar.bottom + 5;
+          if (el.dataset.pos === 'up' || top + ph > vh - m) top = Math.max(m, ar.top - ph - 5);
+          let left = ar.left;
+          // Clamp left so pop stays within viewport
+          if (left + pw > vw - m) left = vw - m - pw;
+          if (left < m) left = m;
+          return { left, top };
+        };
+        const ar = anchor.getBoundingClientRect();
+        let xy = _pos(ar);
+        // If pop still overflows vertically, scroll anchor into view then recompute
+        const tentBottom = xy.top + el.offsetHeight;
+        if (tentBottom > window.innerHeight - m || xy.top < m) {
+          anchor.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+          xy = _pos(anchor.getBoundingClientRect());
+        }
+        this.popXY = xy;
+        // Scroll/resize tracking: reposition or close when anchor moves
+        let rafId = null;
+        const reposition = () => {
+          if (!this.pop) { cleanup(); return; }
+          const a = anchor.getBoundingClientRect(), vh = window.innerHeight, vw = document.documentElement.clientWidth;
+          if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) { this.pop = null; cleanup(); return; }
+          if (!findPop()) { cleanup(); return; }
+          this.popXY = _pos(a);
+        };
+        const onScrollOrResize = () => {
+          if (!this.pop) { cleanup(); return; }
+          if (rafId) return;
+          rafId = requestAnimationFrame(() => { rafId = null; reposition(); });
+        };
+        const cleanup = () => {
+          window.removeEventListener('scroll', onScrollOrResize, true);
+          window.removeEventListener('resize', onScrollOrResize);
+          if (this._popTrack === cleanup) this._popTrack = null;
+        };
+        window.addEventListener('scroll', onScrollOrResize, true);
+        window.addEventListener('resize', onScrollOrResize);
+        this._popTrack = cleanup;
       });
     },
-    // translateX preserves each popover's anchor; max-width CSS cap guarantees it fits in vw
+    // translateX keeps absolute-positioned pickers in viewport (used by _positionPicker + log-when-pop)
     clampX(el) {
       if (!el) return;
-      el.style.transform = '';   // reset before measuring so a reopen/reposition never compounds an old shift
+      el.style.transform = '';
       const r = el.getBoundingClientRect(), m = 8, vw = document.documentElement.clientWidth;
       let dx = 0;
       if (r.right > vw - m) dx = (vw - m) - r.right;
@@ -1388,13 +1706,20 @@ document.addEventListener('alpine:init', () => {
       await this.loadTasks();
       this.pickProject(project);
     },
-    toggleArea(name) { const i = this.draft.areas.indexOf(name); if (i >= 0) this.draft.areas.splice(i, 1); else this.draft.areas.push(name); },
-    async createAndToggleArea() {
-      const name = this.newAreaName.trim(); if (!name) return;
-      const existing = this.areas.find(l => l.name === name);
-      if (!existing) await this.store.areas.create({ name });
+    toggleArea(id) { const i = this.draft.areas.indexOf(id); if (i >= 0) this.draft.areas.splice(i, 1); else this.draft.areas.push(id); },
+    // Find-or-create an area by NAME → its id. Store dedups (trim + reuse), so re-typing a name never
+    // duplicates; the server also has areas_user_name_idx as the backstop.
+    async ensureAreaId(name) {
+      const nm = (name || '').trim(); if (!nm) return null;
+      const found = this.areas.find(a => a.name === nm);
+      if (found) return found.id;
+      const area = await this.store.areas.create({ name: nm });
       await this.loadAreas();
-      if (!this.draft.areas.includes(name)) this.draft.areas.push(name);
+      return area?.id ?? null;
+    },
+    async createAndToggleArea() {
+      const id = await this.ensureAreaId(this.newAreaName);
+      if (id && !this.draft.areas.includes(id)) this.draft.areas.push(id);
       this.newAreaName = '';
     },
     // Areas cluster: usage-weighted size tier (s1 big → s3 small) by rank thirds over tasks touching
@@ -1409,36 +1734,36 @@ document.addEventListener('alpine:init', () => {
       const third = Math.ceil(ranked.length / 3);
       return 's' + (Math.min(Math.floor(ranked.findIndex(r => use[r] === use[id]) / third), 2) + 1);
     },
-    clusterPick(el, name) {   // toggle + soft scale pop on select (reduced-motion: none)
-      this.toggleArea(name);
-      if (this.draft.areas.includes(name) && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    clusterPick(el, id) {   // toggle + soft scale pop on select (reduced-motion: none)
+      this.toggleArea(id);
+      if (this.draft.areas.includes(id) && !this.reduceMotion())
         el.animate({ transform: ['scale(1)', 'scale(1.06)', 'scale(1)'] }, { duration: 180, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() || 'ease-out' });
     },
     endPicking: false, tpop: false, tpopStyle: '', hdrPulse: false, repIdx: 0,
     repRules() { return recRules(this.draft.recurrence); },
     // the statement the spatial controls act on (headers, ordinals, time popover) — last-touched zone
     curRule() { const rs = this.repRules(); return rs[Math.min(this.repIdx, rs.length - 1)] || null; },
-    openDate(name) {
-      this.togglePop(name);
+    _calTo(iso) { const d = new Date(iso.slice(0, 10) + 'T00:00'); this.cal = { y: d.getFullYear(), m: d.getMonth() }; },
+    _dateKey(n = this.pop) { return n === 'due' ? 'due_at' : 'deadline_at'; },
+    openDate(name, anchor) {
+      this.togglePop(name, anchor);
       if (this.pop !== name) return;
       this.endPicking = false; this.tpop = false;
-      const cur = name === 'due' ? this.draft.due_at : this.draft.deadline_at;
-      const d = cur ? new Date(cur + 'T00:00') : new Date();
-      this.cal = { y: d.getFullYear(), m: d.getMonth() };
-      this.$nextTick(() => this.$refs[name === 'due' ? 'dueType' : 'dlType']?.focus());   // typing goes straight to the field
+      this._calTo(this.draft[this._dateKey(name)] || isoDate(new Date()));
+      this.$nextTick(() => this.$refs[name === 'due' ? 'dueType' : 'dlType']?.focus());
     },
     // Recompute the next-occurrence due whenever the recurrence rule changes (anchored at the current due, else today).
     refreshRecurrenceDue() {
       if (!this.repRules().length) return;
       // An existing due date (even a past one) is the rule's ANCHOR — never overwrite it; only seed when empty.
       if (this.draft.due_at) {
-        const d = new Date(this.draft.due_at.slice(0, 10) + 'T00:00'); this.cal = { y: d.getFullYear(), m: d.getMonth() };
+        this._calTo(this.draft.due_at);
         return;
       }
       const b = nextAcrossRules(this.draft.recurrence, isoDate(new Date()), new Date(), { inclusive: true });
       if (!b) return;
       this.draft.due_at = b.iso;
-      const d = new Date(b.iso + 'T00:00'); this.cal = { y: d.getFullYear(), m: d.getMonth() };
+      this._calTo(b.iso);
     },
     // --- Repeat picker (lives at the bottom of the due popover) ---
     setRepeatFreq(freq) {
@@ -1477,14 +1802,13 @@ document.addEventListener('alpine:init', () => {
     // "on [...]" chip label: weekly day set / monthly day-of-month / yearly anniversary; null when inapplicable (day freq)
     repDaysLabel(r) {
       if (!r) return null;
-      const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const anchor = new Date((this.draft.due_at || isoDate(new Date())).slice(0, 10) + 'T00:00');
-      if (r.freq === 'week') return r.weekdays?.length ? r.weekdays.map(i => WD[i]).join(' ') : WD[anchor.getDay()];
+      if (r.freq === 'week') return r.weekdays?.length ? r.weekdays.map(i => CL_WD[i]).join(' ') : CL_WD[anchor.getDay()];
       if (r.freq === 'month') { const n = r.month_day || anchor.getDate(); return 'the ' + n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th'); }
       if (r.freq === 'year') return anchor.toLocaleDateString([], { month: 'short', day: 'numeric' });
       return null;
     },
-    pulseWeekdays() { this.hdrPulse = true; setTimeout(() => { this.hdrPulse = false; }, 700); },
+    pulseWeekdays() { this.flashGoal('hdrPulse', '_hdrPulseT', true, 700); },
     // count-ends stepper: count and date are mutually exclusive (ends is single-valued); stepping to 0 = never
     setRepeatCount(delta) {
       const r = this.curRule(); if (!r) return;
@@ -1562,6 +1886,11 @@ document.addEventListener('alpine:init', () => {
       this.cal = { y, m };
     },
     calLabel() { return new Date(this.cal.y, this.cal.m, 1).toLocaleDateString([], { month: 'long', year: 'numeric' }); },
+    // Static inner HTML for .cal-head ×3 — calLabel() is an x-text directive Alpine processes after x-html inserts it, so the builder reads no reactive state.
+    calHeadHtml() { return '<span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="cal-nav inline-flex items-center justify-center" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="cal-nav dot inline-flex items-center justify-center" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="cal-nav inline-flex items-center justify-center" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span>'; },
+    // HAZARD: args must be string literals ('eventEdit'/'blockEdit'), never reactive values — a reactive arg changes the x-html string on state updates, causing re-render that kills the input caret mid-typing.
+    evWhenHtml(key, ph) { return `<input class="ev-title" type="text" placeholder="${ph}" :value="${key}.title" @input="${key}.title = $event.target.value"><div class="ev-row flex items-center"><label class="ev-allday inline-flex items-center gap-6"><input type="checkbox" :checked="${key}.all_day" @change="${key}.all_day = $event.target.checked"> All-day</label></div><div class="ev-row flex items-center"><input class="ev-field" type="date" :value="${key}.date" @input="${key}.date = $event.target.value"><template x-if="!${key}.all_day"><span class="ev-times inline-flex items-center gap-6"><input class="ev-field" type="time" :value="${key}.start" @input="${key}.start = $event.target.value"><span class="ev-dash">–</span><input class="ev-field" type="time" :value="${key}.end" @input="${key}.end = $event.target.value"></span></template></div>`; },
+    evActionsHtml(key) { const del = key === 'eventEdit' ? 'clDeleteEvent' : 'clDeleteBlock', save = key === 'eventEdit' ? 'clSaveEvent' : 'clSaveBlock'; return `<div class="dialog-actions flex items-center gap-8"><button class="ghost danger" x-show="${key}.id" @click="${del}()">Delete</button><span class="spacer"></span><button class="ghost" @click="${key} = null">Cancel</button><button class="primary" @click="${save}()">Save</button></div>`; },
     calCells() {
       const { y, m } = this.cal, lead = new Date(y, m, 1).getDay(), todayIso = isoDate(new Date());
       // Preview upcoming occurrences of the draft's recurrence as subtle dots — visible month only (cheap).
@@ -1630,9 +1959,9 @@ document.addEventListener('alpine:init', () => {
       }
       const { iso, time } = parseDateText(this.draft.dateText);
       if (iso) {
-        this.draft[this.pop === 'due' ? 'due_at' : 'deadline_at'] = iso;
+        this.draft[this._dateKey()] = iso;
         if (time && this.pop === 'due') this.draft.dueTime = time;
-        const d = new Date(iso + 'T00:00'); this.cal = { y: d.getFullYear(), m: d.getMonth() };
+        this._calTo(iso);
       }
       if (close) { this.draft.dateText = ''; this.pop = null; }
     },
@@ -1641,24 +1970,29 @@ document.addEventListener('alpine:init', () => {
       // button without opening the picker; every rule in a multi-repeat carries its own end.
       const rs = this.repRules();
       if (rs.length) {
-        const lbl = r => this.recurrenceLabel(r) + (r.ends?.date ? ' · until ' + this.fmt(r.ends.date) : r.ends?.count ? ' · ' + r.ends.count + '×' : '');
+        const lbl = r => this.recurrenceLabel(r) + (r.at ? ' · ' + this.fmtTime(r.at) : '') + (r.ends?.date ? ' · until ' + this.fmt(r.ends.date) : r.ends?.count ? ' · ' + r.ends.count + '×' : '');
         return rs.map(lbl).join(' + ');
       }
       if (!this.draft.due_at) return 'Date';
       return this.fmt(this.draft.due_at) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : '');
     },
     recurrenceLabel(rec) { return recurrenceLabel(rec); },
+    // Active pill-NLP target — the editor + the draft its pills mutate. Defaults to the title; a subtask editor
+    // sets `_nlpFocus` on focus so the shared engine (pillify/insert/commit/unchip/…) drives that row instead.
+    _nlpEl() { return _nlpFocus?.el || this.$refs.content; },
+    _nlpDraft() { return _nlpFocus?.draft || this.draft; },
     // --- Inline-pill editor (contenteditable title) ---
     // draft.content = the editor's TEXT nodes only (pills excluded), whitespace-collapsed. WYSIWYG: this
     // is the title verbatim; fields come only from pills (Task 3), never a submit-time re-parse.
     syncTitle() {
-      const el = this.$refs.content; if (!el) return;
-      this.draft.content = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').replace(/\s+/g, ' ').trim();
-      this.titleEmpty = !el.querySelector('.nlp-pill') && this.draft.content === '';
-      if (this.titleEmpty && el.childNodes.length) {     // emptied (stray <br>/whitespace) → reset clean, caret to start
+      const el = this._nlpEl(), d = this._nlpDraft(); if (!el) return;
+      d.content = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').replace(/\s+/g, ' ').trim();
+      const empty = !el.querySelector('.nlp-pill') && d.content === '';
+      if (!_nlpFocus) this.titleEmpty = empty;           // titleEmpty is title-only placeholder state
+      else if (_nlpFocus.ghost) this.subGhost = el.textContent.trim();   // ghost's active-state + submit-flush + autosave mirror
+      if (empty && el.childNodes.length) {     // emptied (stray <br>/whitespace) → reset clean, caret to start
         el.textContent = '';
-        const r = document.createRange(); r.setStart(el, 0); r.collapse(true);
-        const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+        this._caret(el, 0);
       }
     },
     setEditorText(text) { const el = this.$refs.content; if (el) { el.textContent = text || ''; this.titleEmpty = !el.querySelector('.nlp-pill') && (text || '') === ''; this._noPillOnce = false; } },
@@ -1679,15 +2013,25 @@ document.addEventListener('alpine:init', () => {
         if (item) el.innerHTML = chkLiveRender(item.text);
       });
     },
+    // defer-to-blur: only capture text on input; decoration applied by onDescBlur (preserves native ⌘Z).
     onDescInput(e) {
-      if (e && e.isComposing) return;                 // don't re-render mid-IME-composition
+      if (e && e.isComposing) return;
       const el = this.$refs.desc; if (!el) return;
-      const text = el.textContent;
-      this.draft.notes = text;
-      const off = this._caretOffset(el), html = this._descHtml(text);
-      if (el.innerHTML !== html) { el.innerHTML = html; this._setCaret(el, off); }
+      this.draft.notes = el.textContent;
     },
+    // On focus: restore raw text so the user edits raw markup and ⌘Z starts fresh.
+    // Caret offset is computed first (textContent===raw is the mdLive contract, so the offset is valid in both).
+    onDescFocus(el) {
+      const off = this._caretOffset(el), raw = this.draft.notes || '';
+      el.textContent = raw;
+      this._setCaret(el, off ?? raw.length);
+    },
+    onDescBlur(el) { el.innerHTML = this._descHtml(el.textContent); },
     descKeydown(e) {
+      // ArrowDown out of an EMPTY description continues the ladder into the entry rows; with text in it, down
+      // still moves the caret through the lines (the field owns the key).
+      if (e.key === 'ArrowDown') { if (!this.$refs.desc?.textContent.trim() && this.focusFirstEntry()) e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { if (!this.$refs.desc?.textContent.trim() && this._focusUp(this.$refs.content)) e.preventDefault(); return; }
       if (e.key !== 'Enter') return;
       if (e.shiftKey || e.metaKey || e.ctrlKey) { e.preventDefault(); this.submitComposer(); return; }
       e.preventDefault();
@@ -1715,119 +2059,73 @@ document.addEventListener('alpine:init', () => {
       const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n = 0, node;
       while ((node = w.nextNode())) {
         const len = node.nodeValue.length;
-        if (n + len >= off) { const r = document.createRange(); r.setStart(node, off - n); r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r); return; }
+        if (n + len >= off) { this._caret(node, off - n); return; }
         n += len;
       }
-      const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      this._caret(el);
     },
-    pillLabel(kind, value) {
-      if (kind === 'imp') return this.impLabel(value);
-      if (kind === 'dur') return this.durFmt(value);
-      if (kind === 'proj') return '#' + value;
-      if (kind === 'area') return '@' + value;
-      if (kind === 'goal') return '🔥 ' + (this.goalById(value)?.name || '');
-      if (kind === 'loc') return '📍 ' + value;
-      if (kind === 'rec') return this.recurrenceLabel(value);
-      if (kind === 'deadline') { const b = dueBadge(value.iso); return '⚑ ' + b.label; }
-      // date: a due badge when dated, else the bare time
-      if (value.iso) { const b = dueBadge(value.iso); return b.label + (value.time ? ' ' + this.fmtTime(value.time) : ''); }
-      return this.fmtTime(value.time);
-    },
-    commitPill(kind, value) {
-      const d = this.draft;
-      if (kind === 'imp') d.importance = value;
-      else if (kind === 'dur') this.setDur(value);
-      else if (kind === 'proj') { d.project = value; d.project_id = null; this.projRequired = false; }
-      else if (kind === 'area') { if (!d.areas.includes(value)) d.areas.push(value); }
-      else if (kind === 'goal') { if (!d.goal_ids.includes(value)) d.goal_ids.push(value); }
-      else if (kind === 'loc') {
-        const neg = /^away from /i.test(value), nm = String(value).replace(/^away from /i, '');
-        const l = this.locByName(nm);
-        d.location = { mode: neg ? 'except' : 'only', ids: l ? [l.id] : [] };
-      }
-      else if (kind === 'rec') { d.recurrence = value; this.refreshRecurrenceDue(); }
-      else if (kind === 'deadline') d.deadline_at = value.iso;
-      else if (kind === 'date') { d.due_at = value.iso || d.due_at || isoDate(new Date()); if (value.iso) d.available_from = value.from ?? null; if (value.time) d.dueTime = value.time; }
-    },
+    // Set caret: off == null → collapse to end of n (selectNodeContents); else → setStart at offset.
+    _caret(n, off) { const r = document.createRange(); if (off == null) { r.selectNodeContents(n); r.collapse(false); } else { r.setStart(n, off); r.collapse(true); } const s = getSelection(); s.removeAllRanges(); s.addRange(r); },
+    pillLabel(kind, v) { return PILL_SPEC[kind].label(this, v); },
+    commitPill(kind, v) { PILL_SPEC[kind].commit(this, this._nlpDraft(), v); },
     // Revert the field a removed pill had set. `raw` is the pill's data-value (string form).
-    clearPillField(kind, raw) {
-      const d = this.draft;
-      if (kind === 'imp') d.importance = 'none';
-      else if (kind === 'dur') { d.durH = 0; d.durM = 0; }
-      else if (kind === 'proj') d.project = null;
-      else if (kind === 'area') { const i = d.areas.indexOf(raw); if (i >= 0) d.areas.splice(i, 1); }
-      else if (kind === 'goal') { const i = d.goal_ids.indexOf(raw); if (i >= 0) d.goal_ids.splice(i, 1); }
-      else if (kind === 'loc') d.location = { mode: 'any', ids: [] };
-      else if (kind === 'rec') d.recurrence = null;
-      else if (kind === 'deadline') d.deadline_at = '';
-      else if (kind === 'date') { d.due_at = ''; d.available_from = ''; d.dueTime = ''; }
-    },
+    clearPillField(kind, r) { PILL_SPEC[kind].clear(this, this._nlpDraft(), r); },
     // Snapshot the draft field(s) a `kind` pill owns — stored on the pill at insert, restored on backspace.
-    _fieldSnapshot(kind) {
-      const d = this.draft;
-      switch (kind) {
-        case 'imp': return d.importance;
-        case 'dur': return { durH: d.durH, durM: d.durM };
-        case 'proj': return { project: d.project, project_id: d.project_id };
-        case 'area': return [...d.areas];
-        case 'goal': return [...d.goal_ids];
-        case 'loc': return { mode: d.location.mode, ids: [...d.location.ids] };
-        case 'rec': return d.recurrence ? JSON.parse(JSON.stringify(d.recurrence)) : null;
-        case 'deadline': return d.deadline_at;
-        case 'date': return { due_at: d.due_at, available_from: d.available_from, dueTime: d.dueTime };
-      }
-    },
-    _restoreField(kind, s) {
-      const d = this.draft;
-      switch (kind) {
-        case 'imp': d.importance = s ?? 'none'; break;
-        case 'dur': d.durH = s?.durH || 0; d.durM = s?.durM || 0; break;
-        case 'proj': d.project = s?.project ?? null; d.project_id = s?.project_id ?? null; break;
-        case 'area': d.areas = s || []; break;
-        case 'goal': d.goal_ids = s || []; break;
-        case 'loc': d.location = s ? { mode: s.mode, ids: [...s.ids] } : { mode: 'any', ids: [] }; break;
-        case 'rec': d.recurrence = s || null; if (d.recurrence) this.refreshRecurrenceDue(); break;
-        case 'deadline': d.deadline_at = s || ''; break;
-        case 'date': d.due_at = s?.due_at || ''; d.available_from = s?.available_from || ''; d.dueTime = s?.dueTime || ''; break;
-      }
-    },
+    _fieldSnapshot(kind) { return PILL_SPEC[kind].snapshot(this, this._nlpDraft()); },
+    _restoreField(kind, s) { PILL_SPEC[kind].restore(this, this._nlpDraft(), s); },
     // Build a configured pill span (no DOM insertion). Single source of truth for pill markup.
     makePill(kind, value, token) {
       const pill = document.createElement('span');
-      pill.className = 'nlp-pill'; pill.dataset.kind = kind;
-      pill.dataset.value = (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.stringify(value) : String(value);
+      pill.className = 'nlp-pill inline-flex items-center'; pill.dataset.kind = kind;
+      pill.dataset.value = PILL_SPEC[kind].json ? JSON.stringify(value) : String(value);
       pill.dataset.token = token; pill.contentEditable = 'false'; pill.textContent = this.pillLabel(kind, value);
       pill.dataset.prior = JSON.stringify(this._fieldSnapshot(kind));   // field value BEFORE this chip — restored on backspace (non-destructive)
       return pill;
     },
-    // Build + insert a pill span replacing text [start..end] of the caret's text node, leaving the caret
-    // in a fresh trailing text node. `token` is the source text restored when the pill is un-chipified.
-    insertPill(textNode, start, kind, value, token) {
-      const el = this.$refs.content;
+    // Build + insert a pill span replacing text [start..end) of the caret's text node, KEEPING the tail
+    // after `end` so a token pilled mid-title doesn't eat the words after it. `token` is the source text
+    // restored on un-chipify. Caret lands right after the pill (start of the tail node).
+    insertPill(textNode, start, kind, value, token, end = textNode.textContent.length) {
+      const el = this._nlpEl();
       const before = document.createTextNode(textNode.textContent.slice(0, start));
       const pill = this.makePill(kind, value, token);
-      const after = document.createTextNode('');
+      const after = document.createTextNode(textNode.textContent.slice(end));
       el.replaceChild(after, textNode); el.insertBefore(pill, after); el.insertBefore(before, pill);
-      const r = document.createRange(); r.setStart(after, after.textContent.length); r.collapse(true);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      this._caret(after, 0);
       this.commitPill(kind, value);
       this.syncTitle();
     },
+    // Pill the token ENDING AT THE CARET (not the node's end) — so editing/re-typing a word mid-title
+    // re-recognises just like typing at the end. `off` is the caret offset; text after it is preserved.
     pillifyTrailing() {
-      const sel = getSelection(); if (!sel.rangeCount) return false;
-      const node = sel.anchorNode;
-      if (!node || node.nodeType !== 3 || node.parentNode !== this.$refs.content) return false;
-      if (sel.anchorOffset !== node.textContent.length) return false;   // only pill when caret is at the end
-      const tok = matchTrailingToken(node.textContent, new Date(), this.locNames());
+      const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return false;
+      const node = sel.anchorNode, off = sel.anchorOffset;
+      if (!node || node.nodeType !== 3) return false;
+      // The caret is the authority on which editor is live. Aiming at a stale target (a subtask row that lost
+      // focus without the title's @focus firing to reset it) used to make this bail SILENTLY — no chip at all,
+      // for any kind. Re-point at the title instead of dropping the keystroke on the floor.
+      if (node.parentNode !== this._nlpEl()) { if (node.parentNode !== this.$refs.content) return false; this.focusTitle(); }
+      const pending = node.textContent.slice(0, off);
+      const tok = matchTrailingToken(pending, new Date(), this.locNames());
       if (!tok) return false;
-      const token = node.textContent.slice(tok.start);
-      if (tok.kind === 'date' && this.swallowIntoPrevDate(node, tok, token)) return true;   // [next week] + "sun" → [next week sunday]
-      this.insertPill(node, tok.start, tok.kind, tok.value, token);
+      const token = pending.slice(tok.start);
+      if (tok.kind === 'date' && this.swallowIntoPrevDate(node, tok, token, off)) return true;   // [next week] + "sun" → [next week sunday]
+      if (tok.kind === 'area') { this.pillifyArea(node, tok, token, off); return true; }         // area tokens carry a NAME → resolve to an id first
+      this.insertPill(node, tok.start, tok.kind, tok.value, token, off);
       return true;
+    },
+    // Typed "@name" parses to an area NAME; resolve it to an area id (reuse or create) before inserting the
+    // pill, so area pills always carry an id (dupes stay distinct). Async, like the @-picker's create path.
+    async pillifyArea(node, tok, token, end) {
+      const id = await this.ensureAreaId(tok.value);
+      if (!id) return;
+      // the node/caret may have shifted while awaiting the store — only pill if the token text is still there
+      if (node.parentNode !== this._nlpEl() || node.textContent.slice(tok.start, end) !== token) return;
+      this.insertPill(node, tok.start, 'area', id, token, end);
     },
     // A trailing date word right after a date pill MERGES into it: re-parse "<pill token> <word>"; if it reads as
     // one date, swap the pill for the combined one and drop the word. So [next week] + "sun" → next week's Sunday.
-    swallowIntoPrevDate(node, tok, token) {
+    swallowIntoPrevDate(node, tok, token, end = node.textContent.length) {
       if (node.textContent.slice(0, tok.start).trim() !== '') return false;          // the word must sit directly after the pill
       let prev = node.previousSibling;
       while (prev && prev.nodeType === 3 && /^\s*$/.test(prev.textContent)) prev = prev.previousSibling;
@@ -1844,10 +2142,9 @@ document.addEventListener('alpine:init', () => {
       // backspacing the merged chip must revert to the PREVIOUS date (the state right now, before we commit the
       // merge), not to the pre-prev-chip base — else e.g. "friday" then "monday" would delete the date entirely.
       merged.dataset.prior = JSON.stringify(this._fieldSnapshot('date'));
-      this.$refs.content.replaceChild(merged, prev);
-      node.textContent = ' ';                                                         // the word is now inside the pill
-      const r = document.createRange(); r.setStart(node, 1); r.collapse(true);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      this._nlpEl().replaceChild(merged, prev);
+      node.textContent = ' ' + node.textContent.slice(end);                           // word now inside the pill; keep any tail
+      this._caret(node, 1);
       this.commitPill('date', cls.value); this.syncTitle();
       return true;
     },
@@ -1856,54 +2153,97 @@ document.addEventListener('alpine:init', () => {
       const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return false;
       const r = sel.getRangeAt(0); const node = r.startContainer;
       let prev = null;
-      if (node.nodeType === 3 && r.startOffset === 0) {
-        prev = node.previousSibling;
-      } else if (node.nodeType === 3 && r.startOffset <= 1 && /^[\s ]*$/.test(node.textContent.slice(0, r.startOffset))) {
-        prev = node.previousSibling;
-      } else if (node === this.$refs.content && r.startOffset > 0) {
-        const sib = node.childNodes[r.startOffset - 1];
-        // If the last child before caret is a whitespace-only text node, skip it to find the pill
-        if (sib && sib.nodeType === 3 && /^[\s ]*$/.test(sib.textContent)) prev = sib.previousSibling;
-        else prev = sib;
-      }
+      // Only revert when nothing REAL sits to the caret's left (a space is a real char → let native delete it first).
+      if (node.nodeType === 3) { if (r.startOffset === 0) prev = node.previousSibling; }
+      else if (node === this._nlpEl() && r.startOffset > 0) prev = node.childNodes[r.startOffset - 1];
+      // Skip zero-width text nodes — typing past a chip leaves an empty node between the pill and the new text,
+      // so the caret's previousSibling is that empty node, not the pill (this stranded the chip on backspace).
+      while (prev && prev.nodeType === 3 && prev.textContent === '') prev = prev.previousSibling;
       if (!prev || !(prev instanceof HTMLElement) || !prev.classList.contains('nlp-pill')) return false;
-      const kind = prev.dataset.kind, raw = prev.dataset.value;
-      const value = (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.parse(raw) : (kind === 'dur' ? +raw : raw);   // imp/proj/area/loc stay strings
+      const kind = prev.dataset.kind, raw = prev.dataset.value, sp = PILL_SPEC[kind];
+      const value = pillValue(kind, raw);
       const prior = prev.dataset.prior != null ? JSON.parse(prev.dataset.prior) : null;
-      this.clearPillField(kind, kind === 'area' ? raw : value);
+      this.clearPillField(kind, sp.multi ? raw : value);
       const text = document.createTextNode(prev.dataset.token || prev.textContent);
       prev.replaceWith(text);
-      // A same-kind pill may still stand (e.g. two dates typed): revert to ITS value, not a blanket clear. Re-commit each remaining pill (DOM order → last wins for single-value fields; idempotent for areas).
-      const remaining = this.$refs.content.querySelectorAll('.nlp-pill[data-kind="' + kind + '"]');
-      for (const p of remaining) {
-        const pr = p.dataset.value;
-        this.commitPill(kind, (kind === 'date' || kind === 'rec' || kind === 'deadline') ? JSON.parse(pr) : (kind === 'dur' ? +pr : pr));
-      }
-      // Non-destructive: with no same-kind chip left, restore the value the field held BEFORE this chip (a
-      // picker selection, an earlier chip, or empty) rather than leaving it cleared. Areas are additive (splice only).
-      if (!remaining.length && kind !== 'area' && kind !== 'goal') this._restoreField(kind, prior);
-      const nr = document.createRange(); nr.setStart(text, text.textContent.length); nr.collapse(true);
-      sel.removeAllRanges(); sel.addRange(nr);   // caret at the end of the restored token text
+      // A same-kind pill may still stand: re-commit remaining pills; with none left, restore the prior value.
+      this._recommitPills([kind]);
+      const remaining = this._nlpEl().querySelectorAll('.nlp-pill[data-kind="' + kind + '"]');
+      if (!remaining.length && !sp.multi) this._restoreField(kind, prior);
+      this._caret(text, text.textContent.length);   // caret at the end of the restored token text
       this.syncTitle();
       this._noPillOnce = true;   // just un-chipped on purpose → the next space must NOT re-chip it
       return true;
+    },
+    // Reset the touched kinds, then replay every surviving pill so fields reflect exactly the pills left in
+    // the DOM (area/goal are additive arrays → empty them fully; other kinds clear to their default).
+    _recommitPills(kinds) {
+      const d = this._nlpDraft();
+      for (const k of kinds) { const sk = PILL_SPEC[k]; sk.multi ? (d[sk.multi] = []) : this.clearPillField(k, null); }
+      for (const p of this._nlpEl().querySelectorAll('.nlp-pill')) {
+        const pr = p.dataset.value, kind = p.dataset.kind;
+        this.commitPill(kind, pillValue(kind, pr));
+      }
+    },
+    // Deletions route through beforeinput, NOT keydown: it fires for hardware keys AND soft-keyboard/IME
+    // input (Android sends deleteContentBackward with no 'Backspace' keydown), on both Blink and WebKit. Own
+    // any delete that would touch a pill so native deletion never strands a pill's field or eats the block.
+    onEditorBeforeInput(e) {
+      if (!e.inputType || !e.inputType.startsWith('delete')) return;
+      const sel = getSelection(); if (!sel.rangeCount) return;
+      if (!sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
+        const pills = [...this._nlpEl().querySelectorAll('.nlp-pill')].filter(p => range.intersectsNode(p));
+        if (!pills.length) return;                                     // plain-text selection → let native delete it
+        e.preventDefault();
+        const kinds = new Set(pills.map(p => p.dataset.kind));
+        range.deleteContents();                                        // remove selected text + pills together
+        this._recommitPills(kinds); this.syncTitle();
+      } else if (/Backward/.test(e.inputType)) {
+        if (this.unchipPillBefore()) e.preventDefault();               // pill before caret → non-destructive revert
+      }
     },
     _seqMatch(name, frag) {
       let fi = 0; const f = frag.toLowerCase(), n = name.toLowerCase();
       for (let i = 0; i < n.length && fi < f.length; i++) { if (n[i] === f[fi]) fi++; }
       return fi === f.length;
     },
+    // Rank/filter over the area OBJECTS (by id), not names — so duplicate names stay distinct and the @ menu
+    // renders the same deduped set as the id-keyed popups. fuzzyRank returns indices into this.areas.
     resolveArea(frag) {
+      if (!frag) return this.areas;
       const names = this.areas.map(t => t.name);
-      if (!frag) return names;
       this._areaFuzzy = this._areaFuzzy || makeFuzzy();
       const ranked = fuzzyRank(this._areaFuzzy, names, frag);
-      if (ranked) return ranked.map(i => names[i]);
+      if (ranked) return ranked.map(i => this.areas[i]);
       // Subsequence fallback for short abbreviations uFuzzy won't match.
-      return names.filter(n => this._seqMatch(n, frag));
+      return this.areas.filter(a => this._seqMatch(a.name, frag));
     },
-    areaMatches() { return this.resolveArea(this.areaPicker.frag).map(n => this.areas.find(t => t.name === n)).filter(Boolean); },
-    openAreaPicker(node, at) { this.areaPicker = { open: true, frag: '', sel: 0, node, at, left: 0, top: 0 }; this._positionPicker(this.areaPicker, '.area-autocomplete'); },
+    areaMatches() { return this.resolveArea(this.areaPicker.frag); },
+    openPicker(type, node, at) { const sp = PICKERS[type], p = this[sp.key]; Object.assign(p, { open: true, frag: '', sel: 0, node, at, left: 0, top: 0 }); this._positionPicker(p, sp.sel); },
+    refreshPicker(type) { const sp = PICKERS[type]; this._refreshPicker(this[sp.key], sp.char, sp.sel); },
+    pickPill(type, id) {
+      const sp = PICKERS[type], p = this[sp.key], node = p.node;
+      node.textContent = node.textContent.slice(0, p.at) + node.textContent.slice(p.at + 1 + p.frag.length);
+      this._caret(node, p.at);
+      this.insertPill(node, p.at, sp.kind, id, sp.char + (sp.name(this, id) || ''));
+      p.open = false;
+      if (_nlpFocus?.c) this._nlpEl().focus();
+    },
+    pickerKeydown(type, e) {
+      const sp = PICKERS[type], p = this[sp.key]; if (!p.open) return false;
+      const matches = type === 'area' ? this.areaMatches() : this.goalMatches();
+      return this._pickerKeydown(e, p, matches, m => this.pickPill(type, m.id), sp.onCreate ? () => sp.onCreate(this) : null);
+    },
+    // 1-line aliases — index.html references these by name
+    openAreaPicker(node, at) { this.openPicker('area', node, at); },
+    openGoalPicker(node, at) { this.openPicker('goal', node, at); },
+    refreshAreaPicker() { this.refreshPicker('area'); },
+    refreshGoalPicker() { this.refreshPicker('goal'); },
+    pickArea(id) { this.pickPill('area', id); },
+    pickGoal(id) { this.pickPill('goal', id); },
+    areaPickerKeydown(e) { return this.pickerKeydown('area', e); },
+    goalPickerKeydown(e) { return this.pickerKeydown('goal', e); },
     // Position a "@"/"^" autocomplete under its trigger char. rAF (not $nextTick): Alpine applies the :style left async — measure after paint.
     _positionPicker(p, sel) {
       if (!p.node) return;
@@ -1922,110 +2262,91 @@ document.addEventListener('alpine:init', () => {
       p.at = idx; p.frag = txt.slice(idx + 1); p.sel = 0;
       this._positionPicker(p, sel);
     },
-    refreshAreaPicker() { this._refreshPicker(this.areaPicker, '@', '.area-autocomplete'); },
-    pickArea(name) {
-      const p = this.areaPicker; const node = p.node;
-      node.textContent = node.textContent.slice(0, p.at) + node.textContent.slice(p.at + 1 + p.frag.length);
-      const r = document.createRange(); r.setStart(node, p.at); r.collapse(true);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-      this.insertPill(node, p.at, 'area', name, '@' + name);
-      p.open = false;
-    },
     async createAreaFromPicker() {
-      const name = this.areaPicker.frag.trim(); if (!name) return;
-      if (!this.areas.find(t => t.name === name)) { await this.store.areas.create({ name }); await this.loadAreas(); }
-      this.pickArea(name);
+      const id = await this.ensureAreaId(this.areaPicker.frag);   // reuse-or-create by name → id
+      if (id) this.pickArea(id);
     },
     goalMatches() {
       const q = this.goalPicker.frag.toLowerCase();
       return this.goals.filter(g => !g.archived && (!q || g.name.toLowerCase().includes(q)));
     },
-    openGoalPicker(node, at) { this.goalPicker = { open: true, frag: '', sel: 0, node, at, left: 0, top: 0 }; this._positionPicker(this.goalPicker, '.goal-autocomplete'); },
-    refreshGoalPicker() { this._refreshPicker(this.goalPicker, '^', '.goal-autocomplete'); },
-    pickGoal(id) {
-      const p = this.goalPicker; const node = p.node;
-      node.textContent = node.textContent.slice(0, p.at) + node.textContent.slice(p.at + 1 + p.frag.length);
-      const r = document.createRange(); r.setStart(node, p.at); r.collapse(true);
-      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
-      this.insertPill(node, p.at, 'goal', id, '^' + (this.goalById(id)?.name || ''));   // visible chip, like @area
-      p.open = false;
-    },
-    goalPickerKeydown(e) {
-      const p = this.goalPicker; if (!p.open) return false;
-      const matches = this.goalMatches();
-      if (e.key === 'Escape') { p.open = false; return true; }
+    _pickerKeydown(e, p, matches, onPick, onCreate, { allowNone = false } = {}) {
+      if (e.key === 'Escape') { if (!p.open) return false; p.open = false; if (allowNone) p.sel = -1; return true; }
       if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { p.sel = Math.min(p.sel + 1, Math.max(0, matches.length - 1)); return true; }
       if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { p.sel = Math.max(p.sel - 1, 0); return true; }
-      if ((e.key === 'Enter' || e.key === ' ') && matches.length) { this.pickGoal(matches[p.sel]?.id || matches[0].id); return true; }
+      if ((e.key === 'Enter' || e.key === ' ') && matches.length) { onPick(matches[p.sel] || matches[0]); return true; }
+      if (e.key === 'Enter' && onCreate) return onCreate();
       return false;
     },
-    areaPickerKeydown(e) {
-      const p = this.areaPicker; if (!p.open) return false;
-      const matches = this.areaMatches();
-      if (e.key === 'Escape') { p.open = false; return true; }
-      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { p.sel = Math.min(p.sel + 1, Math.max(0, matches.length - 1)); return true; }
-      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { p.sel = Math.max(p.sel - 1, 0); return true; }
-      if (e.key === 'Enter' || e.key === ' ') {
-        if (matches.length) { this.pickArea(matches[p.sel].name); return true; }   // sel is clamped to [0, len-1], so len===1 ⇒ sel 0
-        if (e.key === 'Enter' && p.frag.trim()) { this.createAreaFromPicker(); return true; }
-      }
+    // Pill-editor keydown shared by the title + every subtask row: pickers, @/^ triggers, and space→pill.
+    // Returns true when fully consumed (pickers / trigger chars); Enter is left to the caller (submit vs commit-row).
+    _pillKeydown(e) {
+      if (this.goalPicker.open && this.goalPickerKeydown(e)) { e.preventDefault(); e.stopPropagation(); return true; }
+      if (this.areaPicker.open && this.areaPickerKeydown(e)) { e.preventDefault(); e.stopPropagation(); return true; }
+      if (e.key === '^') { this.$nextTick(() => { const s = getSelection(); if (!s || !s.anchorNode) return; let node = s.anchorNode; if (node.nodeType !== 3) { const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { if (n.textContent.includes('^')) { node = n; break; } } } const at = (node.textContent || '').lastIndexOf('^'); if (at >= 0) this.openGoalPicker(node, at); }); return true; }
+      if (e.key === '@') { this.$nextTick(() => { const s = getSelection(); const at = (s?.anchorNode?.textContent || '').lastIndexOf('@'); if (s && s.anchorNode && at >= 0) this.openAreaPicker(s.anchorNode, at); }); return true; }
+      if (e.key === ' ') { if (!this._noPillOnce && this.pillifyTrailing()) e.preventDefault(); this._noPillOnce = false; }
+      else if (e.key.length === 1) { this._noPillOnce = false; }   // typing fresh content re-enables space→pill (Backspace/Delete → onEditorBeforeInput)
       return false;
     },
     editorKeydown(e) {
-      // Interruptible motion: a keystroke landing while the open-scroll still glides cancels it and jumps
-      // instantly — so `q`-then-immediate-typing never lets the animation fight the caret.
-      if (this._composerScrolling) { this._composerScrolling = false; clearTimeout(this._scrollSettleT); this.$refs.composer?.scrollIntoView({ block: 'nearest', behavior: 'auto' }); }
-      if (this.goalPicker.open && this.goalPickerKeydown(e)) { e.preventDefault(); e.stopPropagation(); return; }
-      if (this.areaPicker.open && this.areaPickerKeydown(e)) { e.preventDefault(); e.stopPropagation(); return; }
-      if (e.key === '^') { this.$nextTick(() => { const s = getSelection(); if (!s || !s.anchorNode) return; let node = s.anchorNode; if (node.nodeType !== 3) { const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) { if (n.textContent.includes('^')) { node = n; break; } } } const at = (node.textContent || '').lastIndexOf('^'); if (at >= 0) this.openGoalPicker(node, at); }); return; }
-      if (e.key === '@') { this.$nextTick(() => { const s = getSelection(); const at = (s?.anchorNode?.textContent || '').lastIndexOf('@'); if (s && s.anchorNode && at >= 0) this.openAreaPicker(s.anchorNode, at); }); return; }
+      if (this._pillKeydown(e)) return;
       if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this.submitComposer(); return; }
-      if (e.key === ' ') { if (!this._noPillOnce && this.pillifyTrailing()) e.preventDefault(); this._noPillOnce = false; }
-      else if (e.key === 'Backspace') { if (this.unchipPillBefore()) e.preventDefault(); }
-      else if (e.key.length === 1) { this._noPillOnce = false; }   // typing fresh content re-enables space→pill
+      // ArrowDown ladder: the title is a single line, so down is free to mean "next field".
+      if (e.key === 'ArrowDown' && !e.shiftKey) { const d = this.$refs.desc; if (d) { e.preventDefault(); d.focus(); this._setCaret(d, 0); } }
     },
     async submitComposer() {
       if (!this.draft.content.trim()) return;   // contenteditable has no `required`; block empty titles
-      this.pushUndo('Saved task');              // ONE undo step for the whole save (field edits + ghost commits)
-      this._suppressUndo = true;                // the commits below are part of THIS save, not separate undo steps
-      try {
-        if (this.chkGhost.trim()) this.commitChkGhost();   // save in-progress ghost inputs on Save, even without Enter
-        if (this.subGhost.trim()) await this.commitSubGhost();
-        this.draft.checklist = this.draft.checklist.filter(c => (c.text || '').trim());   // prune whitespace-only items (transient while editing)
-        if (!this.editing) {
-          const fields = this.draftFields();
-          if (!fields.project && !fields.parent_id && !this.store.defaultProject()) {
-            this.projRequired = true;
-            setTimeout(() => { this.projRequired = false; }, 800);
-            return;
-          }
+      if (this.chkGhost.trim()) this.commitChkGhost();   // save in-progress ghost inputs on Save, even without Enter
+      if (this.subGhost.trim()) await this.commitSubGhost();   // journals its own "Added subtask" entry
+      this.draft.checklist = this.draft.checklist.filter(c => (c.text || '').trim());   // prune whitespace-only items (transient while editing)
+      if (!this.editing) {
+        const fields = this.draftFields();
+        if (!fields.project && !fields.parent_id && !this.store.defaultProject()) {
+          this.projRequired = true;
+          setTimeout(() => { this.projRequired = false; }, 800);
+          return;
         }
-        if (this.editing) {
-          // Capture before close (closeComposer resets draft/editing async via _growClose callback)
-          const editId = this.editing, task = this.byId.get(editId), fields = this.draftFields(), draft = this.draft;
-          this.closeComposer();   // close first — user sees it gone immediately
-          const updated = await this.store.tasks.update(editId, fields);
+      }
+      if (this.editing) {
+        // Capture before close (closeComposer resets draft/editing async via _growClose callback)
+        const editId = this.editing, fields = this.draftFields(), draft = this.draft;
+        this._clearPending(editId);   // saved → discard the pending draft so it can't resurrect over the save
+        const sc = this._listScroller(), stBefore = sc ? sc.scrollTop : 0;
+        // A save is ALWAYS slow enough to warrant feedback (composer collapse + reloadAll dominate; the store write
+        // itself is quick, so the only-if-slow 150ms gate never tripped). Spin the checkmark IMMEDIATELY and let it
+        // span the whole save — the post-save morph re-renders the row (clearing it) exactly when the saved data shows.
+        this._setCheckPending(editId, true);
+        // revealId = editId: fires in the done callback AFTER the 240ms animation + applyEditDom so _rowOffscreen
+        // sees settled layout. revealGuard = stBefore: skips the reveal if the user scrolled > 300px during save.
+        this.closeComposer(true, editId, false, stBefore);
+        let updated;
+        await this._journalRowChange('Saved task', 'task', editId, async () => {
+          updated = await this.store.tasks.update(editId, fields);
           if (updated) {
             // A completed task whose checklist now has an undone item must reopen (e.g. you just added one).
             const cl = updated.checklist || [];
-            if (updated.completed_at && cl.length && !cl.every(c => c.done)) await this.store.tasks.setCompleted(updated.id, false);
-            if (task) Object.assign(task, updated); await this.loadTasks(); await this.loadAreas();
-            // an edit can re-sort/move the row — scroll it back into view so it's never lost.
-            this.$nextTick(() => { const el = this._rowEl(editId); if (el) el.scrollIntoView({ block: 'nearest', behavior: this.reduceMotion() ? 'auto' : 'smooth' }); });
-          } else {
-            // Save failed — reopen the composer with the user's unsaved edits so nothing is silently lost.
-            this.editing = editId; this.draft = draft;
-            this._editDescs = new Set(descendantIds(this.tasks, editId).slice(1));
-            this.openComposer();
-            this.toast('Save failed — try again');
+            if (updated.completed_at && cl.length && !cl.every(c => c.done)) { await this.store.tasks.setCompleted(updated.id, false); updated = this._rowById('task', updated.id); }
           }
-          return;
+        });
+        if (!updated) {
+          // Save failed — reopen the composer with the user's unsaved edits so nothing is silently lost.
+          this._setCheckPending(editId, false);   // drop the spinner; the composer takes over again
+          this.editing = editId; this.draft = draft;
+          this._editDescs = new Set(descendantIds(this.tasks, editId).slice(1));
+          this.openComposer();
+          this.toast('Save failed — try again');
+        } else {
+          // No scroll-hold: native scroll-anchoring keeps the list put. Spinner + flash are cosmetic; they go on as
+          // soon as the store write is confirmed (the reveal above, keyed to the animation, lands at ~241ms).
+          this.$nextTick(() => { this._setCheckPending(editId, false); this._flashSaved(editId); });
         }
-        const newRow = await this.addTask();
-        // reveal the just-added row (it lands just above the composer) so the view never jumps to the top;
-        // block:'nearest' keeps both the new row and the still-open composer in view for rapid successive adds.
-        this.$nextTick(() => { this.setEditorText(''); this.$refs.content?.focus(); if (newRow) this._rowEl(newRow.id)?.scrollIntoView({ block: 'nearest', behavior: this.reduceMotion() ? 'auto' : 'smooth' }); });
-      } finally { this._suppressUndo = false; }
+        return;
+      }
+      const newRow = await this.addTask();
+      // reveal the just-added row (it lands just above the composer) ONLY if it's off-screen — an already-visible
+      // new row leaves scroll untouched, so the view never jumps to the top on a rapid successive add.
+      this.$nextTick(() => { this.setEditorText(''); this.$refs.content?.focus(); if (newRow) this._revealRow(newRow.id); });
     },
     // Ctrl/Cmd+Enter: submit then close (submitComposer keeps a NEW task's composer open for rapid add).
     async submitAndClose() { await this.submitComposer(); if (!this.projRequired) this.closeComposer(); },
@@ -2033,13 +2354,18 @@ document.addEventListener('alpine:init', () => {
       const tag = (e.target.tagName || '').toLowerCase();
       // ⌘/Ctrl+Z → NATIVE text undo owns edits whenever focus is in a real field (input/textarea/contenteditable);
       // the app undo stack only takes over outside fields (list-level actions: complete, delete, move…).
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
-        const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
-        if (!inField) { e.preventDefault(); this.doUndo(); }
+      const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
+        if (inField) return;   // let the browser's native text undo/redo run
+        if (this.composer.open) return;   // in-composer edits use native undo / draft autosave, not the journal
+        e.preventDefault();
+        e.shiftKey ? this.redo() : this.undo();   // ⌘⇧Z = redo
         return;
       }
       // ⌘/Ctrl+Enter saves & closes the open composer from ANYWHERE — no input focus needed.
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && this.composer.open) { e.preventDefault(); this.submitAndClose(); return; }
+      // ⌘/Ctrl+K opens the everything-nav palette from anywhere, even mid-typing (Space does it outside typing).
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); this.openPalette(); return; }
       // Single-key shortcuts — only when not typing, composing, or in the palette, and unmodified.
       if (e.metaKey || e.ctrlKey || e.altKey || this.composer.open || this.palette.open
           || tag === 'input' || tag === 'textarea' || tag === 'select') return;
@@ -2056,11 +2382,14 @@ document.addEventListener('alpine:init', () => {
       if (e.key === 'q') { e.preventDefault(); if (this.surface !== 'lists') this.setNav('all'); this.startAdd(); }   // opens inline on Lists; other surfaces (incl. Now, which has no list of its own) bounce to Lists first
       else if (e.key === 'b') { e.preventDefault(); this.setNav('backlog'); }
       else if (e.key === 'a') { e.preventDefault(); this.setNav('all'); }
+      else if (e.shiftKey && e.key === 'ArrowDown') { e.preventDefault(); this.selExtend(1); }   // Shift+↑/↓ extends the multi-select
+      else if (e.shiftKey && e.key === 'ArrowUp') { e.preventDefault(); this.selExtend(-1); }
       else if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); this.moveFocus(1); }
       else if (e.key === 'k' || e.key === 'ArrowUp') { e.preventDefault(); this.moveFocus(-1); }
       else if ((e.key === 'Enter' || e.key === 'e') && this.focusId) { e.preventDefault(); this.openFocused(); }
       else if (e.key === 'x' && this.focusId) { e.preventDefault(); this.toggleFocused(); }   // complete focused row (Space now opens the palette)
       else if (e.key === '?') { e.preventDefault(); this.shortcutsOpen = true; }
+      else if (e.key === 'd') { e.preventDefault(); this.trashOpen = true; }   // Recently deleted (recover anything)
       else if (e.key === '/' && this.listView()) { e.preventDefault(); this.listSearchOpen = true; this.$nextTick(() => this.$refs.listSearch?.focus()); }   // Hearthsay: / → search unfolds
       else if (e.key === 'f' && this.listView()) { e.preventDefault(); this.listMenu = this.listMenu === 'add' ? null : 'add'; }   // f → filter sentence menu
       else if (e.key >= '1' && e.key <= '4') { e.preventDefault(); this.goSurface(this.surfaceOrder[(+e.key) - 1]); }   // jump to a surface
@@ -2072,12 +2401,11 @@ document.addEventListener('alpine:init', () => {
     escape() {
       // Anything that can stack ON TOP of the overview (dialogs, the roller ⋯ popover) closes first; the overview closes only when nothing is layered above it.
       if (this.shortcutsOpen) this.shortcutsOpen = false;
+      else if (this.trashOpen) this.trashOpen = false;
       else if (this.palette.open) this.palette.open = false;
       else if (this.confirm) this.confirmNo();
-      else if (this.graduateOffer) this.graduateOffer = null;   // pure close — no snooze; unlike confirm's ghost button, deliberate decline lives only in declineGraduation()
-      else if (this.finishOffer) this.finishOffer = null;       // pure close — the offer is quiet and true; may reappear
-      else if (this.reflectGoal) this.reflectGoal = null;       // pure close — no recommit/release; both live only behind explicit buttons
-      else if (this.deletingProject) this.deletingProject = null;
+      else if (this.goalOffer) this.goalOffer = null;           // pure close — no auto-decline/recommit/release; deliberate choices live only behind the dialog's explicit buttons
+      else if (this.delAsk) { this.delAsk = null; }
       else if (this.locMgr) this.locMgr = false;
       else if (this.filterEdit) this.filterEdit = null;
       else if (this.eventEdit) this.eventEdit = null;
@@ -2091,6 +2419,8 @@ document.addEventListener('alpine:init', () => {
       else if (this.tpop) this.tpop = false;
       else if (this.endPicking) this.endPicking = false;
       else if (this.pop) this.pop = null;
+      else if (this.selMenu) this.selMenu = null;       // an open edit-bar sub-menu closes before the selection itself
+      else if (this.sel.length) this.clearSel();        // active multi-select clears (before the lower list states)
       else if (this.overview) this.overview = false;
       else if (this.composer.open) this.closeComposer();
       else if (this.goalOpenId) this.closeGoal();
@@ -2113,7 +2443,7 @@ document.addEventListener('alpine:init', () => {
     },
     today() { return new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }); },
 
-    async loadTasks() { this.tasks = await this.store.tasks.list(); this.byId = new Map(this.tasks.map(t => [t.id, t])); this._rowV++; _calDataV++; _calMemo.clear(); _goalStepsMemo.clear(); _goalMilestonesMemo.clear(); await this.loadStats(); },
+    async loadTasks() { this.tasks = await this.store.tasks.list(); this.byId = new Map(this.tasks.map(t => [t.id, t])); this.parentIds = new Set(this.tasks.map(t => t.parent_id).filter(Boolean)); this._rowV++; _calDataV++; _goalStepsMemo.clear(); _goalMilestonesMemo.clear(); await this.loadStats(); },
     async loadStats() {
       const acts = await this.store.activity.list(), nowIso = new Date().toISOString();
       this._activityCache = acts;
@@ -2140,6 +2470,7 @@ document.addEventListener('alpine:init', () => {
       this.goals.splice(0, this.goals.length, ...fresh); this._rowV++; await this.loadIdentities();
     },
     goalById(id) { return this.goals.find(g => g.id === id); },
+    areaById(id) { return this.areas.find(a => a.id === id); },
     goalGlyph(g) { return g?.icon && !g.icon.startsWith('i-') ? g.icon : ''; },   // emoji icon → render as text; symbol ids/none fall back to the SVG
     identityById(id) { return this.identities.find(i => i.id === id); },
     identityStatement(g) { return this.identityById(g?.identity_id)?.statement ?? g?.identity ?? null; },
@@ -2152,69 +2483,341 @@ document.addEventListener('alpine:init', () => {
         .slice(0, 5);
     },
     stripIdent(s) { return (s || '').replace(IDENTITY_WHO_RE, ''); },
-    pickIdentitySuggestion(text) { this.goalDraft._identityBlank = text; this._identSugSel = -1; },
+    pickIdentitySuggestion(text) { this.goalDraft._identityBlank = text; this.identSug.sel = -1; },
     identSugKeydown(e) {
       const sugs = this.identitySuggestions();
-      const popOpen = this._identSugFocus && sugs.length > 0;
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        if (!popOpen) return;
-        e.preventDefault();
-        this._identSugSel = e.key === 'ArrowDown' ? Math.min(this._identSugSel + 1, sugs.length - 1) : Math.max(this._identSugSel - 1, -1);
-      } else if (e.key === 'Enter') {
-        if (this._identSugSel >= 0 && sugs[this._identSugSel]) {
-          e.preventDefault();
-          this.pickIdentitySuggestion(sugs[this._identSugSel].text);
-        }
-      } else if (e.key === 'Escape') {
-        if (popOpen) { e.stopPropagation(); this._identSugSel = -1; this._identSugFocus = false; }
-        else this.closeGoal();
+      if (this._pickerKeydown(e, this.identSug, sugs, s => this.pickIdentitySuggestion(s.text), null, { allowNone: true })) {
+        e.preventDefault(); e.stopPropagation(); return;
       }
+      if (e.key === 'Escape') this.closeGoal();
     },
     goalDueLabel(date) { if (!date) return ''; const d = Math.round((new Date(date) - new Date()) / 864e5); return d === 0 ? 'today' : d > 0 ? 'in ' + d + 'd' : Math.abs(d) + 'd ago'; },
     plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); },
     // Effective goals for a task: own goal_ids ∪ every ancestor's, walked via byId (cycle-safe), mapped to objects.
     goalsForTask(t) { return effectiveGoalIds(this.tasks, t.id, this.byId).map(id => this.goalById(id)).filter(Boolean); },
     toggleGoal(id) { const a = this.draft.goal_ids, i = a.indexOf(id); i >= 0 ? a.splice(i, 1) : a.push(id); },
-    toast(msg, ms = 2000) { this.toastMsg = msg; this.toastOn = true; clearTimeout(this._toastT); this._toastT = setTimeout(() => { this.toastOn = false; }, ms); },
-    // buffer snapshot BEFORE each gesture (UNDO_MAX deep); bar hides but buffer persists — ⌘Z walks it back.
-    // entry has .snap (store), .checklist (draft), or both; doUndo restores whatever is set.
-    pushUndo(label) { if (this._suppressUndo) return; this.undo.stack.push({ label, snap: this.store.snapshot() }); this._capUndo(label); },
-    // Draft-only gesture (checklist add/delete): snapshot ONLY the checklist slice, so undoing it can't clobber
-    // notes/title the user edited afterward.
-    pushUndoDraft(label) { if (this._suppressUndo) return; this.undo.stack.push({ label, checklist: JSON.parse(JSON.stringify(this.draft.checklist)), editing: this.editing }); this._capUndo(label); },
-    _capUndo(label) { if (this.undo.stack.length > UNDO_MAX) this.undo.stack.shift(); this._flashUndo(label); },   // drop oldest past the cap
-    _flashUndo(label) {
-      this.undo.label = label; this.undo.on = true;
-      clearTimeout(this.undo.timer);
-      this.undo.timer = setTimeout(() => { this.undo.on = false; }, 6000);
+    toast(msg) { return this.notify(msg); },   // thin wrapper: a plain message with no actions
+    // Push a card onto the bottom-right stack. With action buttons it lingers longer (8s) so the Undo is reachable.
+    notify(msg, { actions = [], timeout = actions.length ? 8000 : 4000 } = {}) {
+      const id = crypto.randomUUID();
+      this.notifs.push({ id, msg, actions, leaving: false });
+      if (this.notifs.length > 3) this._dismissNotif(this.notifs[0].id);   // cap the visible stack
+      setTimeout(() => this._dismissNotif(id), timeout);
+      return id;
     },
-    async doUndo() {
-      const entry = this.undo.stack.pop();
-      if (!entry) { this.undo.on = false; return; }
-      if (entry.snap) { await this.store.restore(entry.snap); await this.loadAreas(); await this.loadTasks(); }
-      // Restore a composer checklist edit only if we're still editing the same task (else it was discarded/committed).
-      if (entry.checklist && this.composer.open && this.editing === entry.editing) {
-        this.draft.checklist = JSON.parse(JSON.stringify(entry.checklist));
-        this.$nextTick(() => this.syncChkRows());   // reused rows keep stale live-editor markup — refresh from the restored draft
+    _dismissNotif(id) {
+      const n = this.notifs.find(x => x.id === id); if (!n || n.leaving) return;
+      n.leaving = true;                                                    // triggers the exit transition
+      setTimeout(() => { this.notifs = this.notifs.filter(x => x.id !== id); }, 260);
+    },
+    _runNotifAction(n, a) { a.fn(); this._dismissNotif(n.id); },           // action fires, then the card leaves
+    // ── Composer draft safety ──────────────────────────────────────────────────────────────────
+    // Nothing typed is ever lost to a mispress: the whole draft is persisted (adherod.draftPending,
+    // keyed by editing id or 'new') on EVERY change while the composer is open (x-effect → persistDraft).
+    // Closing a dirty+unsaved draft KEEPS it (persisted) + makes it ⌘Z-undoable; reopening restores it.
+    _pendingMap() { try { return JSON.parse(localStorage.getItem('adherod.draftPending')) || {}; } catch { return {}; } },
+    _writePending(map) { localStorage.setItem('adherod.draftPending', JSON.stringify(map)); },
+    _clearPending(key) { const m = this._pendingMap(); if (key in m) { delete m[key]; this._writePending(m); } },
+    _draftKey() { return this.editing || 'new'; },
+    // The full composer input state — draft fields PLUS the uncommitted ghost buffers. This is the unit of
+    // loss-protection: everything the user has typed, committed or not. Reading it also subscribes the
+    // x-effect to all three, so persistDraft re-fires when you type in a ghost box (not just the draft).
+    _draftSig() { return JSON.stringify({ draft: this.draft, chkGhost: this.chkGhost, subGhost: this.subGhost }); },
+    // x-effect on the composer: _draftSig() touches every draft field + both ghost buffers so Alpine re-runs this on any edit.
+    persistDraft() {
+      const s = this._draftSig(); void this.editing;   // subscribe to draft + ghost buffers + editing
+      // open flips to false only in the async grow-close callback, so guard the whole close window here —
+      // otherwise a save/close that just cleared the pending gets it re-written by this effect mid-animation.
+      if (!this.composer.open || this._closingComposer) return;
+      const map = this._pendingMap(), key = this._draftKey();
+      if (s !== this._draftBase) map[key] = { editing: this.editing, draft: this.draft, chkGhost: this.chkGhost, subGhost: this.subGhost, ts: Date.now() };
+      else if (key in map) delete map[key]; else return;   // clean draft → drop any stale pending; nothing to write otherwise
+      this._writePending(map);
+    },
+    // Called from startAdd/editTask AFTER the pristine draft is built: record the baseline, then restore a
+    // newer unsaved draft for this key if one exists (and it actually differs from the pristine state).
+    _initDraftSafety() {
+      this._draftBase = this._draftSig();
+      const p = this._pendingMap()[this._draftKey()];
+      if (p && JSON.stringify({ draft: p.draft, chkGhost: p.chkGhost || '', subGhost: p.subGhost || '' }) !== this._draftBase) {
+        this.draft = p.draft; this.chkGhost = p.chkGhost || ''; this.subGhost = p.subGhost || ''; this.draftRestored = true;
+        // A restored ghost buffer auto-fills via x-model; put the caret back at its end so typing resumes in place.
+        this.$nextTick(() => {
+          if (!this.composer.open) return;
+          const kind = this.chkGhost ? 'chk' : this.subGhost ? 'sub' : null; if (!kind) return;
+          const el = document.querySelector(`.composer-entries .entry${kind === 'sub' ? ':not(.chk)' : '.chk'}.ghost .entry-txt`);
+          if (el) { el.focus(); if (el.isContentEditable) this._setCaret(el, el.textContent.length); else { const n = el.value.length; el.setSelectionRange(n, n); } }   // subtask ghost is contenteditable now
+        });
+      } else this.draftRestored = false;
+    },
+    // Banner "Discard": drop the recovered draft, revert to the saved/pristine state (composer stays open).
+    discardDraft() {
+      this._clearPending(this._draftKey());
+      this.draftRestored = false;
+      this.draft = JSON.parse(this._draftBase).draft; this.chkGhost = ''; this.subGhost = '';
+      this.setEditorText(this.draft.content); this.setDescText(this.draft.notes);
+      this.$nextTick(() => this.syncChkRows());
+    },
+    // ── Recently deleted (persistent trash bin) ────────────────────────────────────────────────
+    // A VIEW over the journal (trashView, recovery.js): any bin:true, unrestored entry ≤30d old.
+    // Restore applies the entry's inverse out-of-band and detaches it so linear ⌘Z can't re-touch it.
+    trashItems() { void this._jV; return trashView(this.journal, Date.now()); },   // reactive on _jV
+    _taskSubtreeRows(id) { return descendantIds(this.tasks, id).map(x => this.byId.get(x)).filter(Boolean).map(t => JSON.parse(JSON.stringify(t))); },   // task + all descendants, for trash
+    trashRelTime(ts) {
+      const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+      if (s < 60) return 'just now'; const m = Math.round(s / 60); if (m < 60) return m + 'm ago';
+      const h = Math.round(m / 60); if (h < 24) return h + 'h ago'; const d = Math.round(h / 24);
+      return d === 1 ? 'yesterday' : d + 'd ago';
+    },
+    // Bulk multi-select entry (≥2 ops, all one kind). isDel: the journal stores a delete as its reinsert inverse.
+    _bulkOps(e) {
+      const ops = e.op?.ops;
+      if (!ops || ops.length < 2 || !ops.every(o => o.kind === ops[0].kind)) return null;
+      return { ops, isDel: ops[0].kind === 'reinsert' };
+    },
+    trashIcon(e) {
+      const b = this._bulkOps(e);   // a bulk CHANGE reads as an edit; a bulk delete keeps the trash glyph
+      if (b && !b.isDel) return 'i-edit';
+      return { task: 'i-circle', 'checklist-item': 'i-check', project: 'i-hash', area: 'i-tag-tag', goal: 'i-target', event: 'i-cal', block: 'i-cal', filter: 'i-search', location: 'i-pin', draft: 'i-edit' }[e.target] || 'i-trash';
+    },
+    // Read-only preview for a bin row: { title, detail (one key-detail line), lines: [{ sign, text }] }.
+    // Diff colour rule: '-' = deleted content (red), '+' = a dropped draft that was being added (green). Lines cap at 4.
+    trashPreview(e) {
+      const MAX = 4, clip = (s, n = 72) => { s = (s ?? '').toString().replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+      const cap = (title, detail, lines) => {
+        let out = lines.filter(l => l.text);
+        if (out.length > MAX) { const more = out.length - (MAX - 1); out = out.slice(0, MAX - 1).concat({ sign: '', text: '… +' + more + ' more', more: true }); }
+        // cls drives the diff colour: '+' add (green), '·' change (neutral), '' more (faint), else '-' del (red).
+        out = out.map(l => ({ ...l, cls: l.more ? 'tdiff-more' : l.sign === '+' ? 'tdiff-add' : l.sign === '·' ? 'tdiff-chg' : 'tdiff-del' }));
+        return { title: title || e.label || '(untitled)', detail, lines: out };
+      };
+      if (e.kind === 'draft') {   // a dropped composer draft → GREEN + lines (was being added)
+        const d = e.payload?.draft || {}, ghost = (e.payload?.chkGhost || e.payload?.subGhost || '').trim();
+        const title = clip(d.content) || ghost || 'Untitled draft';
+        const items = (d.checklist || []).map(i => i.text).filter(t => (t || '').trim());
+        const lines = [{ sign: '+', text: title }, ...items.map(t => ({ sign: '+', text: clip(t) }))];
+        if (ghost && ghost !== title) lines.push({ sign: '+', text: clip(ghost) });
+        return cap(title, 'Unsaved draft' + (items.length ? ' · ' + items.length + ' item' + (items.length > 1 ? 's' : '') : ''), lines);
       }
-      const next = this.undo.stack[this.undo.stack.length - 1];   // keep the bar alive while more remains to undo
-      if (next) this._flashUndo(next.label); else { this.undo.on = false; clearTimeout(this.undo.timer); }
+      if (e.kind === 'checklist-item') { const text = clip(e.payload?.item?.text); return cap(text, 'Checklist item', [{ sign: '-', text }]); }
+      // Bulk multi-select change (≥2 ops, all one kind): show the COUNT + every affected item.
+      // (Single-entity deletes model children re-parenting as mixed-kind ops, so they fall through to the row preview below.)
+      const bulk = this._bulkOps(e);
+      if (bulk) {
+        const { ops, isDel } = bulk;
+        const lines = ops.map(op => { const r = (op.rows && op.rows[0]) || this._rowById(op.target || 'task', op.id ?? op.fwd?.id) || {}; return { sign: isDel ? '-' : '·', text: clip(r.content ?? r.name ?? r.title) || '(untitled)' }; });
+        const n = ops.length, tgt = e.op.target || 'task';
+        return cap(isDel ? `${n} ${tgt}${n > 1 ? 's' : ''}` : e.label, isDel ? 'Deleted' : 'Changed', lines);
+      }
+      // every other bin entry is a deletion → RED − lines from the captured row(s)
+      const rows = e.op?.rows || e.op?.ops?.[0]?.rows || [], root = rows[0] || {};
+      const title = clip(root.content ?? root.name ?? root.title);
+      const lines = [{ sign: '-', text: title }];
+      let detail;
+      if (e.target === 'task') {
+        const subs = Math.max(0, rows.length - 1), bits = [];
+        if (subs) bits.push(subs + ' subtask' + (subs > 1 ? 's' : ''));
+        if (root.due_at) bits.push('due ' + this.fmt(root.due_at));
+        detail = bits.join(' · ') || 'Task';
+        for (const it of (root.checklist || [])) if ((it.text || '').trim()) lines.push({ sign: '-', text: clip(it.text) });
+      } else detail = { project: 'Project', area: 'Area', goal: 'Goal', event: 'Event', block: 'Time block', filter: 'Filter', location: 'Location' }[e.target] || 'Item';
+      if ((root.notes || '').trim()) lines.push({ sign: '-', text: clip(root.notes) });
+      return cap(title, detail, lines);
     },
-    // reads the loadStats cache; newest-first, non-void
-    goalTimeline(id) { return (this._activityCache || []).filter(a => !a.void && ((a.type === 'note' && a.subject_id === id) || (a.type === 'complete' && (a.ctx?.goal_ids || []).includes(id)))).sort((a, b) => b.ts.localeCompare(a.ts)); },
+    // Append a journal entry: truncate any live redo tail, push (merging defaults), advance cursor, save.
+    // callers read reactive deps before calling; pass only what differs from {id,ts,restored:false}.
+    _journalPush(e) { this.journal.length = this.cursor; this.journal.push({ id: crypto.randomUUID(), ts: Date.now(), restored: false, ...e }); this.cursor = this.journal.length; this._journalSave(); },
+    // A bin-only recoverable item with no invertible store op (checklist items live in the composer draft).
+    // detached: never enters the linear ⌘Z timeline (you're composing when you delete one, and ⌘Z is gated off then).
+    _pushBinItem(kind, label, payload) { this._journalPush({ label, target: kind, kind, op: null, payload, bin: true, detached: true }); },
+    // A dropped-but-kept dirty composer draft → a bin row that is ALSO in the linear ⌘Z timeline (detached:false),
+    // so ⌘Z or "Restore" reopens the composer with the draft. The pending autosave stays as the same-composer restore.
+    _pushDraftBin(key, label) {
+      const p = this._pendingMap()[key]; if (!p) return;
+      this._journalPush({ label, target: 'draft', kind: 'draft', op: null, payload: { key, editing: p.editing, draft: p.draft, chkGhost: p.chkGhost, subGhost: p.subGhost }, bin: true, detached: false });
+    },
+    _reopenDraft(payload) {
+      if (payload.editing && this.byId.get(payload.editing)) this.editTask(this.byId.get(payload.editing)); else this.startAdd();
+      this.$nextTick(() => { this.draft = JSON.parse(JSON.stringify(payload.draft)); this.chkGhost = payload.chkGhost || ''; this.subGhost = payload.subGhost || ''; this.draftRestored = true; });
+    },
+    async restoreTrash(id) {
+      const e = this.journal.find(x => x.id === id && x.bin && !x.restored);
+      if (!e) return;
+      if (e.kind === 'draft') { this._reopenDraft(e.payload); e.restored = true; e.detached = true; this._journalSave(); return; }
+      if (e.kind === 'checklist-item') await this._restoreChecklistItem(e.payload);
+      else e.op = await this._apply(e.op);
+      e.restored = true; e.detached = true;
+      this._journalSave(); await this.reloadAll();
+      this.notify('Restored');
+    },
+    // A deleted checklist item goes back onto its (still-existing) task's stored checklist at its old index.
+    async _restoreChecklistItem(payload) {
+      const t = this.byId.get(payload.taskId); if (!t) return;
+      const cl = (t.checklist || []).slice();
+      if (cl.some(c => c.id === payload.item.id)) return;   // already there → idempotent
+      cl.splice(Math.min(payload.index ?? cl.length, cl.length), 0, payload.item);
+      await this.store.tasks.update(payload.taskId, { checklist: cl });
+      if (this.editing === payload.taskId) this.draft.checklist = cl.slice().sort(byDone);
+    },
+    // ---- Inverse-op journal (recovery engine; ⌘Z/⌘⇧Z drive undo()/redo() below). ----
+    _res(t) { return this.store[t + 's']; },                 // task→tasks, area→areas, goal→goals, event→events, block→blocks, filter→filters, location→locations
+    _rowById(t, id) { return t === 'task' ? this.byId.get(id) : (this[t + 's'] || []).find(r => r.id === id); },
+    _rowsForDelete(t, id) { return t === 'task' ? this._taskSubtreeRows(id) : [JSON.parse(JSON.stringify(this._rowById(t, id)))].filter(Boolean); },
+    async _removeRow(t, id) {
+      if (t !== 'task') return this._res(t).remove(id);
+      const desc = descendantIds(this.tasks, id).slice().sort((a, b) => ancestorIds(this.tasks, b).length - ancestorIds(this.tasks, a).length); // deepest first
+      for (const d of desc) await this.store.tasks.remove(d);
+      return this.store.tasks.remove(id);
+    },
+    async _createRow(t, fields) { const r = this._res(t); return r.create ? r.create(fields) : r.add(fields); },
+
+    _journalLoad() {
+      try { const j = JSON.parse(localStorage.getItem('adherod.journal')); if (j) { this.journal = j.entries || []; this.cursor = j.cursor ?? this.journal.length; } } catch {}
+      const p = pruneJournal(this.journal, this.cursor, Date.now()); this.journal = p.journal; this.cursor = p.cursor;
+    },
+    _journalSave() {
+      const p = pruneJournal(this.journal, this.cursor, Date.now()); this.journal = p.journal; this.cursor = p.cursor;
+      if (this.journal.length > JOURNAL_MAX) { const d = this.journal.length - JOURNAL_MAX; this.journal.splice(0, d); this.cursor = Math.max(0, this.cursor - d); }
+      localStorage.setItem('adherod.journal', JSON.stringify({ entries: this.journal, cursor: this.cursor }));
+      this._jV++;
+    },
+
+    // Diff helper for completion fx: which tasks' FX_FIELDS changed and which activity rows were added.
+    _fxDiff(tasks, before, actList, beforeAct) {
+      return {
+        changed: tasks.filter(t => before.has(t.id) && JSON.stringify(before.get(t.id)) !== JSON.stringify(FX_FIELDS(t))).map(t => ({ id: t.id, before: before.get(t.id) })),
+        addedActivity: actList.filter(a => !beforeAct.has(a.id)).map(a => a.id),
+      };
+    },
+    // Run `mutate` (setCompleted / move), capturing which tasks' completed_at (and recurring fields) changed and which
+    // 'complete' activity rows were added — so the inverse can restore every affected row, not just the primary target.
+    async _captureCompletionFx(mutate) {
+      const before = new Map(this.tasks.map(t => [t.id, FX_FIELDS(t)]));
+      const beforeAct = new Set((await this.store.activity.list()).map(a => a.id));
+      await mutate();
+      await this.reloadAll();
+      return this._fxDiff(this.tasks, before, await this.store.activity.list(), beforeAct);
+    },
+    // Reverse a captured completion delta: reopen every changed row + drop every added 'complete' activity row.
+    async _reverseFx(fx) {
+      for (const c of (fx?.changed || [])) await this.store.tasks.update(c.id, c.before);
+      for (const aid of (fx?.addedActivity || [])) await this.store.activity.remove(aid);
+    },
+
+    // Applies one op, returns the op that reverses it. The reverse is what gets applied on the opposite action (undo↔redo toggle).
+    async _apply(op) {
+      if (op.kind === 'composite') { const invs = []; for (const o of op.ops) invs.push(await this._apply(o)); return { kind: 'composite', target: op.target, ops: invs.reverse() }; }
+      if (op.kind === 'remove') {
+        const rows = op.rows || this._rowsForDelete(op.target, op.id);
+        await this._removeRow(op.target, op.id);
+        return { kind: 'reinsert', target: op.target, id: op.id, rows };
+      }
+      if (op.kind === 'reinsert') {
+        await this._reverseFx(op.fx);   // reopen any auto-completed parents captured when this task was deleted
+        await this.store.reinsert(op.target, op.rows);
+        return { kind: 'remove', target: op.target, id: op.id ?? op.rows[0]?.id, rows: op.rows };
+      }
+      if (op.kind === 'update') {
+        const cur = this._rowById(op.target, op.id) || {};
+        const before = {}; for (const k in op.after) before[k] = JSON.parse(JSON.stringify(cur[k] ?? null));
+        const fields = op.was ? guardedFields(op.after, cur, op.was) : op.after;   // guard on reversal, full-apply on forward
+        await this._res(op.target).update(op.id, fields);
+        const nowRow = this._rowById(op.target, op.id) || {};
+        return { kind: 'update', target: op.target, id: op.id, after: before, was: op.after, base: nowRow.updated_at };
+      }
+      if (op.kind === 'move') {
+        const cur = this._rowById('task', op.id) || {};
+        const before = { parent: cur.parent_id ?? null, pos: cur.position };
+        const fx = await this._captureCompletionFx(() => this.store.tasks.move(op.id, op.after.parent, op.after.pos));   // capture any auto-completed old parent
+        await this._reverseFx(op.fx);   // reversal side: reopen the parent this move originally auto-completed
+        return { kind: 'move', target: 'task', id: op.id, after: before, was: op.after, fx };
+      }
+      if (op.kind === 'complete') {
+        // Forward: (re)run setCompleted, capturing the full completion delta so the reverse can undo the whole sweep, not just the target.
+        if (op.mode === 'forward') {
+          const fx = await this._captureCompletionFx(() => this.store.tasks.setCompleted(op.fwd.id, op.fwd.done));
+          return { kind: 'complete', target: 'task', mode: 'reverse', fwd: op.fwd, fx };
+        }
+        // Reverse: reopen every swept/target row + drop every phantom 'complete' activity row this completion added.
+        await this._reverseFx(op.fx);
+        return { kind: 'complete', target: 'task', mode: 'forward', fwd: op.fwd };
+      }
+    },
+
+    _pushEntry(label, entryOp, { bin = false, silent = false } = {}) {
+      this._journalPush({ label, target: entryOp.target, kind: entryOp.kind, op: entryOp, bin: !!bin });
+      // silent = frequent actions (completion) that shouldn't toast on every press (emil: don't notify 100×/day).
+      // The full per-action notify policy is finalized in the T7 notification-stack pass.
+      if (!silent) this.notify(label, { actions: [{ label: 'Undo', fn: () => this.undo() }] });
+    },
+    // Applies one forward op, returns its inverse (the entry op) — the delete/create half of perform's op vocabulary.
+    async _performOne(op) {
+      if (op.kind === 'delete') {
+        const rows = op.rows || this._rowsForDelete(op.target, op.id);
+        if (op.target === 'task') {
+          // Capture before state now; perform()'s own reloadAll() flushes the store, then finalizes fx — single reload, no race.
+          const before = new Map(this.tasks.map(t => [t.id, FX_FIELDS(t)]));
+          const beforeAct = new Set((await this.store.activity.list()).map(a => a.id));
+          await this._removeRow(op.target, op.id);
+          return { kind: 'reinsert', target: op.target, id: op.id, rows, _fxCapture: { before, beforeAct } };
+        }
+        await this._removeRow(op.target, op.id);
+        return { kind: 'reinsert', target: op.target, id: op.id, rows };
+      }
+      if (op.kind === 'create') { const row = await this._createRow(op.target, op.fields); return { kind: 'remove', target: op.target, id: row.id, rows: this._rowsForDelete(op.target, row.id) }; }
+      return this._apply(op);   // update / move
+    },
+    // Wrap ANY in-place mutation of one saved row: run it, diff before/after, journal only what changed.
+    // Use for edits/archive/complete/etc. — no need to pre-list changed fields.
+    async _journalRowChange(label, target, id, mutate, { bin = false, silent = false } = {}) {
+      const before = JSON.parse(JSON.stringify(this._rowById(target, id) || {}));
+      await mutate();
+      await this.reloadAll();
+      const after = this._rowById(target, id) || {};
+      const rollback = {}, forward = {};
+      for (const k of new Set([...Object.keys(before), ...Object.keys(after)]))
+        if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) { rollback[k] = before[k] ?? null; forward[k] = after[k] ?? null; }
+      if (Object.keys(rollback).length) this._pushEntry(label, { kind: 'update', target, id, after: rollback, was: forward }, { bin, silent });
+    },
+    // Perform a user mutation and record how to reverse it. op.kind ∈ {delete, create, update, move, composite}.
+    async perform(label, op, { bin } = {}) {
+      let entryOp;
+      if (op.kind === 'composite') { const invs = []; for (const o of op.ops) invs.push(await this._performOne(o)); entryOp = { kind: 'composite', target: op.target ?? 'task', ops: invs.reverse() }; }
+      else { entryOp = await this._performOne(op); if (op.kind === 'delete' && bin === undefined) bin = true; }
+      await this.reloadAll();
+      // Finalize deferred fx for task deletes (captured before the delete; compared after this reloadAll so no double reload).
+      if (entryOp?._fxCapture) {
+        const { before, beforeAct } = entryOp._fxCapture; delete entryOp._fxCapture;
+        entryOp.fx = this._fxDiff(this.tasks, before, await this.store.activity.list(), beforeAct);
+      }
+      this._pushEntry(label, entryOp, { bin: !!bin });
+    },
+    // Shared undo/redo body; dir=-1 = undo, dir=1 = redo. Draft branch is asymmetric: undo reopens, redo skips.
+    async _journalStep(dir) {
+      if (dir < 0) { while (this.cursor > 0 && this.journal[this.cursor - 1].detached) this.cursor--; if (this.cursor <= 0) return; }
+      else { while (this.cursor < this.journal.length && this.journal[this.cursor].detached) this.cursor++; if (this.cursor >= this.journal.length) return; }
+      const e = this.journal[this.cursor + Math.min(dir, 0)];
+      if (e.kind === 'draft') { if (dir < 0) { this._reopenDraft(e.payload); e.restored = true; e.detached = true; } else this.cursor++; this._journalSave(); return; }
+      e.op = await this._apply(e.op);
+      if (e.bin) e.restored = dir < 0;   // undo: mark restored (bin row visible again); redo: unmark
+      this.cursor += dir; this._journalSave(); await this.reloadAll();
+      dir < 0 ? this.notify(e.label + ' undone', { actions: [{ label: 'Redo', fn: () => this.redo() }] }) : this.notify(e.label, { actions: [{ label: 'Undo', fn: () => this.undo() }] });
+    },
+    async undo() { await this._journalStep(-1); },
+    async redo() { await this._journalStep(1); },
+
     // Last day (YYYY-MM-DD) the user showed up for a goal (direct show_up OR a laddered completion) — feeds the detail's "warmed today/Xd ago".
     goalLastActive(id) {
       void this._activityCache;   // touch the reactive dep on every call (even a cache hit) so bindings stay subscribed
-      const sig = id + '|' + _activityV, hit = _goalLastActiveMemo.get(sig);
-      if (hit !== undefined) return hit;
-      let last = null;
-      for (const a of (this._activityCache || [])) {
-        if (a.void) continue;
-        const isHit = (a.type === 'show_up' && a.subject_id === id) || (a.type === 'complete' && (a.ctx?.goal_ids || []).includes(id));
-        if (isHit) { const d = isoDate(new Date(a.ts)); if (!last || d > last) last = d; }
-      }
-      _goalLastActiveMemo.set(sig, last);
-      return last;
+      return _memo(_goalLastActiveMemo, id + '|' + _activityV, () => {
+        let last = null;
+        for (const a of (this._activityCache || [])) {
+          if (a.void) continue;
+          const isHit = (a.type === 'show_up' && a.subject_id === id) || (a.type === 'complete' && (a.ctx?.goal_ids || []).includes(id));
+          if (isHit) { const d = isoDate(new Date(a.ts)); if (!last || d > last) last = d; }
+        }
+        return last;
+      });
     },
     warmedLabel(id) {
       const last = this.goalLastActive(id);
@@ -2280,13 +2883,10 @@ document.addEventListener('alpine:init', () => {
         // Sustaining propagates: if ANY feeding goal is sustaining, so is the identity block.
         const stage = stats.some(s => s.stage === 'sustaining') ? 'sustaining' : this.aggStage(agg);
         // Count votes from ALL feeders (incl. archived) via activity cache, memoized on _activityV.
-        const sig = ident.id + '|' + _activityV;
-        let votes = _identVotesMemo.get(sig);
-        if (votes === undefined) {
+        const votes = _memo(_identVotesMemo, ident.id + '|' + _activityV, () => {
           const feederIds = new Set(all.map(g => g.id));
-          votes = (this._activityCache || []).filter(a => !a.void && a.type === 'complete' && (a.ctx?.goal_ids || []).some(id => feederIds.has(id))).length;
-          _identVotesMemo.set(sig, votes);
-        }
+          return (this._activityCache || []).filter(a => !a.void && a.type === 'complete' && (a.ctx?.goal_ids || []).some(id => feederIds.has(id))).length;
+        });
         const rows = activeGoals.map(g => {
           let note = null;
           for (const grp of this.goalLog(g.id)) { const row = grp.rows.find(r => r.icon === '✎'); if (row) { note = { text: row.text, day: grp.day }; break; } }
@@ -2329,66 +2929,62 @@ document.addEventListener('alpine:init', () => {
     // grouped by dayKey (not label) so distant same-weekday rows never merge
     goalLog(id) {
       void this._activityCache;   // touch the reactive dep on every call (even a cache hit) so bindings stay subscribed
-      const sig = id + '|' + _activityV, hit = _goalLogMemo.get(sig);
-      if (hit) return hit;
-      const rows = (this._activityCache || [])
-        .filter(a => !a.void && (['show_up', 'graduate', 'note', 'release', 'shelve', 'unshelve', 'finish'].includes(a.type) ? a.subject_id === id : a.type === 'complete' && (a.ctx?.goal_ids || []).includes(id)))
-        .sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 30)
-        .map(a => ({
-          id: a.id,
-          dayKey: isoDate(new Date(a.ts)),   // LOCAL calendar day — matches logDayLabel (local) + the local time shown; a UTC slice mislabels evening rows
-          icon: a.type === 'show_up' ? '🔥' : a.type === 'graduate' ? '🏅' : a.type === 'note' ? '✎' : a.type === 'release' ? '🕊️' : a.type === 'shelve' ? '🧺' : a.type === 'unshelve' ? '🔥' : a.type === 'finish' ? '🏆' : '✓',
-          text: a.type === 'show_up' ? (a.text || 'Logged a show-up') : a.type === 'graduate' ? 'Became self-sustaining'
-            : a.type === 'note' ? a.text : a.type === 'release' ? 'Released — carried the heat'
-            : a.type === 'shelve' ? 'Set down on purpose' : a.type === 'unshelve' ? 'Picked back up' : a.type === 'finish' ? 'The fire did its work'
-            : `Completed "${this.byId.get(a.subject_id)?.content || 'a task'}"`,
-          time: new Date(a.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-        }));
-      const out = groupByDay(rows, d => logDayLabel(d));
-      _goalLogMemo.set(sig, out);
-      return out;
+      return _memo(_goalLogMemo, id + '|' + _activityV, () => {
+        const rows = (this._activityCache || [])
+          .filter(a => !a.void && (['show_up', 'graduate', 'note', 'release', 'shelve', 'unshelve', 'finish'].includes(a.type) ? a.subject_id === id : a.type === 'complete' && (a.ctx?.goal_ids || []).includes(id)))
+          .sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, 30)
+          .map(a => ({
+            id: a.id,
+            dayKey: isoDate(new Date(a.ts)),   // LOCAL calendar day — matches logDayLabel (local) + the local time shown; a UTC slice mislabels evening rows
+            icon: a.type === 'show_up' ? '🔥' : a.type === 'graduate' ? '🏅' : a.type === 'note' ? '✎' : a.type === 'release' ? '🕊️' : a.type === 'shelve' ? '🧺' : a.type === 'unshelve' ? '🔥' : a.type === 'finish' ? '🏆' : '✓',
+            text: a.type === 'show_up' ? (a.text || 'Logged a show-up') : a.type === 'graduate' ? 'Became self-sustaining'
+              : a.type === 'note' ? a.text : a.type === 'release' ? 'Released — carried the heat'
+              : a.type === 'shelve' ? 'Set down on purpose' : a.type === 'unshelve' ? 'Picked back up' : a.type === 'finish' ? 'The fire did its work'
+              : `Completed "${this.byId.get(a.subject_id)?.content || 'a task'}"`,
+            time: new Date(a.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+          }));
+        return groupByDay(rows, d => logDayLabel(d));
+      });
     },
     // memoized on _activityV (x-show + x-for both read it)
     recentContributions() {
       void this._activityCache;   // touch the reactive dep on every call (even a cache hit) so bindings stay subscribed
-      const hit = _recentMemo.get(_activityV);
-      if (hit) return hit;
-      const cutoff = new Date(Date.now() - 7 * 864e5).toISOString();
-      const rows = [];
-      for (const a of (this._activityCache || [])) {
-        if (a.void || a.ts < cutoff) continue;
-        if (a.type === 'show_up' || a.type === 'graduate') {
-          const g = this.goalById(a.subject_id);
-          if (!g) continue;
-          rows.push({ id: a.id, ts: a.ts, dot: a.type === 'show_up' ? 'warm' : 'gold', html: a.type === 'show_up' ? `Logged <b>${escHtml(g.name)}</b>` : `<b>${escHtml(g.name)}</b> became self-sustaining 🏅` });
-        } else if (a.type === 'complete') {
-          const title = this.byId.get(a.subject_id)?.content;
-          if (!title) continue;
-          for (const gid of (a.ctx?.goal_ids || [])) {
-            const g = this.goalById(gid);
-            if (g) rows.push({ id: a.id + '|' + gid, ts: a.ts, dot: 'mid', html: `Completed <b>${escHtml(title)}</b> → ${escHtml(g.name)}` });
+      return _memo(_recentMemo, _activityV, () => {
+        const cutoff = new Date(Date.now() - 7 * 864e5).toISOString();
+        const rows = [];
+        for (const a of (this._activityCache || [])) {
+          if (a.void || a.ts < cutoff) continue;
+          if (a.type === 'show_up' || a.type === 'graduate') {
+            const g = this.goalById(a.subject_id);
+            if (!g) continue;
+            rows.push({ id: a.id, ts: a.ts, dot: a.type === 'show_up' ? 'warm' : 'gold', html: a.type === 'show_up' ? `Logged <b>${escHtml(g.name)}</b>` : `<b>${escHtml(g.name)}</b> became self-sustaining 🏅` });
+          } else if (a.type === 'complete') {
+            const title = this.byId.get(a.subject_id)?.content;
+            if (!title) continue;
+            for (const gid of (a.ctx?.goal_ids || [])) {
+              const g = this.goalById(gid);
+              if (g) rows.push({ id: a.id + '|' + gid, ts: a.ts, dot: 'mid', html: `Completed <b>${escHtml(title)}</b> → ${escHtml(g.name)}` });
+            }
           }
         }
-      }
-      rows.sort((x, y) => y.ts.localeCompare(x.ts));
-      const out = groupByDay(
-        rows.slice(0, 20).map(({ id, ts, html, dot }) => { const d = new Date(ts); return { id, dayKey: isoDate(d), html, dot, time: d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }; }),
-        d => logDayLabel(d)
-      );
-      _recentMemo.set(_activityV, out);
-      return out;
+        rows.sort((x, y) => y.ts.localeCompare(x.ts));
+        return groupByDay(
+          rows.slice(0, 20).map(({ id, ts, html, dot }) => { const d = new Date(ts); return { id, dayKey: isoDate(d), html, dot, time: d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) }; }),
+          d => logDayLabel(d)
+        );
+      });
     },
     async createGoal(name) { const g = await this.store.goals.create({ name: (name || '').trim() || 'New goal' }); await this.loadGoals(); return g; },
     async patchGoal(id, fields) { await this.store.goals.update(id, fields); await this.loadGoals(); },
     async archiveGoal(id, val) { await this.patchGoal(id, { archived: val }); },
-    async deleteGoal(id) { await this.store.goals.remove(id); await this.loadGoals(); await this.loadTasks(); },
+    async deleteGoal(id) { await this.perform('Deleted goal', { target: 'goal', kind: 'delete', id }); },
     async addGoalNote(id, text) { if (!(text || '').trim()) return; await this.store.activity.note(id, text.trim()); await this.loadStats(); },
     async deleteLog(actId) { await this.store.activity.remove(actId); await this.loadStats(); },
     // Inline-expand edit, using the SAME measured-height grow as the task composer (open + close).
     openGoal(id, startH = 0) {
       const g = this.goalById(id);
       if (!g) return;
-      this._identSugSel = -1; this._identSugFocus = false;   // reset before (re-)opening
+      this.identSug = { open: false, sel: -1 };   // reset before (re-)opening
       this.visited.goals = true;   // ensures the lazy-mounted goals surface is rendered
       this.goalDetailId = null;    // composer + detail are mutually exclusive
       this.goalOpenId = id;
@@ -2397,7 +2993,7 @@ document.addEventListener('alpine:init', () => {
       this._growOpen(() => document.querySelector('.goal-col.editing .composer-grow'), startH);   // start at the card's height, not 0
     },
     async closeGoal() {
-      this._identSugSel = -1; this._identSugFocus = false;
+      this.identSug = { open: false, sel: -1 };
       // FIX6: cancel on a never-touched new goal leaves nothing behind
       const d = this.goalDraft;
       if (this._newGoalId === this.goalOpenId && d && (!d.name.trim() || d.name.trim() === 'New goal') && !d._identityBlank?.trim() && !d.cue?.trim() && !d.log_default?.trim() && !d.cadence && !(d.targets || []).length) {
@@ -2430,17 +3026,11 @@ document.addEventListener('alpine:init', () => {
     goalTasks(id) { return this.tasks.filter(t => !t.completed_at && !t.archived_at && this.goalsForTask(t).some(gg => gg.id === id)); },
     goalNextSteps(id) {
       void this.tasks;   // touch the reactive dep on every call (even a cache hit below) so x-show/x-html/count all stay subscribed to task changes
-      const sig = id + '|' + _calDataV, hit = _goalStepsMemo.get(sig); if (hit) return hit;
-      const out = [...this.goalTasks(id)].sort((a, b) => (a.due_at || '\uffff').localeCompare(b.due_at || '\uffff') || impRank(a.importance) - impRank(b.importance));
-      _goalStepsMemo.set(sig, out);
-      return out;
+      return _memo(_goalStepsMemo, id + '|' + _calDataV, () => [...this.goalTasks(id)].sort((a, b) => (a.due_at || '\uffff').localeCompare(b.due_at || '\uffff') || impRank(a.importance) - impRank(b.importance)));
     },
     goalMilestones(id) {
       void this.tasks;
-      const sig = id + '|' + _calDataV, hit = _goalMilestonesMemo.get(sig); if (hit) return hit;
-      const out = this.tasks.filter(t => t.milestone && this.goalsForTask(t).some(gg => gg.id === id));
-      _goalMilestonesMemo.set(sig, out);
-      return out;
+      return _memo(_goalMilestonesMemo, id + '|' + _calDataV, () => this.tasks.filter(t => t.milestone && this.goalsForTask(t).some(gg => gg.id === id)));
     },
     goalArcStats(id) { return goalArc(this.goalMilestones(id)); },
     goalArcMarks(id) { return this.goalArcStats(id).sorted.map(t => ({ done: !!t.completed_at })); },
@@ -2509,6 +3099,11 @@ document.addEventListener('alpine:init', () => {
       const anchor = new Date(now - 36e5);
       return hhmm(anchor < midnight ? midnight : anchor);
     },
+    // HAZARD: logWhenOpen (not g.id) so the string is static — a reactive dep would re-inject and kill input caret mid-typing.
+    logWhenHtml() {
+      const lwr = (label, type, model, cls, which) => `<div class="lw-row flex items-center gap-8"><span class="lw-label grow">${label}</span><input type="${type}" class="inp ${cls}" x-model="${model}"><button type="button" class="lw-ok flex-none inline-flex items-center justify-center" :disabled="logWhenFuture('${which}')" @click="confirmLogWhen(logWhenOpen,'${which}')" title="Log at this time" aria-label="Confirm time"><svg class="ico"><use href="#i-check"/></svg></button></div>`;
+      return '<div class="lw-row flex items-center gap-8 lw-note-row"><input class="inp lw-note" x-model="logWhenNote" placeholder="What did you do? (optional)"></div>' + lwr('Earlier today', 'time', 'logWhenT1', 'lw-time', 'earlier') + lwr('Yesterday', 'time', 'logWhenT2', 'lw-time', 'yesterday') + lwr('Pick date &amp; time', 'datetime-local', 'logWhenDT', 'lw-dt', 'pick');
+    },
     toggleLogWhen(id) {
       if (this.logWhenOpen === id) { this.logWhenOpen = null; return; }
       const now = new Date();
@@ -2541,24 +3136,29 @@ document.addEventListener('alpine:init', () => {
       await this.store.activity.showUp(id, ts, this.logWhenNote.trim() || this.goalById(id)?.log_default?.trim() || null);
       await this._afterLog(id);
     },
-    // GS8 graduation: pull-based, never auto. Escape/backdrop unreachable (see escape()/closeDialogs()).
-    openGraduateOffer(id) { this.graduateOffer = id; },
-    async confirmGraduation() {
-      const id = this.graduateOffer; if (!id) return;
-      this.graduateOffer = null;   // null synchronously, before any await — a second rapid tap must see it already gone
-      const g = this.goalById(id);
-      await this.store.goals.update(id, { sustained_at: new Date().toISOString() });
-      await this.store.activity.graduate(id);
+    // Shared goal lifecycle spine: update fields → activity verb → reload → optional toast/flash.
+    // Callers null their offer key synchronously (before any await) and keep call-site-only side effects.
+    async _goalStep(id, fields, verb, msg, { flash } = {}) {
+      await this.store.goals.update(id, fields);
+      if (verb) await this.store.activity[verb](id);
       await this.loadGoals(); await this.loadStats();
+      if (msg) this.toast(msg);
+      if (flash) this.flashGoal(flash[0], flash[1], id, flash[2]);
+    },
+    // GS8 graduation: pull-based, never auto. Escape/backdrop unreachable (see escape()/closeDialogs()).
+    openGraduateOffer(id) { this.goalOffer = { kind: 'graduate', id }; },
+    async confirmGraduation() {
+      const id = this.goalOffer?.id; if (!id) return;
+      this.goalOffer = null;   // null synchronously, before any await — a second rapid tap must see it already gone
+      const g = this.goalById(id);   // read name before the update
+      await this._goalStep(id, { sustained_at: new Date().toISOString() }, 'graduate', null, { flash: ['graduatingGoal', '_graduatingT', 2050] });
       // Celebration starts once the reloads land, so the stage flip and .graduating begin together.
-      this.flashGoal('graduatingGoal', '_graduatingT', id, 2050);
       this.toast('🏅 ' + (g?.name || 'This goal') + ' — self-sustaining. Carry the heat.');
     },
     async declineGraduation() {
-      const id = this.graduateOffer; if (!id) return;
-      this.graduateOffer = null;
-      await this.store.goals.update(id, { sustain_snoozed_until: new Date(Date.now() + 21 * 864e5).toISOString() });
-      await this.loadGoals(); await this.loadStats();
+      const id = this.goalOffer?.id; if (!id) return;
+      this.goalOffer = null;
+      await this._goalStep(id, { sustain_snoozed_until: new Date(Date.now() + 21 * 864e5).toISOString() }, null, null);
     },
     // Finish (HH8): the third good ending — offered when every project milestone is done.
     // goalFinishReady: cheap computed (goalMilestones is memoized) — never put in loadStats.
@@ -2569,29 +3169,49 @@ document.addEventListener('alpine:init', () => {
       const phrase = this.identityPhrase(this.identityStatement(g));
       return phrase ? '→ a vote for ' + phrase : '→ toward "' + g.name + '"';
     },
-    openFinishOffer(id) { this.finishOffer = id; },
+    openFinishOffer(id) { this.goalOffer = { kind: 'finish', id }; },
     async confirmFinishing() {
-      const id = this.finishOffer; if (!id) return;
-      this.finishOffer = null;   // null synchronously — rapid-tap guard
-      await this.store.goals.update(id, { finished_at: new Date().toISOString() });
-      await this.store.activity.finish(id);
-      await this.loadGoals(); await this.loadStats();
-      this.flashGoal('graduatingGoal', '_graduatingT', id, 2050);
-      this.toast('Finished. Carry the heat — light something new.');
+      const id = this.goalOffer?.id; if (!id) return;
+      this.goalOffer = null;   // null synchronously — rapid-tap guard
+      await this._goalStep(id, { finished_at: new Date().toISOString() }, 'finish', 'Finished. Carry the heat — light something new.', { flash: ['graduatingGoal', '_graduatingT', 2050] });
       // reload-safe: finished_at is committed; archiving after the beat is cosmetic
       setTimeout(() => this.archiveGoal(id, true), 2100);
     },
-    declineFinishing() { this.finishOffer = null; },
+    declineFinishing() { this.goalOffer = null; },
     // GS15: Recommit and Release are equal-weight — never framed as pass/fail
-    openReflect(id) { this.visited.goals = true; this.reflectGoal = id; },
+    openReflect(id) { this.visited.goals = true; this.goalOffer = { kind: 'reflect', id }; },
+    activeGoalOffer() {
+      const { kind, id } = this.goalOffer || {};
+      const n = id => this.goalById(id)?.name || '';
+      if (kind === 'graduate') return {
+        cls: 'grad-dialog', head: 'Let it run on its own?',
+        body: '”' + n(id) + '” has burned steadily for months. Mark it self-sustaining — it keeps its place and its warmth, and frees your energy for a new fire.',
+        actions: [{ cls: 'ghost grad-decline', label: 'Keep tending', fn: () => this.declineGraduation() }, { cls: 'primary grad-confirm', label: 'Let it run', fn: () => this.confirmGraduation() }],
+      };
+      if (kind === 'finish') return {
+        cls: 'finish-dialog', head: 'Let it rest, finished?',
+        body: '”' + n(id) + '” — every milestone is done. Mark it finished — the heat carries to your next fire.',
+        actions: [{ cls: 'ghost finish-decline', label: 'Keep going', fn: () => this.declineFinishing() }, { cls: 'primary finish-confirm', label: 'Finish it', fn: () => this.confirmFinishing() }],
+      };
+      if (kind === 'reflect') return {
+        cls: 'reflect-dialog', head: 'Sit with this one?',
+        body: '”' + n(id) + '” — fires change, and so do you. Recommit with a fresh shape, set it down on purpose for later, or release it and carry the heat to another fire. All are good endings.',
+        actions: [
+          { cls: 'ghost reflect-recommit', label: 'Recommit', fn: () => this.recommitGoal() },
+          { cls: 'ghost reflect-shelve', label: 'Shelve', fn: () => { this.shelveGoal(this.goalOffer?.id); this.goalOffer = null; } },
+          { cls: 'ghost reflect-release', label: 'Release', fn: () => this.releaseGoal() },
+        ],
+      };
+      return null;
+    },
     recommitGoal() {
-      const id = this.reflectGoal; if (!id) return;
-      this.reflectGoal = null;
+      const id = this.goalOffer?.id; if (!id) return;
+      this.goalOffer = null;
       this.openGoalFromDetail(id);   // reframing means editing cadence/why, same path as the detail's Edit button
     },
     async releaseGoal() {
-      const id = this.reflectGoal; if (!id) return;
-      this.reflectGoal = null;
+      const id = this.goalOffer?.id; if (!id) return;
+      this.goalOffer = null;
       const g = this.goalById(id);
       const first = firstShowUpDay(this._activityCache || [], id);
       const weeks = first ? Math.max(1, Math.floor((Date.now() - new Date(first + 'T00:00:00')) / (7 * 864e5))) : 0;
@@ -2612,32 +3232,19 @@ document.addEventListener('alpine:init', () => {
     },
     async shelveGoal(id) {
       if (!id) return;
-      await this.store.goals.update(id, { shelved_at: new Date().toISOString() });
-      await this.store.activity.shelve(id);
-      await this.loadGoals();
-      await this.loadStats();
-      this.closeGoalDetail();
-      this.toast('Set down on purpose — the coals stay banked.');
+      await this._goalStep(id, { shelved_at: new Date().toISOString() }, 'shelve', 'Set down on purpose — the coals stay banked.');
+      this.closeGoalDetail();   // must stay at call site
     },
     async unshelveGoal(id) {
       if (!id) return;
-      await this.store.goals.update(id, { shelved_at: null });
-      await this.store.activity.unshelve(id);
-      await this.loadGoals();
-      await this.loadStats();
-      this.toast('Picked back up — the fire returns.');
+      await this._goalStep(id, { shelved_at: null }, 'unshelve', 'Picked back up — the fire returns.');
     },
+    _milestoneBeat(gid) { this.flashGoal('pulseGoal', '_pulseT', gid, 1200); this.flashGoal('msBeatGid', '_msBeatT', gid, 1400); },
     async finishStep(taskId, gid) {
       const beat = () => {
         const t = this.byId.get(taskId);
-        if (t?.milestone) {
-          if (this.msBeatGid !== gid) {   // applyComplete already fired these; skip to avoid stutter
-            this.flashGoal('pulseGoal', '_pulseT', gid, 1200);
-            this.flashGoal('msBeatGid', '_msBeatT', gid, 1400);
-          }
-        } else {
-          this.flashGoal('pulseGoal', '_pulseT', gid, 600);
-        }
+        if (t?.milestone) this._milestoneBeat(gid);
+        else this.flashGoal('pulseGoal', '_pulseT', gid, 600);
       };
       if (await this.confirmSweep(taskId, beat)) return;
       await this.applyComplete(taskId, true);
@@ -2660,7 +3267,6 @@ document.addEventListener('alpine:init', () => {
     async loadLocations() {
       this.locations = await this.store.locations.list();
       this.travel = await this.store.travel.list();
-      this.currentLocationId = this.store.currentLocationId();
       this.homeLocationId = this.store.homeLocationId();
       this.currentRegion = this.store.currentRegion();
     },
@@ -2671,7 +3277,7 @@ document.addEventListener('alpine:init', () => {
     locByName(nm) { const low = String(nm).toLowerCase(); return this.locations.find(x => x.name.toLowerCase() === low) || (low === 'home' && this.homeLocationId ? this.locations.find(x => x.id === this.homeLocationId) : null) || null; },
     async addLocation(name, region) { if (!name?.trim()) return; await this.store.locations.add({ name: name.trim(), region: region || this.currentRegion }); await this.loadLocations(); },
     async patchLocation(id, fields) { await this.store.locations.update(id, fields); await this.loadLocations(); },
-    async deleteLocation(id) { await this.store.locations.remove(id); await this.loadLocations(); },
+    async deleteLocation(id) { await this.perform('Deleted location', { target: 'location', kind: 'delete', id }); },
     async addTravelPair() {
       const { from, to, min } = this.travelPair;
       if (!from || !to || from === to) return;
@@ -2687,11 +3293,10 @@ document.addEventListener('alpine:init', () => {
       const l = this.locations.find(x => x.id === L.ids[0]); if (!l) return '';
       return L.ids.length > 1 ? `${l.name} +${L.ids.length - 1}` : l.name;
     },
-    setLocMode(mode) { this.draft.location = { mode, ids: mode === 'any' ? [] : (this.draft.location?.ids || []) }; },
     // --- location hybrid picker (sentence polarity + here-row + region chip rows) ---
     locNew: null, locExpanded: [], locOrder: {},
-    openLoc() {
-      this.togglePop('loc');
+    openLoc(anchor) {
+      this.togglePop('loc', anchor);
       if (this.pop !== 'loc') return;
       this.locNew = null; this.locExpanded = [];
       // Freeze chip order for this open: selected-first AT OPEN. Toggling must never reorder mid-interaction —
@@ -2754,9 +3359,6 @@ document.addEventListener('alpine:init', () => {
     },
     openLocManager() { this.pop = null; this.locMgr = true; this.loadLocations(); },
     toggleLocId(id) { const ids = new Set(this.draft.location?.ids || []); ids.has(id) ? ids.delete(id) : ids.add(id); this.draft.location = { mode: this.draft.location?.mode || 'only', ids: [...ids] }; },
-    async setHere(id) { await this.store.setCurrentLocation(id); await this.loadLocations(); },
-    async switchRegion(name) { await this.store.setCurrentRegion(name); await this.loadLocations(); },
-    currentLocation() { return this.locations.find(l => l.id === this.currentLocationId) || null; },
     regions() { return [...new Set(this.locations.map(l => l.region || 'Home'))]; },
     // Manager grouping (string model): regions in use + any just-created empty ones.
     displayRegions() { return [...new Set([...this.locations.map(l => l.region || 'Home'), ...this.pendingRegions])]; },
@@ -2795,8 +3397,7 @@ document.addEventListener('alpine:init', () => {
       const id = this.filterEdit?.id; this.filterEdit = null;
       if (!id) return;
       if (this.navSel.type === 'filter' && this.navSel.id === id) this.setNav('backlog');
-      await this.store.filters.remove(id);
-      await this.loadFilters();
+      await this.perform('Deleted filter', { target: 'filter', kind: 'delete', id });
     },
     filterMatches() { return this.filterEdit ? this.store.runFilter(this.filterEdit.query).map(id => this.byId.get(id)).filter(Boolean) : []; },
     filterMatchCount() { return this.filterMatches().length; },
@@ -2812,22 +3413,25 @@ document.addEventListener('alpine:init', () => {
         await this.store.tasks.update(row.id, { position: maxPos + 1 });
         row.position = maxPos + 1;
       }
-      this.tasks.push(row);
+      this.tasks.push(row); if (row.parent_id) this.parentIds.add(row.parent_id);   // keep hasChildren truthful until loadTasks rebuilds
       await this.loadTasks();
       await this.loadAreas();
+      this._clearPending('new');   // saved → the recovered-draft slot is spent
       this.resetDraft();
+      this._draftBase = this._draftSig();   // next rapid-add starts clean
+      this.draftRestored = false;
       return row;
     },
 
     childTasks(id) { return this.tasks.filter(t => t.parent_id === id).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); },
-    addChecklistItem(text) { if (!text.trim()) return; this.pushUndoDraft('Added item'); this.draft.checklist.unshift({ id: crypto.randomUUID(), text: text.trim(), done: false }); this.sortChecklist(); },   // new items land at the TOP of the open bucket
+    addChecklistItem(text) { if (!text.trim()) return; this.draft.checklist.unshift({ id: crypto.randomUUID(), text: text.trim(), done: false }); this.sortChecklist(); },   // new items land at the TOP of the open bucket
     // The composer keeps the array open-first/done-last (stable) so the array order == the visual order (drag indices map 1:1).
     sortChecklist() { this.draft.checklist.sort(byDone); },
     // Uncheckable: the checklist renders as a plain notes list (no boxes, no done styling) everywhere
     chkPlain() { return !!this.editingTask()?.checklist_plain; },
     async toggleChecklistPlain() { const t = this.editingTask(); if (t && await this.store.tasks.update(t.id, { checklist_plain: !t.checklist_plain })) await this.loadTasks(); },
     toggleChecklistItem(item) { item.done = !item.done; this.sortChecklist(); },   // toggling done moves the item to the done bucket
-    removeChecklistItem(item) { this.pushUndoDraft('Deleted item'); const i = this.draft.checklist.indexOf(item); if (i >= 0) this.draft.checklist.splice(i, 1); },
+    removeChecklistItem(item) { const i = this.draft.checklist.indexOf(item); if (i >= 0) this.draft.checklist.splice(i, 1); if ((item.text || '').trim()) this._pushBinItem('checklist-item', item.text, { taskId: this.editing, index: i, item }); },
     // Backspace on an empty checklist row deletes it and lands the caret on the neighboring entry.
     chkBackspace(item, e) {
       if (e.target.textContent !== '') return;
@@ -2844,6 +3448,7 @@ document.addEventListener('alpine:init', () => {
     chkRowUp(el, e) {
       const d = this._chkDownAt; this._chkDownAt = null; this._chkPointer = false;
       if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;   // a drag-select → keep the selection, don't edit
+      if (el.contentEditable === 'true') return;   // already editing (2nd click of dblclick) — let browser word-select natively
       el.contentEditable = 'true'; el.focus();
       const r = document.caretRangeFromPoint?.(e.clientX, e.clientY);      // caret at the click point (best-effort)
       if (r && el.contains(r.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
@@ -2881,13 +3486,93 @@ document.addEventListener('alpine:init', () => {
     // Enter on a checklist row inserts a new empty OPEN item just below it and focuses it. A new open item can't
     // live in the done bucket, so a row Entered from the done bucket lands at the end of the open bucket (the stable re-sort pulls it up).
     insertChkAfter(item) {
-      this.pushUndoDraft('Added item');
       const it = { id: crypto.randomUUID(), text: '', done: false };
       this.draft.checklist.splice(this.draft.checklist.indexOf(item) + 1, 0, it);
       this.sortChecklist();
       this.$nextTick(() => { const el = document.querySelector(`.composer-entries .entry.chk[data-id="${it.id}"] .entry-txt`); if (el) { el.contentEditable = 'true'; el.focus(); } });   // rows are editable-on-demand: make editable before focusing
     },
-    async commitSubGhost() { const v = this.subGhost.trim(); this.subGhost = ''; if (v && this.editing) { this.pushUndo('Added subtask'); await this.addSubtask(this.editing, v); } },
+    // --- Subtask rows are pill editors too: the SAME title engine, aimed via _nlpFocus at the focused row. ---
+    // On focus, point the engine at this row and rebuild its sub-draft from the pills already in its DOM (the
+    // DOM is the record — survives blur→picker-click→re-focus). c = the child row; null = the "new subtask" ghost.
+    focusSubEditor(el, c) {
+      _nlpFocus = { el, draft: this.subDraft, ghost: !c, c };
+      this._resetSubDraft();               // fresh scratch (also refreshes _nlpFocus.draft)
+      this._recommitPills(PILL_KINDS);      // fields ← pills in this editor
+      this.syncTitle();                     // content ← text nodes (+ mirrors subGhost for the ghost)
+    },
+    focusTitle() { _nlpFocus = null; },     // title regains the default target when it (re)gains focus
+    // The ghost editor carries no x-model — mirror the (kept/restored) subGhost text into its DOM when it's idle
+    // (x-effect on the row: re-runs when subGhost changes, but never clobbers what the user is actively typing).
+    subGhostSync(el) { if (document.activeElement !== el && (el.textContent || '') !== (this.subGhost || '')) el.textContent = this.subGhost || ''; },
+    subGhostHtml() { return '<span class="check sm ghost-check"></span><div class="entry-txt sub-ce" role="textbox" tabindex="0" contenteditable="true" data-placeholder="New subtask" x-effect="subGhostSync($el)" @focus="focusSubEditor($el, null)" @input="subInput()" @beforeinput="onEditorBeforeInput($event)" @keydown="entryKey($event); subEditorKeydown($event, null)" @keydown.escape="entryEscape($event)" @paste="onPaste($event)" @keydown.stop></div>'; },
+    _resetSubDraft() { this.subDraft = emptyDraft(); if (_nlpFocus) _nlpFocus.draft = this.subDraft; },
+    _clearEditor(el) { if (el) el.textContent = ''; },
+    subInput() { this.syncTitle(); this.refreshAreaPicker(); this.refreshGoalPicker(); },
+    subEditorKeydown(e, c) {
+      if (this._pillKeydown(e)) return;
+      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); c ? this.commitChildEdit(c, true) : this.commitGhostStay('sub'); }
+    },
+    // A sub-draft → child task fields. A subtask's parent is the editing task (not a project); it has no checklist of its own.
+    _subFields(d) { const f = this.draftFields(d); delete f.project; delete f.project_id; delete f.checklist; f.parent_id = this.editing; return f; },
+    async commitSubGhost() {
+      const el = document.querySelector('.composer-entries .entry.ghost:not(.chk) .entry-txt');
+      // Rebuild the sub-draft from the ghost's DOM — covers Save-flush, where focus may never have entered the row.
+      if (el) { _nlpFocus = { el, draft: this.subDraft, ghost: true }; this._resetSubDraft(); this._recommitPills(PILL_KINDS); this.syncTitle(); }
+      const fields = this._subFields(this.subDraft);   // content trimmed + importance-word flush live in draftFields
+      this.subGhost = '';
+      if (this.editing && fields.content) {
+        const task = await this.addSubtask(this.editing, fields);   // create-with-fields; position-at-top + reopen-parent
+        if (task) this._pushEntry('Added subtask', { kind: 'remove', target: 'task', id: task.id, rows: this._rowsForDelete('task', task.id) });
+      }
+      this._clearEditor(el); this._resetSubDraft(); _nlpFocus = null;
+    },
+    // Fill an existing child row's editor with its content text + a pill per stored field (inverse of the parser).
+    // Fields come from the pills, exactly like the title: a throwaway draft during the build gives each pill a correct
+    // pre-chip `prior` snapshot (empty→accumulate) so backspace-revert works; the row's live draft is rebuilt on focus.
+    hydrateSubEditor(el, c) {
+      const prev = _nlpFocus;
+      _nlpFocus = { el, draft: emptyDraft(), c };
+      el.textContent = '';
+      if (c.content) el.appendChild(document.createTextNode(c.content));
+      const add = (kind, value) => { el.appendChild(this.makePill(kind, value, '')); this.commitPill(kind, value); };
+      const min = c.est_minutes || 0;
+      if (c.importance && c.importance !== 'none') add('imp', c.importance);
+      if (c.due_at) add('date', { iso: c.due_at.slice(0, 10), time: timeOf(c.due_at), from: c.available_from || null });
+      if (c.deadline_at) add('deadline', { iso: (c.deadline_at || '').slice(0, 10) });
+      if (c.recurrence) add('rec', c.recurrence);
+      if (min) add('dur', min);
+      for (const a of (c.area_ids || [])) add('area', a);
+      for (const g of (c.goal_ids || [])) add('goal', g);
+      if (c.location && c.location.mode !== 'any') { const nm = this.locations.find(l => l.id === c.location.ids?.[0])?.name; if (nm) add('loc', (c.location.mode === 'except' ? 'away from ' : '') + nm); }
+      _nlpFocus = prev;
+    },
+    // x-init runs once; Alpine reuses keyed x-for rows across reloads → refresh each idle child editor's pills from the store.
+    syncSubRows() {
+      if (!this.editing) return;
+      document.querySelectorAll('.composer-entries .entry[data-id] .entry-txt.sub-ce').forEach(el => {
+        if (document.activeElement === el) return;
+        const c = this.byId.get(el.closest('.entry')?.dataset.id);
+        if (c) this.hydrateSubEditor(el, c);
+      });
+    },
+    // Only the child-owned fields — used to compare edited vs stored so an unchanged blur writes nothing (guarded, no-op write).
+    _sameChildFields(a, b) {
+      return ['content', 'notes', 'importance', 'due_at', 'available_from', 'deadline_at', 'est_minutes', 'recurrence', 'location', 'area_ids', 'goal_ids']
+        .every(k => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
+    },
+    // Commit an edited child row: rebuild its sub-draft from the row's pills, and update the child if anything changed.
+    // Skips while a picker is mid-selection (blur fires before the pick lands — the pick refocuses + a later blur commits).
+    async commitChildEdit(c, advance = false) {
+      if (this.areaPicker.open || this.goalPicker.open) return;
+      const el = document.querySelector('.composer-entries .entry[data-id="' + c.id + '"] .entry-txt.sub-ce');
+      if (el) this.focusSubEditor(el, c);            // rebuild subDraft from this row's DOM (idempotent)
+      const fields = this._subFields(this.subDraft);
+      _nlpFocus = null;
+      if (advance && el) this.focusEntryGhost(el);   // Enter → hop to the "new subtask" ghost, mirroring the old flow
+      if (!fields.content) { this.syncSubRows(); return; }   // emptied → revert to stored (never blank the task's title)
+      if (this._sameChildFields(fields, this._subFields(this.taskToDraft(c)))) return;
+      if (await this.store.tasks.update(c.id, fields)) { await this.loadTasks(); this.$nextTick(() => this.syncSubRows()); }
+    },
     commitChkGhost() { const v = this.chkGhost.trim(); this.chkGhost = ''; if (v) this.addChecklistItem(v); },
     // Commit the ghost, then keep the caret on it for fast successive entry (survives the empty→list template swap).
     async commitGhostStay(kind) {
@@ -2900,15 +3585,16 @@ document.addEventListener('alpine:init', () => {
       const el = e.target, ce = el.isContentEditable;
       const len = ce ? el.textContent.length : el.value.length, off = ce ? this._caretOffset(el) : el.selectionStart;
       const collapsed = ce ? getSelection()?.isCollapsed : el.selectionStart === el.selectionEnd;
-      if (e.key === 'ArrowUp' && collapsed && off === 0) { if (this.moveEntryFocus(el, -1)) e.preventDefault(); }
+      if (e.key === 'ArrowUp' && collapsed && off === 0) { if (this.moveEntryFocus(el, -1) || this._focusUp(this.$refs.desc)) e.preventDefault(); }
       else if (e.key === 'ArrowDown' && collapsed && off === len) { if (this.moveEntryFocus(el, 1)) e.preventDefault(); }
     },
-    // dir hops in VISUAL order (ghost → open bucket → done bucket) — sort the fields by their on-screen top so the
-    // CSS-ordered ghost-on-top layout is respected regardless of DOM order.
-    moveEntryFocus(el, dir) {
-      const list = el.closest('.entry-list'); if (!list) return false;
-      const fields = [...list.querySelectorAll('.entry-txt')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-      const next = fields[fields.indexOf(el) + dir];
+    // VISUAL order (ghost → open bucket → done bucket) — sort by on-screen top so the CSS-ordered ghost-on-top
+    // layout is respected regardless of DOM order.
+    _entryFields(list) { return [...list.querySelectorAll('.entry-txt')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top); },
+    // Up-ladder rung (entries → description → title), mirroring the ArrowDown ones. Caret lands at the END —
+    // you're arriving from below, where the down-ladder lands it at 0.
+    _focusUp(el) { if (!el) return false; el.focus(); this._setCaret(el, el.textContent.length); return true; },
+    _focusEntry(next) {
       if (!next) return false;
       if (next.tagName === 'DIV') next.contentEditable = 'true';   // checklist row: editable-on-demand, make editable before focus
       next.focus();
@@ -2916,14 +3602,34 @@ document.addEventListener('alpine:init', () => {
       else { const n = next.value.length; next.setSelectionRange?.(n, n); }
       return true;
     },
+    // Escape in an entry field: revert the edit and step out to the composer. An EMPTY field has nothing to
+    // revert and nothing to step back to, so it skips straight to closing (these fields @keydown.stop, so the
+    // window handler never sees it).
+    entryEscape(e, revert) {
+      const el = e.target;
+      if (!(el.value ?? el.textContent).trim()) return this.escape();
+      revert?.(); el.blur();
+    },
+    moveEntryFocus(el, dir) {
+      const list = el.closest('.entry-list'); if (!list) return false;
+      const fields = this._entryFields(list);
+      return this._focusEntry(fields[fields.indexOf(el) + dir]);
+    },
+    // Bottom rung of the ArrowDown ladder (title → description → entries). Only a REAL entry list is a target —
+    // the empty-state ghosts aren't "items that exist", so down from an empty composer stays put.
+    focusFirstEntry() {
+      const list = document.querySelector('.composer-entries .entry-list');
+      return !!list && this._focusEntry(this._entryFields(list)[0]);
+    },
     // Enter on a subtask row: commit (blur → rename) and jump to the ghost "new subtask" prompt.
     focusEntryGhost(input) { input.closest('.entry-list')?.querySelector('.entry.ghost .entry-txt')?.focus(); },
-    // Live "::" editor for a checklist item: commit text live (so Enter-insert / save never lose in-progress edits),
-    // then re-render the faded "::" markup keeping the caret (chkLive keeps textContent === raw; mirrors onDescInput).
+    // defer-to-blur when markdown is present: skip innerHTML rewrite so ⌘Z is preserved.
+    // Pure "::" text (no markdown) still rewrites live so the separator shows while typing.
     chkInput(item, e) {
       if (e.isComposing) return;
       const el = e.target, text = el.textContent;
       item.text = text;
+      if (/[*_~`<&]/.test(text)) return;   // markdown present → skip rewrite, blur will decorate
       const off = this._caretOffset(el), html = chkLiveRender(text);
       if (el.innerHTML !== html) { el.innerHTML = html; this._setCaret(el, off); }
     },
@@ -2948,7 +3654,6 @@ document.addEventListener('alpine:init', () => {
       }
       if (!texts.length) return;
       e.preventDefault();
-      this.pushUndoDraft('Pasted items');
       const items = texts.map(t => ({ id: crypto.randomUUID(), text: t, done: false }));
       // ghost paste lands at the TOP (like addChecklistItem); pasting onto an item inserts right after it
       const at = item == null ? 0 : this.draft.checklist.indexOf(item) + 1;
@@ -2973,8 +3678,7 @@ document.addEventListener('alpine:init', () => {
       e.clipboardData.setData('text/plain', items.map(el => '- ' + el.textContent.trim()).join('\n'));
       e.preventDefault();
     },
-    async renameChild(c, name) { name = name.trim(); if (name && name !== c.content && await this.store.tasks.update(c.id, { content: name })) await this.loadTasks(); },
-    async removeChild(c) { if (this.askDeleteTask(c.id, 'child')) return; this.pushUndo('Deleted subtask'); if (await this.store.tasks.remove(c.id)) await this.loadTasks(); },
+    async removeChild(c) { if (this.askDeleteTask(c.id, 'child')) return; await this.perform('Deleted subtask', { target: 'task', kind: 'delete', id: c.id }); },
     // Drag-to-reorder the composer entry list (grip handle). kind: 'sub' = child tasks (store order) | 'chk' = draft.checklist.
     initEntrySort(el, kind) {
       makeSortable(el, { itemSel: '.entry:not(.ghost)', handleSel: '.entry-grip',
@@ -2983,14 +3687,12 @@ document.addEventListener('alpine:init', () => {
     async reorderSubtasks(from, to) {
       const ids = this.childTasks(this.editing).map(c => c.id);
       ids.splice(to, 0, ids.splice(from, 1)[0]);
-      this.pushUndo('Reordered subtasks');
       if (await this.store.tasks.reorder(ids)) await this.loadTasks();
     },
     reorderChecklist(from, to) {
-      this.pushUndoDraft('Reordered');
       this.draft.checklist.splice(to, 0, this.draft.checklist.splice(from, 1)[0]);
       this.sortChecklist();   // buckets are authoritative — a drop that crossed the open/done split snaps back to its own bucket
-      if (this.editing) this.store.tasks.update(this.editing, { checklist: this.draft.checklist });
+      if (this.editing) this.store.tasks.update(this.editing, { checklist: this.draft.checklist });   // persist immediately; the Saved-task diff (byId baseline is pre-reorder) still journals it for ⌘Z
     },
     // O(1)/row via precomputed _editDescs set (was descendantIds() per row → O(n²) on edit-open)
     hiddenInEdit(t) { return !!this.editing && t.id !== this.editing && !!this._editDescs && this._editDescs.has(t.id); },
@@ -3047,12 +3749,16 @@ document.addEventListener('alpine:init', () => {
       const cis = [...scope.querySelectorAll('.chk-row')].map(r => +r.dataset.ci);   // current visual order → original array indices
       cis.splice(to, 0, cis.splice(from, 1)[0]);
       const cl = t.checklist || [], next = cis.map(i => cl[i]).filter(Boolean);
-      this.pushUndo('Reordered checklist');
-      if (await this.store.tasks.update(id, { checklist: next })) await this.loadTasks();
+      // Journal against the captured id so ⌘Z reverses THIS reorder — not an earlier action on another task.
+      await this._journalRowChange('Reordered checklist', 'task', id, () => this.store.tasks.update(id, { checklist: next }));
     },
-    listDragOver(e) { const itemEl = e.target.closest && e.target.closest('.item'); const r = this._rowFromEl(itemEl); if (r) this.dragOver(r.t, { clientY: e.clientY, clientX: e.clientX, currentTarget: itemEl, dataTransfer: e.dataTransfer }, r.depth); },
+    listDragOver(e) { const itemEl = e.target.closest && e.target.closest('.item'); const r = this._rowFromEl(itemEl); if (r) this.dragOver(r.t, { clientY: e.clientY, clientX: e.clientX, currentTarget: itemEl, dataTransfer: e.dataTransfer }, r.depth); if (this.dragId) edgeScrollStep(document.querySelector('.surface-lists .app'), e.clientY); },
     listDragLeave(e) { this.dragLeave(null, e); },
-    listDrop(e) { const r = this._rowFromEl(e.target.closest && e.target.closest('.item')); if (r) this.drop(r.t); },
+    // No row lookup: the drop lands wherever the pointer happens to be — the gap between rows, the list's own
+    // padding, or the drop-ghost (an .item with NO data-id, rendered exactly where you're aiming). Gating on
+    // "the release resolved to a row" threw those away, which is why some drags silently did nothing. The last
+    // dragOver already recorded the intent in taskDropHint, and drop() reads only that.
+    listDrop() { this.drop(); },
     hasProgress(t) { return this.childTasks(t.id).length > 0 || (t.checklist || []).length > 0; },
     rowProgress(t) {
       const kids = this.childTasks(t.id);
@@ -3064,21 +3770,26 @@ document.addEventListener('alpine:init', () => {
       const task = this.byId.get(taskId); if (!task) return;
       const list = task.checklist || [], item = list[i]; if (!item) return;
       const done = !item.done;
-      if (!await this.store.tasks.setChecklistItem(taskId, item.id, done)) return;
-      // sync task completion once every item is checked
-      const allDone = list.length > 0 && list.every((x, j) => j === i ? done : x.done);
-      if (allDone !== !!task.completed_at) await this.store.tasks.setCompleted(taskId, allDone);
-      await this.loadTasks();
+      // Journal the whole delta (item done + any parent auto-complete) against taskId so ⌘Z reverses THIS toggle,
+      // not an earlier action on a different task. silent: a checklist tick is a frequent action — no toast (like completion).
+      await this._journalRowChange(done ? 'Checked item' : 'Unchecked item', 'task', taskId, async () => {
+        if (!await this.store.tasks.setChecklistItem(taskId, item.id, done)) return;
+        // sync task completion once every item is checked
+        const allDone = list.length > 0 && list.every((x, j) => j === i ? done : x.done);
+        if (allDone !== !!task.completed_at) await this.store.tasks.setCompleted(taskId, allDone);
+      }, { silent: true });
     },
-    async addSubtask(parentId, content) {
-      content = content.trim(); if (!content) return;
-      const task = await this.store.tasks.create({ content, parent_id: parentId });
+    // arg is a plain content string OR a full fields object (subtask NLP → due/prio/area/… land on the child).
+    async addSubtask(parentId, arg) {
+      const fields = typeof arg === 'string' ? { content: arg } : { ...arg };
+      fields.content = (fields.content || '').trim(); if (!fields.content) return;
+      const task = await this.store.tasks.create({ ...fields, parent_id: parentId });
       if (!task) return;
-      // Append at bottom of siblings so it appears last in the composer entries.
+      // Insert at TOP of siblings so it lands right under the "New subtask" ghost — mirrors the checklist ghost.
       const siblings = this.tasks.filter(t => t.parent_id === parentId);
       if (siblings.length) {
-        const maxPos = Math.max(...siblings.map(t => t.position ?? 0));
-        await this.store.tasks.update(task.id, { position: maxPos + 1 });
+        const minPos = Math.min(...siblings.map(t => t.position ?? 0));
+        await this.store.tasks.update(task.id, { position: minPos - 1 });
       }
       // new child reopens a completed parent (and its ancestors)
       if (this.byId.get(parentId)?.completed_at) await this.store.tasks.setCompleted(parentId, false);
@@ -3092,7 +3803,7 @@ document.addEventListener('alpine:init', () => {
       if (!this.editing) return;
       const t = this.byId.get(this.editing);
       if (!t) return;
-      this.closeComposer();
+      this.closeComposer(true);   // task becomes a goal → drop its task draft
       const goal = await this.createGoal(t.content);   // creates the goal + reloads goals
       if (goal) {
         if ((t.checklist || []).length) await this.store.tasks.update(t.id, { archived_at: new Date().toISOString() });
@@ -3107,17 +3818,22 @@ document.addEventListener('alpine:init', () => {
       if (!this.editing) return;
       const kids = this.childTasks(this.editing);
       if (!kids.length) return;
-      this.pushUndo('Converted to checklist');
-      const items = kids.map(k => ({ id: crypto.randomUUID(), text: k.content, done: !!k.completed_at }));
+      const before = JSON.parse(JSON.stringify(this.draft.checklist));
+      const items = kids.map(k => ({ id: crypto.randomUUID(), text: k.notes ? `${k.content}::${k.notes}` : k.content, done: !!k.completed_at }));
       this.draft.checklist = [...this.draft.checklist, ...items];
-      this._suppressUndo = true;
-      try {
-        // the checklist must be PERSISTED before any subtask is removed — a failed update aborts the conversion
-        if (await this.store.tasks.update(this.editing, { checklist: this.draft.checklist }))
-          await Promise.all(kids.map(k => this.store.tasks.remove(k.id)));
-        else this.draft.checklist = this.draft.checklist.filter(c => !items.includes(c));   // revert the staged copy; subtasks stay
-      } finally { this._suppressUndo = false; }
-      await this.loadTasks();
+      // the checklist must be PERSISTED before any subtask is removed — a failed update aborts the conversion
+      if (await this.store.tasks.update(this.editing, { checklist: this.draft.checklist })) {
+        const kidRows = kids.map(k => this._rowsForDelete('task', k.id));   // snapshot before removal, for undo
+        await Promise.all(kids.map(k => this.store.tasks.remove(k.id)));
+        await this.reloadAll();
+        this._pushEntry('Converted to checklist', { kind: 'composite', target: 'task', ops: [
+          ...kids.map((k, i) => ({ kind: 'reinsert', target: 'task', id: k.id, rows: kidRows[i] })).reverse(),
+          { kind: 'update', target: 'task', id: this.editing, after: { checklist: before } },
+        ] });
+      } else {
+        this.draft.checklist = this.draft.checklist.filter(c => !items.includes(c));   // revert the staged copy; subtasks stay
+      }
+      this._draftBase = this._draftSig(); this._clearPending(this._draftKey());   // conversion is persisted → this is the saved state, not an unsaved draft
     },
     // Overflow menu: checklist → subtasks. CREATE FIRST, DELETE LAST: the checklist is cleared only after
     // every subtask verifiably exists; any failure rolls back the created tasks and leaves the checklist
@@ -3126,12 +3842,16 @@ document.addEventListener('alpine:init', () => {
       if (!this.editing) return;
       const items = this.draft.checklist.filter(i => i.text.trim());
       if (!items.length) return;
-      this.pushUndo('Converted to subtasks');
-      this._suppressUndo = true;
+      const beforeChecklist = JSON.parse(JSON.stringify(this.draft.checklist));
+      const wasCompletedAt = this.byId.get(this.editing)?.completed_at ?? null;
       const made = [];
+      let ok = false;
       try {
         for (const item of items) {
-          const task = await this.store.tasks.create({ content: item.text, parent_id: this.editing });
+          const sep = item.text.indexOf('::');
+          const content = sep >= 0 ? item.text.slice(0, sep).trim() : item.text;
+          const notes = sep >= 0 ? item.text.slice(sep + 2).trim() : null;
+          const task = await this.store.tasks.create({ content, parent_id: this.editing, ...(notes ? { notes } : {}) });
           if (!task) throw 0;
           made.push(task.id);
         }
@@ -3140,14 +3860,37 @@ document.addEventListener('alpine:init', () => {
         // every subtask exists — only NOW is the destructive step safe
         this.draft.checklist = [];
         await this.store.tasks.update(this.editing, { checklist: [] });
-        if (this.byId.get(this.editing)?.completed_at) await this.store.tasks.setCompleted(this.editing, false);   // new children reopen a completed parent
+        if (wasCompletedAt) await this.store.tasks.setCompleted(this.editing, false);   // new children reopen a completed parent
+        ok = true;
       } catch {
         await Promise.allSettled(made.map(id => this.store.tasks.remove(id)));   // undo partial creates; checklist intact
-      } finally { this._suppressUndo = false; }
-      await this.loadTasks();
+      }
+      await this.reloadAll();
+      if (ok) this._pushEntry('Converted to subtasks', { kind: 'composite', target: 'task', ops: [
+        ...made.map(id => ({ kind: 'remove', target: 'task', id })).reverse(),
+        { kind: 'update', target: 'task', id: this.editing, after: { checklist: beforeChecklist } },
+        ...(wasCompletedAt ? [{ kind: 'update', target: 'task', id: this.editing, after: { completed_at: wasCompletedAt } }] : []),
+      ] });
+      this._draftBase = this._draftSig(); this._clearPending(this._draftKey());   // conversion is persisted → this is the saved state, not an unsaved draft
     },
-    anyDialog() { return !!(this.confirm || this.shortcutsOpen || this.palette.open || this.locMgr || this.filterEdit || this.eventEdit || this.blockEdit || this.deletingProject || this.deleteSub || this.graduateOffer || this.finishOffer || this.reflectGoal); },
-    closeDialogs() { if (this.confirm) this.confirmNo(); this.shortcutsOpen = false; this.palette.open = false; this.locMgr = false; this.filterEdit = null; this.eventEdit = null; this.blockEdit = null; this.deletingProject = null; this.deleteSub = null; this.graduateOffer = null; this.finishOffer = null; this.reflectGoal = null; },
+    // Overflow menu: duplicate the edited task. Copies from the SAVED row (byId), not the in-progress draft —
+    // fresh checklist ids, drop identity/status/subtree. Routed through perform() so ⌘Z removes the copy.
+    async duplicateEditing() {
+      const src = this.byId.get(this.editing); if (!src) return;
+      const f = {
+        content: src.content, notes: src.notes, importance: src.importance,
+        due_at: src.due_at, deadline_at: src.deadline_at, scheduled_at: src.scheduled_at,
+        est_minutes: src.est_minutes, parent_id: src.parent_id, area_ids: src.area_ids,
+        goal_ids: src.goal_ids, color: src.color, favorite: src.favorite, place: src.place,
+        location: src.location, recurrence: src.recurrence, milestone: src.milestone,
+        checklist: (src.checklist || []).map(c => ({ ...c, id: crypto.randomUUID() })),
+        checklist_plain: src.checklist_plain,
+      };
+      this.closeComposer(true);   // close first (saved=true → don't keep a draft)
+      await this.perform('Duplicated task', { target: 'task', kind: 'create', fields: f });
+    },
+    anyDialog() { return !!(this.confirm || this.palette.open || DIALOG_KEYS.some(k => this[k])); },
+    closeDialogs() { if (this.confirm) this.confirmNo(); this.palette.open = false; for (const k of DIALOG_KEYS) this[k] = null; },
     askConfirm(opts) { this.confirm = opts; },
     async confirmYes() { const c = this.confirm; this.confirm = null; if (c?.onConfirm) await c.onConfirm(); },
     confirmNo() { const c = this.confirm; this.confirm = null; if (c?.onCancel) c.onCancel(); },
@@ -3167,7 +3910,7 @@ document.addEventListener('alpine:init', () => {
       });
     },
     insertAtRange(range, node) {
-      const el = this.$refs.content; el.focus();
+      const el = this._nlpEl(); el.focus();
       const s = getSelection(); s.removeAllRanges();
       if (range && el.contains(range.startContainer)) s.addRange(range); 
       else { const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); s.addRange(r); }
@@ -3194,7 +3937,7 @@ document.addEventListener('alpine:init', () => {
     async promoteToSidebar(id) {
       if (!id) return;
       if (await this.store.tasks.update(id, { sidebar: true, parent_id: null })) await this.loadTasks();   // sidebar projects are top-level
-      this.closeComposer();   // the edited task became a sidebar project — close the composer
+      this.closeComposer(true);   // the edited task became a sidebar project — close + drop its draft
     },
     // Shared sweep-check: if completing `id` would also complete open dependents (children/blockers),
     // show the confirm dialog and return true — the caller must stop and let the dialog finish the job.
@@ -3219,17 +3962,17 @@ document.addEventListener('alpine:init', () => {
     async toggleArchive() {
       if (!this.editing) return;
       const t = this.byId.get(this.editing); if (!t) return;
-      const val = !t.archived_at;
-      this.pushUndo(val ? 'Archived task' : 'Unarchived task');
-      await this.store.tasks.setArchived(this.editing, val);
-      await this.loadTasks();
-      this.closeComposer();
+      const val = !t.archived_at, id = this.editing;
+      await this._journalRowChange(val ? 'Archived task' : 'Unarchived task', 'task', id, () => this.store.tasks.setArchived(id, val));
+      this.closeComposer(true);   // archived → drop the draft (task's now off the list)
     },
     async applyComplete(id, done) {
-      if (done) this.pushUndo('Completed');
-      const ok = await this.store.tasks.setCompleted(id, done);
-      if (!ok) return;
-      await this.loadTasks();   // refreshes stats (loadStats → goalStats) so the strip/chips stay fresh
+      // silent: completion is a 100×/day action + goal-linked completions fire their own celebratory toast below — no generic toast.
+      // Capture the FULL completion delta (target + swept dependents + auto-completed parents) so undo reverses every affected row,
+      // not just id — else the swept rows keep phantom completions inflating stats/streaks/EXP. (_captureCompletionFx reloads.)
+      const fx = await this._captureCompletionFx(() => this._withPending(id, () => this.store.tasks.setCompleted(id, done)));
+      // Entry op is the REVERSE (first ⌘Z undoes this completion); it carries fwd so redo can re-run + re-capture symmetrically.
+      this._pushEntry(done ? 'Completed' : 'Uncompleted', { kind: 'complete', target: 'task', mode: 'reverse', fwd: { id, done }, fx }, { silent: true });
       if (done) {
         const t = this.byId.get(id), goals = t ? this.goalsForTask(t) : [];
         if (goals.length) {
@@ -3239,8 +3982,7 @@ document.addEventListener('alpine:init', () => {
           if (t?.milestone) {
             const phrase = this.identityPhrase(idgStmt);
             this.toast(phrase ? '◆ milestone · a vote for ' + phrase : '◆ milestone · toward "' + goals[0].name + '"');
-            this.flashGoal('pulseGoal', '_pulseT', goals[0].id, 1200);
-            this.flashGoal('msBeatGid', '_msBeatT', goals[0].id, 1400);
+            this._milestoneBeat(goals[0].id);
           } else {
             this.toast(idgStmt ? '🔥 +1 vote · ' + idgStmt : '🔥 +1 · ' + goals[0].name);
           }
@@ -3249,7 +3991,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async save(t, fields) { Object.assign(t, await this.store.tasks.update(t.id, fields) || {}); this._rowV++; },
-    async remove(t) { this.pushUndo('Deleted'); if (await this.store.tasks.remove(t.id)) { this.tasks = this.tasks.filter(x => x.id !== t.id); this._rowV++; } },
+    async remove(t) { await this.perform('Deleted', { target: 'task', kind: 'delete', id: t.id }); },
 
     // --- Relations ---
     relationCandidates() {
@@ -3263,7 +4005,7 @@ document.addEventListener('alpine:init', () => {
       return [...(t.blocked_by ?? []).map(id => ({ id, type: 'blocked_by' })), ...this.tasks.filter(o => (o.blocked_by ?? []).includes(t.id)).map(o => ({ id: o.id, type: 'blocks' })), ...(t.relates ?? []).map(id => ({ id, type: 'relates' }))];
     },
     // Blocked = has an incomplete blocker (matches is:blocked) — drives the lock badge in the checkbox.
-    blocked(t) { return (t.blocked_by ?? []).some(id => { const b = this.byId.get(id); return b && !b.completed_at && !b.archived_at; }); },
+    blocked(t) { return isBlocked(this.tasks, t.id); },
     relChips() { return this.taskRels(this.editingTask()); },
     relTypeLabel(type) { return { blocked_by: 'blocked', blocks: 'blocks', relates: 'relates' }[type]; },
     relIcon(type) { return type === 'relates' ? 'i-link' : 'i-stop'; },
@@ -3277,6 +4019,12 @@ document.addEventListener('alpine:init', () => {
       this.relWarm = type; clearTimeout(this._relWarmT); this._relWarmT = setTimeout(() => this.relWarm = '', 650);
       await this.addRelation(id, type);
     },
+    async dropRel(e, type) {
+      const id = e.dataTransfer.getData('text/plain'); if (!id) return;
+      this.relDragOver = '';
+      this.relWarm = type; clearTimeout(this._relWarmT); this._relWarmT = setTimeout(() => this.relWarm = '', 650);
+      await this.addRelation(id, type);
+    },
     editingTask() { return this.byId.get(this.editing) ?? null; },
     // 'blocks' writes blocked_by on the OTHER task (swapped link direction) — no separate stored type
     async addRelation(otherId, type) { if (!otherId) return; const ok = type === 'blocks' ? await this.store.tasks.link(otherId, this.editing, 'blocked_by') : await this.store.tasks.link(this.editing, otherId, type); if (ok) await this.loadTasks(); },
@@ -3286,9 +4034,11 @@ document.addEventListener('alpine:init', () => {
     listView() { return this.surface === 'lists'; },   // task-list views (all/backlog/project/area/filter) live on the Lists surface
     // ---- Now home (heuristic until the planner lands; always-functional with no data) ----
     nowGreeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; },
+    // Open = not completed/archived/sidebar/parent. Callers append their own clauses (e.g. _actionable excludes defaultProject).
+    _openLeaf(t) { return !t.completed_at && !t.archived_at && !this.isSidebar(t) && !this.hasChildren(t.id); },
     _actionable() {
       const def = this.store.defaultProject();
-      return this.tasks.filter(t => !t.completed_at && !t.archived_at && !this.isSidebar(t) && t.id !== def && !this.hasChildren(t.id))
+      return this.tasks.filter(t => this._openLeaf(t) && t.id !== def)
         .sort((a, b) => (a.due_at || '9999').slice(0, 10).localeCompare((b.due_at || '9999').slice(0, 10)) || impRank(a.importance) - impRank(b.importance));
     },
     nowTask() { return this._actionable()[0] || null; },
@@ -3336,8 +4086,7 @@ document.addEventListener('alpine:init', () => {
     nowAlts() { return this.nowListRows().slice(0, 2); },   // the next 2 real tasks — no energy/feeling model (LATER)
     nowVote(t) {
       const g = t && this.goalsForTask(t).find(x => (this.identityStatement(x) || '').trim());
-      if (!g) return null;
-      return (this.identityStatement(g) || '').trim().replace(/^i(?:'m| am)\s+/i, '') || null;
+      return g ? this.identityPhrase(this.identityStatement(g)) : null;
     },
     nowFocusTask() { return this.byId.get(this.nowFocusId) ?? null; },
     // transient VIEW state only; `e` target refocused on back; mobile scrolls Room into view
@@ -3347,9 +4096,8 @@ document.addEventListener('alpine:init', () => {
     },
     nowBack() { this.nowFocusId = null; this.$nextTick(() => { _nowFocusEl?.focus(); _nowFocusEl = null; }); },
     // events first; completed tasks dropped (calendarItems includes them — Now hides them)
-    nowToday() {
-      const n = new Date(), iso = isoDate(n);
-      return eventsFirst(calendarItems(this.events, this.tasks, iso, iso, n))
+    nowToday(iso = isoDate(new Date()), now = new Date()) {
+      return eventsFirst(calendarItems(this.events, this.tasks, iso, iso, now))
         .filter(it => it.kind === 'event' || !(this.byId.get(it.id)?.completed_at || this.byId.get(it.id)?.archived_at));
     },
     nowWindow() {
@@ -3359,28 +4107,27 @@ document.addEventListener('alpine:init', () => {
       const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
       const startMin = Math.floor((nowMin - BEFORE * 60) / 60) * 60, endMin = startMin + (BEFORE + AFTER) * 60;
       const y = min => (min - startMin) / 60 * HP, dayH = (endMin - startMin) / 60 * HP;
-      const mins = iso => (+iso.slice(11, 13)) * 60 + (+iso.slice(14, 16));
       const hours = [];
       for (let m = startMin; m <= endMin; m += 60) {
         const abs = m / 60, hd = ((abs % 24) + 24) % 24;
         hours.push({ h: abs, label: (hd % 12 || 12) + (hd < 12 ? 'am' : 'pm'), next: abs >= 24, top: y(m), past: m < nowMin });
       }
       const place = (items, off) => items.filter(it => !it.allDay).map(it => {
-        const s = mins(it.start) + off, e = (it.end && it.end.length > 10 ? mins(it.end) : mins(it.start) + 30) + off;
+        const s = this._clMin(it.start) + off, e = (it.end && it.end.length > 10 ? this._clMin(it.end) : this._clMin(it.start) + 30) + off;
         return { ...it, top: y(s), height: Math.max((e - s) / 60 * HP, 20), live: s <= nowMin && nowMin < e, past: e <= nowMin };
       }).filter(r => r.top + r.height >= 0 && r.top <= dayH);
       const dIso = d => isoDate(new Date(Date.now() + d * 864e5));
-      const day = (d, off) => place(eventsFirst(calendarItems(this.events, this.tasks, dIso(d), dIso(d), now)).filter(it => it.kind === 'event' || !(this.byId.get(it.id)?.completed_at || this.byId.get(it.id)?.archived_at)), off);
+      const day = (d, off) => place(this.nowToday(dIso(d), now), off);
       const rows = [...place(this.nowToday(), 0), ...day(1, 1440), ...day(-1, -1440)];   // today ± the neighbouring days that fall in the window
       return { dayH, nowY: y(nowMin), hours, rows };
     },
-    async loadEvents() { this.events = await this.store.events.list(); _calDataV++; _calMemo.clear(); _goalStepsMemo.clear(); _goalMilestonesMemo.clear(); },
+    async loadEvents() { this.events = await this.store.events.list(); _calDataV++; _goalStepsMemo.clear(); _goalMilestonesMemo.clear(); },
     async loadBlocks() { this.blocks = await this.store.blocks.list(); },
     _clDate() { return new Date(this.clAnchor + 'T00:00'); },
     _clWeekStart(d) { const x = new Date(d); x.setDate(x.getDate() - x.getDay()); x.setHours(0, 0, 0, 0); return x; },   // Sunday
-    clItemColor(it) { return it.color || (it.kind === 'event' ? 'var(--accent)' : it.kind === 'task-block' ? 'var(--muted)' : 'var(--p4)'); },
-    _clTime(s) { let [h, m] = s.slice(11, 16).split(':').map(Number); const ap = h < 12 ? 'AM' : 'PM'; h = h % 12 || 12; return m ? `${h}:${String(m).padStart(2, '0')} ${ap}` : `${h} ${ap}`; },
-    clWeekdayNames() { return CL_WD; },
+    // threadless items go WARM, never grey — grey is what made scheduled tasks read as disabled
+    clItemColor(it) { return it.color || (it.kind === 'task-deadline' ? 'var(--p2)' : it.kind === 'task-due' ? 'var(--p4)' : 'var(--accent)'); },
+    _clTime(s) { return this.clAgTime(this._clMin(s)); },
     _monthLabel(d) { return d.toLocaleDateString([], { month: 'long', year: 'numeric' }); },
     _weekIdx(d) { return Math.round((this._clWeekStart(d).getTime() - CL_EPOCH.getTime()) / 604800000); },
     _weekDate(idx) { const d = new Date(CL_EPOCH); d.setDate(d.getDate() + idx * 7); return d; },
@@ -3398,73 +4145,64 @@ document.addEventListener('alpine:init', () => {
     clTotalH() { return CL_TOTAL_WEEKS * this.clRowH; },
     clOpenCalendar() {
       this.clRecalc();
-      if (!this._clResize) { this._clResize = true; window.addEventListener('resize', () => { if (this.surface === 'plan') { this.clRecalc(); if (this.clView === 'month') this.clScrollToAnchor(); } }); }
-      if (this.clView === 'month') this.clScrollToAnchor(); else this.$nextTick(() => { this._centerPages(); if (this.clView === 'day' || this.clView === 'week') this._applyDayZoom(); });
-    },
-    // Zoom the day/week view to waking hours (CL_WAKING_START–CL_WAKING_END) and scroll every page there.
-    _applyDayZoom(tries = 5) {
-      const bodies = this.$refs.clPages?.querySelectorAll('.cl-pbody'); if (!bodies?.length) return;
-      const h = bodies[0].clientHeight;
-      if (!h) { if (tries > 0) requestAnimationFrame(() => this._applyDayZoom(tries - 1)); return; }
-      const zoom = 24 / (CL_WAKING_END - CL_WAKING_START);
-      this.clZoom = zoom;
-      this.clHourH = Math.round(h / 24 * zoom);
-      this.$nextTick(() => { const top = CL_WAKING_START * this.clHourH; bodies.forEach(b => { b.scrollTop = top; }); });
+      if (!this._clResize) { this._clResize = true; window.addEventListener('resize', () => { if (this.surface !== 'plan') return; this.clRecalc(); if (this.clView === 'month') this.clScrollToAnchor(); else this._clZoomTo(this.clZoom); }); }
+      if (this.clView === 'month') this.clScrollToAnchor(); else if (this.clView === 'week' || this.clView === 'day') { this.clRecalcPages(); this.$nextTick(() => this._clScrollToPeriod()); }
     },
     clHeading() {
-      if (this.clView === 'year') return String(this._clDate().getFullYear());
-      if (this.clView === 'day') return this._clDate().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-      if (this.clView === 'week') {
-        const s = this._clWeekStart(this._clDate()), e = new Date(s); e.setDate(e.getDate() + 6);
-        return s.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' – ' + e.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-      }
+      if (this.clView === 'day' || this.clView === 'week') return this.clTopPeriod || this._periodLabel(this.clView === 'day' ? this._clDate() : this._clWeekStart(this._clDate()));   // scroll-driven, like month
       return this.clTopMonth || this._monthLabel(this._clDate());   // month: scroll-driven label
     },
     _clFocusDate() { return new Date(Math.floor(this.clFocusYM / 12), this.clFocusYM % 12, 1); },
     // month labels the HIGHLIGHTED (viewport-centered) month, not the scroll-top one
-    clPeriodMain() {
-      if (this.clView === 'year') return '';
-      if (this.clView === 'month' && this.clFocusYM != null) return this._monthLabel(this._clFocusDate()).replace(/,?\s*\d{4}$/, '');
-      return this.clHeading().replace(/,?\s*\d{4}$/, '');
+    clTitleParts() {
+      const src = this.clView === 'month' && this.clFocusYM != null ? this._monthLabel(this._clFocusDate()) : this.clHeading();
+      return this.clSplitTitle(src);
     },
-    clPeriodYear() {
-      if (this.clView === 'month' && this.clFocusYM != null) return String(this._clFocusDate().getFullYear());
-      const m = this.clHeading().match(/(\d{4})$/); return m ? m[1] : '';
-    },
+    clPeriodMain() { return this.clTitleParts()[0]; },
+    clPeriodYear() { return this.clTitleParts()[1]; },
     clSetView(v) {
-      this.clZoom = 1; this.clHourH = 0;   // reset zoom when changing views
-      this._withTransition(() => { this.clView = v; }, () => { if (v === 'month') this.clScrollToAnchor(); else if (v === 'week' || v === 'day') { this._centerPages(); this._applyDayZoom(); } });
+      // reset zoom to fit, never to 0 — a zero hour height collapses the spacer mid-switch and the browser
+      // clamps scrollTop, which used to land the anchor years away
+      this._withTransition(() => { this.clZoom = 1; this.clHourH = this._clFitHour(); this.clView = v; },
+        () => { if (v === 'month') this.clScrollToAnchor(); else if (v === 'week' || v === 'day') { this.clRecalcPages(); this._clScrollToPeriod(); } this._clSettle(); });
     },
     _withTransition(setFn, afterFn) {
-      const run = async () => { setFn(); await this.$nextTick(); afterFn?.(); await this.$nextTick(); };
-      // hidden tabs abort (InvalidStateError); overlapping ones dupe view-transition-names — guard both
-      if (document.startViewTransition && document.visibilityState === 'visible' && !this._vtBusy) {
-        this._vtBusy = true;
+      // Switches must not be able to land out of order: _vtSeq ensures a stale callback never applies over a newer one.
+      const seq = this._vtSeq = (this._vtSeq || 0) + 1;
+      let ran = false;
+      this.clVT = true;   // names go on for the capture only — see the CSS note on permanent layer promotion
+      const run = async () => { if (ran || seq !== this._vtSeq) return; ran = true; setFn(); await this.$nextTick(); afterFn?.(); await this.$nextTick(); };
+      // hidden tabs abort (InvalidStateError) — guard with visibilityState
+      if (document.startViewTransition && document.visibilityState === 'visible') {
         const t = document.startViewTransition(run);
-        const clear = () => { this._vtBusy = false; };
-        t.finished.then(clear, clear); t.ready.catch(() => {}); t.updateCallbackDone.catch(() => {});
-      } else run();
+        // settle: clear CSS names once the animation finishes; also call run() in case the update callback was skipped
+        const settle = () => { this.clVT = false; run(); };
+        t.finished.then(settle, settle); t.updateCallbackDone.catch(run); t.ready.catch(() => {});
+        setTimeout(run, 250);   // fallback: apply state if callback never fires; seq-guarded, never resets clVT
+      } else { this.clVT = false; run(); }
     },
 
     // --- read-model (module scope — never triggers reactivity) ---
     _clGroup(fromIso, toIso) {
+      // Register the reactive deps BEFORE the memo can short-circuit: on a hit we would otherwise return
+      // without ever reading events/tasks, the render effect would record no dependency on them, and adding or
+      // completing something would not repaint until an unrelated change happened to force it.
+      void this.events; void this.tasks;
       // clPages re-derives every tick — cache to avoid full-set scans
-      const sig = fromIso + '|' + toIso + '|' + _calDataV, hit = _groupMemo.get(sig); if (hit) return hit;
-      const map = {}, add = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
-      for (const it of calendarItems(this.events, this.tasks, fromIso, toIso, new Date())) {
-        const s = it.start.slice(0, 10), e = (it.end || it.start).slice(0, 10);
-        if (it.allDay && e > s) {   // any multi-day all-day item (event or task band) explodes into connected segments
-          for (let day = s < fromIso ? fromIso : s; day <= e && day <= toIso; day = add(day, 1))
-            (map[day] ||= []).push({ ...it, spanStart: day === s, spanEnd: day === e });
-        } else (map[s] ||= []).push(it);
-      }
-      if (_groupMemo.size >= 12) _groupMemo.clear();   // bound the cache; stale-_calDataV entries never hit anyway
-      _groupMemo.set(sig, map); return map;
+      return _memo(_groupMemo, fromIso + '|' + toIso + '|' + _calDataV, () => {
+        const map = {}, add = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
+        for (const it of calendarItems(this.events, this.tasks, fromIso, toIso, new Date())) {
+          const s = it.start.slice(0, 10), e = (it.end || it.start).slice(0, 10);
+          if (it.allDay && e > s) {   // any multi-day all-day item (event or task band) explodes into connected segments
+            for (let day = s < fromIso ? fromIso : s; day <= e && day <= toIso; day = add(day, 1))
+              (map[day] ||= []).push({ ...it, spanStart: day === s, spanEnd: day === e });
+          } else (map[s] ||= []).push(it);
+        }
+        return map;
+      }, 12);
     },
     _clVisMap() {
-      const sig = this.clVisStart + '|' + this.clVisCount + '|' + _calDataV, hit = _calMemo.get(sig); if (hit) return hit;
-      const map = this._clGroup(isoDate(this._weekDate(this.clVisStart)), isoDate(this._weekDate(this.clVisStart + this.clVisCount)));
-      _calMemo.clear(); _calMemo.set(sig, map); return map;
+      return this._clGroup(isoDate(this._weekDate(this.clVisStart)), isoDate(this._weekDate(this.clVisStart + this.clVisCount)));
     },
 
     // --- MONTH: virtualized week rows in a fixed-height spacer (constant scroll height, no reflow; buffer prevents blanks on fast flings) ---
@@ -3491,7 +4229,7 @@ document.addEventListener('alpine:init', () => {
     // Thursday's month = dominant; shared by scroll handler + jumps for consistent label
     _topMonthLabel(idx) { const d = this._weekDate(idx); d.setDate(d.getDate() + 3); return this._monthLabel(d); },
     _monthFirstIdx(d) { return this._weekIdx(new Date(d.getFullYear(), d.getMonth(), 1)); },   // week index of a month's 1st
-    _clZoneTop() { return CL_BAR + CL_HEAD + (this.clRowH || 1) * 1; },   // viewport line below which a title rides coupled (body band); at/above it the overlay flies over the header into the bar (~1 row of fly runway)
+    _clZoneTop() { return this.clView === 'month' ? this._clHeadH() + (this.clRowH || 1) : this._clVH() - CL_FOOT; },   // month: one week row of runway. day/week: the whole page — the incoming title rises from the bottom edge.   // fly runway: one week row in month; a fixed slice in day/week (a whole period would be a mile)   // viewport line below which a title rides coupled (body band); at/above it the overlay flies over the header into the bar (~1 row of fly runway)
     // Body bands: month titles glued to the grid (top=idx*rowH), only BELOW the zone. clZoneTitles picks them up overhead — both read clScrollTop for seamless handoff.
     clMonthBands() {
       if (!this.clRowH) this.clRecalc();
@@ -3510,22 +4248,27 @@ document.addEventListener('alpine:init', () => {
       }
       return out;
     },
+    // Parallax clamp/shove/round shared by clZoneTitles and _periodZoneTitles.
+    // Callers build list as [{name, vt}]; this applies the parallax, shoves overlaps, and filters.
+    // LINEAR (not ease-out t*(2-t)): ease-out's zero slope at t=1 caused a visual "dip" at the band→overlay handoff.
+    _zoneLayout(list, head, zoneH, barY, labelH = 46) {
+      list.forEach(z => { z.y = z.vt <= head ? barY : barY + (head + zoneH - barY) * ((z.vt - head) / zoneH); });
+      for (let i = list.length - 2; i >= 0; i--) list[i].y = Math.min(list[i].y, list[i + 1].y - labelH);
+      return list.filter(z => z.y > -labelH).map(z => ({ name: z.name, y: Math.round(z.y), atBar: Math.abs(z.y - barY) < 3 }));
+    },
     // `top` applied imperatively so it never lags
     clZoneTitles() {
       if (!this.clRowH) return [];
-      const rowH = this.clRowH, head = CL_BAR + CL_HEAD, barY = this._clBarY != null ? this._clBarY : CL_BAR - 34 - 14, zoneH = this._clZoneTop() - head, labelH = 46, scrollTop = this.clScrollTop;   // barY = measured .cl-period top (matches the idle heading on every breakpoint)
+      const rowH = this.clRowH, head = CL_BAR + CL_HEAD, barY = this._clBarY != null ? this._clBarY : CL_BAR - 34 - 14, zoneH = this._clZoneTop() - head, scrollTop = this.clScrollTop;   // barY = measured .cl-period top (matches the idle heading on every breakpoint)
       const top = this._weekDate(Math.max(0, Math.floor(scrollTop / rowH))); top.setDate(top.getDate() + 3);
       const list = [];
       for (let k = -2; k <= 1; k++) {
         const first = new Date(top.getFullYear(), top.getMonth() + k, 1);
         const vt = head + this._weekIdx(first) * rowH - scrollTop;
         if (vt > head + zoneH) continue;
-        const t = (vt - head) / zoneH;
-        // LINEAR (not ease-out t*(2-t)): ease-out's zero slope at t=1 caused a visual "dip" at the band→overlay handoff.
-        list.push({ name: this._monthLabel(first), y: vt <= head ? barY : barY + (head + zoneH - barY) * t });
+        list.push({ name: this._monthLabel(first), vt });
       }
-      for (let i = list.length - 2; i >= 0; i--) list[i].y = Math.min(list[i].y, list[i + 1].y - labelH);   // next month shoves the pinned one up
-      return list.filter(z => z.y > -labelH).map(z => ({ name: z.name, y: Math.round(z.y), atBar: Math.abs(z.y - barY) < 3 }));
+      return this._zoneLayout(list, head, zoneH, barY);
     },
     _clVH() { return document.documentElement.clientHeight || window.innerHeight || 800; },   // window.innerHeight is unreliable in the test webview
     _clFocus(scrollTop) {   // dominant month = the one at the vertical center of the grid → stays bright when idle
@@ -3541,7 +4284,7 @@ document.addEventListener('alpine:init', () => {
     },
     _clPositionZone() {   // set each over-header title's `top` imperatively (lag-free) from this frame's scrollTop
       const box = this.$refs.clMtitlesBox; if (!box) return;
-      const y = {}; for (const t of this.clZoneTitles()) y[t.name] = t.y;
+      const y = {}; for (const t of (this.clView === 'month' ? this.clZoneTitles() : this._periodZoneTitles())) y[t.name] = t.y;   // MUST match what the markup rendered, or nothing moves until the next reactive flush (a frame late)
       for (const el of box.children) { const t = y[el.dataset.name]; if (t != null) el.style.top = t + 'px'; }
     },
     clMonthScroll(e) {
@@ -3551,22 +4294,8 @@ document.addEventListener('alpine:init', () => {
       this._clScrollState(el.scrollTop);
       this._clPositionZone();   // sync: place the over-header titles THIS frame (reactive :style lags a frame → teleports on fast scroll)
       this.clScrolling = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this.clScrolling = false, 600);
-      if (this._clProg) return;   // programmatic scroll (open/snap) → don't arm the snap
-      // Arm only on a new gesture after ≥2s idle — trackpad fires a long chain; one snap per gesture.
-      const now = Date.now();
-      if (!this._clScrollTs || now - this._clScrollTs > 2000) this._clArmed = true;
-      this._clScrollTs = now;
     },
-    clMonthSnap(e) {
-      if (this._clProg) { this._clProg = false; return; }   // swallow programmatic scrollend
-      if (!this._clArmed) return;   // CSS scroll-snap handles week settling; this only fires on the first armed gesture
-      this._clArmed = false;
-      const el = e.target, rowH = this.clRowH || 1, cur = el.scrollTop / rowH;
-      const d = this._weekDate(Math.round(cur)); d.setDate(d.getDate() + 3);
-      const cands = [-1, 0, 1].map(k => this._monthFirstIdx(new Date(d.getFullYear(), d.getMonth() + k, 1)));
-      const idx = cands.reduce((a, b) => Math.abs(b - cur) < Math.abs(a - cur) ? b : a);
-      if (Math.abs(idx * rowH - el.scrollTop) > 2) { this._clProg = true; el.scrollTo({ top: Math.max(0, idx * rowH), behavior: 'smooth' }); setTimeout(() => { this._clProg = false; }, 700); }
-    },
+    clMonthSnap() {},   // CSS scroll-snap-type: y proximity on .cl-month handles settling
     clScrollToAnchor() {
       const el = this.$refs.clMonth; if (!el) return;
       if (!this.clRowH) this.clRecalc();
@@ -3574,39 +4303,125 @@ document.addEventListener('alpine:init', () => {
       this.clVisStart = Math.max(0, target - CL_BUFFER);
       this.clScrollTop = target * this.clRowH;
       this._clScrollState(target * this.clRowH);
-      this.$nextTick(() => { this._clProg = true; el.scrollTop = target * this.clRowH; this._clScrollState(target * this.clRowH); setTimeout(() => { this._clProg = false; }, 200); });
+      this.$nextTick(() => { el.scrollTop = target * this.clRowH; this._clScrollState(target * this.clRowH); });
     },
     _clStepMonth() {
       const el = this.$refs.clMonth; if (!el) return this.clScrollToAnchor();
       if (!this.clRowH) this.clRecalc();
-      const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const smooth = !this.reduceMotion();
       el.scrollTo({ top: Math.max(0, this._monthFirstIdx(this._clDate()) * this.clRowH), behavior: smooth ? 'smooth' : 'auto' });
     },
     clOpenWeekRow(idx) { this.clAnchor = isoDate(this._weekDate(idx)); this.clSetView('week'); },   // tap a week → expand
 
     // --- WEEK / DAY: a window of 7 pages (anchor ±3), each one viewport page; scroll snaps between them ---
-    _pageSpan() { return this.clView === 'day' ? 1 : 7; },
-    clPages() {
-      const span = this._pageSpan(), todayIso = isoDate(new Date());
-      const anchor = span === 1 ? this._clDate() : this._clWeekStart(this._clDate());
-      const ws = new Date(anchor); ws.setDate(ws.getDate() - 3 * span);
-      const we = new Date(anchor); we.setDate(we.getDate() + 4 * span);
-      const byDay = this._clGroup(isoDate(ws), isoDate(we));
-      return Array.from({ length: 7 }, (_, k) => {
-        const ps = new Date(anchor); ps.setDate(ps.getDate() + (k - 3) * span);
+    // ---- Continuous day/week timeline: same methodology as month (fixed-height spacer, absolutely placed
+    // blocks, virtualized window, scroll-driven zone titles). Replaces the 7-page mandatory-snap pager. ----
+    _periodSpan() { return this.clView === 'day' ? 1 : 7; },
+    _dayStart(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); },
+    _periodIdx(d) { return this.clView === 'day' ? Math.round((this._dayStart(d) - CL_EPOCH) / 86400000) : this._weekIdx(d); },
+    _periodDate(idx) { if (this.clView !== 'day') return this._weekDate(idx); const d = new Date(CL_EPOCH); d.setDate(d.getDate() + idx); return d; },
+    _periodTotal() { return this.clView === 'day' ? CL_TOTAL_WEEKS * 7 : CL_TOTAL_WEEKS; },
+    _periodLabel(d) {
+      if (this.clView === 'day') return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      const e = new Date(d); e.setDate(e.getDate() + 6);
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' – ' + e.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+    },
+    // A WEEK block is its 24h body — its top border is the 12am rule. A DAY block is a PAGE: the agenda flows
+    // from the top, so a 24h-tall block would park the whole list above a viewport scrolled to waking hours.
+    // One day fills the scroller exactly, and the rail beside it carries the clock.
+    clPeriodH() { return this.clView === 'day' ? this._clDayH() : 24 * (this.clHourH || 40); },
+    // one page = the scroller's VISIBLE area: .cl-pages already reserves the chrome with padding-top, so a
+    // parked day starts below the header without the agenda insetting itself a second time
+    _clDayH() { return Math.max(320, this._clVH() - this._clHeadH() - CL_FOOT); },
+    // Pinned head cells: weekday names in month; weekday + DATE of the period currently on top in week view.
+    // Dates can't ride the block — in a continuous timeline they'd scroll out of sight almost immediately.
+    clHeadCells() {
+      if (this.clView !== 'week') return CL_WD.map(n => ({ key: n, name: n }));
+      const ps = this._periodDate(this._clTopIdx()), todayIso = isoDate(new Date());
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(ps); d.setDate(d.getDate() + i); const iso = isoDate(d);
+        return { key: iso, name: CL_WD[d.getDay()], day: d.getDate(), today: iso === todayIso, weekend: d.getDay() === 0 || d.getDay() === 6 };
+      });
+    },
+    _clTopIdx() { return this._tlIdxAt(this.clScrollTop); },
+    // The all-day lane is CHROME, not part of a block: on a continuous timeline a per-block lane scrolls out of
+    // sight within a screen, and an all-day item is exactly the thing you must be able to see all day.
+    clTopAlldayCols() {
+      if (this.clView !== 'week' && this.clView !== 'day') return [];   // x-show doesn't stop the x-for from evaluating
+      const b = this.clBlocks(), top = this._clTopIdx();
+      // fall back to the ANCHOR's period, never merely the first rendered one — a stale scroll position
+      // would otherwise pin the previous week's all-day items above the week you are looking at
+      return (b.find(p => p.key === top) || b.find(p => p.key === this._periodIdx(this._clDate())) || b[0] || { cols: [] }).cols;
+    },
+    // B8: the lane exists only when something is in it. An always-on 22px grey strip was — in the pick's own
+    // words — the ugliest 22px on the surface, and pinning it at one row hid every all-day item past the first.
+    // It grows to fit (3 rows, then scrolls), and opens during a drag so there is still somewhere to drop.
+    // The lane is split in two: marks on top (one uniform row block, so spanning bands stay aligned across
+    // columns), bands below. Both live inside the SAME fixed CL_AD_ROWS reserve, so the chrome never grows
+    // over the grid — which is how deadlines used to end up clipped out of sight.
+    _clLaneMax(key) { return this.clTopAlldayCols().reduce((m, c) => Math.max(m, c[key].length), 0); },
+    clMarkRows() { return Math.min(CL_AD_ROWS - 1, this._clLaneMax('marks')); },
+    clBandRows() { return Math.max(0, Math.min(CL_AD_ROWS - this.clMarkRows(), this._clLaneMax('lane'))); },
+    clAdRows() { return this.clMarkRows() + this.clBandRows() || (this._clDnd ? 1 : 0); },
+    clPeriodsTotalH() { return CL_TL_SPAN * this.clPeriodH(); },
+    _clHeadH() { return CL_BAR + CL_HEAD + (this.clView === 'week' || this.clView === 'day' ? CL_ALLDAY * CL_AD_ROWS : 0); },   // every px of pinned chrome the timeline scrolls under (must match --cl-top in CSS)
+    _clFitHour() { return Math.max(18, Math.round((this._clVH() - this._clHeadH()) / (CL_WAKING_END - CL_WAKING_START))); },   // a waking day fills the viewport at zoom 1
+    _tlSpan() { return Math.min(CL_TL_SPAN, this._periodTotal()); },
+    // spacer origin: the anchor sits mid-window. Only ever moved by a jump (open/view switch/step/today),
+    // which also re-scrolls — so free scrolling can never shift the ground under the user.
+    _tlRebase() { this.clTLView = this.clView; this.clTLBase = Math.max(0, Math.min(this._periodTotal() - this._tlSpan(), this._periodIdx(this._clDate()) - (this._tlSpan() >> 1))); },
+    _tlIdxAt(scrollTop) { return Math.max(0, Math.min(this._periodTotal() - 1, this.clTLBase + Math.floor(scrollTop / this.clPeriodH()))); },
+    clRecalcPages() {
+      const vh = this._clVH() - this._clHeadH();
+      if (!this.clHourH) this.clHourH = this._clFitHour();
+      this.clPVisCount = Math.ceil(vh / this.clPeriodH()) + 2;
+      this._tlRebase();
+      this.clPVisStart = Math.max(this.clTLBase, this._periodIdx(this._clDate()) - 1);
+    },
+    clBlocks() {
+      void this.tasks; void this.events; void this.blocks; void this.byId;   // register the data deps BEFORE the memo can short-circuit (like _clGroup) — else a hit records no dep and adds/edits don't repaint
+      if (!this.clHourH) this.clRecalcPages();
+      const span = this._periodSpan(), todayIso = isoDate(new Date()), ph = this.clPeriodH();
+      const base = this.clTLBase, last = Math.min(this._periodTotal(), base + this._tlSpan());
+      const start = Math.max(base, this.clPVisStart), end = Math.min(last, start + this.clPVisCount);
+      if (end <= start) return [];
+      // The view-switch/scroll settle re-fires this effect ~100× against unchanged inputs. Return the SAME array
+      // ref on a hit so Alpine's x-for no-ops instead of re-diffing every column/event. _calDataV busts on any data change.
+      const sig = this.clView + '|' + base + '|' + start + '|' + end + '|' + this.clHourH + '|' + span + '|' + todayIso + '|' + _calDataV;
+      if (_clBlocksSig === sig) return _clBlocksCache;
+      const from = this._periodDate(start), toD = this._periodDate(end - 1); toD.setDate(toD.getDate() + span - 1);
+      const byDay = this._clGroup(isoDate(from), isoDate(toD));
+      const out = [];
+      for (let idx = start; idx < end; idx++) {
+        const ps = this._periodDate(idx);
         const cols = Array.from({ length: span }, (_, i) => {
           const d = new Date(ps); d.setDate(d.getDate() + i); const iso = isoDate(d), items = byDay[iso] || [];
-          return { iso, day: d.getDate(), today: iso === todayIso, weekend: d.getDay() === 0 || d.getDay() === 6, label: d.toLocaleDateString([], { weekday: 'short' }), blocks: this._dayBlocks(iso), allday: items.filter(it => it.allDay || it.start.length <= 10), timed: this._lanePack(items.filter(it => !it.allDay && it.start.length > 10)) };
+          return { iso, day: d.getDate(), today: iso === todayIso, past: iso < todayIso, weekend: d.getDay() === 0 || d.getDay() === 6, label: d.toLocaleDateString([], { weekday: 'short' }), blocks: this._dayBlocks(iso), ...this._clSplitDay(items), timed: this._lanePack(items.filter(it => !it.allDay && it.start.length > 10)), cleared: this._clCleared(items) };
         });
         this._alignSpanLanes(cols);
-        return { key: isoDate(ps), mid: k === 3, cols };
-      });
+        // Day: the lane keeps only what CONTINUES past today — that is context you would otherwise lose.
+        // A single-day all-day item belongs to today, so it reads as a row in the agenda with everything else.
+        // Week is a grid, so its lane carries every band across the seven columns.
+        for (const c of cols) c.lane = span === 1 ? c.bands.filter(b => b.spanStart !== undefined) : c.bands;
+        if (span === 1) for (const c of cols) c.agenda = this._clAgenda(c);   // built once here, not per binding
+        out.push({ key: idx, rel: idx - base, cols });   // top comes from --ph in CSS so it cannot drift from the height
+      }
+      _clBlocksSig = sig; _clBlocksCache = out; return out;
     },
     // Stable all-day lanes: a spanning band keeps ONE row across every column of its page — otherwise it
     // jumps up wherever another band ends. Lanes are padded with invisible spacer chips.
+    // A date-only item is one of two different things, and treating them alike is what broke this lane.
+    // A BAND occupies the day (an all-day event, a task scheduled across days) — that is what a lane is for.
+    // A MARK is a moment ABOUT the day (a due date, a deadline); it has no width, and stacking marks as band
+    // rows is what pushed the lane over the grid and then silently hid the deadlines underneath.
+    _clSplitDay(items) {
+      const ad = items.filter(it => it.allDay || it.start.length <= 10);
+      return { bands: ad.filter(it => it.kind === 'event' || it.kind === 'task-block'),
+               marks: ad.filter(it => it.kind === 'task-due' || it.kind === 'task-deadline') };
+    },
     _alignSpanLanes(cols) {
       const spans = new Map();
-      cols.forEach((c, i) => { for (const it of c.allday) if (it.spanStart !== undefined) { const k = it.kind + it.id, s = spans.get(k) ?? spans.set(k, { cols: [] }).get(k); s.cols.push(i); } });
+      cols.forEach((c, i) => { for (const it of c.bands) if (it.spanStart !== undefined) { const k = it.kind + it.id, s = spans.get(k) ?? spans.set(k, { cols: [] }).get(k); s.cols.push(i); } });
       if (!spans.size) return;
       const lanes = [];   // lanes[l] = Set of occupied col indexes
       for (const s of spans.values()) {
@@ -3615,89 +4430,239 @@ document.addEventListener('alpine:init', () => {
       }
       cols.forEach((c, i) => {
         const rows = Array.from({ length: lanes.length }, () => null), rest = [];
-        for (const it of c.allday) { const s = it.spanStart !== undefined ? spans.get(it.kind + it.id) : null; s ? rows[s.lane] = it : rest.push(it); }
-        c.allday = [...rows.map(r => r ?? { kind: 'pad', id: 'p' + i, title: '' }), ...rest];
+        for (const it of c.bands) { const s = it.spanStart !== undefined ? spans.get(it.kind + it.id) : null; s ? rows[s.lane] = it : rest.push(it); }
+        c.bands = [...rows.map(r => r ?? { kind: 'pad', id: 'p' + i, title: '' }), ...rest];
       });
     },
-    _clMin(iso) { const t = iso.length > 10 ? iso.slice(11, 16) : '00:00'; return (+t.slice(0, 2)) * 60 + (+t.slice(3, 5)); },
+    // F5: a day you actually finished. Real planned minutes, all of them done — never a count of tasks, which
+    // is gameable the moment anyone notices (see "nothing fake" in ui-conventions).
+    _clCleared(items) {
+      const mine = items.filter(it => it.kind === 'task-block');
+      if (!mine.length || !mine.every(it => this.byId.get(it.id)?.completed_at)) return null;
+      const mins = mine.reduce((n, it) => n + (this.byId.get(it.id)?.est_minutes || 0), 0);
+      return { mins, label: mins ? this._clDur(mins) + ' of planned work, done' : 'Everything you planned, done' };
+    },
+    _clMin(iso) { const t = timeOf(iso, '00:00'); return (+t.slice(0, 2)) * 60 + (+t.slice(3, 5)); },
     _dayBlocks(iso) {
       return blocksInRange(this.blocks, iso, iso).map(b => {
         const sm = Math.max(0, this._clMin(b.start)), em = b.end.slice(0, 10) > iso ? 1440 : Math.min(1440, this._clMin(b.end));
         return { id: b.id, title: b.title, color: b.color, topPct: sm / 1440 * 100, hPct: Math.max(1.5, (em - sm) / 1440 * 100) };
       });
     },
+    // Height tier drives how much an event can say. Splitting evenly by lane count shrinks a 15-min standup
+    // to an unreadable sliver, so overlaps CASCADE instead: each lane steps 14px right and stacks on top,
+    // leaving the earlier event fully readable (macOS/Fantastical). Capped so deep stacks don't march away.
+    _clTier(mins) { const px = mins * (this.clHourH || 0) / 60; return !px || px >= 40 ? 'full' : px >= 18 ? 'compact' : 'tiny'; },
     _lanePack(list) {
       const raw = list.map(it => { const sm = this._clMin(it.start), em = Math.max(this._clMin(it.end), sm + 20); return { it, sm, em }; }).sort((a, b) => a.sm - b.sm || a.em - b.em);
       let cluster = [], cend = -1; const out = [];
-      const flush = () => { if (!cluster.length) return; const lanes = []; for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; } const n = lanes.length; for (const p of cluster) out.push({ it: p.it, topPct: p.sm / 1440 * 100, hPct: (p.em - p.sm) / 1440 * 100, leftPct: p.lane * 100 / n, widthPct: 100 / n }); cluster = []; cend = -1; };
+      const flush = () => { if (!cluster.length) return; const lanes = []; for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; } for (const p of cluster) out.push({ it: p.it, topPct: p.sm / 1440 * 100, hPct: (p.em - p.sm) / 1440 * 100, lane: p.lane, offPx: Math.min(p.lane, 4) * 14, tier: this._clTier(p.em - p.sm) }); cluster = []; cend = -1; };
       for (const p of raw) { if (p.sm >= cend && cluster.length) flush(); cluster.push(p); cend = Math.max(cend, p.em); }
       flush(); return out;
     },
+    // C5: rows flow at a readable height; gaps become named free slots; proportion moves to the rail.
+    _clAgenda(col) {
+      const rows = [];
+      let end = -1, n = 0;
+      // A deadline is the sharpest thing on a day and it was invisible — a lane row that got clipped. Here it
+      // is a row of its own, at the top, before anything you could get lost in.
+      for (const it of col.marks) { rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 }); n++; }
+      // ...and an all-day item that starts AND ends today is simply a thing you are doing today
+      for (const it of col.bands) if (it.kind !== 'pad' && it.spanStart === undefined) { rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 }); n++; }
+      for (const p of [...col.timed].sort((a, b) => a.topPct - b.topPct || b.hPct - a.hPct)) {
+        const min = Math.round(p.topPct * 14.4), mins = Math.max(1, Math.round(p.hPct * 14.4));
+        // a timed due/deadline is still a MOMENT: it keeps its time but never claims a duration
+        if (this._clIsMark(p.it)) { rows.push({ key: p.it.kind + p.it.id + min, it: p.it, mark: true, min, mins: 0 }); n++; continue; }
+        if (end >= 0 && min - end >= CL_AG_GAP) rows.push({ key: 'free' + end, free: true, min: end, mins: min - end });
+        rows.push({ key: p.it.kind + p.it.id + min, it: p.it, min, mins });
+        end = Math.max(end, min + mins); n++;
+      }
+      // Rows PACK from the top rather than stretching to fill 24h: an agenda's job is to be read, and a list
+      // spaced by real proportion is mostly empty night. Scale stays on the rail, which is why it exists.
+      // A packed day would outgrow its own block, and the block height is load-bearing (top = idx * periodH).
+      // Shed the subtitle before anything gets clipped — same idea as B1's density tiers.
+      return { rows, tier: n * CL_AG_ROW > this._clDayH() - 20 ? 'compact' : 'full' };
+    },
+    // An agenda row is read on its own, so the time must be unambiguous — "2:00" beside "11:00" reads as 2am.
+    clAgTime(m) { return (m % 60 ? this._clHM(m) : ((Math.floor(m / 60) + 11) % 12) + 1) + (m < 720 ? ' AM' : ' PM'); },
+    _clIsMark(it) { return it.kind === 'task-due' || it.kind === 'task-deadline'; },
+    clAgSub(r) {
+      const a = this.areaObjs(this.byId.get(r.it.id)?.area_ids || [])[0];
+      // a mark has no length to report, so it says what KIND of moment it is; an all-day item has no length
+      // either, and the time column already said "All day" — so it carries only its area, or nothing.
+      const lead = r.mark ? (r.it.kind === 'task-deadline' ? 'Deadline' : 'Due') : r.allday ? '' : this._clDur(r.mins);
+      return lead + (a ? (lead ? ' · ' : '') + a.name : '');
+    },
     clHours() { return CL_HOURS; },
     clHourLabel(h) { return h === 0 ? '' : h < 12 ? h + ' AM' : h === 12 ? 'Noon' : (h - 12) + ' PM'; },
-    clNowPct() { const n = new Date(); return (n.getHours() * 60 + n.getMinutes()) / 1440 * 100; },
+    clNowPct() { return this.clNowMin() / 1440 * 100; },
+    clNowMin() { const n = new Date(); return n.getHours() * 60 + n.getMinutes(); },
+    clNowLabel() { return this._clHM(this.clNowMin()); },
+    clWakeTop() { return CL_WAKING_START / 24 * 100; },
+    _clHM(m) { return `${((Math.floor(m / 60) + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')}`; },
+    _clDur(m) { return m >= 60 ? Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '') : m + 'm'; },
+    _clClock(iso) { return this._clHM(this._clMin(iso)); },
+    clTimeLabel(it) { return it.allDay ? '' : this._clClock(it.start) + ' – ' + this._clClock(it.end); },
     // clientHeight is 0 on first open — retry until layout settles
-    _centerPages(tries = 10) {
+    // scroll the anchor period under the chrome, opening at the waking hour
+    _clScrollToPeriod(tries = 8) {
       const el = this.$refs.clPages; if (!el) return;
-      if (!el.clientHeight) { if (tries > 0) requestAnimationFrame(() => this._centerPages(tries - 1)); return; }
-      const target = 3 * el.clientHeight; el.scrollTop = target;
-      if (Math.abs(el.scrollTop - target) > 2 && tries > 0) requestAnimationFrame(() => this._centerPages(tries - 1));
+      if (!el.clientHeight) { if (tries > 0) requestAnimationFrame(() => this._clScrollToPeriod(tries - 1)); return; }
+      if (!this.clHourH) this.clRecalcPages();
+      this._tlRebase();
+      // day: the whole day is on one page, so there is no waking-hours offset to scroll past
+      const idx = this._periodIdx(this._clDate()), top = (idx - this.clTLBase) * this.clPeriodH() + (this.clView === 'day' ? 0 : CL_WAKING_START * this.clHourH);
+      this.clPVisStart = Math.max(this.clTLBase, idx - 1);
+      this.clScrollTop = top; this._clPeriodState(top);
+      this.$nextTick(() => { this._clTlJump(el, top); this._clPeriodState(top); });
+    },
+    // A jump we made is not a landing to read a date out of: the browser fires scroll/scrollend for it too, and
+    // clPagesScrollEnd would rewrite clAnchor from whatever transient offset it saw (a reset to 0 read as
+    // "January 2000"). Mark ours, and let the flag outlive the event.
+    _clTlJump(el, top) {
+      this._clTlProg = true;
+      el.scrollTop = top; this.clScrollTop = el.scrollTop;
+      // Spacer height may not have flushed yet → value can be clamped; re-assert after layout.
+      // Either way, clear _clTlProg in the rAF so the browser's scrollend event fires while suppressed.
+      if (Math.abs(el.scrollTop - top) > 1) requestAnimationFrame(() => { el.scrollTop = top; this.clScrollTop = el.scrollTop; this._clTlProg = false; });
+      else requestAnimationFrame(() => { this._clTlProg = false; });
+    },
+    // E3: a period ARRIVING (view switch, scroll settle, jump) stages its events in. Off-then-on so the
+    // animation restarts; the class rides .calendar so every child replays together.
+    _clSettle() {
+      this.clSettling = false;
+      this.$nextTick(() => {
+        this.clSettling = true;
+        clearTimeout(this._clSettleT); this._clSettleT = setTimeout(() => { this.clSettling = false; }, 450);
+      });
+    },
+    _clPeriodState(scrollTop) {
+      const z = this._periodZoneTitles().find(t => t.atBar);
+      this.clTopPeriod = z ? z.name : this._periodLabel(this._periodDate(this._tlIdxAt(scrollTop)));
+    },
+    // Guard: only a scroll of the LIVE timeline may move state — and only once clTLBase belongs to the CURRENT
+    // view. Switching day<->week flips clPeriodH/_periodTotal a frame before the rebase, so a scroll landing in
+    // that gap reads a day offset against a week base (it once threw the anchor to 2099). A hidden//mid-view-switch scroller emits scroll
+    // events with a browser-clamped scrollTop (the spacer resizes as clView/clHourH change), and reading a date
+    // out of that once rewrote clAnchor four years off.
+    _clLive(el) { return this.clTLView === this.clView && (this.clView === 'week' || this.clView === 'day') && el && el.clientHeight > 0 && this.clHourH > 0; },
+    clPagesScroll(e) {
+      const el = e.target; if (!this._clLive(el)) return;
+      this.clScrollTop = el.scrollTop;
+      this.clPVisStart = Math.max(this.clTLBase, this._tlIdxAt(el.scrollTop) - 1);
+      this._clPeriodState(el.scrollTop);
+      this._clPositionZone();
+      this.clScrolling = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => { this.clScrolling = false; }, 600);
+    },
+    // day/week zone titles: every block is a boundary, so each visible block's label rises into the heading
+    _periodZoneTitles() {
+      const rowH = this.clPeriodH(), head = this._clHeadH(), barY = this._clBarY != null ? this._clBarY : CL_BAR - 34 - 14;
+      const zoneH = this._clZoneTop() - head, scrollTop = this.clScrollTop;
+      const base = this.clTLBase, first = Math.max(base, this._tlIdxAt(scrollTop) - 1), list = [];
+      for (let idx = first; idx <= first + 2; idx++) {
+        const vt = head + (idx - base) * rowH - scrollTop;
+        if (vt > head + zoneH) continue;
+        list.push({ name: this._periodLabel(this._periodDate(idx)), vt });
+      }
+      return this._zoneLayout(list, head, zoneH, barY);
     },
     // ctrl+wheel vertical zoom: hours expand past viewport so day scrolls
     clPagesWheel(e) {
-      if (!e.ctrlKey || !e.cancelable) return;
+      if (e.ctrlKey) { if (!e.cancelable) return; e.preventDefault(); this._clZoomTo(Math.max(1, Math.min(4, +(this.clZoom - e.deltaY * 0.01).toFixed(2)))); return; }
+      if ((this.clView !== 'day' && this.clView !== 'week') || !e.cancelable) return;
+      // A gesture moves WITHIN one period and stops at its edge; the next gesture steps to the neighbour. So
+      // every hour stays reachable (scroll up to midnight and it is simply there), you never come to rest
+      // straddling two of them, and a trackpad flick can't carry you three days past the one you were reading.
+      // We drive the scroll ourselves because CSS snap re-snaps every programmatic write; and since momentum
+      // keeps firing wheel events, "one gesture" ends only when the fingers are genuinely done.
       e.preventDefault();
-      const body = e.currentTarget.querySelector('.cl-pbody'); if (!body) return;
-      const fit = body.clientHeight / 24;   // px/hour that exactly fills the viewport (the scroll-viewport height is stable)
-      this.clZoom = Math.max(1, Math.min(4, +(this.clZoom - e.deltaY * 0.01).toFixed(2)));
-      this.clHourH = Math.round(fit * this.clZoom);
+      const el = e.currentTarget, ph = this.clPeriodH(), t = performance.now();
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * el.clientHeight : e.deltaY;
+      // Travel inside one period before its far edge is on screen. The scroller reserves the chrome as
+      // padding-top, so the VISIBLE height is clientHeight MINUS that — measuring against clientHeight alone
+      // left the last chrome-height of every week (11pm→midnight) permanently unreachable.
+      const span = Math.max(0, ph - (el.clientHeight - this._clHeadH()));
+      const fresh = !this._clGate || t - this._clGateT > CL_GESTURE_GAP;
+      this._clGateT = t;
+      if (!fresh && this._clGate.turned) return;    // the rest of this gesture is momentum for a turn already made
+      if (fresh) {
+        const i = Math.floor(el.scrollTop / ph), off = el.scrollTop - i * ph;
+        // Crossing a boundary — or a period that exactly fills the viewport, where there is nowhere to travel —
+        // is a PAGE TURN, and it must ANIMATE. Clamping to the neighbour instead jumped a whole viewport on the
+        // first pixel of scroll: that is the teleport, in week at the edges and in day everywhere.
+        const step = span < 2 ? Math.sign(dy) : dy > 0 && off >= span - 1 ? 1 : dy < 0 && off <= 1 ? -1 : 0;
+        if (step) {
+          this._clGate = { turned: true };
+          // down → the next period's top; up → the previous period's FAR edge, so the two stay continuous
+          const to = Math.max(0, (i + step) * ph + (step < 0 && span >= 2 ? span : 0));
+          el.scrollTo({ top: to, behavior: this.reduceMotion() ? 'auto' : 'smooth' });
+          return;
+        }
+        this._clGate = { lo: i * ph, hi: i * ph + span };
+      }
+      el.scrollTop = Math.max(this._clGate.lo, Math.min(this._clGate.hi, el.scrollTop + dy));
     },
+    // scrollTop means "px into the timeline", so it only means a fixed instant while clPeriodH is fixed —
+    // every hour-height change (zoom, resize) has to re-pin it, or the same offset reads as a different date.
+    _clZoomTo(z) {
+      const el = this.$refs.clPages; if (!el) return;
+      const at = el.scrollTop / this.clPeriodH();
+      this.clZoom = z; this.clHourH = Math.max(18, Math.round(this._clFitHour() * z));
+      this.$nextTick(() => this._clTlJump(el, at * this.clPeriodH()));
+    },
+    // free scroll + proximity snap (like month) — landing settles the anchor on whatever period is on top
     clPagesScrollEnd(e) {
-      if (_clRecenter) { _clRecenter = false; return; }
-      const el = e.target, pageH = el.clientHeight; if (!pageH) return;
-      const idx = Math.round(el.scrollTop / pageH); if (idx === 3) return;
-      const d = this._clDate(); d.setDate(d.getDate() + (idx - 3) * this._pageSpan()); this.clAnchor = isoDate(d);
-      this.$nextTick(() => { _clRecenter = true; el.scrollTop = 3 * pageH; });
+      if (this._clTlProg || !this._clLive(e.target)) return;
+      const iso = isoDate(this._periodDate(this._tlIdxAt(e.target.scrollTop)));
+      if (iso !== this.clAnchor) { this.clAnchor = iso; this._clSettle(); }
     },
 
+    // The title IS the date picker in day/week — the same popup the composer uses for a deadline, so the
+    // positioning, clamping and month paging are all the tested ones. Week mode picks a WEEK: the whole row
+    // highlights, and landing anywhere in it anchors to that week.
+    clPopHoverWk: '',
+    clOpenDatePop(anchor) {
+      if (this.clView !== 'day' && this.clView !== 'week') return;
+      this.togglePop('clnav', anchor);
+      if (this.pop !== 'clnav') return;
+      this.clPopHoverWk = '';
+      this._calTo(this.clAnchor);
+    },
+    _clWkKey(iso) { return isoDate(this._clWeekStart(new Date(iso + 'T00:00'))); },
+    clPopSel(iso) { return this.clView === 'week' ? this._clWkKey(iso) === this._clWkKey(this.clAnchor) : iso === this.clAnchor; },
+    clPopHot(iso) { return this.clView === 'week' && !!this.clPopHoverWk && this._clWkKey(iso) === this.clPopHoverWk; },
+    clPickDate(iso) {
+      this.pop = null; this.clPopHoverWk = '';
+      this.clAnchor = this.clView === 'week' ? isoDate(this._clWeekStart(new Date(iso + 'T00:00'))) : iso;
+      this.clRecalcPages(); this.$nextTick(() => this._clScrollToPeriod());
+    },
     clStep(dir) {
       const d = this._clDate();
-      if (this.clView === 'year') { d.setFullYear(d.getFullYear() + dir); this.clAnchor = isoDate(d); return; }
       if (this.clView === 'month') { d.setMonth(d.getMonth() + dir); this.clAnchor = isoDate(d); this._clStepMonth(); return; }
-      d.setDate(d.getDate() + dir * this._pageSpan()); this.clAnchor = isoDate(d); this.$nextTick(() => this._centerPages());
+      d.setDate(d.getDate() + dir * this._periodSpan()); this.clAnchor = isoDate(d); this.$nextTick(() => this._clScrollToPeriod());
     },
     clToday() {
       this.clAnchor = isoDate(new Date());
       if (this.clView === 'month') this.clScrollToAnchor();
-      else this.$nextTick(() => this._centerPages());
-    },
-    // --- YEAR — 12 mini-months with per-day item counts (heat-tinted) ---
-    clYearMonths() {
-      const y = this._clDate().getFullYear(), todayIso = isoDate(new Date()), byDay = this._clGroup(y + '-01-01', y + '-12-31');
-      return Array.from({ length: 12 }, (_, m) => {
-        const lead = new Date(y, m, 1).getDay();
-        const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(y, m, 1 - lead + i), iso = isoDate(d), cur = d.getMonth() === m; return { key: iso, iso, day: d.getDate(), cur, today: iso === todayIso, n: cur ? (byDay[iso] || []).length : 0 }; });
-        return { key: y + '-' + m, y, m, name: new Date(y, m, 1).toLocaleDateString([], { month: 'short' }), cells };
-      });
+      else this.$nextTick(() => this._clScrollToPeriod());
     },
     clOpenDay(iso) { this.clAnchor = iso; this.clSetView('day'); },
-    clOpenMonth(y, m) { this.clAnchor = isoDate(new Date(y, m, 1)); this.clSetView('month'); },
     // ---- Event editor (create / edit / delete) ----
     clNewEvent(date) { this.eventEdit = { title: '', date: date || this.clAnchor, start: '09:00', end: '10:00', all_day: false, color: null }; },
-    _timeOf(iso, fb) { return iso.length > 10 ? iso.slice(11, 16) : fb; },
     clEditEvent(id) {
       const e = this.events.find(x => x.id === id); if (!e) return;
-      this.eventEdit = { id: e.id, title: e.title, date: e.starts_at.slice(0, 10), start: this._timeOf(e.starts_at, '09:00'), end: this._timeOf(e.ends_at, '10:00'), all_day: !!e.all_day, color: e.color || null };
+      this.eventEdit = { id: e.id, title: e.title, date: e.starts_at.slice(0, 10), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), all_day: !!e.all_day, color: e.color || null };
     },
     clItemClick(it) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { const t = this.byId.get(id); if (t) this.toggle(t); },
     clKeyActivate(e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } },
     clChipCls(it) {
-      const done = (it.kind === 'task-due' || it.kind === 'task-block') && this.byId.get(it.id)?.completed_at ? ' done' : '';
-      if (it.spanStart === undefined) return it.kind + done;
+      const done = (it.kind === 'task-due' || it.kind === 'task-block' || it.kind === 'task-deadline') && this.byId.get(it.id)?.completed_at ? ' done' : '';
+      if (it.spanStart === undefined || this.clView === 'day') return it.kind + done;   // one column ⇒ nothing to join across, so no span caps
       return it.kind + done + ' cl-span' + (it.spanStart ? ' cl-span-l' : '') + (it.spanEnd ? ' cl-span-r' : '') + (!it.spanStart && !it.spanEnd ? ' cl-span-mid' : '');
     },
-    clIsTask(it) { return it.kind === 'task-due' || it.kind === 'task-block'; },
+    clSplitTitle(n) { const m = n.match(/^(.*?),?\s*(\d{4})$/); return m ? [m[1], ' ' + m[2]] : [n, '']; },   // trailing YEAR only — splitting on the first space mangled 'Jul 19 – Jul 25, 2026' down to 'Jul 19'
+    clIsTask(it) { return it.kind === 'task-due' || it.kind === 'task-block' || it.kind === 'task-deadline'; },
     // all-day → date-only; never a backwards range; shared by event + block
     _evRange(e, date = e.date) { const end = (!e.all_day && e.end < e.start) ? e.start : e.end; return e.all_day ? { starts_at: date, ends_at: date } : { starts_at: date + 'T' + e.start, ends_at: date + 'T' + end }; },
     _toggleIn(arr, v) { const i = arr.indexOf(v); i < 0 ? arr.push(v) : arr.splice(i, 1); },
@@ -3707,7 +4672,7 @@ document.addEventListener('alpine:init', () => {
       if (e.id) await this.store.events.update(e.id, fields); else await this.store.events.add(fields);
       await this.loadEvents(); this.eventEdit = null;
     },
-    async clDeleteEvent() { if (this.eventEdit?.id) await this.store.events.remove(this.eventEdit.id); await this.loadEvents(); this.eventEdit = null; },
+    async clDeleteEvent() { const e = this.events.find(x => x.id === this.eventEdit?.id); if (e) await this.perform('Deleted event', { target: 'event', kind: 'delete', id: e.id }); this.eventEdit = null; },
 
     // --- Blocks: drag a span on the week/day grid to create; click a band to edit ---
     clBlockDragStart(e, iso) {
@@ -3730,16 +4695,21 @@ document.addEventListener('alpine:init', () => {
     // --- Drag-to-(re)schedule (HTML5 DnD) — wall-clock local strings, never toISOString (tz shift) ---
     _fmtMin: m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'),
     clDragStart(e, kind, id) {
+      if (!kind) return;
       this._clDnd = { kind, id };
+      // lift the SOURCE element (the drag image is the browser's; this is the hole it left behind)
+      this._clLifted = e.target?.closest?.('.cl-event, .cl-chip, .cl-block, .item');
+      this._clLifted?.classList.add('cl-lift');
       if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(id)); }
     },
-    clDragEndSchedule() { this._clDnd = null; this.clDropHint = null; this.clDropPreview = null; },
+    clDragEndSchedule() { this._clDnd = null; this.clDropHint = null; this.clDropPreview = null; this._clLifted?.classList.remove('cl-lift'); this._clLifted = null; },
+    // F4: what you just placed settles into its slot, so the release reads as a landing and not a repaint
+    _clPlaced(id) { this.clPlaced = id; clearTimeout(this._clPlacedT); this._clPlacedT = setTimeout(() => { this.clPlaced = null; }, 420); },
     _dropMin(e) {   // minutes-of-day (snapped 15) when dropped inside a week/day column; null on a month cell
       const col = e.target.closest && e.target.closest('.cl-pcol'); if (!col) return null;
       const r = col.getBoundingClientRect();
       return Math.max(0, Math.min(1425, Math.round((e.clientY - r.top) / r.height * 96) * 15));
     },
-    _minLabel(min) { const h = Math.floor(min / 60), m = min % 60, ap = h < 12 ? 'AM' : 'PM', h12 = h % 12 || 12; return h12 + ':' + String(m).padStart(2, '0') + ' ' + ap; },
     // sizes the preview ghost; events/blocks keep their length, tasks use est_minutes
     _dragDurMin() {
       const d = this._clDnd; if (!d) return 60;
@@ -3751,16 +4721,34 @@ document.addEventListener('alpine:init', () => {
       if (!this._clDnd) return;
       const min = this._dropMin(e);
       this.clDropHint = null;   // timed preview and the all-day/month highlight are mutually exclusive
-      this.clDropPreview = min == null ? null : { iso, min, h: this._dragDurMin(), label: this._minLabel(min) };
+      this.clDropPreview = min == null ? null : { iso, min, h: this._dragDurMin(), label: this._clHM(min) + (min < 720 ? ' AM' : ' PM') };   // snap readout keeps :00 — precision is the point
+      edgeScrollStep(e.target?.closest?.('.cl-pages, .cl-month'), e.clientY);
     },
-    _dndKind(kind) { return kind === 'event' ? 'event' : kind === 'task-due' ? 'due' : kind === 'block' ? 'block' : 'task'; },
+    _dndKind(kind) { return kind === 'task-deadline' ? 'deadline' : kind === 'event' ? 'event' : kind === 'task-due' ? 'due' : kind === 'block' ? 'block' : 'task'; },
     async clDropOn(e, iso, allDay = false) {   // allDay: dropped into the week/day all-day row → make it all-day
-      const d = this._clDnd; this._clDnd = null; this.clDropHint = null; this.clDropPreview = null; if (!d || !iso) return;
+      const d = this._clDnd; this._clDnd = null; this.clDropHint = null; this.clDropPreview = null;
+      this._clLifted?.classList.remove('cl-lift'); this._clLifted = null;
+      if (!d || !iso) return;
+      this._clPlaced(d.id);
       const dm = allDay ? null : this._dropMin(e);   // null ⇒ month cell or all-day row (date only)
       const stamp = dm == null ? iso : iso + 'T' + this._fmtMin(dm);
-      if (d.kind === 'task' || d.kind === 'due') {
-        await this.store.tasks.update(d.id, d.kind === 'due' ? { due_at: stamp } : { scheduled_at: stamp });
-        await this.loadTasks();
+      if (d.kind === 'task' || d.kind === 'due' || d.kind === 'deadline') {
+        if (d.kind === 'deadline') {
+          await this.perform('Rescheduled deadline', { kind: 'update', target: 'task', id: d.id, after: { deadline_at: stamp } });
+        } else {
+          if (d.kind === 'task') {
+            const blockBand = e.target?.closest?.('.cl-block');
+            if (blockBand?.dataset?.id) {
+              const block = this.blocks.find(x => x.id === blockBand.dataset.id);
+              await this.store.scheduleItems.add({ task_id: d.id, block_id: blockBand.dataset.id });
+              this.scheduleItems = await this.store.scheduleItems.list();
+              this.toast('Attached to ' + (block?.title || 'block'));
+              return;
+            }
+          }
+          await this.store.tasks.update(d.id, d.kind === 'due' ? { due_at: stamp } : { scheduled_at: stamp });
+          await this.loadTasks();
+        }
       } else {
         const it = (d.kind === 'event' ? this.events : this.blocks).find(x => x.id === d.id); if (!it) return;
         let fields;
@@ -3779,50 +4767,34 @@ document.addEventListener('alpine:init', () => {
     },
     // no date at all, newest first; cap for perf
     clUnscheduled() {
-      return this.tasks.filter(t => !t.completed_at && !t.archived_at && !t.scheduled_at && !t.due_at && !this.isSidebar(t) && !this.hasChildren(t.id))
+      return this.tasks.filter(t => this._openLeaf(t) && !t.scheduled_at && !t.due_at)
         .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 50);
-    },
-    clViewRange() {
-      const d = this._clDate();
-      if (this.clView === 'week') { const s = this._clWeekStart(d), e = new Date(s); e.setDate(e.getDate() + 6); return [isoDate(s), isoDate(e)]; }
-      const iso = isoDate(d); return [iso, iso];
     },
     _clNowBounds() { const now = new Date(), today = isoDate(now); return { today, at: today + 'T' + hhmm(now) }; },
     _overdue(t, b) { return t.scheduled_at ? (t.scheduled_at.length > 10 ? t.scheduled_at < b.at : t.scheduled_at.slice(0, 10) < b.today) : (t.due_at ? t.due_at.slice(0, 10) < b.today : false); },
-    clViewTasks() {
-      void this._nowTickV; const [from, to] = this.clViewRange(), b = this._clNowBounds();
-      return this.tasks.filter(t => t.scheduled_at && !this.isSidebar(t) && !this._overdue(t, b) && t.scheduled_at.slice(0, 10) >= from && t.scheduled_at.slice(0, 10) <= to)
-        .sort((a, b) => (a.scheduled_at || '').localeCompare(b.scheduled_at || ''));
-    },
     // local wall-clock, never UTC
     clReschedule() {
       void this._nowTickV;   // refresh as the clock passes each task's time
       const b = this._clNowBounds();
-      return this.tasks.filter(t => !t.completed_at && !t.archived_at && !this.isSidebar(t) && !this.hasChildren(t.id) && this._overdue(t, b))
+      return this.tasks.filter(t => this._openLeaf(t) && this._overdue(t, b))
         .sort((a, b) => (a.scheduled_at || a.due_at || '').localeCompare(b.scheduled_at || b.due_at || ''));
     },
     clReschedListHtml() { return this._clListHtml('res', this.clReschedule(), isoDate(new Date()) + '|' + this._nowTickV); },
-    clSideLabel() { return this.clView === 'week' ? 'This week' : this._clDate().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }); },
     clSideVisible() { return this.clSideOpen || this.clView === 'day'; },   // the panel is up in day view (auto) or when toggled
     _clRowsHtml(tasks) {
       const now = new Date(), byId = this.byId, def = this.store.defaultProject(), byParent = buildByParent(this.tasks);
       let s = '';
       for (const t of tasks) {
-        const schedTime = t.scheduled_at?.length > 10 ? this._clTime(t.scheduled_at) : null;
         // due_at carries a time component (>10 chars) only when a specific due time was set; scheduled time wins the slot if both exist
-        s += '<li class="item' + (t.completed_at ? ' done' : '') + '" data-id="' + t.id + '" draggable="true">' + this.rowBody(this.mkRow(t, 0, byParent, byId, def, now), { schedTime }) + '</li>';
+        const schedTime = t.scheduled_at?.length > 10 ? this._clTime(t.scheduled_at) : null;
+        s += this._itemLi(this.mkRow(t, 0, byParent, byId, def, now), { drag: ' draggable="true"', schedTime });
       }
       return s;
     },
     // x-effect re-runs on every tick — cache to avoid rebuilds on scroll
     _clListHtml(kind, tasks, sig) {
-      const key = kind + '|' + this._rowV + '|' + sig, hit = _clListMemo.get(key);
-      if (hit != null) return hit;
-      const html = this._clRowsHtml(tasks);
-      if (_clListMemo.size > 6) _clListMemo.clear();
-      _clListMemo.set(key, html); return html;
+      return _memo(_clListMemo, kind + '|' + this._rowV + '|' + sig, () => this._clRowsHtml(tasks), 6);
     },
-    clViewListHtml() { const [from, to] = this.clViewRange(); return this._clListHtml('sch', this.clViewTasks(), from + '|' + to + '|' + this._nowTickV); },
     clUnschedListHtml() { return this._clListHtml('un', this.clUnscheduled(), ''); },
     clRowClick(e) { const el = e.target.closest && e.target.closest('.item'); const t = el && this.byId.get(el.dataset.id); if (t) this.onRowClick({ t }, e); },
     clSideDragStart(e) { const el = e.target.closest && e.target.closest('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
@@ -3831,7 +4803,7 @@ document.addEventListener('alpine:init', () => {
     clNewBlock(date, start, end) { this.blockEdit = { date: date || this.clAnchor, start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], energy: null, availability: null, color: null, title: '' }; },
     clEditBlock(id) {
       const b = this.blocks.find(x => x.id === id); if (!b) return;
-      this.blockEdit = { id: b.id, title: b.title || '', date: b.starts_at.slice(0, 10), start: this._timeOf(b.starts_at, '09:00'), end: this._timeOf(b.ends_at, '10:00'), all_day: !!b.all_day,
+      this.blockEdit = { id: b.id, title: b.title || '', date: b.starts_at.slice(0, 10), start: timeOf(b.starts_at, '09:00'), end: timeOf(b.ends_at, '10:00'), all_day: !!b.all_day,
         weekdays: (b.recurrence?.weekdays || []).slice(), location_id: b.location_id || null, areas: (b.areas || []).slice(), energy: b.energy || null, availability: b.availability || null, color: b.color || null };
     },
     async clSaveBlock() {
@@ -3846,18 +4818,32 @@ document.addEventListener('alpine:init', () => {
       if (e.id) await this.store.blocks.update(e.id, fields); else await this.store.blocks.add(fields);
       await this.loadBlocks(); this.blockEdit = null;
     },
-    async clDeleteBlock() { if (this.blockEdit?.id) await this.store.blocks.remove(this.blockEdit.id); await this.loadBlocks(); this.blockEdit = null; },
+    async clDeleteBlock() { const b = this.blocks.find(x => x.id === this.blockEdit?.id); if (b) await this.perform('Deleted block', { target: 'block', kind: 'delete', id: b.id }); this.blockEdit = null; },
+    clBlockPreset(p) {
+      const pre = { work: { title: 'Work', start: '08:15', end: '16:30', weekdays: [1,2,3,4,5] }, lunch: { title: 'Lunch', start: '12:00', end: '13:00', weekdays: [1,2,3,4,5] }, evening: { title: 'Evening', start: '18:00', end: '22:00', weekdays: [] } }[p];
+      if (!pre || !this.blockEdit) return;
+      Object.assign(this.blockEdit, pre);
+    },
+    clAttachedTasks() { const id = this.blockEdit?.id; if (!id) return []; return this.scheduleItems.filter(s => s.block_id === id); },
+    async clCycleRole(itemId) {
+      const item = this.scheduleItems.find(x => x.id === itemId); if (!item) return;
+      await this.store.scheduleItems.setRole(itemId, { before: 'during', during: 'after', after: 'before' }[item.role] || 'during');
+      this.scheduleItems = await this.store.scheduleItems.list();
+    },
+    async clRemoveAttached(itemId) { await this.store.scheduleItems.remove(itemId); this.scheduleItems = await this.store.scheduleItems.list(); },
 
     // ---- Cloud sync (Supabase adapter, opt-in via magic link). LocalStore stays the offline default. ----
     async reloadAll() {
       if (this.store.requiresAuth && !this.session) return;   // cloud adapter: wait until signed in
       const b = await this.store.bootstrap();   // ONE round-trip (cloud): the whole account in a single query
       this.areas = b.areas; this.goals = b.goals;
-      this.tasks = b.tasks; this.byId = new Map(b.tasks.map(t => [t.id, t]));   // ← list renders (reactive) from here
+      this.tasks = b.tasks; this.byId = new Map(b.tasks.map(t => [t.id, t])); this.parentIds = new Set(b.tasks.map(t => t.parent_id).filter(Boolean));   // ← list renders (reactive) from here
       this.filters = b.filters; this.locations = b.locations; this.travel = b.travel;
+      _clBlocksSig = null;   // bust memo before reactive write so the flush sees the new blocks array
       this.events = b.events; this.blocks = b.blocks;
-      this.currentLocationId = this.store.currentLocationId(); this.homeLocationId = this.store.homeLocationId(); this.currentRegion = this.store.currentRegion();
-      this._rowV++; _calDataV++; _calMemo.clear(); _goalStepsMemo.clear(); _goalMilestonesMemo.clear();
+      this.scheduleItems = await this.store.scheduleItems.list();
+      this.homeLocationId = this.store.homeLocationId(); this.currentRegion = this.store.currentRegion();
+      this._rowV++; _calDataV++; _goalStepsMemo.clear(); _goalMilestonesMemo.clear();
       await this.loadIdentities();
       // stats derivation is synchronous — paint the list first before blocking
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -3867,16 +4853,16 @@ document.addEventListener('alpine:init', () => {
     async signIn() {
       const sb = sbClient(); if (!sb) return;
       if (!this.authEmail) { this.authMsg = 'Enter your email first.'; this.authErr = true; return; }
-      // password filled → direct sign-in, no email round-trip (the built-in mailer can't carry codes)
+      // password filled → direct sign-in, no email round-trip
       if (this.authPass) {
         const { error } = await sb.auth.signInWithPassword({ email: this.authEmail, password: this.authPass });
         this.authMsg = error ? error.message : ''; this.authErr = !!error;
         if (!error) this.authPass = '';   // success: onAuthStateChange takes over
         return;
       }
-      // one email = magic link (+ code once custom SMTP exists); shouldCreateUser:false blocks new-account creation
+      // one email carries both a link and a 6-digit code (templates: pg_mail/mail/mail.js); shouldCreateUser:false blocks new-account creation
       const { error } = await sb.auth.signInWithOtp({ email: this.authEmail, options: { emailRedirectTo: location.href, shouldCreateUser: false } });
-      this.authMsg = error ? error.message : 'Tap the link in the email to sign in here.';
+      this.authMsg = error ? error.message : 'Tap the link in the email, or enter its code below.';
       this.authErr = !!error;
       this.authSent = !error;
     },
@@ -3886,7 +4872,7 @@ document.addEventListener('alpine:init', () => {
       if (error) { this.authMsg = error.message; this.authErr = true; }   // stay on the code form; onAuthStateChange handles success
       this.authCode = '';
     },
-    // Supabase mail can't carry OTP without custom SMTP — use password for phone sign-in
+    // Optional second path for phone sign-in — the emailed code already works without it
     async setAppPassword() {
       const sb = sbClient(); if (!sb || !this.authPass) return;
       const { error } = await sb.auth.updateUser({ password: this.authPass });
@@ -3914,6 +4900,22 @@ document.addEventListener('alpine:init', () => {
     phoneOpen: false,                 // Connections → Phone row unfolded in place
     online: navigator.onLine,         // gear status dot + account-row sub (listeners live on the popup markup)
     theme: localStorage.getItem('adherod.theme') || 'system',
+    dayTint: localStorage.getItem('adherod.dayTint') !== '0',   // time-of-day tint on the week/day columns (NB: daypart() is the Now Room's clock — don't shadow it)
+    setDayTint(v) { this.dayTint = v; localStorage.setItem('adherod.dayTint', v ? '1' : '0'); },
+    // Wipe this device's local copy and reload — the escape hatch when local storage is stale (e.g. a re-seeded
+    // demo won't overwrite existing data). Signed-in accounts re-sync from the cloud; local-only data is gone.
+    resetLocalData() {
+      this.askConfirm({
+        message: this.session
+          ? "Clear this device's local copy? Your account data stays in the cloud and re-syncs when the page reloads."
+          : "Delete everything stored on this device? This can't be undone.",
+        confirmLabel: 'Delete', danger: true,
+        onConfirm: () => {
+          for (const k of Object.keys(localStorage)) if (k.startsWith('adherod.')) localStorage.removeItem(k);
+          location.reload();
+        },
+      });
+    },
     toggleSurface(s) {   // strike/unstrike a surface chip — never deleted; at least one stays lit
       const off = this.surfOff.includes(s) ? this.surfOff.filter(x => x !== s) : [...this.surfOff, s];
       if (off.length === this.surfAll.length) return;

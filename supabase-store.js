@@ -1,8 +1,8 @@
 // Supabase adapter — same interface as createLocalStore (see store.js). Mapping helpers exported for tests.
 
-import { descendantIds, projectDepth, subtreeDepth, pendingSweep, ancestorIds, parentsToComplete, movedOutParents, nextOccurrence, nextAcrossRules, recRules, recActive, MAX_DEPTH } from './store.js';
-import { makeFuzzy, buildSearchDocs, rankDocs, defaultDocs, matchQuery } from './search.js';
-import { isoDate } from './nlp.js';
+import { descendantIds, projectDepth, subtreeDepth, pendingSweep, ancestorIds, parentsToComplete, movedOutParents, nextOccurrence, nextAcrossRules, recRules, recActive, MAX_DEPTH, buildCtx, resolveAreaNames, searchDocs, buildFreeText, updateRecent, advanceRecurrence, pauseRecurrence, seedRecurrenceDue, sweepMovedOut } from './store.js';
+import { makeFuzzy, buildSearchDocs, matchQuery } from './search.js';
+import { nextTs } from './recovery.js';
 
 // ─── Pure row ↔ object mapping ───────────────────────────────────────────────
 
@@ -48,6 +48,7 @@ export function dehydrateTask(task) {
     row: {
       content: task.content,
       notes: task.notes ?? null,
+      importance: task.importance ?? 'none',
       due_at: task.due_at ?? null,
       deadline_at: task.deadline_at ?? null,
       scheduled_at: task.scheduled_at ?? null,
@@ -64,6 +65,8 @@ export function dehydrateTask(task) {
       completed_at: task.completed_at ?? null,
       archived_at: task.archived_at ?? null,
       sidebar: task.sidebar ?? false,
+      milestone: task.milestone ?? false,
+      checklist_plain: task.checklist_plain ?? false,
       checklist: cleanChecklist(task.checklist),
       completions: task.completions ?? [],
       recurrence: task.recurrence ?? null,
@@ -189,25 +192,34 @@ export function createSupabaseStore(client) {
   }
   const dropTasks = (ids) => { const s = new Set(ids); _cTasks = _cTasks.filter(t => !s.has(t.id)); rebuildIdx(); };
 
-  // fields.areas (names) → area ids, mirroring LocalStore.resolveAreas: prefer explicit area_ids, else match
-  // cached area names and auto-create any missing ones (inserting the area + syncing the cache).
-  async function resolveAreaIds(fields) {
-    if (fields.area_ids) return fields.area_ids;
-    const names = fields.areas;
-    if (!names || !names.length) return [];
+  // Find-or-create an area by TRIMMED name, reusing an existing one instead of ever inserting a duplicate.
+  // Cache hit wins; on a stale-cache unique clash (another device already created it — the DB's
+  // areas_user_name_idx forbids same-owner dupes) refetch that row and reuse it.
+  async function ensureArea(name, color = null) {
+    const nm = (name ?? '').trim();
+    const cached = _cAreas.find(a => a.name === nm);
+    if (cached) return cached;
     const uid = await userId();
-    const ids = [];
-    for (const name of names) {
-      let a = _cAreas.find(x => x.name === name);
-      if (!a) {
-        const ts = new Date().toISOString();
-        const pos = _cAreas.length ? Math.max(..._cAreas.map(x => x.position ?? 0)) + 1 : 0;
-        const { data } = await client.from('areas').insert({ user_id: uid, name, color: null, icon: null, position: pos, favorite: false, created_at: ts, updated_at: ts }).select().single();
-        a = data; if (a) { markEcho(a.id); _cAreas = [..._cAreas, a]; rebuildIdx(); }
-      }
-      if (a) ids.push(a.id);
+    const pos = _cAreas.length ? Math.max(..._cAreas.map(a => a.position ?? 0)) + 1 : 0;
+    const ts = new Date().toISOString();
+    const { data, error } = await client.from('areas').insert({ user_id: uid, name: nm, color: color ?? null, icon: null, position: pos, favorite: false, created_at: ts, updated_at: ts }).select().single();
+    if (data) { markEcho(data.id); _cAreas = [..._cAreas, data]; rebuildIdx(); return data; }
+    if (error) {
+      const { data: found } = await client.from('areas').select('*').eq('user_id', uid).eq('name', nm).limit(1).maybeSingle();
+      if (found) { if (!_cAreas.some(a => a.id === found.id)) { _cAreas = [..._cAreas, found]; rebuildIdx(); } return found; }
     }
-    return ids;
+    return null;
+  }
+
+  // fields.areas (names) → area ids, mirroring LocalStore.resolveAreas: prefer explicit area_ids, else
+  // find-or-create each name (reusing existing rows — never a duplicate).
+  async function resolveAreaIds(fields) {
+    const { ids, names } = resolveAreaNames(fields);
+    if (ids) return ids;
+    if (!names.length) return [];
+    const result = [];
+    for (const nm of names) { const a = await ensureArea(nm); if (a) result.push(a.id); }
+    return result;
   }
 
   // cold-loaded once; sorted ascending to survive back-dated entries
@@ -224,43 +236,13 @@ export function createSupabaseStore(client) {
   async function pushActivity(type, task) {
     if (!task) return;
     const uid = await userId();
-    // TODO(parity): LocalStore uses effectiveGoalIds(rows, t.id) for ctx.goal_ids (inherited from ancestors).
-    await insertActivity({
-      user_id: uid, type, ts: new Date().toISOString(),
-      subject_type: 'task', subject_id: task.id, void: false,
-      ctx: { project_id: task.parent_id ?? null, area_ids: task.area_ids ?? [], place: task.place ?? null, importance: task.importance ?? 'none', est_minutes: task.est_minutes ?? null, goal_ids: task.goal_ids ?? [], milestone: task.milestone ?? false },
-    });
+    await insertActivity({ user_id: uid, type, ts: new Date().toISOString(), subject_type: 'task', subject_id: task.id, void: false, ctx: buildCtx(task, _cTasks) });
   }
 
   // replaces one edge-type in task_relations (the only junction write left)
   async function setRelationType(id, uid, type, ids) {
     await client.from('task_relations').delete().eq('task_id', id).eq('type', type);
     if (ids.length) await client.from('task_relations').insert(ids.map(related_id => ({ task_id: id, related_id, type, user_id: uid })));
-  }
-
-  // one-time: identity strings → entities; flag only on full success (DB error → retry)
-  async function migrateIdentities(goals) {
-    const s = await settings();
-    if (s.identity_migrated) return;
-    const uid = await userId(); const ts = new Date().toISOString();
-    const { data: existing } = await client.from('identities').select('*');
-    const byStatement = new Map((existing || []).map(i => [i.statement, i]));
-    let maxPos = (existing || []).reduce((m, i) => Math.max(m, i.position ?? 0), -1);
-    for (const g of goals) {
-      const st = (g.identity || '').trim();
-      if (!st || g.identity_id) continue;
-      let ent = byStatement.get(st);
-      if (!ent) {
-        maxPos++;
-        const { data: newEnt, error: insErr } = await client.from('identities').insert({ user_id: uid, statement: st, position: maxPos, created_at: ts, updated_at: ts }).select('*').single();
-        if (insErr) throw insErr;   // abort so flag stays unset → retry
-        ent = newEnt; byStatement.set(st, ent);
-      }
-      const { error: updErr } = await client.from('goals').update({ identity_id: ent.id, updated_at: ts }).eq('id', g.id).eq('user_id', uid);
-      if (updErr) throw updErr;
-      g.identity_id = ent.id;   // mutate in-place so bootstrap payload carries the new id
-    }
-    await patchSettings({ identity_migrated: true });
   }
 
   return {
@@ -276,7 +258,6 @@ export function createSupabaseStore(client) {
       _cTasks = (d.tasks || []).map(t => hydrateTask({ ...t, task_relations: relByTask[t.id] || [] }));
       _cAreas = d.areas || []; _loaded = true; _areasLoaded = true; rebuildIdx();
       const goals = (d.goals || []).map(hydrateGoal);
-      try { await migrateIdentities(goals); } catch (e) { console.error('[goals] identity migration failed:', e); }   // awaited: first render sees identity_ids; flag stays unset on error
       return {
         tasks: [..._cTasks].sort(taskSort), areas: _cAreas,
         goals, filters: d.filters || [], locations: d.locations || [],
@@ -288,26 +269,13 @@ export function createSupabaseStore(client) {
     // sync reads from cache (matches LocalStore; called during render)
     defaultProject() { return _settings.default_project_id ?? null; },
     async setDefaultProject(id) { await patchSettings({ default_project_id: id }); },
-    globalTargets() { return _settings.global_targets ?? []; },
-    async setGlobalTargets(targets) { await patchSettings({ global_targets: targets ?? [] }); },
-
-    search(query, limit = 50) {
-      return (query || '').trim()
-        ? rankDocs(_uf, _cIdx.haystack, _cIdx.meta, query, limit)
-        : defaultDocs(_cIdx.meta, _settings.recent ?? [], limit);
-    },
+    search(query, limit = 50) { return searchDocs(query, limit, _uf, _cIdx, _settings.recent ?? []); },
     recordSearchPick(id) {
-      const recent = [id, ...(_settings.recent || []).filter(x => x !== id)].slice(0, 12);
+      const recent = updateRecent(id, _settings.recent);
       _settings = { ..._settings, recent }; patchSettings({ recent });   // sync cache update + fire-and-forget persist
     },
     runFilter(query, limit = 200) {
-      const freeText = (term, scope) => {
-        const [idxs] = _uf.search(_cIdx.haystack, term, 1, 1e4);
-        const ids = new Set((idxs || []).map(i => _cIdx.meta[i].id));
-        if (!scope) return ids;
-        return new Set([...ids].filter(tid => { const t = _cTasks.find(x => x.id === tid); if (!t) return false; return ((scope === 'notes' ? t.notes : t.content) || '').toLowerCase().includes(term); }));
-      };
-      return matchQuery(query, _cTasks, { now: new Date().toISOString(), areas: _cAreas, defaultProjectId: _cDef, freeText }).slice(0, limit);
+      return matchQuery(query, _cTasks, { now: new Date().toISOString(), areas: _cAreas, defaultProjectId: _cDef, freeText: buildFreeText(_uf, _cIdx, _cTasks) }).slice(0, limit);
     },
 
     defaultTravel() { return _settings.default_travel_min ?? 20; },
@@ -316,84 +284,41 @@ export function createSupabaseStore(client) {
     homeLocationId() { return _settings.home_location_id ?? null; },   // designated "home" place ("at home" NLP)
     async setHomeLocation(id) { await patchSettings({ home_location_id: _settings.home_location_id === id ? null : id }); },
     currentRegion() { return _settings.current_region ?? 'Home'; },
-    presenceActuals() { return _settings.presence_actuals ?? {}; },
-
     async setCurrentLocation(id) {
       const uid = await userId();
-      const s = await getSettings();
+      const s = await settings();
       const ts = new Date().toISOString();
       if (s.current_location_id !== id) {
         await insertActivity({ user_id: uid, type: 'location', ts, subject_type: 'location', subject_id: id, ctx: { from: s.current_location_id ?? null }, void: false });
       }
-      const today = isoDate(new Date(ts));
-      const actuals = s.presence_actuals || {};
-      actuals[today] = actuals[today] || {};
-      actuals[today][id] = { ...(actuals[today][id] || {}), start: actuals[today][id]?.start || ts.slice(11, 16) };
-      await patchSettings({ current_location_id: id, presence_actuals: actuals });
+      await patchSettings({ current_location_id: id });
     },
     async setCurrentRegion(name) {
       const uid = await userId();
-      const s = await getSettings();
+      const s = await settings();
       const ts = new Date().toISOString();
       if (s.current_region !== name) {
         await insertActivity({ user_id: uid, type: 'region', ts, subject_type: 'region', subject_id: name, ctx: { from: s.current_region ?? null }, void: false });
       }
       await patchSettings({ current_region: name });
     },
-    async stampActual(dateIso, locId, bounds) {
-      const s = await getSettings();
-      const actuals = s.presence_actuals || {};
-      actuals[dateIso] = actuals[dateIso] || {};
-      actuals[dateIso][locId] = { ...(actuals[dateIso][locId] || {}), ...bounds };
-      await patchSettings({ presence_actuals: actuals });
-    },
-
-    // undo: snapshot serializes caches; restore reconciles DB (changed/added/removed tasks + activity + areas)
-    snapshot() { return { tasks: JSON.stringify(_cTasks), activity: JSON.stringify(_cActs), actsLoaded: _actsLoaded, areas: JSON.stringify(_cAreas) }; },
-    async restore(snap) {
-      if (!snap) return false;
+    // Trash restore: re-insert previously-deleted rows (upsert on id → deduped/idempotent). Powers "Recently deleted".
+    async reinsert(kind, rows) {
+      if (!rows?.length) return false;
       const uid = await userId();
-      const snapTasks = JSON.parse(snap.tasks);
-      const snapIds = new Set(snapTasks.map(t => t.id));
-      const curById = new Map(_cTasks.map(t => [t.id, t]));
-      // missing/changed tasks → rewrite (re-create deleted, revert completed)
-      for (const t of snapTasks) {
-        const cur = curById.get(t.id);
-        if (cur && JSON.stringify(cur) === JSON.stringify(t)) continue;
-        const { row, task_relations } = dehydrateTask(t);
-        const err = (await client.from('tasks').upsert({
-          id: t.id, user_id: uid, milestone: t.milestone ?? false,
-          created_at: t.created_at ?? new Date().toISOString(), updated_at: new Date().toISOString(), ...row,
-        }, { onConflict: 'id' })).error;
-        if (err) return false;
-        await client.from('task_relations').delete().eq('task_id', t.id);
-        if (task_relations.length) await client.from('task_relations').insert(task_relations.map(r => ({ ...r, task_id: t.id, user_id: uid })));
+      if (kind === 'task') {
+        for (const t of rows) {
+          const { row, task_relations } = dehydrateTask(t);
+          if ((await client.from('tasks').upsert({ id: t.id, user_id: uid, created_at: t.created_at ?? new Date().toISOString(), updated_at: new Date().toISOString(), ...row }, { onConflict: 'id' })).error) return false;
+          if (task_relations.length) await client.from('task_relations').upsert(task_relations.map(r => ({ ...r, task_id: t.id, user_id: uid })), { onConflict: 'task_id,related_id,type' });
+        }
+        await fetchAllTasks(); return true;
       }
-      // tasks added after snapshot → delete (undo of an add)
-      const added = _cTasks.filter(t => !snapIds.has(t.id)).map(t => t.id);
-      if (added.length) await client.from('tasks').delete().in('id', added).eq('user_id', uid);
-      _cTasks = snapTasks; rebuildIdx();
-      if (snap.actsLoaded) {
-        const snapActs = JSON.parse(snap.activity);
-        const snapActIds = new Set(snapActs.map(a => a.id)), curActIds = new Set(_cActs.map(a => a.id));
-        const actsAdd = _cActs.filter(a => !snapActIds.has(a.id)).map(a => a.id);   // e.g. the 'complete' row this undoes
-        const actsMissing = snapActs.filter(a => !curActIds.has(a.id));
-        if (actsAdd.length) await client.from('activity').delete().in('id', actsAdd);
-        if (actsMissing.length) await client.from('activity').insert(actsMissing.map(a => ({ ...a, user_id: uid })));
-        _cActs = snapActs;
-      }
-      if (snap.areas !== undefined) {
-        const snapAreas = JSON.parse(snap.areas);
-        const snapAreaIds = new Set(snapAreas.map(a => a.id)), curAreaIds = new Set(_cAreas.map(a => a.id));
-        const areasAdded = _cAreas.filter(a => !snapAreaIds.has(a.id)).map(a => a.id);
-        const areasMissing = snapAreas.filter(a => !curAreaIds.has(a.id));
-        if (areasAdded.length) await client.from('areas').delete().in('id', areasAdded).eq('user_id', uid);
-        if (areasMissing.length) await client.from('areas').insert(areasMissing.map(a => ({ ...a, user_id: uid })));
-        _cAreas = snapAreas; _areasLoaded = true; rebuildIdx();
-      }
-      return true;
+      const table = { area: 'areas', goal: 'goals', event: 'events', block: 'blocks', filter: 'filters', location: 'locations' }[kind];
+      if (!table) return false;
+      const { error } = await client.from(table).upsert(rows.map(r => ({ ...r, user_id: uid })), { onConflict: 'id' });
+      return !error;
     },
-
     activity: {
       async list() { return activityList(); },
       async note(goalId, text) {
@@ -452,7 +377,7 @@ export function createSupabaseStore(client) {
         if (data) _cActs.push(data);
         return data;
       },
-      async remove(id) { await client.from('activity').delete().eq('id', id); _cActs = _cActs.filter(a => a.id !== id); return true; },
+      async remove(id) { const { error } = await client.from('activity').delete().eq('id', id); if (!error) _cActs = _cActs.filter(a => a.id !== id); return !error; },
     },
 
     filters: {
@@ -470,7 +395,7 @@ export function createSupabaseStore(client) {
         const { data } = await client.from('filters').update({ ...fields, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', uid).select().single();
         return data ?? null;
       },
-      async remove(id) { const uid = await userId(); await client.from('filters').delete().eq('id', id).eq('user_id', uid); return true; },
+      async remove(id) { const uid = await userId(); const { error } = await client.from('filters').delete().eq('id', id).eq('user_id', uid); return !error; },
       async reorder(ids) {
         const uid = await userId(), ts = new Date().toISOString();
         await Promise.all(ids.map((id, i) => client.from('filters').update({ position: i, updated_at: ts }).eq('id', id).eq('user_id', uid)));
@@ -501,7 +426,7 @@ export function createSupabaseStore(client) {
         const { data } = await client.from('events').update(upd).eq('id', id).eq('user_id', uid).select('*').single();
         return data ? hydrateEvent(data) : null;
       },
-      async remove(id) { const uid = await userId(); await client.from('events').delete().eq('id', id).eq('user_id', uid); return true; },
+      async remove(id) { const uid = await userId(); const { error } = await client.from('events').delete().eq('id', id).eq('user_id', uid); return !error; },
     },
 
     blocks: {
@@ -527,7 +452,29 @@ export function createSupabaseStore(client) {
         const { data } = await client.from('blocks').update(upd).eq('id', id).eq('user_id', uid).select('*').single();
         return data ? hydrateBlock(data) : null;
       },
-      async remove(id) { const uid = await userId(); await client.from('blocks').delete().eq('id', id).eq('user_id', uid); return true; },
+      async remove(id) { const uid = await userId(); const { error } = await client.from('blocks').delete().eq('id', id).eq('user_id', uid); return !error; },
+    },
+
+    scheduleItems: {
+      async list() {
+        const { data, error } = await client.from('schedule_items').select('*').order('position');
+        if (error) throw error;
+        return data || [];
+      },
+      async add({ task_id, block_id, role, position }) {
+        const uid = await userId(); const ts = new Date().toISOString();
+        const { data } = await client.from('schedule_items').insert({
+          user_id: uid, task_id, block_id, role: role ?? 'during', position: position ?? 0,
+          created_at: ts, updated_at: ts,
+        }).select('*').single();
+        return data;
+      },
+      async remove(id) { const uid = await userId(); const { error } = await client.from('schedule_items').delete().eq('id', id).eq('user_id', uid); return !error; },
+      async setRole(id, role) {
+        const uid = await userId(); const ts = new Date().toISOString();
+        const { data } = await client.from('schedule_items').update({ role, updated_at: ts }).eq('id', id).eq('user_id', uid).select('*').single();
+        return data;
+      },
     },
 
     tasks: {
@@ -548,10 +495,7 @@ export function createSupabaseStore(client) {
           const position = rows.length ? Math.min(...rows.map(r => r.position ?? 0)) - 1 : 0;
           const rec = fields.recurrence ?? null;
           let due_at = fields.due_at || null;
-          if (rec && !fields.due_at) {
-            const b = nextAcrossRules(rec, isoDate(new Date(ts)), ts, { inclusive: true });
-            if (b) { b.rule.gen_due = true; due_at = b.iso + (b.rule.at ? 'T' + b.rule.at : ''); }   // seeded due is rule-generated; a rule may carry its own time
-          }
+          if (rec && !due_at) { const seeded = seedRecurrenceDue(rec, ts); if (seeded) due_at = seeded; }   // seeded due is rule-generated; a rule may carry its own time
           const id = crypto.randomUUID();
           const { error } = await client.from('tasks').insert({
             id, user_id: uid, content: fields.content ?? '', notes: fields.notes ?? null,
@@ -563,24 +507,31 @@ export function createSupabaseStore(client) {
             position, completed_at: null, archived_at: null, sidebar: fields.sidebar ?? false,
             milestone: fields.milestone ?? false,
             // checklist_plain / importance deliberately NOT sent on create: the column may not exist before db:apply, and an
-            // unknown column fails the WHOLE insert. New tasks default server-side; these fields only write on update.
+            // unknown column fails the WHOLE insert. They ride the follow-up update below instead.
             checklist: cleanChecklist(fields.checklist), completions: [], recurrence: rec,
             created_at: ts, updated_at: ts,
           });
           if (error) return null;
+          // …and they MUST still be written, or a signed-in user's importance chip is set in the composer and
+          // silently gone on Save. Separate statement so a pre-migration column costs these fields, not the task.
+          const post = {};
+          if (fields.importance && fields.importance !== 'none') post.importance = fields.importance;
+          if (fields.checklist_plain) post.checklist_plain = true;
+          if (Object.keys(post).length) await client.from('tasks').update(post).eq('id', id).eq('user_id', uid);
           markEcho(id);
           if (fields.blocked_by?.length) await setRelationType(id, uid, 'needs', fields.blocked_by);
           if (fields.relates?.length) await setRelationType(id, uid, 'relates', fields.relates);
           const task = await fetchTask(id); putTask(task);
           if (task?.sidebar !== true) await pushActivity('create', task);
           return task;
-        } catch { return null; }
+        } catch (e) { console.error('[sb] create failed', e); return null; }
       },
 
       async update(id, fields) {
         try {
           const uid = await userId(); const ts = new Date().toISOString();
-          const upd = { updated_at: ts };
+          const curr = _cTasks.find(x => x.id === id);
+          const upd = { updated_at: nextTs(ts, curr?.updated_at) };
           for (const c of ['content', 'notes', 'importance', 'due_at', 'deadline_at', 'scheduled_at', 'est_minutes', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'sidebar', 'milestone', 'checklist_plain']) {
             if (c in fields) upd[c] = fields[c] ?? null;
           }
@@ -638,21 +589,21 @@ export function createSupabaseStore(client) {
             if (toComplete.length) {
               markEcho(...toComplete);
               await client.from('tasks').update({ completed_at: ts, updated_at: ts }).in('id', toComplete).eq('user_id', uid);
-              for (const pid of toComplete) {
-                const p = updatedRows.find(r => r.id === pid);
-                if (p?.sidebar !== true) await pushActivity('complete', p);
-              }
+              // batch mark done above; sweepMovedOut handles per-row activity (markCompleted is no-op here)
+              await sweepMovedOut(toComplete, updatedRows, ts, async () => {}, pushActivity);
               await refreshTasks(toComplete);
             }
           }
           return task;
-        } catch { return null; }
+        } catch (e) { console.error('[sb] move failed', e); return null; }
       },
 
       async remove(id, targetId) {
         try {
           const uid = await userId();
           const rows = await taskRows();
+          const task = rows.find(r => r.id === id); if (!task) return false;
+          const oldParentId = task.parent_id;
           const kids = rows.filter(r => r.parent_id === id).map(r => r.id);
           if (kids.length) {
             if (!targetId) return false;
@@ -661,10 +612,24 @@ export function createSupabaseStore(client) {
           }
           if ((await settings()).default_project_id === id && targetId) await patchSettings({ default_project_id: targetId });
           markEcho(id, ...kids);
-          await client.from('tasks').delete().eq('id', id).eq('user_id', uid);
+          const { error: delErr } = await client.from('tasks').delete().eq('id', id).eq('user_id', uid);
+          if (delErr) return false;
           await refreshTasks(kids); dropTasks([id]);   // reparented kids changed; the removed row leaves the cache
+          // Auto-complete old parent chain after id is removed (same rule as move-out).
+          // Use rows with kids virtually reparented; id still present for movedOutParents logic.
+          const ts = new Date().toISOString();
+          if (oldParentId) {
+            const preRows = kids.length ? rows.map(r => kids.includes(r.id) ? { ...r, parent_id: targetId } : r) : rows;
+            const toComplete = movedOutParents(preRows, id, oldParentId, ts);
+            if (toComplete.length) {
+              markEcho(...toComplete);
+              await client.from('tasks').update({ completed_at: ts, updated_at: ts }).in('id', toComplete).eq('user_id', uid);
+              await sweepMovedOut(toComplete, preRows, ts, async () => {}, pushActivity);
+              await refreshTasks(toComplete);
+            }
+          }
           return true;
-        } catch { return false; }
+        } catch (e) { console.error('[sb] remove failed', e); return false; }
       },
 
       async setCompleted(id, done) {
@@ -674,21 +639,7 @@ export function createSupabaseStore(client) {
 
         // Recurring: log + advance due_at unless every statement ends (all-paused falls through to permanent complete).
         if (done && recActive(target.recurrence) && !target.completed_at && !rows.some(r => r.parent_id === id)) {
-          const wasArray = Array.isArray(target.recurrence);
-          const rules = recRules(target.recurrence).map(r => ({ ...r }));
-          const anchor = target.due_at || isoDate(new Date(ts));
-          // The completed occurrence belongs to the rule that generated the current due (gen_due marker; legacy fallback: first active).
-          const src = rules.find(r => r.gen_due && !r.paused) || rules.find(r => !r.paused);
-          src.done_count = (src.done_count ?? 0) + 1;
-          const srcNext = nextOccurrence(src, anchor, ts);
-          // Per-rule ends (count reached, or next past "until"): PAUSE (never destroy) the exhausted statement.
-          if ((src.ends?.count != null && src.done_count >= src.ends.count) || (src.ends?.date && srcNext > src.ends.date)) src.paused = true;
-          rules.forEach(r => delete r.gen_due);
-          const rec = wasArray ? rules : rules[0];
-          let newCompletedAt = null, newDueAt = target.due_at;
-          const best = nextAcrossRules(rec, anchor, ts);
-          if (!best) newCompletedAt = ts;   // every statement ended → permanent complete (rules stay, paused)
-          else { best.rule.gen_due = true; newDueAt = best.iso + (best.rule.at ? 'T' + best.rule.at : (target.due_at?.length > 10 ? target.due_at.slice(10) : '')); }
+          const { recurrence: rec, due_at: newDueAt, completed_at: newCompletedAt } = advanceRecurrence(target, ts);
           const completions = [...(target.completions || []), ts];   // was a task_completions row, now a jsonb append
           markEcho(id);
           await client.from('tasks').update({ recurrence: rec, due_at: newDueAt, completed_at: newCompletedAt, completions, updated_at: ts }).eq('id', id).eq('user_id', uid);
@@ -704,18 +655,17 @@ export function createSupabaseStore(client) {
           // Recurring tasks swept by a parent completion are permanently completed — the rule is PAUSED, never destroyed.
           const recurringSwept = sweepIds.filter(sid => recActive(rows.find(x => x.id === sid)?.recurrence));
           await client.from('tasks').update({ completed_at: ts, updated_at: ts }).in('id', toMark).eq('user_id', uid);
-          for (const sid of recurringSwept) { const rr = rows.find(r => r.id === sid).recurrence;
-            await client.from('tasks').update({ recurrence: Array.isArray(rr) ? rr.map(x => ({ ...x, paused: true })) : { ...rr, paused: true }, updated_at: ts }).eq('id', sid).eq('user_id', uid); }
-          for (const tid of toMark) {
-            const t = rows.find(r => r.id === tid);
-            if (t && !t.completed_at && t.sidebar !== true) await pushActivity('complete', t);
-          }
+          // Independent writes fan out in parallel — a sweep of N tasks was N+ sequential RTTs (the felt save lag on cloud).
+          await Promise.all([
+            ...recurringSwept.map(sid => client.from('tasks').update({ recurrence: pauseRecurrence(rows.find(r => r.id === sid).recurrence), updated_at: ts }).eq('id', sid).eq('user_id', uid)),
+            ...toMark.map(tid => { const t = rows.find(r => r.id === tid); return t && !t.completed_at && t.sidebar !== true ? pushActivity('complete', t) : null; }),
+          ]);
           const updatedRows = rows.map(r => toMark.includes(r.id) ? { ...r, completed_at: ts } : r);
-          for (const pid of parentsToComplete(updatedRows, id)) {
-            await client.from('tasks').update({ completed_at: ts, updated_at: ts }).eq('id', pid).eq('user_id', uid);
-            const parent = rows.find(r => r.id === pid);
-            if (parent?.sidebar !== true) await pushActivity('complete', parent);
-            affected.push(pid);
+          const pids = parentsToComplete(updatedRows, id);
+          if (pids.length) {
+            await client.from('tasks').update({ completed_at: ts, updated_at: ts }).in('id', pids).eq('user_id', uid);
+            await Promise.all(pids.map(pid => { const p = rows.find(r => r.id === pid); return p?.sidebar !== true ? pushActivity('complete', p) : null; }));
+            affected.push(...pids);
           }
           markEcho(...affected);
           await refreshTasks(affected);
@@ -742,7 +692,7 @@ export function createSupabaseStore(client) {
         const t = rows.find(r => r.id === id); if (!t) return false;
         const was = t.archived_at;
         const upd = { archived_at: val ? ts : null, updated_at: ts };
-        if (val && recActive(t.recurrence)) upd.recurrence = Array.isArray(t.recurrence) ? t.recurrence.map(x => ({ ...x, paused: true })) : { ...t.recurrence, paused: true };   // pause, never destroy
+        if (val && recActive(t.recurrence)) upd.recurrence = pauseRecurrence(t.recurrence);   // pause, never destroy
         markEcho(id);
         await client.from('tasks').update(upd).eq('id', id).eq('user_id', uid);
         if (t.sidebar !== true && !!was !== !!val) await pushActivity(val ? 'archive' : 'unarchive', t);
@@ -787,14 +737,7 @@ export function createSupabaseStore(client) {
         if (_areasLoaded) return [..._cAreas].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
         const { data } = await client.from('areas').select('*').order('position'); _cAreas = data || []; _areasLoaded = true; rebuildIdx(); return _cAreas;
       },
-      async create({ name, color }) {
-        const uid = await userId();
-        const pos = _cAreas.length ? Math.max(..._cAreas.map(a => a.position ?? 0)) + 1 : 0;   // off the cache, no scan
-        const ts = new Date().toISOString();
-        const { data } = await client.from('areas').insert({ user_id: uid, name, color: color ?? null, icon: null, position: pos, favorite: false, created_at: ts, updated_at: ts }).select().single();
-        if (data) { markEcho(data.id); _cAreas = [..._cAreas, data]; rebuildIdx(); }
-        return data ?? null;
-      },
+      async create({ name, color }) { return ensureArea(name, color); },   // find-or-create — never a duplicate
       async update(id, fields) {
         const uid = await userId();
         const { data } = await client.from('areas').update({ ...fields, updated_at: new Date().toISOString() }).eq('id', id).eq('user_id', uid).select().single();
@@ -811,10 +754,9 @@ export function createSupabaseStore(client) {
       },
       async remove(id) {
         markEcho(id);
-        await client.rpc('delete_area', { p_id: id });   // scrubs tasks.area_ids + blocks.area_ids, then deletes
-        _cTasks = _cTasks.map(t => t.area_ids?.includes(id) ? { ...t, area_ids: t.area_ids.filter(a => a !== id) } : t);
-        _cAreas = _cAreas.filter(a => a.id !== id); rebuildIdx();
-        return true;
+        const { error } = await client.rpc('delete_area', { p_id: id });   // scrubs tasks.area_ids + blocks.area_ids, then deletes
+        if (!error) { _cTasks = _cTasks.map(t => t.area_ids?.includes(id) ? { ...t, area_ids: t.area_ids.filter(a => a !== id) } : t); _cAreas = _cAreas.filter(a => a.id !== id); rebuildIdx(); }
+        return !error;
       },
     },
 
@@ -842,9 +784,9 @@ export function createSupabaseStore(client) {
         return true;
       },
       async remove(id) {
-        await client.rpc('delete_goal', { p_id: id });   // scrubs tasks.goal_ids, then deletes
-        _cTasks = _cTasks.map(t => t.goal_ids?.includes(id) ? { ...t, goal_ids: t.goal_ids.filter(g => g !== id) } : t); rebuildIdx();
-        return true;
+        const { error } = await client.rpc('delete_goal', { p_id: id });   // scrubs tasks.goal_ids, then deletes
+        if (!error) { _cTasks = _cTasks.map(t => t.goal_ids?.includes(id) ? { ...t, goal_ids: t.goal_ids.filter(g => g !== id) } : t); rebuildIdx(); }
+        return !error;
       },
     },
 
@@ -887,8 +829,8 @@ export function createSupabaseStore(client) {
         return data ?? null;
       },
       async remove(id) {
-        await client.rpc('delete_identity', { p_id: id });   // nulls goals.identity_id + identity string, then deletes
-        return true;
+        const { error } = await client.rpc('delete_identity', { p_id: id });   // nulls goals.identity_id + identity string, then deletes
+        return !error;
       },
       async merge(fromId, toId) {
         if (!fromId || !toId || fromId === toId) return null;
@@ -921,12 +863,12 @@ export function createSupabaseStore(client) {
         return data ?? null;
       },
       async remove(id) {
-        const s = await getSettings();
+        const s = await settings();
         if (s.current_location_id === id) await patchSettings({ current_location_id: null });
         // RPC scrubs tasks/events location_ids; travel_times cascade; blocks.location_id set-null
-        await client.rpc('delete_location', { p_id: id });
-        _cTasks = _cTasks.map(t => t.location?.ids?.includes(id) ? { ...t, location: { ...t.location, ids: t.location.ids.filter(l => l !== id) } } : t); rebuildIdx();
-        return true;
+        const { error } = await client.rpc('delete_location', { p_id: id });
+        if (!error) { _cTasks = _cTasks.map(t => t.location?.ids?.includes(id) ? { ...t, location: { ...t.location, ids: t.location.ids.filter(l => l !== id) } } : t); rebuildIdx(); }
+        return !error;
       },
       async reorder(ids) {
         const uid = await userId(), ts = new Date().toISOString();
@@ -970,13 +912,6 @@ export function createSupabaseStore(client) {
     },
 
     travel: {
-      async get(from, to) {
-        const uid = await userId();
-        const { data } = await client.from('travel_times').select('minutes')
-          .or(`and(from_location_id.eq.${from},to_location_id.eq.${to}),and(from_location_id.eq.${to},to_location_id.eq.${from})`)
-          .eq('user_id', uid).limit(1);
-        return data?.[0]?.minutes ?? (await getSettings()).default_travel_min ?? 20;
-      },
       async set(from, to, minutes) {
         const uid = await userId();
         await client.from('travel_times').upsert({ user_id: uid, from_location_id: from, to_location_id: to, minutes }, { onConflict: 'user_id,from_location_id,to_location_id' });

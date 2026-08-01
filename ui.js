@@ -59,12 +59,21 @@ const _dLine = (line) => {
 // Shared open-first/done-last comparator (stable) — the composer checklist and the row checklist bucket identically.
 export const byDone = (a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0);
 
+// Which checklist items a list row actually shows: 3+ done collapse behind "…N more" (open items unaffected;
+// plain = no collapse); `open` reveals them. `more` = the toggle exists at all. Shared with app.js's row-height
+// estimate for contain-intrinsic-size, so the rendered count and the estimated count can't drift.
+export function chkVisible(cl, plain, open) {
+  if (plain) return { rows: cl, hidden: 0, more: 0 };
+  const view = cl.slice().sort(byDone), done = view.filter(x => x.done), more = Math.max(done.length - 2, 0);
+  return { rows: !more || open ? view : view.filter(x => !x.done).concat(done.slice(0, 2)), hidden: open ? 0 : more, more };
+}
+
 // Live editor for a composer checklist item: everything after the first "::" renders small/faded inline (the ::
 // is a dimmed marker). textContent(chkLive(t)) === t so the contenteditable caret math holds (same contract as mdLive).
 export const chkLive = (text) => {
   const s = String(text ?? ''), i = s.indexOf('::');
-  return i < 0 ? esc(s)
-    : `${esc(s.slice(0, i))}<span class="dm-mark">::</span><span class="chk-idesc">${esc(s.slice(i + 2))}</span>`;
+  return i < 0 ? mdLive(s)
+    : `${mdLive(s.slice(0, i))}<span class="dm-mark">::</span><span class="chk-idesc">${mdLive(s.slice(i + 2))}</span>`;
 };
 
 // Inline markdown for task titles: bold/italic/strike/code/links; no headings/bullets (-/# stay literal); markers removed.
@@ -101,7 +110,7 @@ export const areaChipHtml = ({ name, icon, color }) => html`<span class="area" s
 export const taskRowHtml = ({ checkColor, title, areas = [], projName = '', done = false }) => {
   const chips = areas.map(areaChipHtml).join('');
   const proj = projName ? html`<span class="pick-path">#${projName}</span>` : '';
-  return html`<span class="check sm${done ? ' done' : ''}" style="--pc:${checkColor}"></span><span class="pick-name">${title}</span>${chips ? raw(`<span class="areas">${chips}</span>`) : raw('')}${raw(proj)}`;
+  return html`<span class="check sm${done ? " done" : ""}" style="--pc:${checkColor}"></span><span class="pick-name">${title}</span>${chips ? raw(`<span class="areas inline-flex items-center gap-6 min-w-0">${chips}</span>`) : raw('')}${raw(proj)}`;
 };
 
 // opts.ms wraps rows in .goal-step-row with a ◆ milestone toggle (data-act="milestone" for delegation)
@@ -126,35 +135,37 @@ export const rowBodyHtml = (r, opts = {}) => {
   const pauseIco = isPaused ? '<svg class="ico pause-ico"><use href="#i-pause"/></svg>' : '';
   // archived → a dash-in-circle "set aside" checkbox (the dash is pure CSS on .check.archived), not a done tick
   const check = `<button class="${ckCls}" data-act="check" style="--pc:${esc(r.pc)}${r.hasProgress ? ';--p:' + r.progress : ''}">${lock}${pauseIco}</button>`;
-  const areas = r.areas.length ? `<span class="areas"${r.areas.length === 1 ? ` style="--tc:${esc(r.areas[0].color)}"` : ''}>${r.areas.map(areaChipHtml).join('')}</span>` : '';
+  const areas = r.areas.length ? `<span class="areas inline-flex items-center gap-6 min-w-0"${r.areas.length === 1 ? ` style="--tc:${esc(r.areas[0].color)}"` : ''}>${r.areas.map(areaChipHtml).join('')}</span>` : '';
   const glint = opts.glintId === t.id ? ' glint' : '';
-  const goals = r.goals.length ? `<span class="goals-chips">${r.goals.map(g =>
+  const goals = r.goals.length ? `<span class="goals-chips inline-flex items-center gap-6 min-w-0 flex-none">${r.goals.map(g =>
     `<span class="goal${glint}"${g.color ? ` style="--tc:${esc(g.color)}"` : ''} title="${esc(g.name)}"><svg class="ico"><use href="#i-tag-flame"/></svg><span class="nm">${esc(g.name)}</span></span>`).join('')}</span>` : '';
   // Tint whole chip (icon + text) with project color, faded; color is inherited CSS property so outer span suffices.
   const projTint = r.projColor ? ` style="${esc(r.projColor)};opacity:.55"` : '';
-  const proj = showProj ? `<span class="proj"${projTint}>${r.isDefaultProj
-    ? `<svg class="proj-ico ico"><use href="#i-backlog"/></svg>`
-    : `<span class="proj-in">in</span><span class="proj-nm">${esc(r.projName)}</span>`}</span>` : '';
-  const sched = opts.schedTime ? `<span class="m">${esc(opts.schedTime)}</span>` : '';
-  const est = badges && r.est ? `<span class="m"${r.estRollup ? ' title="Total of subtasks"' : ''}><svg class="ico"><use href="#i-clock"/></svg><span>${esc(r.est)}</span></span>` : '';
-  const dl = badges && t.deadline_at ? `<span class="m dl${r.dl?.overdue ? ' over' : ''}"><svg class="ico"><use href="#i-flag"/></svg><span>${esc(r.dl?.label)}</span></span>` : '';
-  const loc = badges && r.loc ? `<span class="m loc"><svg class="ico"><use href="#${r.locX ? 'i-pin-off' : 'i-pin'}"/></svg><span>${esc(r.loc)}</span></span>` : '';
+  const proj = showProj ? `<span class="proj inline-flex items-center gap-2 min-w-0 flex-none"${projTint}>${r.isDefaultProj
+    ? `<svg class="proj-ico ico flex-none"><use href="#i-backlog"/></svg>`
+    : `<span class="proj-in flex-none">in</span><span class="proj-nm">${esc(r.projName)}</span>`}</span>` : '';
+  const sched = opts.schedTime ? `<span class="m inline-flex items-center gap-4 muted-12">${esc(opts.schedTime)}</span>` : '';
+  const est = badges && r.est ? `<span class="m inline-flex items-center gap-4 muted-12"${r.estRollup ? ' title="Total of subtasks"' : ''}><svg class="ico"><use href="#i-clock"/></svg><span>${esc(r.est)}</span></span>` : '';
+  const dl = badges && t.deadline_at ? `<span class="m dl${r.dl?.overdue ? ' over' : ''} inline-flex items-center gap-4 muted-12"><svg class="ico"><use href="#i-flag"/></svg><span>${esc(r.dl?.label)}</span></span>` : '';
+  const loc = badges && r.loc ? `<span class="m loc inline-flex items-center gap-4 muted-12"><svg class="ico"><use href="#${r.locX ? 'i-pin-off' : 'i-pin'}"/></svg><span>${esc(r.loc)}</span></span>` : '';
   // "after done" repeats (any rule from_completion) get the repeat+check glyph in both the due badge and the standalone chip.
   const repHref = recArr.some(x => x.from_completion) ? '#i-repeat-done' : '#i-repeat';
-  const due = badges && t.due_at ? `<span class="badge ${esc(r.due?.kind || '')}">${t.recurrence ? `<svg class="ico badge-rep"><use href="${repHref}"/></svg>` : ''}<span>${esc(r.due?.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
-  const rep = badges && t.recurrence && !t.due_at ? `<span class="m"><svg class="ico"><use href="${repHref}"/></svg></span>` : '';
-  const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels">${r.rels.map(rl =>
-    `<span class="row-rel ${rl.type}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span></span>`).join('')}</div>` : '';
-  const notes = opts.notes !== false && t.notes ? `<div class="row2"><span class="desc-line">${md(t.notes, { inline: true })}</span></div>` : '';
+  const due = badges && t.due_at ? `<span class="badge ${esc(r.due?.kind || '')} inline-flex items-center gap-4">${t.recurrence ? `<svg class="ico badge-rep"><use href="${repHref}"/></svg>` : ''}<span>${esc(r.due?.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
+  const rep = badges && t.recurrence && !t.due_at ? `<span class="m inline-flex items-center gap-4 muted-12"><svg class="ico"><use href="${repHref}"/></svg></span>` : '';
+  const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map(rl =>
+    `<span class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span></span>`).join('')}</div>` : '';
+  const notes = opts.notes !== false && t.notes ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(t.notes, { inline: true })}</span></div>` : '';
   // Checklist items pre-split (text::desc) in mkRow; fall back for callers that pass a bare row.
   const cl = r.chk || (t.checklist || []).map((c, ci) => { const sep = c.text.indexOf('::'); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; });
   // Display-only sort: done below open (stable); data-ci = original index so toggling never reorders the stored array.
-  const clView = cl.slice().sort(byDone);
   const plain = !!t.checklist_plain;   // uncheckable: plain notes list — bullets instead of boxes, no done styling
-  const chk = cl.length ? `<div class="chk-list">${(plain ? cl : clView).map(({ ci, done, txt, desc }) =>
-    `<div class="chk-row${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt">${esc(txt)}</span>${desc ? `<span class="chk-desc">${esc(desc)}</span>` : ''}</div>`).join('')}</div>` : '';
+  const { rows: clRows, hidden, more } = chkVisible(cl, plain, opts.chkOpen);
+  const morePlaceholder = more ? `<button type="button" class="chk-row flex gap-8 chk-more" data-act="chk-more"><span class="chk-more-txt">${hidden ? '…' + hidden + ' more' : 'Show less'}</span></button>` : '';
+  const renderRow = ({ ci, done, txt, desc }) =>
+    `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${mdTitle(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${mdTitle(desc)}</span>` : ''}</div>`;
+  const chk = cl.length ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
   const titleHtml = r.titleHtml ?? mdTitle(t.content);   // precomputed in mkRow (regex-cached); fall back for bare rows
-  return chev + check + `<div class="body"><div class="row1"><div class="r1l"><span class="title">${titleHtml}</span>${areas}${proj}</div><div class="r1r">${goals}${sched}${est}${dl}${loc}${due}${rep}</div></div>${rels}${notes}${chk}</div>`;
+  return chev + check + `<div class="body grow min-w-0"><div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${areas}${proj}</div><div class="r1r flex items-center gap-8 min-w-0">${goals}${sched}${est}${dl}${loc}${due}${rep}</div></div>${rels}${notes}${chk}</div>`;
 };
 
 // data-ridx on box = focus index; data-more="kind:id" on ··· button
