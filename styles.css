@@ -1798,7 +1798,7 @@ textarea.inp { resize: vertical; }
 /* Normalized thread ramp: hue comes from the item's --cc, lightness+chroma are FIXED per theme, so every
    colour lands at the same perceived weight with guaranteed text contrast (raw color-mix made blue read
    twice as heavy as gold). Derived per-element because --cc is set inline. */
-.cl-chip, .cl-event, .cl-block, .cl-rail-seg, .cl-rail-blk, .cl-ag-row, .cl-ch, .cl-terr, .cl-due-m { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
+.cl-chip, .cl-event, .cl-block, .cl-rail-seg, .cl-rail-blk, .cl-ag-row, .cl-ch, .cl-terr, .cl-due-m, .cl-dl { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
 /* THE MARK — an inset, fully-rounded capsule. NOT a border-left: a stripe on a rounded box inherits the
    corner curve and reads as a bright sliver welded to the side. This floats inside the padding instead. */
 .cl-chip::before, .cl-event::before { content: ""; position: absolute; left: 3px; top: 2px; bottom: 2px; width: 3px; border-radius: var(--r-pill); background: var(--mark); }
@@ -1943,6 +1943,24 @@ textarea.inp { resize: vertical; }
 .cl-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--accent); z-index: 6; }
 /* Elapsed time recedes. Above the events (it dims them too — spent hours should read as spent), below the now
    line, and inert so the past stays clickable. A --bg wash rather than opacity so it works in either scheme. */
+/* DEADLINE (the Clockwise treatment) — a deadline is the one MOMENT with an hour in it, so it is drawn on the
+   timeline: a hard rule across the day at the hour it bites, and the runway above it darkening toward that
+   rule. The label is STICKY to the bottom of the scroller, so a deadline can never be scrolled out of sight —
+   it rides the bottom edge until you scroll down to its hour, then lands on its own rule. Date-only lands at
+   the day's close ("by end of day"); when deadlines carry a time, the rule just moves up. */
+.cl-dl { position: absolute; left: 0; right: 0; top: 0; z-index: 4; pointer-events: none;
+  border-bottom: 2px solid color-mix(in srgb, var(--mark) 62%, transparent); }
+.cl-dl.lead { background: linear-gradient(180deg, transparent 55%, color-mix(in srgb, var(--tint) 72%, transparent)); }
+.cl-dlrail { position: absolute; left: 0; right: 0; bottom: var(--foot); z-index: 15; grid-template-columns: 56px repeat(7, 1fr); align-items: end; padding-bottom: var(--sp-4); pointer-events: none; }
+.calendar.side .cl-dlrail { right: var(--side); }
+.cl-dlrail-c { gap: 2px; padding: 0 var(--sp-2); }
+.cl-dl-t { max-width: 100%; gap: 3px; padding: 1px var(--sp-4); border: 0; border-radius: var(--r-4); pointer-events: auto;
+  background: color-mix(in srgb, var(--tint) 92%, var(--bg)); color: var(--txt); font: inherit;
+  font-size: var(--fs-11); font-weight: 600; line-height: 1.5; text-align: left; cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mark) 40%, transparent); }
+.cl-dl-t:hover { background: color-mix(in srgb, var(--mark) 20%, var(--tint)); }
+.cl-dl-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cl-dl-w { flex: none; opacity: .7; font-weight: 500; font-variant-numeric: tabular-nums; }
 .cl-elapsed { position: absolute; left: 0; right: 0; top: 0; z-index: 5; pointer-events: none; background: color-mix(in srgb, var(--bg) 40%, transparent); }
 
 /* ── Calendar motion ──────────────────────────────────────────────────────────────────────────────────────

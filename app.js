@@ -4416,7 +4416,10 @@ document.addEventListener('alpine:init', () => {
     _clSplitDay(items) {
       const ad = items.filter(it => it.allDay || it.start.length <= 10);
       return { bands: ad.filter(it => it.kind === 'event' || it.kind === 'task-block'),
-               marks: ad.filter(it => it.kind === 'task-due' || it.kind === 'task-deadline') };
+               marks: ad.filter(it => it.kind === 'task-due'),
+               // A deadline is the one mark with an HOUR in it — it gets drawn on the timeline, at the moment
+               // it bites, rather than filed in the chrome with the whole-day claims.
+               deadlines: ad.filter(it => it.kind === 'task-deadline') };
     },
     // ONE entry per band per PAGE, not one chip per column: {c0, len} is the run of columns it covers and `row`
     // its stacking order. Chapter draws the entry directly (a single element spanning its columns — so it cannot
@@ -4450,6 +4453,20 @@ document.addEventListener('alpine:init', () => {
       el?.scrollBy({ top: dir * (this.clView === 'month' ? this.clRowH : this.clHourH || 40), behavior: this.reduceMotion() ? 'auto' : 'smooth' });
     },
     clAdFields() { return CL_AD_FIELDS; },
+    // How far down the day the deadline bites. Date-only means "by the end of it", so the rule sits at the
+    // day's close; the moment deadlines carry a time, the same rule simply moves up to that hour.
+    clDlPct(it) { return it.start.length > 10 ? this._clMin(it.start) / 14.4 : 100; },
+    clDlWhen(it) { return it.start.length > 10 ? this.fmtTime(it.start.slice(11, 16)) : 'by end of day'; },
+    // The rule and its runway live in the column, but the LABEL is chrome pinned above the nav, because a
+    // deadline you can scroll past is a deadline you can miss. It cannot simply be `position: sticky`:
+    // .cl-period-block sets `contain: paint`, which makes it the containing block for everything inside it,
+    // so a sticky descendant sticks to the BLOCK and never to the scroller.
+    clDeadlineCols() {
+      if (this.clView !== 'week') return [];   // day view is the agenda, which already gives each one a row
+      const b = this.clBlocks();
+      return (b.find(p => p.key === this._clTopIdx()) || b.find(p => p.key === this._periodIdx(this._clDate())) || b[0] || { cols: [] }).cols;
+    },
+    clHasDeadlines() { return this.clDeadlineCols().some(c => c.deadlines.length); },
     clChRows(pg) { return pg.bands.reduce((m, b) => Math.max(m, b.row + 1), 0); },       // Chapter: marks start below the bands
     clColBands(pg, i) { return pg.bands.filter(b => b.c0 <= i && i < b.c0 + b.len); },   // Terrain: the fields standing behind THIS column
     clAdInset(pg, i) { return Math.min(CL_AD_FIELDS, this.clColBands(pg, i).length) * 13; },
@@ -4527,7 +4544,7 @@ document.addEventListener('alpine:init', () => {
       let end = -1, n = 0;
       // A deadline is the sharpest thing on a day and it was invisible — a lane row that got clipped. Here it
       // is a row of its own, at the top, before anything you could get lost in.
-      for (const it of col.marks) { rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 }); n++; }
+      for (const it of [...col.deadlines, ...col.marks]) { rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 }); n++; }
       // ...and an all-day item is simply a thing you are doing today, whether or not it also runs past today
       for (const it of col.bands) { rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 }); n++; }
       for (const p of [...col.timed].sort((a, b) => a.topPct - b.topPct || b.hPct - a.hPct)) {

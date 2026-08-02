@@ -944,6 +944,20 @@
       </div>
 
 
+      <!-- DEADLINE RAIL — chrome pinned above the nav, one cell per day. The rule and its runway are drawn in
+           the column at the hour the deadline bites; the label lives here so it can never be scrolled out of
+           sight. (It cannot be `position: sticky` inside the grid: .cl-period-block sets `contain: paint`.) -->
+      <div class="cl-dlrail" x-cloak :style="'display:' + (clHasDeadlines() ? 'grid' : 'none')">
+        <div></div>
+        <template x-for="col in clDeadlineCols()" :key="'dr'+col.iso">
+          <div class="cl-dlrail-c flex-col min-w-0">
+            <template x-for="m in col.deadlines" :key="'dr'+m.id">
+              <button type="button" class="cl-dl-t flex items-center min-w-0" :style="'--cc:' + clItemColor(m)" :title="'Deadline: ' + m.title + ' — ' + clDlWhen(m)" @click.stop="clItemClick(m)"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="cl-dl-n truncate" x-text="m.title"></span><span class="cl-dl-w" x-text="clDlWhen(m)"></span></button>
+            </template>
+          </div>
+        </template>
+      </div>
+
       <!-- WEEK / DAY: one continuous timeline; each block is a 24h day/week whose top border is the 12am rule -->
       <div class="cl-pages" x-cloak :class="{ single: clView === 'day' }" :style="'display:' + (clView === 'week' || clView === 'day' ? 'block' : 'none') + ';--clhh:' + clHourH + 'px;--ph:' + clPeriodH() + 'px'" x-ref="clPages" @scroll.passive="clPagesScroll($event)" @scrollend="clPagesScrollEnd($event)" @wheel="clPagesWheel($event)">
         <!-- fixed-height spacer; blocks are absolutely placed at idx*periodH (same model as .cl-month-inner) -->
@@ -1068,6 +1082,13 @@
                   </template>
                   <div class="cl-block cl-block-drag" x-show="clDragBand && clDragBand.iso === col.iso" :style="clDragBand ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : ''"></div>
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
+                  <!-- DEADLINE: a rule across the day at the hour it bites, the runway above it darkening
+                       toward it. The label is STICKY to the bottom of the scroller, so a deadline can never be
+                       scrolled out of sight — it rides the bottom edge and lands on its own rule when you
+                       reach that hour. Drawn in BOTH all-day modes: this is about WHEN, not about the day. -->
+                  <template x-for="(m, mi) in col.deadlines" :key="'dl'+m.id">
+                    <div class="cl-dl" :class="{ lead: mi === 0 }" :style="'--cc:' + clItemColor(m) + ';height:' + clDlPct(m) + '%'"></div>
+                  </template>
                   <div class="cl-elapsed" :style="'display:' + (col.today || col.past ? 'block' : 'none') + ';height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
                   <div class="cl-now" :style="'display:' + (col.today ? 'block' : 'none') + ';top:' + clNowPct() + '%'"></div>
                   <!-- F5: everything planned for this day is done — the column warms instead of going blank -->
