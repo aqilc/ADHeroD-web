@@ -943,26 +943,6 @@
         </div>
       </div>
 
-      <!-- all-day lane: pinned under the weekday header, showing the period currently on top (it must stay visible all day) -->
-      <!-- display folds into :style — a string :style rewrites the whole attribute and would wipe x-show's display:none -->
-      <div class="cl-allday" x-cloak :class="{ single: clView === 'day', has: clAdRows() > 0 }" :style="'display:' + (clView === 'week' || clView === 'day' ? 'grid' : 'none') + ';height:calc(var(--ad) * ' + clAdRows() + ')'">
-        <div class="cl-allday-label"></div>
-        <template x-for="col in clTopAlldayCols()" :key="'ad'+col.iso">
-          <div class="cl-allday-col flex-col min-w-0" :class="{ 'cl-drop': clDropHint === col.iso }" @dragover.prevent="clDropHint = col.iso; clDropPreview = null" @dragleave="clDropHint === col.iso && (clDropHint = null)" @drop="clDropHint = null; clDropOn($event, col.iso, true)">
-            <!-- MARKS first, in a row that is the same height in EVERY column (padded) — otherwise a day with a
-                 deadline would shove its bands down while its neighbours' stayed put, and the band would break. -->
-            <template x-for="m in col.marks.slice(0, clMarkRows())" :key="m.kind+m.id">
-              <button type="button" class="cl-mark" :class="m.kind" :style="'--cc:' + clItemColor(m)" :title="(m.kind === 'task-deadline' ? 'Deadline: ' : 'Due: ') + m.title" @click.stop="clItemClick(m)"><template x-if="m.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" x-text="m.title"></span></button>
-            </template>
-            <template x-for="n in Math.max(0, clMarkRows() - col.marks.length)" :key="'mp'+n"><div class="cl-mark-pad"></div></template>
-            <template x-for="(it, ix) in col.lane.slice(0, clBandRows())" :key="it.kind+it.id+ix">
-              <div class="cl-chip flex items-center min-w-0" :class="clChipCls(it)" role="button" tabindex="0" :draggable="!!_dndKind(it.kind)" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(it)" @click.stop="clItemClick(it)"><template x-if="clIsTask(it) && (it.spanStart !== false || clView === 'day')"><button type="button" class="cl-chip-check" :class="{ done: byId.get(it.id)?.completed_at }" draggable="false" @click.stop="clToggleTask(it.id)" aria-label="Complete task"></button></template><template x-if="it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" x-text="it.spanStart === false && clView !== 'day' ? '' : it.title"></span></div>
-            </template>
-            <!-- the reserve is fixed, so extra bands say so rather than growing the lane over the grid -->
-            <button type="button" class="cl-ad-more" x-show="col.lane.length > clBandRows()" x-text="'+' + (col.lane.length - clBandRows())" @click.stop="clOpenDay(col.iso)" title="Show this day"></button>
-          </div>
-        </template>
-      </div>
 
       <!-- WEEK / DAY: one continuous timeline; each block is a 24h day/week whose top border is the 12am rule -->
       <div class="cl-pages" x-cloak :class="{ single: clView === 'day' }" :style="'display:' + (clView === 'week' || clView === 'day' ? 'block' : 'none') + ';--clhh:' + clHourH + 'px;--ph:' + clPeriodH() + 'px'" x-ref="clPages" @scroll.passive="clPagesScroll($event)" @scrollend="clPagesScrollEnd($event)" @wheel="clPagesWheel($event)">
@@ -984,11 +964,11 @@
                         <div class="cl-rail-seg" :class="p.it.kind" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;--cc:'+clItemColor(p.it)"></div>
                       </template>
                       <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"></div></template>
-                      <div class="cl-elapsed" x-show="col.today || col.past" :style="'height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
-                      <div class="cl-now" x-show="col.today" :style="'top:' + clNowPct() + '%'"></div>
+                      <div class="cl-elapsed" :style="'display:' + (col.today || col.past ? 'block' : 'none') + ';height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
+                      <div class="cl-now" :style="'display:' + (col.today ? 'block' : 'none') + ';top:' + clNowPct() + '%'"></div>
                     </div>
                     <!-- while placing, the landing time still reads out — the rail is the gutter now -->
-                    <div class="cl-drop-clock" x-show="clDropPreview && clDropPreview.iso === col.iso" :style="'top:' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%'" x-text="clDropPreview?.label"></div>
+                    <div class="cl-drop-clock" :style="'display:' + (clDropPreview && clDropPreview.iso === col.iso ? 'block' : 'none') + ';top:' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%'" x-text="clDropPreview?.label"></div>
                     <!-- x-if flips a frame before clBlocks() recomputes on a view switch, so never assume agenda -->
                     <div class="cl-agenda" :class="'tier-' + (col.agenda?.tier || 'full')">
                       <template x-for="(r, ix) in (col.agenda?.rows || [])" :key="r.key">
@@ -1011,19 +991,67 @@
             </template>
             <template x-if="clView !== 'day'">
             <div class="cl-pbody grow">
+              <!-- CHAPTER: the week's whole-day claims as titles over the grid. Sticky, zero height, so they
+                   stay readable all week and cost the timeline nothing. A band is ONE element spanning its
+                   columns — it cannot disagree with itself, and it always carries its title. -->
+              <template x-if="clAdMode === 'chapter'">
+                <div class="cl-chapters">
+                  <template x-for="(b, ix) in pg.bands" :key="'ch'+b.it.kind+b.it.id">
+                    <div class="cl-ch" :class="b.it.kind + (b.openL ? ' open-l' : '') + (byId.get(b.it.id)?.completed_at ? ' done' : '')" role="button" tabindex="0" :draggable="!!_dndKind(b.it.kind)" @dragstart.stop="clDragStart($event, _dndKind(b.it.kind), b.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(b.it) + ';grid-column:' + (b.c0 + 2) + '/span ' + b.len + ';grid-row:' + (b.row + 1)" :title="b.it.title" @click.stop="clItemClick(b.it)">
+                      <template x-if="b.openL"><span class="cl-ch-lead open"></span></template>
+                      <template x-if="!b.openL && clIsTask(b.it)"><button type="button" class="cl-chip-check" :class="{ done: byId.get(b.it.id)?.completed_at }" draggable="false" @click.stop="clToggleTask(b.it.id)" aria-label="Complete task"></button></template>
+                      <template x-if="!b.openL && !clIsTask(b.it)"><span class="cl-ch-dot"></span></template>
+                      <span class="cl-ch-t" x-text="b.it.title"></span><span class="cl-ch-lead"></span>
+                    </div>
+                  </template>
+                  <!-- a mark has no width, so it hangs off its own date instead of running anywhere -->
+                  <template x-for="(col, ci) in pg.cols" :key="'cm'+col.iso">
+                    <template x-for="(m, mi) in col.marks" :key="m.kind+m.id">
+                      <div class="cl-ch mk" :class="m.kind" role="button" tabindex="0" :draggable="!!_dndKind(m.kind)" @dragstart.stop="clDragStart($event, _dndKind(m.kind), m.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(m) + ';grid-column:' + (ci + 2) + ';grid-row:' + (clChRows(pg) + mi + 1)" :title="(m.kind === 'task-deadline' ? 'Deadline: ' : 'Due: ') + m.title" @click.stop="clItemClick(m)">
+                        <span class="cl-ch-lead"></span><span class="cl-ch-t" x-text="m.title"></span>
+                        <template x-if="m.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template>
+                        <template x-if="m.kind !== 'task-deadline'"><span class="cl-ch-ring"></span></template>
+                      </div>
+                    </template>
+                  </template>
+                </div>
+              </template>
               <div class="cl-gutter flex-col">
                 <template x-for="h in clHours()" :key="'g'+h"><div class="cl-hour grow"><span x-text="clHourLabel(h)"></span></div></template>
                 <!-- the live clock rides the gutter opposite the now line — time made readable, not just marked -->
-                <div class="cl-now-pill" x-show="pg.cols.some(c => c.today)" :style="'top:' + clNowPct() + '%'" x-text="clNowLabel()"></div>
+                <div class="cl-now-pill" :style="'display:' + (pg.cols.some(c => c.today) ? 'block' : 'none') + ';top:' + clNowPct() + '%'" x-text="clNowLabel()"></div>
                 <!-- and while placing, the landing time reads out in that same column, so you aim by the clock -->
-                <div class="cl-drop-clock" x-show="clDropPreview && pg.cols.some(c => c.iso === clDropPreview.iso)" :style="'top:' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%'" x-text="clDropPreview?.label"></div>
+                <div class="cl-drop-clock" :style="'display:' + (clDropPreview && pg.cols.some(c => c.iso === clDropPreview.iso) ? 'block' : 'none') + ';top:' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%'" x-text="clDropPreview?.label"></div>
               </div>
-              <template x-for="col in pg.cols" :key="'c'+col.iso">
-                <div class="cl-pcol flex-col" :class="{ weekend: col.weekend }" @pointerdown="clBlockDragStart($event, col.iso)" @pointermove="clBlockDragMove($event)" @pointerup="clBlockDragEnd()" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
+              <template x-for="(col, ci) in pg.cols" :key="'c'+col.iso">
+                <div class="cl-pcol flex-col" :class="{ weekend: col.weekend }" :style="'grid-column:' + (ci + 2) + ';--adin:' + (clAdMode === 'terrain' ? clAdInset(pg, ci) : 0) + 'px'" @pointerdown="clBlockDragStart($event, col.iso)" @pointermove="clBlockDragMove($event)" @pointerup="clBlockDragEnd()" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
                   <template x-for="h in clHours()" :key="'l'+h"><div class="cl-hour-line"></div></template>
+                  <!-- TERRAIN: the claim becomes the day's ground — H-presence, extended from a block to 24h.
+                       The spine rides the FIRST VISIBLE column even when the item began earlier, because a
+                       field whose label lives off-screen is exactly the anonymous bar this replaces. -->
+                  <template x-if="clAdMode === 'terrain'">
+                    <div class="contents">
+                      <template x-for="(b, k) in clColBands(pg, ci).slice(0, clAdFields())" :key="'tf'+b.it.kind+b.it.id">
+                        <div class="cl-terr" :class="{ 'cont-l': ci > b.c0 || b.openL, 'open-l': b.openL && ci === b.c0, 'open-r': b.openR && ci === b.c0 + b.len - 1 }" role="button" tabindex="0" :draggable="!!_dndKind(b.it.kind)" @dragstart.stop="clDragStart($event, _dndKind(b.it.kind), b.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(b.it) + ';left:' + (k * 13) + 'px'" :title="b.it.title" @click.stop="clItemClick(b.it)">
+                          <template x-if="ci === b.c0"><span class="cl-terr-stick"><span class="cl-blk-spine" x-text="(b.openL ? '‹ ' : '') + b.it.title"></span></span></template>
+                        </div>
+                      </template>
+                      <template x-if="clColBands(pg, ci).length > clAdFields()">
+                        <span class="cl-terr-stick"><button type="button" class="cl-ad-more" x-text="'+' + (clColBands(pg, ci).length - clAdFields())" @click.stop="clOpenDay(col.iso)" title="Show this day"></button></span>
+                      </template>
+                      <!-- a MARK has no width and no hour, so it lands on the rule your eye starts at -->
+                      <template x-if="col.marks.length">
+                        <div class="cl-due flex-col" :style="'top:' + clWakeTop() + '%'">
+                          <template x-for="m in col.marks" :key="'tm'+m.kind+m.id">
+                            <button type="button" class="cl-due-m flex items-center min-w-0" :class="m.kind" :style="'--cc:' + clItemColor(m)" :title="(m.kind === 'task-deadline' ? 'Deadline: ' : 'Due: ') + m.title" @click.stop="clItemClick(m)"><template x-if="m.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="truncate" x-text="m.title"></span></button>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
                   <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"><span class="cl-drop-time" x-text="clDropPreview.label"></span></div></template>
                   <template x-for="(b, ix) in col.terrain" :key="'b'+b.id+ix">
-                    <div class="cl-block" :class="{ 'is-running': clBlockDay(b.id)?.status === 'running', 'is-done': clBlockDay(b.id)?.status === 'done', 'is-missed': clBlockDay(b.id)?.status === 'missed', 'is-skipped': clBlockDay(b.id)?.status === 'skipped', 'is-terrain': b.isContainer, 'is-nested': b.isNested }" role="button" tabindex="0" draggable="true" :data-id="b.id" @dragstart.stop="clDragStart($event, 'block', b.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+b.topPct+'%;height:'+b.hPct+'%;--cc:'+(b.color || 'var(--accent)')" :title="b.title" @click.stop="clEditBlock(b.id)">
+                    <div class="cl-block" :class="{ 'is-running': clBlockDay(b.id)?.status === 'running', 'is-done': clBlockDay(b.id)?.status === 'done', 'is-missed': clBlockDay(b.id)?.status === 'missed', 'is-skipped': clBlockDay(b.id)?.status === 'skipped', 'is-terrain': b.isContainer, 'is-nested': b.isNested }" role="button" tabindex="0" draggable="true" :data-id="b.id" @dragstart.stop="clDragStart($event, 'block', b.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+b.topPct+'%;height:'+b.hPct+'%;--dep:'+b.depth+';--cc:'+(b.color || 'var(--accent)')" :title="b.title" @click.stop="clEditBlock(b.id)">
                       <template x-if="b.isContainer"><span class="cl-blk-spine" x-text="b.title"></span></template>
                       <span class="cl-blk-t" :class="{'cl-blk-t-hide': b.isContainer}" x-text="b.title"></span>
                       <template x-if="clBlockDay(b.id)?.status === 'running'"><span class="cl-blk-ember" :class="{'anim-none': reduceMotion()}"></span></template>
@@ -1032,7 +1060,7 @@
                   </template>
                   <!-- non-container blocks pack WITH events/tasks (one drawing level); inset clears a terrain spine -->
                   <template x-for="(p, ix) in col.packedBlocks" :key="'pb'+p.it.id+ix">
-                    <div class="cl-block" :class="{ 'is-running': clBlockDay(p.it.id)?.status === 'running', 'is-done': clBlockDay(p.it.id)?.status === 'done', 'is-missed': clBlockDay(p.it.id)?.status === 'missed', 'is-skipped': clBlockDay(p.it.id)?.status === 'skipped', 'is-nested': p.inset > 0 }" role="button" tabindex="0" draggable="true" :data-id="p.it.id" @dragstart.stop="clDragStart($event, 'block', p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;left:'+(p.inset + p.offPx)+'px;z-index:'+(2+p.lane)+';--cc:'+(p.it.color || 'var(--accent)')" :title="p.it.title" @click.stop="clEditBlock(p.it.id)">
+                    <div class="cl-block" :class="{ 'is-running': clBlockDay(p.it.id)?.status === 'running', 'is-done': clBlockDay(p.it.id)?.status === 'done', 'is-missed': clBlockDay(p.it.id)?.status === 'missed', 'is-skipped': clBlockDay(p.it.id)?.status === 'skipped', 'is-nested': p.inset > 0 }" role="button" tabindex="0" draggable="true" :data-id="p.it.id" @dragstart.stop="clDragStart($event, 'block', p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;'+clEvBox(p)+'z-index:'+(2+p.lane)+';--cc:'+(p.it.color || 'var(--accent)')" :title="p.it.title" @click.stop="clEditBlock(p.it.id)">
                       <span class="cl-blk-t" x-text="p.it.title"></span>
                       <template x-if="clBlockDay(p.it.id)?.status === 'running'"><span class="cl-blk-ember" :class="{'anim-none': reduceMotion()}"></span></template>
                       <template x-if="clBlockDay(p.it.id)?.status === 'running' && clBlockDay(p.it.id)?.actual_start"><span class="cl-blk-tick" x-text="_clFmtActualStart(clBlockDay(p.it.id).actual_start)"></span></template>
@@ -1040,12 +1068,12 @@
                   </template>
                   <div class="cl-block cl-block-drag" x-show="clDragBand && clDragBand.iso === col.iso" :style="clDragBand ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : ''"></div>
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
-                  <div class="cl-elapsed" x-show="col.today || col.past" :style="'height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
-                  <div class="cl-now" x-show="col.today" :style="'top:' + clNowPct() + '%'"></div>
+                  <div class="cl-elapsed" :style="'display:' + (col.today || col.past ? 'block' : 'none') + ';height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
+                  <div class="cl-now" :style="'display:' + (col.today ? 'block' : 'none') + ';top:' + clNowPct() + '%'"></div>
                   <!-- F5: everything planned for this day is done — the column warms instead of going blank -->
                   <template x-if="col.cleared"><div class="cl-cleared"><span class="cl-cleared-t" x-text="col.cleared.label"></span></div></template>
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
-                    <div class="cl-event" :class="p.it.kind + ' tier-' + p.tier + (p.lane ? ' cl-casc' : '') + (clPlaced === p.it.id ? ' cl-placed' : '') + (p.it.kind === 'task-block' && byId.get(p.it.id)?.completed_at ? ' done' : '')" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;left:'+(p.inset + p.offPx + 1)+'px;z-index:'+(2+p.lane)+';--i:'+ix+';--cc:'+clItemColor(p.it)">
+                    <div class="cl-event" :class="p.it.kind + ' tier-' + p.tier + (p.lane && !p.share ? ' cl-casc' : '') + (clPlaced === p.it.id ? ' cl-placed' : '') + (p.it.kind === 'task-block' && byId.get(p.it.id)?.completed_at ? ' done' : '')" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;'+clEvBox(p)+'z-index:'+(2+p.lane)+';--i:'+ix+';--cc:'+clItemColor(p.it)">
                       <template x-if="p.it.kind === 'task-block'"><button type="button" class="cl-evt-check" :class="{ done: byId.get(p.it.id)?.completed_at }" @click.stop="clToggleTask(p.it.id)" aria-label="Complete task"></button></template>
                       <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm" x-text="clTimeLabel(p.it)"></span></span>
                     </div>
@@ -1618,6 +1646,12 @@
             <button type="button" :class="{ on: dayTint }" @click="setDayTint(true)">On</button>
           </div>
         </div>
+        <div class="set-row flex items-center gap-10">All-day items<span class="set-sub muted-12">how a whole-day claim is drawn in week view</span>
+          <div class="seg">
+            <button type="button" :class="{ on: clAdMode === 'chapter' }" @click="setClAdMode('chapter')" title="One line of type over the grid">Chapter</button>
+            <button type="button" :class="{ on: clAdMode === 'terrain' }" @click="setClAdMode('terrain')" title="The day's ground is made of it">Terrain</button>
+          </div>
+        </div>
       </div>
       <!-- starter shortcuts: teach the power path by keeping it visible (full sheet stays on ?) -->
       <div class="set-sec"><span class="section-label">Keyboard</span>
@@ -1642,7 +1676,7 @@
         </div>
       </template>
       <div class="set-sec"><span class="section-label">Safety</span>
-        <button type="button" class="set-row set-rowbtn set-trash flex items-center gap-10" @click="settingsOpen = false; trashOpen = true">Recent changes<span class="set-sub muted-12"><kbd>d</kbd></span></button>
+        <button type="button" class="set-row set-rowbtn set-trash flex items-center gap-10" @click="settingsOpen = false; trashOpen = true">Bin (Recently Deleted)<span class="set-sub muted-12"><kbd>b</kbd></span></button>
         <button type="button" class="set-row set-rowbtn set-danger flex items-center gap-10" @click="resetLocalData()">Delete local data<span class="set-sub muted-12">wipe this device &amp; start fresh</span></button>
       </div>
     </div>
@@ -1669,16 +1703,21 @@
         <div class="sk flex items-center gap-6 muted-12"><kbd>⌘K</kbd><span>Go to anything (works while typing)</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>1</kbd>–<kbd>5</kbd> · <kbd>←</kbd><kbd>→</kbd><span>Jump / step surfaces</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>q</kbd><span>New task</span></div>
-        <div class="sk flex items-center gap-6 muted-12"><kbd>b</kbd><span>Backlog</span></div>
+        <div class="sk flex items-center gap-6 muted-12"><kbd>g</kbd><span>Backlog</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>a</kbd><span>All</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>⌘</kbd><kbd>z</kbd> · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>z</kbd><span>Undo / redo</span></div>
-        <div class="sk flex items-center gap-6 muted-12"><kbd>d</kbd><span>Recent changes</span></div>
+        <div class="sk flex items-center gap-6 muted-12"><kbd>b</kbd><span>Bin (Recently Deleted)</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>?</kbd><span>This help</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>esc</kbd><span>Close any open overlay</span></div></div>
       <div class="sheet-grp"><div class="section-label">Task list</div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>j</kbd>/<kbd>k</kbd> · <kbd>↑</kbd><kbd>↓</kbd><span>Move focus</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>↵</kbd>/<kbd>e</kbd><span>Open focused</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>x</kbd><span>Complete focused</span></div></div>
+      <div class="sheet-grp"><div class="section-label">Plan</div>
+        <div class="sk flex items-center gap-6 muted-12"><kbd>d</kbd>/<kbd>w</kbd>/<kbd>m</kbd><span>Day / week / month</span></div>
+        <div class="sk flex items-center gap-6 muted-12"><kbd>↑</kbd><kbd>↓</kbd><span>Scroll an hour (a week row in month)</span></div>
+        <div class="sk flex items-center gap-6 muted-12"><kbd>⇧</kbd><kbd>↑</kbd><kbd>↓</kbd><span>Travel a day / week / month</span></div>
+        <div class="sk flex items-center gap-6 muted-12"><kbd>↑</kbd><kbd>↓</kbd><span>Hold 3s to travel too</span></div></div>
       <div class="sheet-grp"><div class="section-label">Composer</div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>⌘</kbd><kbd>↵</kbd><span>Save &amp; close</span></div>
         <div class="sk flex items-center gap-6 muted-12"><kbd>esc</kbd><span>Close</span></div></div>
@@ -1688,9 +1727,9 @@
         <div class="sk flex items-center gap-6 muted-12"><b>**bold**</b> · <b>*italic*</b><span>Inline formatting</span></div></div>
     </div>
 
-    <!-- Recent changes (d) — recover deletions + revert bulk changes from the last 30 days, across reloads -->
+    <!-- Bin (Recently Deleted), b — recover deletions + revert bulk changes from the last 30 days, across reloads -->
     <div class="dialog trash-sheet" @click.stop x-show="trashOpen">
-      <div class="sheet-head flex items-center justify-between">Recent changes<button class="sheet-x flex-none inline-flex items-center justify-center" @click="trashOpen = false" aria-label="Close" title="Close"><svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"/></svg></button></div>
+      <div class="sheet-head flex items-center justify-between">Bin (Recently Deleted)<button class="sheet-x flex-none inline-flex items-center justify-center" @click="trashOpen = false" aria-label="Close" title="Close"><svg class="ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-x"/></svg></button></div>
       <div class="trash-empty" x-show="trashItems().length === 0">Nothing recent. Deletions and bulk changes land here for 30 days — restore any of them.</div>
       <div class="trash-list flex-col" x-show="trashItems().length">
         <template x-for="e in trashItems()" :key="e.id">

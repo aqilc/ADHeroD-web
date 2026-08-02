@@ -39,11 +39,14 @@ const CL_WAKING_END = 24;    // waking day end (h)
 const CL_EPOCH = new Date(2000, 0, 2);   // a (local) Sunday — week 0 of the virtual timeline
 const CL_TOTAL_WEEKS = 5217;             // ~100 years: a fixed scroll height (no reflow) ⇒ effectively infinite
 const CL_BUFFER = 10;                     // weeks rendered beyond the viewport each side (blank-free on fast flings)
-const CL_ALLDAY = 22;                     // ONE band row in the pinned lane (day/week) — chrome, not part of a block
-const CL_AD_ROWS = 3;                     // rows the chrome RESERVES for it. Constant on purpose: the reserve feeds
-                                          // the day's page height, so a lane that resized would jitter the timeline.
-                                          // Bands past this show as +N rather than growing over the grid.
+const CL_HOLD_MS = 3000;                  // hold ↑/↓ this long and the step escalates from a nudge to a PERIOD
+const CL_HOLD_STEP = 220;                 // ...then one period per this, so a held key travels at a readable rate
+const CL_AD_FIELDS = 2;                 // Terrain: presence fields a column can carry before it turns to mud.
+                                          // The rest become a count — the fill is the one channel the calendar
+                                          // already spends on blocks, elapsed time and the cleared-day glow.
 const CL_FOOT = 56;                       // bottom nav strip the timeline stops short of (must match --foot in CSS)
+const CL_TITLE_PX = 15;                   // one title strip. Two events starting closer than this leave nothing of
+                                          // the lower one to read, so they split the width instead of cascading.
 // The timeline spacer is WINDOWED, unlike month's: a period is ~1150px (vs a ~113px week row), so the full
 // 100-year range would be 42M px in day view — past Chrome's 33,554,428px scroll cap, which silently clamps
 // scrollTop (zoom 4× put TODAY out of reach). 4001 periods = ±5.5y (day) / ±38y (week), 18M px even at 4× zoom.
@@ -2381,8 +2384,20 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       if (e.key === 'q') { e.preventDefault(); if (this.surface !== 'lists') this.setNav('all'); this.startAdd(); }   // opens inline on Lists; other surfaces (incl. Now, which has no list of its own) bounce to Lists first
-      else if (e.key === 'b') { e.preventDefault(); this.setNav('backlog'); }
+      else if (e.key === 'b') { e.preventDefault(); this.trashOpen = true; }   // Bin (Recently Deleted) — recover anything
+      else if (e.key === 'g') { e.preventDefault(); this.setNav('backlog'); }
       else if (e.key === 'a') { e.preventDefault(); this.setNav('all'); }
+      // d / w / m switch the calendar's view, Plan-only — the same letters as the on-screen switcher, so the
+      // keys teach themselves. `d` is free for this because the Bin moved to `b`.
+      else if (this.surface === 'plan' && 'dwm'.includes(e.key)) { e.preventDefault(); this.clSetView({ d: 'day', w: 'week', m: 'month' }[e.key]); }
+      // Plan has no list of rows to walk, so ↑/↓ drive the timeline itself — and by a UNIT you can name (an
+      // hour, a week row), never a raw pixel nudge, so you always land somewhere you can read off the gutter.
+      else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && this.surface === 'plan') {
+        e.preventDefault(); const dir = e.key === 'ArrowDown' ? 1 : -1;
+        // Shift travels a whole period and MORPHS, like a view switch: a deliberate jump should read as
+        // movement. The plain arrows stay instant — they fire constantly, and motion §1 says don't animate those.
+        e.shiftKey ? this.clStep(dir, true) : this.clArrow(dir, e.repeat);
+      }
       else if (e.shiftKey && e.key === 'ArrowDown') { e.preventDefault(); this.selExtend(1); }   // Shift+↑/↓ extends the multi-select
       else if (e.shiftKey && e.key === 'ArrowUp') { e.preventDefault(); this.selExtend(-1); }
       else if (e.key === 'j' || e.key === 'ArrowDown') { e.preventDefault(); this.moveFocus(1); }
@@ -2390,7 +2405,6 @@ document.addEventListener('alpine:init', () => {
       else if ((e.key === 'Enter' || e.key === 'e') && this.focusId) { e.preventDefault(); this.openFocused(); }
       else if (e.key === 'x' && this.focusId) { e.preventDefault(); this.toggleFocused(); }   // complete focused row (Space now opens the palette)
       else if (e.key === '?') { e.preventDefault(); this.shortcutsOpen = true; }
-      else if (e.key === 'd') { e.preventDefault(); this.trashOpen = true; }   // Recently deleted (recover anything)
       else if (e.key === '/' && this.listView()) { e.preventDefault(); this.listSearchOpen = true; this.$nextTick(() => this.$refs.listSearch?.focus()); }   // Hearthsay: / → search unfolds
       else if (e.key === 'f' && this.listView()) { e.preventDefault(); this.listMenu = this.listMenu === 'add' ? null : 'add'; }   // f → filter sentence menu
       else if (e.key >= '1' && e.key <= '4') { e.preventDefault(); this.goSurface(this.surfaceOrder[(+e.key) - 1]); }   // jump to a surface
@@ -4123,7 +4137,9 @@ document.addEventListener('alpine:init', () => {
       return { dayH, nowY: y(nowMin), hours, rows };
     },
     async loadEvents() { this.events = await this.store.events.list(); _calDataV++; _goalStepsMemo.clear(); _goalMilestonesMemo.clear(); },
-    async loadBlocks() { this.blocks = await this.store.blocks.list(); },
+    // must bust _calDataV too — without it a block added between two event loads never reaches the memo, and the
+    // calendar keeps drawing the previous set until some unrelated task/event change happens to bump the sig
+    async loadBlocks() { this.blocks = await this.store.blocks.list(); _calDataV++; },
     _clDate() { return new Date(this.clAnchor + 'T00:00'); },
     _clWeekStart(d) { const x = new Date(d); x.setDate(x.getDate() - x.getDay()); x.setHours(0, 0, 0, 0); return x; },   // Sunday
     // threadless items go WARM, never grey — grey is what made scheduled tasks read as disabled
@@ -4345,27 +4361,8 @@ document.addEventListener('alpine:init', () => {
       });
     },
     _clTopIdx() { return this._tlIdxAt(this.clScrollTop); },
-    // The all-day lane is CHROME, not part of a block: on a continuous timeline a per-block lane scrolls out of
-    // sight within a screen, and an all-day item is exactly the thing you must be able to see all day.
-    clTopAlldayCols() {
-      if (this.clView !== 'week' && this.clView !== 'day') return [];   // x-show doesn't stop the x-for from evaluating
-      const b = this.clBlocks(), top = this._clTopIdx();
-      // fall back to the ANCHOR's period, never merely the first rendered one — a stale scroll position
-      // would otherwise pin the previous week's all-day items above the week you are looking at
-      return (b.find(p => p.key === top) || b.find(p => p.key === this._periodIdx(this._clDate())) || b[0] || { cols: [] }).cols;
-    },
-    // B8: the lane exists only when something is in it. An always-on 22px grey strip was — in the pick's own
-    // words — the ugliest 22px on the surface, and pinning it at one row hid every all-day item past the first.
-    // It grows to fit (3 rows, then scrolls), and opens during a drag so there is still somewhere to drop.
-    // The lane is split in two: marks on top (one uniform row block, so spanning bands stay aligned across
-    // columns), bands below. Both live inside the SAME fixed CL_AD_ROWS reserve, so the chrome never grows
-    // over the grid — which is how deadlines used to end up clipped out of sight.
-    _clLaneMax(key) { return this.clTopAlldayCols().reduce((m, c) => Math.max(m, c[key].length), 0); },
-    clMarkRows() { return Math.min(CL_AD_ROWS - 1, this._clLaneMax('marks')); },
-    clBandRows() { return Math.max(0, Math.min(CL_AD_ROWS - this.clMarkRows(), this._clLaneMax('lane'))); },
-    clAdRows() { return this.clMarkRows() + this.clBandRows() || (this._clDnd ? 1 : 0); },
     clPeriodsTotalH() { return CL_TL_SPAN * this.clPeriodH(); },
-    _clHeadH() { return CL_BAR + CL_HEAD + (this.clView === 'week' || this.clView === 'day' ? CL_ALLDAY * CL_AD_ROWS : 0); },   // every px of pinned chrome the timeline scrolls under (must match --cl-top in CSS)
+    _clHeadH() { return CL_BAR + CL_HEAD; },   // every px of pinned chrome the timeline scrolls under (must match --cl-top in CSS)
     _clFitHour() { return Math.max(18, Math.round((this._clVH() - this._clHeadH()) / (CL_WAKING_END - CL_WAKING_START))); },   // a waking day fills the viewport at zoom 1
     _tlSpan() { return Math.min(CL_TL_SPAN, this._periodTotal()); },
     // spacer origin: the anchor sits mid-window. Only ever moved by a jump (open/view switch/step/today),
@@ -4402,45 +4399,60 @@ document.addEventListener('alpine:init', () => {
           const tRanges = items.filter(it => !it.allDay && it.start.length > 10).map(it => { const sm = this._clMin(it.start), em = Math.max(this._clMin(it.end), sm + 20); return { it, sm, em }; });
           const blocks = this._dayBlocks(iso, tRanges), terrain = blocks.filter(b => b.isContainer);
           const packed = this._lanePack(tRanges, blocks.filter(b => !b.isContainer));
-          for (const p of packed) p.inset = terrain.some(t => t._sm <= p.sm && t._em >= p.em && (t._em - t._sm) > (p.em - p.sm)) ? 14 : 0;
+          for (const p of packed) p.inset = Math.max(0, ...terrain.filter(t => t._sm <= p.sm && t._em >= p.em && (t._em - t._sm) > (p.em - p.sm)).map(t => (t.depth + 1) * 14));
           return { iso, day: d.getDate(), today: iso === todayIso, past: iso < todayIso, weekend: d.getDay() === 0 || d.getDay() === 6, label: d.toLocaleDateString([], { weekday: 'short' }), blocks, terrain, packedBlocks: packed.filter(p => p.blk), ...this._clSplitDay(items), timed: packed.filter(p => !p.blk), cleared: this._clCleared(items) };
         });
-        this._alignSpanLanes(cols);
-        // Day: the lane keeps only what CONTINUES past today — that is context you would otherwise lose.
-        // A single-day all-day item belongs to today, so it reads as a row in the agenda with everything else.
-        // Week is a grid, so its lane carries every band across the seven columns.
-        for (const c of cols) c.lane = span === 1 ? c.bands.filter(b => b.spanStart !== undefined) : c.bands;
-        if (span === 1) for (const c of cols) c.agenda = this._clAgenda(c);   // built once here, not per binding
-        out.push({ key: idx, rel: idx - base, cols });   // top comes from --ph in CSS so it cannot drift from the height
+        // Day stops being a grid, so it has no band layer at all: the agenda gives every mark and every all-day
+        // item — including one that merely passes through today — a real row of its own.
+        const bands = this._clWeekBands(cols);
+        if (span === 1) for (const c of cols) c.agenda = this._clAgenda(c);
+        out.push({ key: idx, rel: idx - base, cols, bands });   // top comes from --ph in CSS so it cannot drift from the height
       }
       _clBlocksSig = sig; _clBlocksCache = out; return out;
     },
-    // Stable all-day lanes: a spanning band keeps ONE row across every column of its page — otherwise it
-    // jumps up wherever another band ends. Lanes are padded with invisible spacer chips.
-    // A date-only item is one of two different things, and treating them alike is what broke this lane.
-    // A BAND occupies the day (an all-day event, a task scheduled across days) — that is what a lane is for.
-    // A MARK is a moment ABOUT the day (a due date, a deadline); it has no width, and stacking marks as band
-    // rows is what pushed the lane over the grid and then silently hid the deadlines underneath.
+    // A date-only item is one of two different things, and treating them alike is what broke the old lane.
+    // A BAND occupies the day (an all-day event, a task scheduled across days).
+    // A MARK is a moment ABOUT the day (a due date, a deadline); it has no width.
     _clSplitDay(items) {
       const ad = items.filter(it => it.allDay || it.start.length <= 10);
       return { bands: ad.filter(it => it.kind === 'event' || it.kind === 'task-block'),
                marks: ad.filter(it => it.kind === 'task-due' || it.kind === 'task-deadline') };
     },
-    _alignSpanLanes(cols) {
-      const spans = new Map();
-      cols.forEach((c, i) => { for (const it of c.bands) if (it.spanStart !== undefined) { const k = it.kind + it.id, s = spans.get(k) ?? spans.set(k, { cols: [] }).get(k); s.cols.push(i); } });
-      if (!spans.size) return;
-      const lanes = [];   // lanes[l] = Set of occupied col indexes
-      for (const s of spans.values()) {
-        let l = 0; while (lanes[l] && s.cols.some(i => lanes[l].has(i))) l++;
-        (lanes[l] ??= new Set()); for (const i of s.cols) lanes[l].add(i); s.lane = l;
-      }
-      cols.forEach((c, i) => {
-        const rows = Array.from({ length: lanes.length }, () => null), rest = [];
-        for (const it of c.bands) { const s = it.spanStart !== undefined ? spans.get(it.kind + it.id) : null; s ? rows[s.lane] = it : rest.push(it); }
-        c.bands = [...rows.map(r => r ?? { kind: 'pad', id: 'p' + i, title: '' }), ...rest];
-      });
+    // ONE entry per band per PAGE, not one chip per column: {c0, len} is the run of columns it covers and `row`
+    // its stacking order. Chapter draws the entry directly (a single element spanning its columns — so it cannot
+    // disagree with itself, cannot lose its title, and there are no spacer chips to miscount); Terrain filters
+    // the same list per column. `openL` means it began before this page, which is what earns the feathered edge.
+    _clWeekBands(cols) {
+      const seen = new Map(), rowEnd = [], out = [];
+      cols.forEach((c, i) => { for (const it of c.bands) {
+        const k = it.kind + it.id, e = seen.get(k);
+        if (e) { e.len = i - e.c0 + 1; rowEnd[e.row] = i; continue; }
+        let r = 0; while (rowEnd[r] >= i) r++;
+        rowEnd[r] = i; seen.set(k, out[out.push({ it, c0: i, len: 1, row: r, openL: it.spanStart === false, openR: it.spanEnd === false }) - 1]);
+      } });
+      return out;
     },
+    // Hold to travel. The first CL_HOLD_MS of a held arrow keep nudging at the key's own repeat rate; past it
+    // the step becomes a whole PERIOD — a day, a week, a month — because by then you are travelling, not
+    // reading. Throttled once escalated, or a ~30/s key repeat would fly a year past you in a second.
+    // `e.repeat` is what distinguishes a held key from a fresh press, so a re-press always restarts the clock.
+    clArrow(dir, repeat) {
+      const now = Date.now();
+      if (!repeat || !this._clHold) this._clHold = { t0: now, last: 0 };
+      if (now - this._clHold.t0 < CL_HOLD_MS) return this.clNudge(dir);
+      if (now - this._clHold.last < CL_HOLD_STEP) return;
+      this._clHold.last = now; this.clStep(dir);
+    },
+    // ↑/↓: one hour in week/day, one week row in month. Smooth, so the move reads as movement and you keep your
+    // place; it goes through the same scroller the wheel uses, so the snap and the midnight gate still apply.
+    clNudge(dir) {
+      const el = this.clView === 'month' ? this.$refs.clMonth : this.$refs.clPages;
+      el?.scrollBy({ top: dir * (this.clView === 'month' ? this.clRowH : this.clHourH || 40), behavior: this.reduceMotion() ? 'auto' : 'smooth' });
+    },
+    clAdFields() { return CL_AD_FIELDS; },
+    clChRows(pg) { return pg.bands.reduce((m, b) => Math.max(m, b.row + 1), 0); },       // Chapter: marks start below the bands
+    clColBands(pg, i) { return pg.bands.filter(b => b.c0 <= i && i < b.c0 + b.len); },   // Terrain: the fields standing behind THIS column
+    clAdInset(pg, i) { return Math.min(CL_AD_FIELDS, this.clColBands(pg, i).length) * 13; },
     // F5: a day you actually finished. Real planned minutes, all of them done — never a count of tasks, which
     // is gameable the moment anyone notices (see "nothing fake" in ui-conventions).
     _clCleared(items) {
@@ -4463,6 +4475,10 @@ document.addEventListener('alpine:init', () => {
         a.isContainer = all.some(b => b !== a && cont(a, b._sm, b._em)) || timed.some(r => cont(a, r.sm, r.em));
         a.isNested = all.some(b => b !== a && cont(b, a._sm, a._em));
       }
+      // Nesting ACCUMULATES: every enclosing terrain costs another 14px of spine, so a container inside a
+      // container steps twice and its contents clear BOTH spines. Longest-first so an enclosing depth is ready.
+      for (const a of [...all].sort((x, y) => (y._em - y._sm) - (x._em - x._sm)))
+        a.depth = Math.max(0, ...all.filter(b => b !== a && b.isContainer && cont(b, a._sm, a._em)).map(b => b.depth + 1));
       return all;
     },
     // H-states-D1: format actual_start timestamp ("2026-08-01T09:15") as "started 9:15am"
@@ -4475,9 +4491,35 @@ document.addEventListener('alpine:init', () => {
       // ranges are prebuilt {it, sm, em}; non-container blocks join the SAME pack so all kinds cascade as peers
       const raw = [...ranges, ...blocks.map(b => ({ it: b, blk: true, sm: b._sm, em: Math.max(b._em, b._sm + 20) }))].sort((a, b) => a.sm - b.sm || a.em - b.em);
       let cluster = [], cend = -1; const out = [];
-      const flush = () => { if (!cluster.length) return; const lanes = []; for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; } for (const p of cluster) out.push({ it: p.it, blk: p.blk, sm: p.sm, em: p.em, topPct: p.sm / 1440 * 100, hPct: (p.em - p.sm) / 1440 * 100, lane: p.lane, offPx: Math.min(p.lane, 4) * 14, tier: this._clTier(p.em - p.sm) }); cluster = []; cend = -1; };
+      const flush = () => {
+        if (!cluster.length) return;
+        const lanes = [];
+        for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; }
+        // A cascade only reads while the covered item's TITLE still shows above the one stacked on it. Things
+        // starting at (or within a title of) the same time leave no such strip — the top one hid the other
+        // outright — so concurrent peers SPLIT what's left of the width and only a later start steps right.
+        const perMin = (this.clHourH || 60) / 60;
+        let grp = [], gend = -1;
+        const share = () => { if (grp.length > 1) { const b = Math.min(...grp.map(p => p.lane)); grp.forEach((p, i) => { p.share = [i, grp.length]; p.lane = b; }); } grp = []; };
+        for (const p of cluster) {
+          if (grp.length && p.sm < gend && (p.sm - grp[0].sm) * perMin < CL_TITLE_PX) grp.push(p);
+          else { share(); grp = [p]; gend = -1; }
+          gend = Math.max(gend, p.em);
+        }
+        share();
+        for (const p of cluster) out.push({ it: p.it, blk: p.blk, sm: p.sm, em: p.em, topPct: p.sm / 1440 * 100, hPct: (p.em - p.sm) / 1440 * 100, lane: p.lane, share: p.share, offPx: Math.min(p.lane, 4) * 14, tier: this._clTier(p.em - p.sm) });
+        cluster = []; cend = -1;
+      };
       for (const p of raw) { if (p.sm >= cend && cluster.length) flush(); cluster.push(p); cend = Math.max(cend, p.em); }
       flush(); return out;
+    },
+    // Cascade fills to the column's right edge (CSS `right`); a concurrent peer keeps the cascade's left edge
+    // and takes its share of what remains, so neither title can be covered.
+    clEvBox(p) {
+      const L = p.inset + p.offPx + 1;
+      if (!p.share) return `left:${L}px;`;
+      const w = `(100% - ${L + 2}px) / ${p.share[1]}`;
+      return `left:calc(${L}px + ${w} * ${p.share[0]});width:calc(${w} - 2px);right:auto;`;
     },
     // C5: rows flow at a readable height; gaps become named free slots; proportion moves to the rail.
     _clAgenda(col) {
@@ -4486,8 +4528,8 @@ document.addEventListener('alpine:init', () => {
       // A deadline is the sharpest thing on a day and it was invisible — a lane row that got clipped. Here it
       // is a row of its own, at the top, before anything you could get lost in.
       for (const it of col.marks) { rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 }); n++; }
-      // ...and an all-day item that starts AND ends today is simply a thing you are doing today
-      for (const it of col.bands) if (it.kind !== 'pad' && it.spanStart === undefined) { rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 }); n++; }
+      // ...and an all-day item is simply a thing you are doing today, whether or not it also runs past today
+      for (const it of col.bands) { rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 }); n++; }
       for (const p of [...col.timed].sort((a, b) => a.topPct - b.topPct || b.hPct - a.hPct)) {
         const min = Math.round(p.topPct * 14.4), mins = Math.max(1, Math.round(p.hPct * 14.4));
         // a timed due/deadline is still a MOMENT: it keeps its time but never claims a duration
@@ -4509,7 +4551,7 @@ document.addEventListener('alpine:init', () => {
       const a = this.areaObjs(this.byId.get(r.it.id)?.area_ids || [])[0];
       // a mark has no length to report, so it says what KIND of moment it is; an all-day item has no length
       // either, and the time column already said "All day" — so it carries only its area, or nothing.
-      const lead = r.mark ? (r.it.kind === 'task-deadline' ? 'Deadline' : 'Due') : r.allday ? '' : this._clDur(r.mins);
+      const lead = r.mark ? (r.it.kind === 'task-deadline' ? 'Deadline' : 'Due') : r.allday ? (r.it.spanStart === false ? 'Continues' : '') : this._clDur(r.mins);
       return lead + (a ? (lead ? ' · ' : '') + a.name : '');
     },
     clHours() { return CL_HOURS; },
@@ -4655,10 +4697,12 @@ document.addEventListener('alpine:init', () => {
       this.clAnchor = this.clView === 'week' ? isoDate(this._clWeekStart(new Date(iso + 'T00:00'))) : iso;
       this.clRecalcPages(); this.$nextTick(() => this._clScrollToPeriod());
     },
-    clStep(dir) {
-      const d = this._clDate();
-      if (this.clView === 'month') { d.setMonth(d.getMonth() + dir); this.clAnchor = isoDate(d); this._clStepMonth(); return; }
-      d.setDate(d.getDate() + dir * this._periodSpan()); this.clAnchor = isoDate(d); this.$nextTick(() => this._clScrollToPeriod());
+    clStep(dir, vt) {
+      const d = this._clDate(), mo = this.clView === 'month';
+      mo ? d.setMonth(d.getMonth() + dir) : d.setDate(d.getDate() + dir * this._periodSpan());
+      const set = () => { this.clAnchor = isoDate(d); }, after = () => mo ? this._clStepMonth() : this._clScrollToPeriod();
+      if (vt) this._withTransition(set, after);          // Shift+↑/↓ — the same morph a view switch runs
+      else { set(); mo ? after() : this.$nextTick(after); }
     },
     clToday() {
       this.clAnchor = isoDate(new Date());
@@ -4955,6 +4999,10 @@ document.addEventListener('alpine:init', () => {
     theme: localStorage.getItem('adherod.theme') || 'system',
     dayTint: localStorage.getItem('adherod.dayTint') !== '0',   // time-of-day tint on the week/day columns (NB: daypart() is the Now Room's clock — don't shadow it)
     setDayTint(v) { this.dayTint = v; localStorage.setItem('adherod.dayTint', v ? '1' : '0'); },
+    // How a whole-day claim is drawn in week view. Both replaced the pinned strip (which cost 66px of chrome on
+    // every week, empty or not); they fail in opposite directions, so this is a real A/B and not a preference.
+    clAdMode: localStorage.getItem('adherod.clAdMode') === 'terrain' ? 'terrain' : 'chapter',
+    setClAdMode(v) { this.clAdMode = v; localStorage.setItem('adherod.clAdMode', v); },
     // Wipe this device's local copy and reload — the escape hatch when local storage is stale (e.g. a re-seeded
     // demo won't overwrite existing data). Signed-in accounts re-sync from the cloud; local-only data is gone.
     resetLocalData() {

@@ -1689,8 +1689,7 @@ textarea.inp { resize: vertical; }
 /* --foot reserves the bottom nav strip (.canvas-dots, bottom:10px + its padding) plus a little air, so no hour
    ever sits under the dots or in the --bg-foot wash. Without it the day's last hours — midnight especially —
    were legible only as much as the wash allowed. */
-.calendar { --bar: 90px; --head: 32px; --ad: 22px; --foot: 56px; --side: 412px; --ag-rail: 12px; --ag-time: 62px; --ag-w: 620px; --cl-act-w: 272px; --cl-fade: 26px; --cl-top: calc(var(--bar) + var(--head)); position: relative; height: 100%; overflow: hidden; }   /* fill the Plan surface (canvas minus the time strip). Nothing here paints a surface tint — the page's --bg-wash runs unbroken from the header down through the days (see .cl-cell). */
-.calendar.view-week, .calendar.view-day { --cl-top: calc(var(--bar) + var(--head) + var(--ad) * 3); }   /* the all-day lane joins the pinned chrome the timeline scrolls under */
+.calendar { --bar: 90px; --head: 32px; --foot: 56px; --side: 412px; --ag-rail: 12px; --ag-time: 62px; --ag-w: 620px; --cl-act-w: 272px; --cl-fade: 26px; --cl-top: calc(var(--bar) + var(--head)); position: relative; height: 100%; overflow: hidden; }   /* fill the Plan surface (canvas minus the time strip). Nothing here paints a surface tint — the page's --bg-wash runs unbroken from the header down through the days (see .cl-cell). */
 /* The dissolve at the top used to be a mask ON the scroller — but a mask on a scroll container forces Blink to
    re-rasterize the whole timeline every frame instead of just translating it (504 hour-lines + events, dropped
    frames). It now lives on this STATIC overlay: the same wash the content dissolved into, painted over the top
@@ -1799,7 +1798,7 @@ textarea.inp { resize: vertical; }
 /* Normalized thread ramp: hue comes from the item's --cc, lightness+chroma are FIXED per theme, so every
    colour lands at the same perceived weight with guaranteed text contrast (raw color-mix made blue read
    twice as heavy as gold). Derived per-element because --cc is set inline. */
-.cl-chip, .cl-event, .cl-block, .cl-rail-seg, .cl-rail-blk, .cl-ag-row, .cl-mark { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
+.cl-chip, .cl-event, .cl-block, .cl-rail-seg, .cl-rail-blk, .cl-ag-row, .cl-ch, .cl-terr, .cl-due-m { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
 /* THE MARK — an inset, fully-rounded capsule. NOT a border-left: a stripe on a rounded box inherits the
    corner curve and reads as a bright sliver welded to the side. This floats inside the padding instead. */
 .cl-chip::before, .cl-event::before { content: ""; position: absolute; left: 3px; top: 2px; bottom: 2px; width: 3px; border-radius: var(--r-pill); background: var(--mark); }
@@ -1829,46 +1828,69 @@ textarea.inp { resize: vertical; }
 /* CONTINUOUS day/week timeline — the month's model, not a pager: a fixed-height spacer with period blocks
    absolutely placed at idx*periodH, free scrolling with proximity snap. Same scroll edge as month so content
    dissolves before it reaches the constant chrome. */
-/* --cl-top must equal _clHeadH() in app.js. The all-day reserve is CL_AD_ROWS rows and CONSTANT: a reserve
-   that tracked the lane's real height would let the lane paint over the grid on its way up, and would jitter
-   the day view's page height (which is derived from it) every time you scrolled onto a day with more bands. */
+/* --cl-top must equal _clHeadH() in app.js. It is bar + head and nothing else: week/day used to add a fixed
+   3-row all-day reserve, which cost 66px of chrome on every week whether or not anything was in it. Both
+   all-day modes draw inside the week instead, so the timeline starts directly under the weekday row. */
 .cl-pages { height: 100%; overflow-y: auto; overscroll-behavior: contain; scroll-snap-type: none; scroll-padding-top: var(--cl-top); padding-top: var(--cl-top); padding-bottom: var(--foot); }   /* --cl-top inherited from .calendar (per-view). No mask on the scroller — see .calendar::before. */
 .cl-pages-inner { position: relative; }
 /* each block is one day (day view) or one week (week view); its top border IS the 12am rule between periods */
 .cl-period-block { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; border-top: 1px solid var(--edge); }
-.cl-allday, .cl-pbody { display: grid; grid-template-columns: 56px repeat(7, 1fr); }
-.cl-allday.single, .cl-pages.single .cl-pbody { grid-template-columns: 56px 1fr; }
+.cl-pbody { display: grid; grid-template-columns: 56px repeat(7, 1fr); grid-template-rows: 1fr; }
 /* The task panel is a PEER of the grid, not something laid over it: every view gives it room, and the pinned
-   chrome tracks the same edge. Day used to be the only view that made way, so week/month/year were covered. */
+   chrome tracks the same edge. Day used to be the only view that made way, so week/month were covered. */
 .calendar.side .cl-month, .calendar.side .cl-pages { width: calc(100% - var(--side)); }
-.calendar.side .cl-weekhead, .calendar.side .cl-allday { right: var(--side); }
-/* pinned: the lane belongs to the chrome, so an all-day item never scrolls out of the day it describes */
-.cl-allday { position: absolute; top: calc(var(--bar) + var(--head)); left: 0; right: 0; z-index: 20; height: var(--ad); overflow-x: hidden; overflow-y: auto; transition: height 180ms var(--ease-out); }
-.cl-allday.has { border-bottom: 1px solid var(--hair); }   /* the hairline is the lane's ONLY chrome, and only when it has something to separate */
-.cl-ad-more { position: absolute; right: 2px; bottom: 1px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-4); background: var(--hover); color: var(--muted); font-size: 9.5px; font-weight: 700; line-height: 1.6; cursor: pointer; }
-.cl-allday-col { position: relative; }
-/* a due date / deadline rides the DATE, not the lane: bounded, always visible, and unmistakably about that day */
-/* A MARK reads as text, not as a dot. An 11px pip beside the date said "something is due" and nothing else —
-   the one thing a deadline has to tell you is WHAT. It sits in the lane's own row, above the bands. */
-.cl-mark { display: flex; align-items: center; gap: 3px; width: 100%; min-width: 0; height: var(--ad); padding: 0 var(--sp-4); border: 0; border-radius: var(--r-4); background: var(--tint); color: var(--txt); font: inherit; font-size: var(--fs-11); text-align: left; cursor: pointer; overflow: hidden; }
-.cl-mark.task-deadline { font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mark) 45%, transparent); }
-.cl-mark:hover { background: color-mix(in srgb, var(--mark) 22%, var(--tint)); }
-.cl-mark-pad { height: var(--ad); flex: none; }   /* holds the marks block at one height in every column */
-/* the lane collapses to nothing on days with nothing in it — the hairline alone says "above the timeline",
-   so the old "all-day" caption just cost 22px on every empty week */
-.cl-allday-label { padding: 0; }
-/* one band per --ad of lane height, so `height: calc(var(--ad) * rows)` shows exactly that many rows */
-.cl-allday-col { gap: 1px; padding: 1px var(--sp-2); border-left: 1px solid var(--hair); }
-.cl-allday-col .cl-chip { min-height: 0; height: calc(var(--ad) - 3px); }   /* fixed, so N rows fit exactly in N × --ad */
-/* week-lane span segments: re-aim the month-cell bleed (−sp-6) at this lane's sp-2 padding, and pull
-   continuation segments one extra px left so they paint OVER the column border — the band reads as one bar */
-.cl-allday-col .cl-chip.cl-span-l { margin-right: calc(-1 * var(--sp-2)); }
-/* a SPANNING task keeps the band look — the bare no-bg task-chip idiom only reads on single-day chips */
-.cl-chip.task-block.cl-span { background: var(--tint); }
-/* invisible lane spacer — holds a band's row in columns it doesn't cover */
-.cl-chip.pad { visibility: hidden; pointer-events: none; min-height: calc(1.45em + 2px); }
-.cl-allday-col .cl-chip.cl-span-r { margin-left: calc(-1 * var(--sp-2) - 1px); padding-left: var(--sp-6); }
-.cl-allday-col .cl-chip.cl-span-mid { margin: 0 calc(-1 * var(--sp-2)) 0 calc(-1 * var(--sp-2) - 1px); padding-left: var(--sp-6); }
+.calendar.side .cl-weekhead { right: var(--side); }
+/* Everything in the body shares row 1 and takes an explicit column, so the chapters layer can span 1/-1
+   without auto-placement shoving the day columns into a second row (they overlap ON PURPOSE). */
+.cl-gutter, .cl-pcol, .cl-chapters { grid-row: 1; }
+.cl-gutter { grid-column: 1; }
+
+/* ---- CHAPTER: whole-day claims as titles OVER the grid ---------------------------------------------------
+   Zero height and sticky, so the week's claims stay readable however far you scroll into it and the timeline
+   pays nothing for them. A band is ONE element spanning its columns — there is no per-column segment to lose
+   its title, and no spacer to miscount. Type over a live grid is the bet; the --bg halo is what makes it hold. */
+.cl-chapters { grid-column: 1 / -1; position: sticky; top: 0; align-self: start; z-index: 5; display: grid;
+  grid-template-columns: subgrid; grid-auto-rows: 15px; align-content: start; height: 0; padding-top: 4px; pointer-events: none; }
+.cl-chapters > * { pointer-events: auto; }
+.cl-ch { display: flex; align-items: center; gap: 5px; min-width: 0; height: 15px; padding: 0 var(--sp-6) 0 var(--sp-8);
+  border: 0; background: none; font: inherit; font-size: var(--fs-11); font-weight: 600; color: var(--txt); white-space: nowrap;
+  cursor: pointer; text-shadow: 0 0 5px var(--bg), 0 0 2px var(--bg), 0 0 2px var(--bg); }
+.cl-ch-dot { flex: none; width: 5px; height: 5px; border-radius: var(--r-pill); background: var(--mark); }
+.cl-ch-ring { flex: none; width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--mark); }
+.cl-ch-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* the leader carries the claim across the days it covers — and feathers where it runs off the week */
+.cl-ch-lead { flex: 1 1 auto; min-width: 6px; height: 1px; background: color-mix(in srgb, var(--mark) 42%, transparent); }
+.cl-ch-lead.open { flex: none; width: 22px; -webkit-mask-image: linear-gradient(90deg, transparent, #000); mask-image: linear-gradient(90deg, transparent, #000); }
+.cl-ch.task-deadline { font-weight: 700; }
+.cl-ch.mk { justify-content: flex-end; }   /* a mark hangs off its own date; it has no width to run anywhere */
+.cl-ch.done .cl-ch-t { text-decoration: line-through; opacity: .55; }
+.cl-ch:hover .cl-ch-t { text-decoration: underline; }
+.cl-ch:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+/* ---- TERRAIN: the claim becomes the day's GROUND ---------------------------------------------------------
+   H-presence, extended from a block to the whole 24h. A span is ONE field: the column hairline is painted over
+   where it continues, so the seam disappears, and the fill feathers where the item began before the week. */
+.cl-terr { position: absolute; top: 0; bottom: 0; right: 0; z-index: 0; cursor: pointer;
+  background: color-mix(in srgb, var(--tint) 82%, transparent);
+  box-shadow: inset 4px 0 0 color-mix(in srgb, var(--mark) 34%, transparent); }
+.cl-terr.cont-l { margin-left: -1px; box-shadow: none; }
+.cl-terr.open-l { -webkit-mask-image: linear-gradient(90deg, transparent, #000 34px); mask-image: linear-gradient(90deg, transparent, #000 34px); }
+.cl-terr.open-r { -webkit-mask-image: linear-gradient(270deg, transparent, #000 34px); mask-image: linear-gradient(270deg, transparent, #000 34px); }
+.cl-terr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* the label rides the top of whatever you are LOOKING at, so a 24h field is never anonymous */
+.cl-terr-stick { position: sticky; top: 0; display: block; height: 0; z-index: 7; }
+/* ...and the day's own content steps clear of it. A field sets z-index 0, which makes it a stacking context,
+   so its spine cannot rise above an event no matter what z-index it carries — it has to be given the room. */
+.cl-pcol > .cl-event, .cl-pcol > .cl-block, .cl-due { margin-left: var(--adin, 0px); }
+.cl-ad-more { position: absolute; right: 3px; top: 4px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-4); background: var(--hover); color: var(--muted); font-size: 9.5px; font-weight: 700; line-height: 1.7; cursor: pointer; }
+/* a MARK has no width and no hour of its own, so it lands on the rule your eye starts the day at */
+.cl-due { position: absolute; left: 0; right: 0; z-index: 1; gap: 1px; padding-top: 1px;
+  border-top: 1px dashed color-mix(in srgb, var(--muted) 55%, transparent); }
+.cl-due-m { gap: 3px; height: 14px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-4); background: var(--tint);
+  color: var(--txt); font: inherit; font-size: var(--fs-11); text-align: left; cursor: pointer; }
+.cl-due-m.task-deadline { font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mark) 45%, transparent); }
+.cl-due-m:hover { background: color-mix(in srgb, var(--mark) 22%, var(--tint)); }
+
 .cl-pbody { min-height: 0; }   /* the whole timeline scrolls now, so the body no longer scrolls inside a page */
 /* Zoomed in: hours take a fixed pixel height (--clhh) so the day exceeds the viewport and scrolls inside the
    page. Reaching the day's top/bottom chains to the outer pager, which snaps one whole week at a time. */
@@ -1915,7 +1937,7 @@ textarea.inp { resize: vertical; }
 .cl-blk-spine { position: absolute; left: 7px; top: 8px; writing-mode: vertical-rl; text-orientation: mixed; font-size: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--mark) 52%, var(--muted)); pointer-events: none; }
 .cl-blk-t-hide { display: none; }
 /* nested block: inset 14px so terrain frames it */
-.cl-block.is-nested { left: 14px; }
+.cl-block.is-nested { left: calc(var(--dep, 1) * 14px); }   /* each enclosing spine steps it once more */
 /* the now line is the brightest thing on the page, and it's amber — this is a timeblindness app, and "now"
    is the one fact it exists to make felt. Red read as an alarm; amber reads as the hearth. */
 .cl-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--accent); z-index: 6; }
@@ -1964,10 +1986,12 @@ textarea.inp { resize: vertical; }
    own compositing layer permanently, and these two sit exactly on the header/grid seam — a promoted transparent
    layer there can rasterize with a flat backing, and the page wash appears to stop dead at the grid. */
 .calendar.vt .cl-weekhead { view-transition-name: cl-weekhead; }
-.calendar.vt .cl-allday { view-transition-name: cl-allday; }
+/* NOTHING per-block may be named. A view-transition-name must be UNIQUE in the document — a duplicate makes
+   the whole transition invalid, and it aborts mid-flight, which reads as the morph teleporting for a frame and
+   snapping back. The chapters layer exists once per rendered week block (3+ at a time), so it is captured as
+   part of its block's cl-active-week snapshot instead, which is where it belongs anyway. */
 ::view-transition-old(cl-active-week), ::view-transition-new(cl-active-week),
-::view-transition-old(cl-weekhead), ::view-transition-new(cl-weekhead),
-::view-transition-old(cl-allday), ::view-transition-new(cl-allday) { animation-duration: 260ms; animation-timing-function: var(--ease-out); }
+::view-transition-old(cl-weekhead), ::view-transition-new(cl-weekhead) { animation-duration: 260ms; animation-timing-function: var(--ease-out); }
 
 /* E6 — the raised chip SLIDES between segments with a little overshoot. This is the one place a bounce is
    earned: you flicked something. Segments are equal-width so the chip can be pure transform. */
@@ -1992,8 +2016,9 @@ textarea.inp { resize: vertical; }
 /* The lift must OUTRANK the element's own transform: .cl-event sets translateZ(0) for its GPU layer and,
    being later in the file at equal specificity, silently won — so the lift never happened on an event at all. */
 .cl-event.cl-lift, .cl-chip.cl-lift, .cl-block.cl-lift, .item.cl-lift { transform: scale(1.03); opacity: .7; box-shadow: var(--shadow-pop); }
-/* cascading overlaps: `left` is set inline per lane and every event runs to the column's right edge, so the
-   earlier one stays fully readable instead of both halving. The shadow sells the stack as depth. */
+/* Overlaps: a LATER start cascades — `left` steps right per lane, the event runs to the column's right edge,
+   and the earlier one stays fully readable (the shadow sells the stack as depth). Peers starting at the same
+   time have no strip to leave readable, so clEvBox() gives them a width and they split the space instead. */
 .cl-event { right: 2px; }
 .cl-event.cl-casc { box-shadow: -3px 0 9px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.1); }
 /* density tiers — a 15-min standup must not speak with the same voice as a 3-hour block */
@@ -2019,7 +2044,6 @@ textarea.inp { resize: vertical; }
 /* The MEASURE belongs to the column, not to the things inside it: cap the day column itself and every child —
    rules, events, the daypart wash, the elapsed wash — is bounded by the same edge with nothing to keep in
    sync. (Insetting the contents instead leaves the washes running past the rules, a seam down the day.) */
-.cl-allday.single { grid-template-columns: calc(var(--sp-16) + var(--ag-rail) + var(--sp-16)) minmax(0, var(--ag-w)); }
 
 /* ── C5 · the day is a schedule, not a spreadsheet ────────────────────────────
    The grid was the spreadsheet: one day across ~870px made every event a thin bar of 11px type pinned to the
@@ -2104,7 +2128,7 @@ textarea.inp { resize: vertical; }
 .cl-cell.today .cl-dnum, .cal-day.sel { background: var(--today-fill); border-color: var(--today-fill); color: var(--today-ink); }
 /* Unscheduled-task tray toggle button */
 .cl-tray-btn.on { background: var(--hover); color: var(--ink); }   /* a toggled panel is state, not "now" — amber stays reserved for Today and the now line */
-.cl-cell.cl-drop, .cl-allday-col.cl-drop { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }
+.cl-cell.cl-drop { background: color-mix(in srgb, var(--accent) 14%, transparent); box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent); }
 /* live drop preview in a week/day column: a dashed accent ghost at the snapped time, with a time readout */
 .cl-drop-ghost { position: absolute; left: 1px; right: 1px; z-index: 5; pointer-events: none; border-radius: var(--r-6); background: color-mix(in srgb, var(--accent) 16%, transparent); border: 1.5px dashed color-mix(in srgb, var(--accent) 70%, transparent); }
 .cl-drop-time { position: absolute; top: -2px; left: 3px; font-size: var(--fs-11); font-weight: 700; color: var(--accent); background: color-mix(in srgb, var(--bg) 84%, transparent); padding: 0 3px; border-radius: 3px; line-height: 1.5; white-space: nowrap; }
