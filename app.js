@@ -203,6 +203,7 @@ document.addEventListener('alpine:init', () => {
     events: [],             // calendar events, loaded from store
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
     scheduleItems: [],      // task↔block attachments; [] before migration is applied
+    blockDays: [],          // block_day answer rows (start/skip/undo written here and on Android)
     clView: 'month',        // calendar view: day | week | month | year
     clSideOpen: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle + drop-hover day iso
     clDropPreview: null,   // { iso, min, h, label } — live ghost of where a drag will land in a week/day column
@@ -4396,7 +4397,13 @@ document.addEventListener('alpine:init', () => {
         const ps = this._periodDate(idx);
         const cols = Array.from({ length: span }, (_, i) => {
           const d = new Date(ps); d.setDate(d.getDate() + i); const iso = isoDate(d), items = byDay[iso] || [];
-          return { iso, day: d.getDate(), today: iso === todayIso, past: iso < todayIso, weekend: d.getDay() === 0 || d.getDay() === 6, label: d.toLocaleDateString([], { weekday: 'short' }), blocks: this._dayBlocks(iso), ...this._clSplitDay(items), timed: this._lanePack(items.filter(it => !it.allDay && it.start.length > 10)), cleared: this._clCleared(items) };
+          // One drawing level: non-container blocks lane-pack WITH events/tasks (peers cascade); only terrain
+          // containers stay a layer behind, and everything inside a container insets past its spine.
+          const tRanges = items.filter(it => !it.allDay && it.start.length > 10).map(it => { const sm = this._clMin(it.start), em = Math.max(this._clMin(it.end), sm + 20); return { it, sm, em }; });
+          const blocks = this._dayBlocks(iso, tRanges), terrain = blocks.filter(b => b.isContainer);
+          const packed = this._lanePack(tRanges, blocks.filter(b => !b.isContainer));
+          for (const p of packed) p.inset = terrain.some(t => t._sm <= p.sm && t._em >= p.em && (t._em - t._sm) > (p.em - p.sm)) ? 14 : 0;
+          return { iso, day: d.getDate(), today: iso === todayIso, past: iso < todayIso, weekend: d.getDay() === 0 || d.getDay() === 6, label: d.toLocaleDateString([], { weekday: 'short' }), blocks, terrain, packedBlocks: packed.filter(p => p.blk), ...this._clSplitDay(items), timed: packed.filter(p => !p.blk), cleared: this._clCleared(items) };
         });
         this._alignSpanLanes(cols);
         // Day: the lane keeps only what CONTINUES past today — that is context you would otherwise lose.
@@ -4443,20 +4450,32 @@ document.addEventListener('alpine:init', () => {
       return { mins, label: mins ? this._clDur(mins) + ' of planned work, done' : 'Everything you planned, done' };
     },
     _clMin(iso) { const t = timeOf(iso, '00:00'); return (+t.slice(0, 2)) * 60 + (+t.slice(3, 5)); },
-    _dayBlocks(iso) {
-      return blocksInRange(this.blocks, iso, iso).map(b => {
+    _dayBlocks(iso, timed = []) {
+      const all = blocksInRange(this.blocks, iso, iso).map(b => {
         const sm = Math.max(0, this._clMin(b.start)), em = b.end.slice(0, 10) > iso ? 1440 : Math.min(1440, this._clMin(b.end));
-        return { id: b.id, title: b.title, color: b.color, topPct: sm / 1440 * 100, hPct: Math.max(1.5, (em - sm) / 1440 * 100) };
+        return { id: b.id, title: b.title, color: b.color, topPct: sm / 1440 * 100, hPct: Math.max(1.5, (em - sm) / 1440 * 100), _sm: sm, _em: em };
       });
+      // H-presence: A contains B if A fully covers B's range AND is strictly longer (equal ranges are peers,
+      // not container+nested). Containment counts events/tasks too — a block holding a lone meeting is still
+      // the room it happens in, so it earns the terrain treatment (corollary, 2026-08-01).
+      const cont = (A, s, e) => A._sm <= s && A._em >= e && (A._em - A._sm) > (e - s);
+      for (const a of all) {
+        a.isContainer = all.some(b => b !== a && cont(a, b._sm, b._em)) || timed.some(r => cont(a, r.sm, r.em));
+        a.isNested = all.some(b => b !== a && cont(b, a._sm, a._em));
+      }
+      return all;
     },
+    // H-states-D1: format actual_start timestamp ("2026-08-01T09:15") as "started 9:15am"
+    _clFmtActualStart(ts) { if (!ts) return ''; return 'started ' + this.fmtTime(ts.slice(11, 16)); },
     // Height tier drives how much an event can say. Splitting evenly by lane count shrinks a 15-min standup
     // to an unreadable sliver, so overlaps CASCADE instead: each lane steps 14px right and stacks on top,
     // leaving the earlier event fully readable (macOS/Fantastical). Capped so deep stacks don't march away.
     _clTier(mins) { const px = mins * (this.clHourH || 0) / 60; return !px || px >= 40 ? 'full' : px >= 18 ? 'compact' : 'tiny'; },
-    _lanePack(list) {
-      const raw = list.map(it => { const sm = this._clMin(it.start), em = Math.max(this._clMin(it.end), sm + 20); return { it, sm, em }; }).sort((a, b) => a.sm - b.sm || a.em - b.em);
+    _lanePack(ranges, blocks = []) {
+      // ranges are prebuilt {it, sm, em}; non-container blocks join the SAME pack so all kinds cascade as peers
+      const raw = [...ranges, ...blocks.map(b => ({ it: b, blk: true, sm: b._sm, em: Math.max(b._em, b._sm + 20) }))].sort((a, b) => a.sm - b.sm || a.em - b.em);
       let cluster = [], cend = -1; const out = [];
-      const flush = () => { if (!cluster.length) return; const lanes = []; for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; } for (const p of cluster) out.push({ it: p.it, topPct: p.sm / 1440 * 100, hPct: (p.em - p.sm) / 1440 * 100, lane: p.lane, offPx: Math.min(p.lane, 4) * 14, tier: this._clTier(p.em - p.sm) }); cluster = []; cend = -1; };
+      const flush = () => { if (!cluster.length) return; const lanes = []; for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; } for (const p of cluster) out.push({ it: p.it, blk: p.blk, sm: p.sm, em: p.em, topPct: p.sm / 1440 * 100, hPct: (p.em - p.sm) / 1440 * 100, lane: p.lane, offPx: Math.min(p.lane, 4) * 14, tier: this._clTier(p.em - p.sm) }); cluster = []; cend = -1; };
       for (const p of raw) { if (p.sm >= cend && cluster.length) flush(); cluster.push(p); cend = Math.max(cend, p.em); }
       flush(); return out;
     },
@@ -4800,11 +4819,11 @@ document.addEventListener('alpine:init', () => {
     clSideDragStart(e) { const el = e.target.closest && e.target.closest('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
     clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideOpen = true; this.$nextTick(() => this.editTask(t)); },
     clBlockWeekdays() { return [{ d: 0, l: 'S' }, { d: 1, l: 'M' }, { d: 2, l: 'T' }, { d: 3, l: 'W' }, { d: 4, l: 'T' }, { d: 5, l: 'F' }, { d: 6, l: 'S' }]; },
-    clNewBlock(date, start, end) { this.blockEdit = { date: date || this.clAnchor, start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], energy: null, availability: null, color: null, title: '' }; },
+    clNewBlock(date, start, end) { this.blockEdit = { date: date || this.clAnchor, start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], energy: null, availability: null, color: null, title: '', est_minutes: null }; },
     clEditBlock(id) {
       const b = this.blocks.find(x => x.id === id); if (!b) return;
       this.blockEdit = { id: b.id, title: b.title || '', date: b.starts_at.slice(0, 10), start: timeOf(b.starts_at, '09:00'), end: timeOf(b.ends_at, '10:00'), all_day: !!b.all_day,
-        weekdays: (b.recurrence?.weekdays || []).slice(), location_id: b.location_id || null, areas: (b.areas || []).slice(), energy: b.energy || null, availability: b.availability || null, color: b.color || null };
+        weekdays: (b.recurrence?.weekdays || []).slice(), location_id: b.location_id || null, areas: (b.areas || []).slice(), energy: b.energy || null, availability: b.availability || null, color: b.color || null, est_minutes: b.est_minutes ?? null };
     },
     async clSaveBlock() {
       const e = this.blockEdit; if (!e) return;
@@ -4814,13 +4833,18 @@ document.addEventListener('alpine:init', () => {
         for (let i = 0; i < 7 && !wds.includes(d0.getDay()); i++) d0.setDate(d0.getDate() + 1);
         date = isoDate(d0); recurrence = { freq: 'week', interval: 1, weekdays: wds };
       }
-      const fields = { title: e.title.trim(), all_day: e.all_day, recurrence, location_id: e.location_id || null, areas: e.areas, energy: e.energy || null, availability: e.availability || null, color: e.color || null, ...this._evRange(e, date) };
-      if (e.id) await this.store.blocks.update(e.id, fields); else await this.store.blocks.add(fields);
+      const est_minutes = e.est_minutes === '' || e.est_minutes == null ? null : +e.est_minutes;
+      const { est_minutes: _em, ...core } = { title: e.title.trim(), all_day: e.all_day, recurrence, location_id: e.location_id || null, areas: e.areas, energy: e.energy || null, availability: e.availability || null, color: e.color || null, est_minutes, ...this._evRange(e, date) };
+      if (e.id) await this.store.blocks.update(e.id, { ...core, est_minutes });
+      else {
+        const b = await this.store.blocks.add(core);   // est_minutes is update-only until db:apply (unknown column fails the whole insert)…
+        if (b && est_minutes != null) await this.store.blocks.update(b.id, { est_minutes });   // …but the create path must still WRITE it
+      }
       await this.loadBlocks(); this.blockEdit = null;
     },
     async clDeleteBlock() { const b = this.blocks.find(x => x.id === this.blockEdit?.id); if (b) await this.perform('Deleted block', { target: 'block', kind: 'delete', id: b.id }); this.blockEdit = null; },
     clBlockPreset(p) {
-      const pre = { work: { title: 'Work', start: '08:15', end: '16:30', weekdays: [1,2,3,4,5] }, lunch: { title: 'Lunch', start: '12:00', end: '13:00', weekdays: [1,2,3,4,5] }, evening: { title: 'Evening', start: '18:00', end: '22:00', weekdays: [] } }[p];
+      const pre = { work: { title: 'Work', start: '08:15', end: '16:30', weekdays: [1,2,3,4,5], est_minutes: null }, lunch: { title: 'Lunch', start: '12:00', end: '13:00', weekdays: [1,2,3,4,5], est_minutes: 15 }, evening: { title: 'Evening', start: '18:00', end: '22:00', weekdays: [], est_minutes: null } }[p];
       if (!pre || !this.blockEdit) return;
       Object.assign(this.blockEdit, pre);
     },
@@ -4832,6 +4856,34 @@ document.addEventListener('alpine:init', () => {
     },
     async clRemoveAttached(itemId) { await this.store.scheduleItems.remove(itemId); this.scheduleItems = await this.store.scheduleItems.list(); },
 
+    // --- Block day (start-ask answered from the web; the phone writes the same rows) ---
+    clBlockOccursToday(b) {
+      if (!b || b.all_day) return false;
+      const today = new Date();
+      if (!b.recurrence) return b.starts_at?.slice(0, 10) === isoDate(today);
+      const { freq, weekdays, month_day } = b.recurrence;
+      if (freq === 'day') return true;
+      if (freq === 'week') return (weekdays || []).includes(today.getDay());
+      if (freq === 'month') return today.getDate() === (month_day ?? new Date(b.starts_at || '').getDate());
+      return false;
+    },
+    clBlockDay(blockId) { const d = isoDate(new Date()); return this.blockDays.find(x => x.block_id === blockId && x.date === d) || null; },
+    async clSetBlockDay(blockId, fields) {
+      await this.store.blockDays.set({ block_id: blockId, date: isoDate(new Date()), ...fields });
+      this.blockDays = await this.store.blockDays.list();
+    },
+    clStartBlock(blockId) { const n = new Date(); return this.clSetBlockDay(blockId, { status: 'running', actual_start: `${isoDate(n)}T${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}` }); },
+    clSkipBlock(blockId) { return this.clSetBlockDay(blockId, { status: 'skipped' }); },
+    clUndoBlockDay(blockId) { return this.clSetBlockDay(blockId, { status: 'pending', actual_start: null }); },
+    // Lead = first incomplete during-attachment fitting capacity (mirrors the Android blockLead pick).
+    clBlockLead(blockId) {
+      const cap = this.blocks.find(b => b.id === blockId)?.est_minutes ?? null;
+      return this.scheduleItems.filter(s => s.block_id === blockId && s.role === 'during')
+        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+        .map(s => this.tasks.find(t => t.id === s.task_id))
+        .find(t => t && !t.completed_at && (cap == null || t.est_minutes == null || t.est_minutes <= cap)) || null;
+    },
+
     // ---- Cloud sync (Supabase adapter, opt-in via magic link). LocalStore stays the offline default. ----
     async reloadAll() {
       if (this.store.requiresAuth && !this.session) return;   // cloud adapter: wait until signed in
@@ -4842,6 +4894,7 @@ document.addEventListener('alpine:init', () => {
       _clBlocksSig = null;   // bust memo before reactive write so the flush sees the new blocks array
       this.events = b.events; this.blocks = b.blocks;
       this.scheduleItems = await this.store.scheduleItems.list();
+      this.blockDays = await this.store.blockDays.list();
       this.homeLocationId = this.store.homeLocationId(); this.currentRegion = this.store.currentRegion();
       this._rowV++; _calDataV++; _goalStepsMemo.clear(); _goalMilestonesMemo.clear();
       await this.loadIdentities();

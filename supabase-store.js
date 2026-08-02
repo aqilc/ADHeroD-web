@@ -114,6 +114,7 @@ function hydrateBlock(row) {
     areas: row.area_ids ?? [],
     energy: row.energy ?? null, availability: row.availability ?? null,
     color: row.color ?? null, source: row.source ?? 'local',
+    est_minutes: row.est_minutes ?? null,
     created_at: row.created_at, updated_at: row.updated_at,
   };
 }
@@ -446,7 +447,7 @@ export function createSupabaseStore(client) {
       async update(id, fields) {
         const uid = await userId(); const ts = new Date().toISOString();
         const upd = { updated_at: ts };
-        for (const c of ['title', 'starts_at', 'ends_at', 'all_day', 'location_id', 'energy', 'availability', 'color', 'source']) if (c in fields) upd[c] = fields[c] ?? null;
+        for (const c of ['title', 'starts_at', 'ends_at', 'all_day', 'location_id', 'energy', 'availability', 'color', 'source', 'est_minutes']) if (c in fields) upd[c] = fields[c] ?? null;
         if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;
         if ('areas' in fields) upd.area_ids = fields.areas ?? [];
         const { data } = await client.from('blocks').update(upd).eq('id', id).eq('user_id', uid).select('*').single();
@@ -475,6 +476,24 @@ export function createSupabaseStore(client) {
         const { data } = await client.from('schedule_items').update({ role, updated_at: ts }).eq('id', id).eq('user_id', uid).select('*').single();
         return data;
       },
+    },
+
+    // Per-block-per-day actuals: upsert on (user_id, block_id, date) — answering twice must not 409.
+    blockDays: {
+      async list() {
+        const { data, error } = await client.from('block_days').select('*');
+        if (error) throw error;
+        return data || [];
+      },
+      async set(fields) {
+        const uid = await userId(); const ts = new Date().toISOString();
+        const { data, error } = await client.from('block_days')
+          .upsert({ user_id: uid, ...fields, updated_at: ts }, { onConflict: 'user_id,block_id,date' })
+          .select('*').single();
+        if (error) throw error;
+        return data;
+      },
+      async remove(id) { const uid = await userId(); const { error } = await client.from('block_days').delete().eq('id', id).eq('user_id', uid); return !error; },
     },
 
     tasks: {

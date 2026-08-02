@@ -1022,8 +1022,21 @@
                 <div class="cl-pcol flex-col" :class="{ weekend: col.weekend }" @pointerdown="clBlockDragStart($event, col.iso)" @pointermove="clBlockDragMove($event)" @pointerup="clBlockDragEnd()" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
                   <template x-for="h in clHours()" :key="'l'+h"><div class="cl-hour-line"></div></template>
                   <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"><span class="cl-drop-time" x-text="clDropPreview.label"></span></div></template>
-                  <template x-for="(b, ix) in col.blocks" :key="'b'+b.id+ix">
-                    <div class="cl-block" role="button" tabindex="0" draggable="true" :data-id="b.id" @dragstart.stop="clDragStart($event, 'block', b.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+b.topPct+'%;height:'+b.hPct+'%;--cc:'+(b.color || 'var(--accent)')" :title="b.title" @click.stop="clEditBlock(b.id)"><span class="cl-blk-t" x-text="b.title"></span></div>
+                  <template x-for="(b, ix) in col.terrain" :key="'b'+b.id+ix">
+                    <div class="cl-block" :class="{ 'is-running': clBlockDay(b.id)?.status === 'running', 'is-done': clBlockDay(b.id)?.status === 'done', 'is-missed': clBlockDay(b.id)?.status === 'missed', 'is-skipped': clBlockDay(b.id)?.status === 'skipped', 'is-terrain': b.isContainer, 'is-nested': b.isNested }" role="button" tabindex="0" draggable="true" :data-id="b.id" @dragstart.stop="clDragStart($event, 'block', b.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+b.topPct+'%;height:'+b.hPct+'%;--cc:'+(b.color || 'var(--accent)')" :title="b.title" @click.stop="clEditBlock(b.id)">
+                      <template x-if="b.isContainer"><span class="cl-blk-spine" x-text="b.title"></span></template>
+                      <span class="cl-blk-t" :class="{'cl-blk-t-hide': b.isContainer}" x-text="b.title"></span>
+                      <template x-if="clBlockDay(b.id)?.status === 'running'"><span class="cl-blk-ember" :class="{'anim-none': reduceMotion()}"></span></template>
+                      <template x-if="clBlockDay(b.id)?.status === 'running' && clBlockDay(b.id)?.actual_start"><span class="cl-blk-tick" x-text="_clFmtActualStart(clBlockDay(b.id).actual_start)"></span></template>
+                    </div>
+                  </template>
+                  <!-- non-container blocks pack WITH events/tasks (one drawing level); inset clears a terrain spine -->
+                  <template x-for="(p, ix) in col.packedBlocks" :key="'pb'+p.it.id+ix">
+                    <div class="cl-block" :class="{ 'is-running': clBlockDay(p.it.id)?.status === 'running', 'is-done': clBlockDay(p.it.id)?.status === 'done', 'is-missed': clBlockDay(p.it.id)?.status === 'missed', 'is-skipped': clBlockDay(p.it.id)?.status === 'skipped', 'is-nested': p.inset > 0 }" role="button" tabindex="0" draggable="true" :data-id="p.it.id" @dragstart.stop="clDragStart($event, 'block', p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;left:'+(p.inset + p.offPx)+'px;z-index:'+(2+p.lane)+';--cc:'+(p.it.color || 'var(--accent)')" :title="p.it.title" @click.stop="clEditBlock(p.it.id)">
+                      <span class="cl-blk-t" x-text="p.it.title"></span>
+                      <template x-if="clBlockDay(p.it.id)?.status === 'running'"><span class="cl-blk-ember" :class="{'anim-none': reduceMotion()}"></span></template>
+                      <template x-if="clBlockDay(p.it.id)?.status === 'running' && clBlockDay(p.it.id)?.actual_start"><span class="cl-blk-tick" x-text="_clFmtActualStart(clBlockDay(p.it.id).actual_start)"></span></template>
+                    </div>
                   </template>
                   <div class="cl-block cl-block-drag" x-show="clDragBand && clDragBand.iso === col.iso" :style="clDragBand ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : ''"></div>
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
@@ -1032,7 +1045,7 @@
                   <!-- F5: everything planned for this day is done — the column warms instead of going blank -->
                   <template x-if="col.cleared"><div class="cl-cleared"><span class="cl-cleared-t" x-text="col.cleared.label"></span></div></template>
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
-                    <div class="cl-event" :class="p.it.kind + ' tier-' + p.tier + (p.lane ? ' cl-casc' : '') + (clPlaced === p.it.id ? ' cl-placed' : '') + (p.it.kind === 'task-block' && byId.get(p.it.id)?.completed_at ? ' done' : '')" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;left:'+(p.offPx+1)+'px;z-index:'+(2+p.lane)+';--i:'+ix+';--cc:'+clItemColor(p.it)">
+                    <div class="cl-event" :class="p.it.kind + ' tier-' + p.tier + (p.lane ? ' cl-casc' : '') + (clPlaced === p.it.id ? ' cl-placed' : '') + (p.it.kind === 'task-block' && byId.get(p.it.id)?.completed_at ? ' done' : '')" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;left:'+(p.inset + p.offPx + 1)+'px;z-index:'+(2+p.lane)+';--i:'+ix+';--cc:'+clItemColor(p.it)">
                       <template x-if="p.it.kind === 'task-block'"><button type="button" class="cl-evt-check" :class="{ done: byId.get(p.it.id)?.completed_at }" @click.stop="clToggleTask(p.it.id)" aria-label="Complete task"></button></template>
                       <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm" x-text="clTimeLabel(p.it)"></span></span>
                     </div>
@@ -1873,6 +1886,34 @@
         <button type="button" class="blk-preset" @click="clBlockPreset('evening')">Evening 6–10</button>
       </div>
       <div x-html="evWhenHtml('blockEdit', 'New block — e.g. At the office')"></div>
+      <div class="ev-row blk-capacity flex items-center">
+        <span class="ev-lab">Usable min</span>
+        <input class="ev-field" type="number" min="0" step="5" placeholder="whole span"
+          :value="blockEdit.est_minutes ?? ''" @input="blockEdit.est_minutes = $event.target.value">
+      </div>
+      <template x-if="blockEdit.id && clBlockOccursToday(blocks.find(b => b.id === blockEdit.id))">
+        <div class="ev-row blk-today">
+          <template x-if="!clBlockDay(blockEdit.id) || clBlockDay(blockEdit.id).status === 'pending'">
+            <span class="blk-today-actions">
+              <button type="button" class="ghost blk-start" @click="clStartBlock(blockEdit.id)">Start now</button>
+              <button type="button" class="ghost blk-skip" @click="clSkipBlock(blockEdit.id)">Skip today</button>
+            </span>
+          </template>
+          <template x-if="clBlockDay(blockEdit.id)?.status === 'running'">
+            <span class="blk-today-actions">
+              <span class="blk-today-state" x-text="'Started ' + (clBlockDay(blockEdit.id).actual_start || '').slice(11, 16)"></span>
+              <span class="blk-today-lead" x-text="clBlockLead(blockEdit.id)?.content || ''"></span>
+              <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id)">Undo</button>
+            </span>
+          </template>
+          <template x-if="clBlockDay(blockEdit.id)?.status === 'skipped'">
+            <span class="blk-today-actions">
+              <span class="blk-today-state">Skipped today</span>
+              <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id)">Undo</button>
+            </span>
+          </template>
+        </div>
+      </template>
       <div class="blk-field">
         <label class="section-label">Repeat</label>
         <div class="blk-weekdays flex gap-6">

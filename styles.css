@@ -1894,6 +1894,28 @@ textarea.inp { resize: vertical; }
 .cl-block { position: absolute; left: 0; right: 0; z-index: 1; overflow: hidden; padding: 1px var(--sp-6); cursor: pointer; background: color-mix(in srgb, var(--tint) var(--cal-blk), transparent); border-top: 1px solid color-mix(in srgb, var(--mark) 26%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--mark) 14%, transparent); }
 .cl-blk-t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-11); line-height: 1.35; color: var(--txt); opacity: .5; }
 .cl-block-drag { z-index: 3; pointer-events: none; background: color-mix(in srgb, var(--cc) 22%, transparent); border: 1px dashed color-mix(in srgb, var(--cc) 55%, transparent); }
+/* H-states-D1: running = accent left rail + warm tint; keep border-left so getComputedStyle(el).borderLeftWidth > 0 */
+.cl-block.is-running { border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); border-top-color: transparent; border-bottom-color: transparent; }
+/* breathing ember dot — the one living thing on the terrain (respects reduced-motion via .anim-none) */
+.cl-blk-ember { position: absolute; left: 6px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); pointer-events: none; }
+.cl-blk-ember::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; background: var(--accent); animation: cl-breathe 3.2s ease-in-out infinite; }
+.cl-blk-ember.anim-none::after { animation: none; opacity: .28; transform: scale(.7); }
+/* "started 9:15am" — grey, tabular, bottom-right of the band */
+.cl-blk-tick { position: absolute; right: 6px; bottom: 3px; font-size: 8.5px; font-weight: 600; color: var(--faint); font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+/* done: recede */
+.cl-block.is-done { opacity: .62; }
+/* missed: ashen grey — ink tint, never red */
+.cl-block.is-missed { color: var(--muted); --mark: var(--faint); background: color-mix(in srgb, var(--ink) 6%, transparent); border-color: transparent; }
+.cl-block.is-missed .cl-blk-t { color: var(--muted); opacity: .7; }
+.cl-block.is-skipped { opacity: .5; }
+/* H-presence: container block = terrain — receded, full-column, inset box-shadow spine on the left.
+   A step further behind K-recede; nested children indent inside it. */
+.cl-block.is-terrain { background: color-mix(in srgb, var(--tint) calc(var(--cal-blk) * .65), transparent); box-shadow: inset 5px 0 0 color-mix(in srgb, var(--mark) 28%, transparent), inset 0 2px 0 color-mix(in srgb, var(--mark) 22%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--mark) 14%, transparent); border-color: transparent; }
+/* vertical spine label for terrain blocks */
+.cl-blk-spine { position: absolute; left: 7px; top: 8px; writing-mode: vertical-rl; text-orientation: mixed; font-size: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--mark) 52%, var(--muted)); pointer-events: none; }
+.cl-blk-t-hide { display: none; }
+/* nested block: inset 14px so terrain frames it */
+.cl-block.is-nested { left: 14px; }
 /* the now line is the brightest thing on the page, and it's amber — this is a timeblindness app, and "now"
    is the one fact it exists to make felt. Red read as an alarm; amber reads as the hearth. */
 .cl-now { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--accent); z-index: 6; }
@@ -1955,7 +1977,7 @@ textarea.inp { resize: vertical; }
 .cl-seg-chip { position: absolute; top: 2px; left: 2px; height: 26px; width: 28px; border-radius: var(--r-6); background: var(--panel); box-shadow: var(--shadow-sm); transform: translateX(calc(var(--seg-i, 0) * 29px)); transition: transform 300ms var(--ease-spring); }
 
 @media (prefers-reduced-motion: reduce) {
-  .cl-now::after { animation: none; opacity: .3; transform: scale(.7); }
+  .cl-now::after, .cl-blk-ember::after { animation: none; opacity: .28; transform: scale(.7); }
   .cl-settle .cl-event, .cl-settle .cl-ag-row, .cl-placed { animation: cl-appear 200ms var(--ease-out) backwards; }
   .cl-seg-chip { transition: none; }
   .cl-event:active, .cl-chip:active, .cl-block:active, .cl-ag-row:active,
@@ -2096,6 +2118,7 @@ textarea.inp { resize: vertical; }
 .ev-allday { font-size: var(--fs-13); color: var(--ink); cursor: pointer; }
 /* .ev-field appearance is the shared .inp rule; only ev-specific layout lives here */
 .ev-dash { color: var(--muted); }
+.ev-lab { color: var(--muted); font-size: var(--fs-13); flex: none; white-space: nowrap; }
 .ev-colors { flex-wrap: wrap; }
 .ev-color-label { margin-top: var(--sp-12); }
 /* Block editor extras: weekday repeat toggles + area condition chips */
@@ -2116,6 +2139,9 @@ textarea.inp { resize: vertical; }
 .blk-attached-t { font-size: var(--fs-13); color: var(--ink); }
 .blk-role-chip { padding: var(--sp-2) var(--sp-8); border-radius: var(--r-lg); border: 1px solid var(--edge); background: var(--hover); color: var(--muted); font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; cursor: pointer; transition: background-color .12s; }
 .blk-role-chip:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.blk-today-actions { display: flex; align-items: center; gap: var(--sp-8); }
+.blk-today-state { color: var(--muted); font-size: var(--fs-12); }
+.blk-today-lead { color: var(--faint); font-size: var(--fs-12); }
 
 /* Bottom-right notification stack — calm floating cards (deletes/edits) that never block input. The stack
    ignores pointer events; only the cards are interactive, so their Undo/Redo buttons stay reachable. */

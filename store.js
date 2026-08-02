@@ -250,6 +250,9 @@ export function createLocalStore(opts = {}) {
   const SCHEDULE_ITEMS_KEY = 'adherod.schedule_items';
   const readScheduleItems = () => readKey(SCHEDULE_ITEMS_KEY);
   const writeScheduleItems = v => writeKey(SCHEDULE_ITEMS_KEY, v);
+  const BLOCK_DAYS_KEY = 'adherod.block_days';
+  const readBlockDays = () => readKey(BLOCK_DAYS_KEY);
+  const writeBlockDays = v => writeKey(BLOCK_DAYS_KEY, v);
   const ACTIVITY_KEY = 'adherod.activity';
   const readActivity = () => readKey(ACTIVITY_KEY);
   const writeActivity = v => writeKey(ACTIVITY_KEY, v);   // no reindex
@@ -497,7 +500,7 @@ export function createLocalStore(opts = {}) {
           all_day: fields.all_day ?? false, recurrence: fields.recurrence ?? null,
           location_id: fields.location_id ?? null, areas: fields.areas ?? [],
           energy: fields.energy ?? null, availability: fields.availability ?? null,
-          color: fields.color ?? null, source: 'local', created_at: ts, updated_at: ts,
+          color: fields.color ?? null, source: 'local', est_minutes: fields.est_minutes ?? null, created_at: ts, updated_at: ts,
         };
         writeBlocks([...readBlocks(), b]);
         return b;
@@ -516,6 +519,21 @@ export function createLocalStore(opts = {}) {
       },
       async remove(id) { return dropRow(readScheduleItems, writeScheduleItems, id); },
       async setRole(id, role) { return patchRow(readScheduleItems, writeScheduleItems, id, { role }); },
+    },
+
+    blockDays: {
+      async list() { return readBlockDays(); },
+      async set({ block_id, date, status, actual_start, actual_end, ask_after, est_minutes }) {
+        const ts = now(), rows = readBlockDays();
+        const prev = rows.find(r => r.block_id === block_id && r.date === date);
+        const next = { ...(prev || { id: uuid(), block_id, date, created_at: ts }),
+          ...(status !== undefined && { status }), ...(actual_start !== undefined && { actual_start }),
+          ...(actual_end !== undefined && { actual_end }), ...(ask_after !== undefined && { ask_after }),
+          ...(est_minutes !== undefined && { est_minutes }), updated_at: ts };
+        writeBlockDays(prev ? rows.map(r => (r === prev ? next : r)) : [...rows, next]);
+        return next;
+      },
+      async remove(id) { return dropRow(readBlockDays, writeBlockDays, id); },
     },
 
     tasks: {
