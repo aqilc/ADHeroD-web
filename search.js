@@ -1,9 +1,8 @@
 import uFuzzy from './vendor/uFuzzy.esm.js';
 import { parseDate, isoDate, impRank } from './nlp.js';
+import { esc } from './ui.js';
 
 const SEP = '';   // field separator: a word boundary uFuzzy won't match across, kept out of display
-
-const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 export const makeFuzzy = () => new uFuzzy({ intraMode: 1 });
 
@@ -17,7 +16,8 @@ export const fuzzyRank = (uf, hay, q) => {
 // field order = rank order: title · areas · path · notes · checklist
 export function buildSearchDocs(tasks, areas, defaultProjectId) {
   const byId = new Map(tasks.map(t => [t.id, t]));
-  const areaName = id => (areas.find(g => g.id === id) || {}).name || '';
+  const areaMap = new Map(areas.map(g => [g.id, g.name]));
+  const areaName = id => areaMap.get(id) || '';
   const pathOf = t => { const parts = []; let cur = t; const seen = new Set(); while (cur && !seen.has(cur.id)) { seen.add(cur.id); parts.unshift(cur.content); cur = byId.get(cur.parent_id); } return parts.join(' / '); };
   const haystack = [], meta = [];
   for (const t of tasks) {
@@ -79,19 +79,20 @@ export function defaultDocs(meta, recentIds = [], limit = 50) {
 }
 
 // only ranges within [0, titleLen) — area/path ranges excluded
-export function markTitle(title, ranges, titleLen) {
-  const t = title || '';
-  if (!ranges || !ranges.length) return esc(t);
+// open/close: wrap tokens (default <mark>); escape=false skips esc() for sentinel-mark-then-render flows
+export function markTitle(title, ranges, titleLen, open = '<mark>', close = '</mark>', escape = true) {
+  const t = title || '', e = s => escape ? esc(s) : s;
+  if (!ranges || !ranges.length) return e(t);
   let out = '', pos = 0;
   for (let i = 0; i < ranges.length; i += 2) {
     const a = ranges[i]; let b = ranges[i + 1];
     if (a >= titleLen) break;
     b = Math.min(b, titleLen);
     if (a < pos) continue;
-    out += esc(t.slice(pos, a)) + '<mark>' + esc(t.slice(a, b)) + '</mark>';
+    out += e(t.slice(pos, a)) + open + e(t.slice(a, b)) + close;
     pos = b;
   }
-  return out + esc(t.slice(pos));
+  return out + e(t.slice(pos));
 }
 
 // --- AQL query language (merged from query.js) ---
@@ -127,19 +128,15 @@ export function parseQuery(str) {
   return or() || { term: '' };
 }
 
-const todayISO = now => { const d = new Date(now); d.setHours(0,0,0,0); return isoDate(d); };
+const todayISO = now => isoDate(new Date(now));
 function resolveDate(word, now) {
   const w = (word || '').trim().toLowerCase(), d = new Date(now); d.setHours(0, 0, 0, 0);
   const add = n => { const x = new Date(d); x.setDate(x.getDate() + n); return isoDate(x); };
-  if (w === 'today') return add(0);
-  if (w === 'tomorrow') return add(1);
-  if (w === 'yesterday') return add(-1);
   if (w === 'sow') return add(-d.getDay());
   if (w === 'eow') return add(6 - d.getDay());
   if (w === 'som') return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));
   if (w === 'eom') return isoDate(new Date(d.getFullYear(), d.getMonth() + 1, 0));
   const m = w.match(/^([+-]\d+)d$/); if (m) return add(+m[1]);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(w)) return w;
   return parseDate(word, now) || null;
 }
 function cmpDate(iso, spec, now) {
@@ -159,6 +156,9 @@ function walk(n, fn) { if (!n) return; fn(n); if (n.kids) n.kids.forEach(k => wa
 
 export function matchQuery(query, tasks, ctx) {
   const ast = typeof query === 'string' ? parseQuery(query) : query;
+  // `due:` asks about the date a task SITS on — its placement (ctx.placed, from the caller's date-items).
+  // recur_from is only a recurrence anchor now, so it answers for repeats and nothing else.
+  const when = t => ctx.placed?.get(t.id) || (t.recurrence ? t.recur_from : null) || '';
   const byId = new Map(tasks.map(t => [t.id, t]));
   const hasChild = new Set(tasks.map(t => t.parent_id).filter(Boolean));
   let scope = null; walk(ast, n => { if (n.q === 'in') scope = n.val; });
@@ -174,8 +174,8 @@ export function matchQuery(query, tasks, ctx) {
     daily: () => t.recurrence?.freq === 'day', weekly: () => t.recurrence?.freq === 'week',
     monthly: () => t.recurrence?.freq === 'month', yearly: () => t.recurrence?.freq === 'year',
     blocked: () => (t.blocked_by || []).some(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; }),
-    overdue: () => !!t.due_at && t.due_at.slice(0, 10) < todayISO(ctx.now) && !t.completed_at && !t.archived_at,
-    today: () => !!t.due_at && t.due_at.slice(0, 10) === todayISO(ctx.now),
+    overdue: () => !!when(t) && when(t).slice(0, 10) < todayISO(ctx.now) && !t.completed_at && !t.archived_at,
+    today: () => !!when(t) && when(t).slice(0, 10) === todayISO(ctx.now),
   }[f] || (() => false))();
   const compile = n => {
     if (n.op === 'or') { const k = n.kids.map(compile); return t => k.some(f => f(t)); }
@@ -185,7 +185,7 @@ export function matchQuery(query, tasks, ctx) {
     if (n.q === 'project') return t => inProject(t, n.val, n.sub);
     if (n.q === 'area') return t => areaMatch(t.area_ids, n.val);
     if (n.q === 'imp') return t => impMatch(t.importance, n.val);
-    if (n.q === 'due') return t => cmpDate(t.due_at, n.val, ctx.now);
+    if (n.q === 'due') return t => cmpDate(when(t), n.val, ctx.now);
     if (n.q === 'deadline') return t => cmpDate(t.deadline_at, n.val, ctx.now);
     if (n.q === 'in') return () => true;
     if (n.q === 'is') return t => isFlag(t, n.val);
@@ -196,6 +196,6 @@ export function matchQuery(query, tasks, ctx) {
   const pred = compile(ast);
   // Archived excluded by default (like completed); surfaced only via is:archived / is:any.
   const res = tasks.filter(t => t.id !== ctx.defaultProjectId && (includeDone || !t.completed_at) && (includeArchived || !t.archived_at) && (wantProject || !t.sidebar) && pred(t));
-  const key = t => [t.completed_at ? 1 : 0, t.due_at ? t.due_at.slice(0, 10) : '9999', impRank(t.importance)].join('|');
+  const key = t => [t.completed_at ? 1 : 0, when(t) ? when(t).slice(0, 10) : '9999', impRank(t.importance)].join('|');
   return res.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0).map(t => t.id);
 }

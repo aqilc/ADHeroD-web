@@ -1,20 +1,21 @@
+import { motion } from './motion.js';
+
 // Pointer-based single-list sortable: vertical reorder within ONE list, never reparents.
 // Purely-visual during the drag (lift the dragged item, shift siblings to open a gap); commit once on drop.
 // Used by the composer entry lists (grip handle) and the task-list checklist rows (whole row).
 
 // Scroll scrollEl toward the edge when clientY is within THRESH px. Returns velocity applied (0 = not in zone).
 // With prefers-reduced-motion: constant velocity (no proximity ramp).
-export function edgeScrollStep(scrollEl, clientY) {
+export function edgeScrollStep(scrollEl, clientY, rm = false) {
   if (!scrollEl) return 0;
   const THRESH = 48, MAX = 12;
   const rect = scrollEl.getBoundingClientRect();
   const top = clientY - rect.top, bot = rect.bottom - clientY;
-  const rm = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let v = 0;
   if (top < THRESH && top >= 0) v = rm ? -MAX / 2 : -(1 - top / THRESH) * MAX;
   else if (bot < THRESH && bot >= 0) v = rm ? MAX / 2 : (1 - bot / THRESH) * MAX;
   if (v) scrollEl.scrollTop += v;
-  return v;
+  return v;   // U-12: let scrollFrame know whether we're in the edge zone
 }
 
 function scrollParent(el) {
@@ -33,7 +34,6 @@ export function targetIndex(centers, from, draggedCenter) {
   return to;
 }
 
-const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SHIFT = 'transform 180ms var(--ease-out)';
 
 // makeSortable(container, { itemSel, handleSel?, scopeSel?, mouseOnly?, onCommit(from,to,scope), enabled?() })
@@ -59,7 +59,6 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, mouseOnl
     if (from < 0 || items.length < 2) return;
     st = { item, items, scope, from, to: from, startY: e.clientY, pid: e.pointerId, dragging: false };
     container.style.userSelect = 'none';
-    st.move = onMove; st.up = onUp;
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp, { once: true });
     window.addEventListener('pointercancel', onUp, { once: true });
@@ -69,31 +68,31 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, mouseOnl
     st.dragging = true;
     const rects = st.items.map(el => el.getBoundingClientRect());
     st.centers = rects.map(r => r.top + r.height / 2);
-    st.h = st.centers.length > 1 ? Math.abs(st.centers[1] - st.centers[0]) : rects[st.from].height;
+    st.h = Math.abs(st.centers[1] - st.centers[0]);
     try { st.item.setPointerCapture(st.pid); } catch { }
     st.item.classList.add('sorting');
     st.item.style.transition = 'none';
-    for (let i = 0; i < st.items.length; i++) if (i !== st.from) st.items[i].style.transition = reduced() ? 'none' : SHIFT;
     st.scrollEl = scrollParent(container);
+    st.startScrollTop = st.scrollEl?.scrollTop ?? 0;   // U-13: baseline for scroll-adjusted dy
+    st._rm = motion.scale === 0;                        // U-12: hoist the one dial (motion.js) out of the per-frame edgeScrollStep
+    for (let i = 0; i < st.items.length; i++) if (i !== st.from) st.items[i].style.transition = st._rm ? 'none' : SHIFT;
   }
 
-  function scrollFrame() {
-    if (!st || !st._sRaf) return;
-    st._sRaf = null;
-    edgeScrollStep(st.scrollEl, st._cy);
-    st._sRaf = requestAnimationFrame(scrollFrame);
-  }
+  // driver step: alive only while in the edge zone (U-12); every onMove re-arms via motion.run
+  const scrollFrame = () => !!st && !!edgeScrollStep(st.scrollEl, st._cy, st._rm);
 
   function onMove(e) {
     if (!st) return;
     const dy = e.clientY - st.startY;
     if (!st.dragging) { if (Math.abs(dy) < THRESH) return; begin(); }
     e.preventDefault();
-    st.item.style.transform = `translateY(${dy}px)`;
-    const to = targetIndex(st.centers, st.from, st.centers[st.from] + dy);
+    const scrollDelta = (st.scrollEl?.scrollTop ?? 0) - (st.startScrollTop ?? 0);
+    const adjustedDy = dy + scrollDelta;   // U-13: scroll-adjusted position for both visual and commit
+    st.item.style.transform = `translateY(${adjustedDy}px)`;
+    const to = targetIndex(st.centers, st.from, st.centers[st.from] + adjustedDy);
     if (to !== st.to) { st.to = to; shift(); }
     st._cy = e.clientY;
-    if (!st._sRaf) st._sRaf = requestAnimationFrame(scrollFrame);
+    motion.run(container, scrollFrame);   // keyed on the container — supersede is a cheap re-set
   }
 
   function shift() {
@@ -108,9 +107,9 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, mouseOnl
   function onUp() {
     if (!st) return;
     container.style.userSelect = '';
-    window.removeEventListener('pointermove', st.move);
+    window.removeEventListener('pointermove', onMove);
     const s = st; st = null;
-    if (s._sRaf) cancelAnimationFrame(s._sRaf);
+    motion.stop(container);
     if (!s.dragging) return;                       // never crossed the threshold → a tap; let the click through
     swallowNextClick(s.item);                       // ...but a real drag must not also toggle/open the row it grabbed
     s.items.forEach(el => { el.classList.remove('sorting'); el.style.transform = ''; el.style.transition = ''; });

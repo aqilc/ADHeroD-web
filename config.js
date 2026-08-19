@@ -4,5 +4,5 @@ export const SUPABASE = {
   anonKey: 'sb_publishable_0Le3HpubSIss4JgjiVhd9w_FkijCawb',
 };
 
-// Deploy-time surface trim: null = full local set. `just deploy` rewrites this line for the live site.
-export const SURFACES = ['plan', 'lists'];
+// Shipped surfaces; null = every known surface.
+export const SURFACES = ['lists', 'plan'];

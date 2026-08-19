@@ -11,14 +11,13 @@ export const MAX_DEPTH = 4;
 export const baseTask = () => {
   const ts = new Date().toISOString();
   return {
-    id: crypto.randomUUID(), content: '', notes: null, importance: 'none', due_at: null, available_from: null, deadline_at: null,
-    scheduled_at: null, est_minutes: null, parent_id: null, area_ids: [], goal_ids: [], color: null, favorite: false, place: null,
-    location: { mode: 'any', ids: [] }, milestone: false,
+    id: crypto.randomUUID(), content: '', notes: null, importance: 'none', recur_from: null, available_from: null, deadline_at: null,
+    est_minutes: null, parent_id: null, area_ids: [], goal_ids: [], color: null, favorite: false, place: null, location: { mode: 'any', ids: [] }, milestone: false,
     position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], sidebar: false, checklist: [], checklist_plain: false,
     recurrence: null, completions: [], created_at: ts, updated_at: ts,
+    starts_at: null, ends_at: null, tz: null, claim: null, accepts: null,
   };
 };
-function children(rows, id) { return rows.filter(r => r.parent_id === id); }
 // Depth of the subtree rooted at id (id alone = 1). Cycle-safe.
 export function subtreeDepth(rows, id, seen = new Set()) {
   if (seen.has(id)) return 1;
@@ -47,20 +46,7 @@ export function projectDepth(projects, id) {
   return depth;
 }
 
-// Own goal_ids ∪ every ancestor's goal_ids (goals ladder down the parent chain). Cycle-safe.
-export function effectiveGoalIds(rows, id, byId = new Map(rows.map(t => [t.id, t]))) {
-  const out = new Set(); let cur = byId.get(id); const seen = new Set();
-  while (cur && !seen.has(cur.id)) { seen.add(cur.id); for (const gid of (cur.goal_ids || [])) out.add(gid); cur = cur.parent_id ? byId.get(cur.parent_id) : null; }
-  return [...out];
-}
 
-// planner: not yet wired
-// Hard deadline a task is bound by: its own if set, else the nearest ancestor's (own-or-inherit, NO min()).
-export function effectiveDeadline(rows, id, byId = new Map(rows.map(t => [t.id, t]))) {
-  let cur = byId.get(id); const seen = new Set();
-  while (cur && !seen.has(cur.id)) { seen.add(cur.id); if (cur.deadline_at) return cur.deadline_at; cur = cur.parent_id ? byId.get(cur.parent_id) : null; }
-  return null;
-}
 
 export function isBlocked(rows, id) {
   const t = rows.find(r => r.id === id);
@@ -159,11 +145,6 @@ export function nextOccurrence(recurrence, fromIso, now, { inclusive = false } =
 }
 
 // --- shared helpers (imported by supabase-store.js) ---
-// Build activity context — walks the parent chain for goal_ids (effectiveGoalIds). byId optional for batch efficiency.
-export function buildCtx(t, rows, byId) {
-  const bid = byId || (rows?.length ? new Map(rows.map(x => [x.id, x])) : null);
-  return { project_id: t.parent_id ?? null, area_ids: t.area_ids ?? [], place: t.place ?? null, importance: t.importance ?? 'none', est_minutes: t.est_minutes ?? null, goal_ids: bid ? effectiveGoalIds(rows, t.id, bid) : (t.goal_ids ?? []), milestone: t.milestone ?? false };
-}
 // Normalize area field shorthand: explicit ids win; else return trimmed names for per-store create.
 export function resolveAreaNames(fields) {
   if (fields.area_ids) return { ids: fields.area_ids };
@@ -184,11 +165,11 @@ export function buildFreeText(uf, idx, tasks) {
 }
 // Prepend id to a recent list, dedup, cap at 12.
 export const updateRecent = (id, recent) => [id, ...(recent || []).filter(x => x !== id)].slice(0, 12);
-// Compute recurrence advance patch for a completed occurrence (non-mutating; returns {recurrence,due_at,completed_at}).
+// Compute recurrence advance patch for a completed occurrence (non-mutating; returns {recurrence,recur_from,completed_at}).
 export function advanceRecurrence(target, ts) {
   const wasArray = Array.isArray(target.recurrence);
   const rules = recRules(target.recurrence).map(r => ({ ...r }));
-  const anchor = target.due_at || isoDate(new Date(ts));
+  const anchor = target.recur_from || isoDate(new Date(ts));
   const src = rules.find(r => r.gen_due && !r.paused) || rules.find(r => !r.paused);
   src.done_count = (src.done_count ?? 0) + 1;
   const srcNext = nextOccurrence(src, anchor, ts);
@@ -196,26 +177,34 @@ export function advanceRecurrence(target, ts) {
   rules.forEach(r => delete r.gen_due);
   const rec = wasArray ? rules : rules[0];
   const best = nextAcrossRules(rec, anchor, ts);
-  let completed_at = null, due_at = target.due_at;
+  let completed_at = null, recur_from = target.recur_from;
   if (!best) completed_at = ts;
-  else { best.rule.gen_due = true; due_at = best.iso + (best.rule.at ? 'T' + best.rule.at : (target.due_at?.length > 10 ? target.due_at.slice(10) : '')); }
-  return { recurrence: rec, due_at, completed_at };
+  else { best.rule.gen_due = true; recur_from = best.iso + (best.rule.at ? 'T' + best.rule.at : (target.recur_from?.length > 10 ? target.recur_from.slice(10) : '')); }
+  return { recurrence: rec, recur_from, completed_at };
 }
+// A placement is minted in a clock — stamp it (freeze §8 step 3) so day-boundary math survives travel. Explicit tz wins.
+export const captureTz = f => { if ((f.starts_at || f.ends_at) && !f.tz) f.tz = Intl.DateTimeFormat().resolvedOptions().timeZone; return f; };
 // Pause all rules in a recurrence (non-mutating).
 export const pauseRecurrence = rec => Array.isArray(rec) ? rec.map(x => ({ ...x, paused: true })) : { ...rec, paused: true };
-// Seed initial due_at for a new recurring task (mutates rec's rule to mark gen_due). Returns due_at string or null.
+// Seed initial recur_from for a new recurring task (mutates rec's rule to mark gen_due). Returns recur_from string or null.
 export function seedRecurrenceDue(rec, ts) {
   const b = nextAcrossRules(rec, isoDate(new Date(ts)), ts, { inclusive: true });
   if (!b) return null;
   b.rule.gen_due = true;
   return b.iso + (b.rule.at ? 'T' + b.rule.at : '');
 }
+// THE placement fact: task_id → the date-item's ISO ("YYYY-MM-DD" or "…THH:MM"). A date-item is a schedule
+// item with a date and no block. recur_from is NOT consulted — it survives only as a recurrence anchor.
+export const placedMap = items => {
+  const m = new Map();
+  for (const x of items || []) if (!x.block_id && x.date) m.set(x.task_id, x.date + (x.start ? 'T' + x.start : ''));
+  return m;
+};
 // Auto-complete moved-out parents — callback-parameterized for LocalStore (sync) and SupabaseStore (async).
-// markCompleted(p, ts): set completed state. onActivity(type, p): log the event.
-export async function sweepMovedOut(toComplete, lookupRows, ts, markCompleted, onActivity) {
+export async function sweepMovedOut(toComplete, lookupRows, ts, markCompleted) {
   for (const pid of toComplete) {
     const p = lookupRows.find(r => r.id === pid);
-    if (p && !p.completed_at) { await markCompleted(p, ts); if (p.sidebar !== true) await onActivity('complete', p); }
+    if (p && !p.completed_at) await markCompleted(p, ts);
   }
 }
 
@@ -230,8 +219,14 @@ export function createLocalStore(opts = {}) {
 
   const readKey = k => JSON.parse(storage.getItem(k) || (k === META_KEY ? '{}' : '[]'));
   const writeKey = (k, v) => storage.setItem(k, JSON.stringify(v));
+  // Append a row: the caller supplies only the fields that make its namespace different — id and the two
+  // timestamps are the same everywhere, so they live here (the cloud's collection().insert is the mirror).
+  const addRow = (read, write, fields) => { const ts = now(), row = { id: uuid(), ...fields, created_at: ts, updated_at: ts }; write([...read(), row]); return row; };
   const patchRow = (read, write, id, fields) => { const rows = read(), r = rows.find(x => x.id === id); if (!r) return null; Object.assign(r, fields, { updated_at: now() }); write(rows); return r; };
   const dropRow = (read, write, id) => { write(read().filter(r => r.id !== id)); return true; };
+  const reorderRows = (read, write, ids) => { const rows = read(); ids.forEach((id, i) => { const r = rows.find(x => x.id === id); if (r) r.position = i; }); write(rows); return true; };
+  // Drop a row + scrub its id out of the tasks column that references it (parity with the DB's delete_area/delete_goal RPCs).
+  const removeAndScrub = (read, write, id, key) => { dropRow(read, write, id); const tasks = readTasks(); for (const t of tasks) if (t[key]) t[key] = t[key].filter(x => x !== id); writeTasks(tasks); return true; };
 
   const readTasks = () => readKey(TASKS_KEY);
   const writeTasks = v => { writeKey(TASKS_KEY, v); reindex(); };
@@ -253,35 +248,20 @@ export function createLocalStore(opts = {}) {
   const BLOCK_DAYS_KEY = 'adherod.block_days';
   const readBlockDays = () => readKey(BLOCK_DAYS_KEY);
   const writeBlockDays = v => writeKey(BLOCK_DAYS_KEY, v);
-  const ACTIVITY_KEY = 'adherod.activity';
-  const readActivity = () => readKey(ACTIVITY_KEY);
-  const writeActivity = v => writeKey(ACTIVITY_KEY, v);   // no reindex
   const GOALS_KEY = 'adherod.goals';
   const readGoals = () => readKey(GOALS_KEY);
   const writeGoals = v => writeKey(GOALS_KEY, v);   // no reindex
-  const mkGoal = f => { const ts = now(); return { id: uuid(), name: f.name || 'Goal', identity: f.identity ?? null, identity_id: f.identity_id ?? null, cue: f.cue ?? null, log_default: f.log_default ?? null, color: f.color ?? null, icon: f.icon ?? null, targets: f.targets ?? [], target_date: f.target_date ?? null, cadence: f.cadence ?? null, favorite: f.favorite ?? false, archived: f.archived ?? false, position: f.position ?? 0, sustained_at: f.sustained_at ?? null, sustain_snoozed_until: f.sustain_snoozed_until ?? null, shape: f.shape ?? 'process', shelved_at: f.shelved_at ?? null, finished_at: f.finished_at ?? null, created_at: ts, updated_at: ts }; };
-  const IDENTITIES_KEY = 'adherod.identities';
-  const readIdentities = () => readKey(IDENTITIES_KEY);
-  const writeIdentities = v => writeKey(IDENTITIES_KEY, v);
-  const mkIdentity = f => { const ts = now(); return { id: uuid(), statement: (f.statement || '').trim(), position: f.position ?? 0, created_at: ts, updated_at: ts }; };
+  const goalRow = f => ({ name: f.name || 'Goal', identity: f.identity ?? null, identity_id: f.identity_id ?? null, cue: f.cue ?? null, log_default: f.log_default ?? null, color: f.color ?? null, icon: f.icon ?? null, targets: f.targets ?? [], target_date: f.target_date ?? null, cadence: f.cadence ?? null, favorite: f.favorite ?? false, archived: f.archived ?? false, position: f.position ?? 0, sustained_at: f.sustained_at ?? null, sustain_snoozed_until: f.sustain_snoozed_until ?? null, shape: f.shape ?? 'process', shelved_at: f.shelved_at ?? null, finished_at: f.finished_at ?? null });
+
   const LOCATIONS_KEY = 'adherod.locations';
-  const TRAVEL_KEY = 'adherod.travel';
   const readLocations = () => readKey(LOCATIONS_KEY);
   const writeLocations = v => writeKey(LOCATIONS_KEY, v);   // no reindex
-  const mkLocation = (name, region = 'Home', position = 0) => { const ts = now(); return { id: uuid(), name, icon: null, color: null, region, position, created_at: ts, updated_at: ts }; };
-  const readTravel = () => JSON.parse(storage.getItem(TRAVEL_KEY) || '{}');
-  const writeTravel = v => writeKey(TRAVEL_KEY, v);
-  function pushActivity(type, task) {
-    if (!task) return;
-    const log = readActivity();
-    log.push({ id: uuid(), type, ts: now(), subject_type: 'task', subject_id: task.id, ctx: buildCtx(task, readTasks()), void: false });
-    writeActivity(log);
-  }
-
+  const locationRow = (name, region = 'Home', position = 0) => ({ name, icon: null, color: null, region, position });
   const uf = makeFuzzy();
-  let _search = { haystack: [], meta: [] };
+  let _search = { haystack: [], meta: [] }, _idxDirty = true;
   let _treeDirty = true;   // repairTree() only runs on list() after a parent_id-touching mutation (move/reparent/remove)
-  function reindex() { _search = buildSearchDocs(readTasks(), readAreas(), readMeta().default_project_id || null); }
+  function reindex() { _idxDirty = true; }   // U-18: lazy; built on first search/filter after mutation
+  function ensureIdx() { if (_idxDirty) { _search = buildSearchDocs(readTasks(), readAreas(), readMeta().default_project_id || null); _idxDirty = false; } }
 
   // --- seed: ensure a default root project ("Backlog") exists ---
   function ensureBacklog() {
@@ -312,7 +292,8 @@ export function createLocalStore(opts = {}) {
     if (filled || repaired) writeTasks(tasks);
     if (fill(areas, { color: null, icon: null, position: 0, favorite: false, created_at: ts, updated_at: ts })) writeAreas(areas);
     const goals = readGoals();
-    if (fill(goals, { identity: null, identity_id: null, cue: null, log_default: null, color: null, icon: null, targets: [], target_date: null, favorite: false, archived: false, position: 0, sustained_at: null, sustain_snoozed_until: null, shape: 'process', shelved_at: null, finished_at: null, created_at: ts, updated_at: ts })) writeGoals(goals);
+    const { name: _gn, ...goalDefaults } = goalRow({});   // defaults come from goalRow — a new goal field can't be missed here (cadence was)
+    if (fill(goals, { ...goalDefaults, created_at: ts, updated_at: ts })) writeGoals(goals);
   }
 
   // Repair broken parent links (self-parent, dangling, cycles).
@@ -360,19 +341,24 @@ export function createLocalStore(opts = {}) {
       }
       meta.all_tasks_filter_seeded = true; writeMeta(meta);
     }
+    // Notes is an ordinary root project whose NAME is the setting: everything under it reads as a note
+    // (predicates.js inNotes). Seeded once — deletable, and re-creatable by name alone. Runs after
+    // ensureBacklog so it can never be adopted as the default project.
+    if (!meta.notes_seeded) {
+      const tasks = readTasks();
+      if (!tasks.some(t => t.parent_id === null && t.content === 'Notes')) {
+        const ts = now();
+        writeTasks([...tasks, { ...baseTask(), id: uuid(), content: 'Notes', sidebar: true, created_at: ts, updated_at: ts }]);
+      }
+      meta.notes_seeded = true; writeMeta(meta);
+    }
   }
 
-  // Seed Home location + travel once.
+  // Seed Home location once (a block names a location by id; tasks use a location constraint object).
   {
     const meta = readMeta();
     if (!meta.home_seeded) {
-      if (readLocations().length === 0) {
-        const home = mkLocation('Home');
-        writeLocations([home]);
-        meta.current_location_id = meta.current_location_id || home.id;
-      }
-      meta.current_region = meta.current_region || 'Home';
-      meta.default_travel_min = meta.default_travel_min ?? 20;
+      if (readLocations().length === 0) addRow(readLocations, writeLocations, locationRow('Home'));
       meta.home_seeded = true; writeMeta(meta);
     }
   }
@@ -386,7 +372,7 @@ export function createLocalStore(opts = {}) {
       let t = tasks.find(x => x.parent_id === null && x.content === fields.project);
       if (!t) {
         const pos = tasks.length ? Math.min(...tasks.map(x => x.position ?? 0)) - 1 : 0;
-        t = { id: uuid(), content: fields.project, notes: null, due_at: null, deadline_at: null,
+        t = { id: uuid(), content: fields.project, notes: null, recur_from: null, deadline_at: null,
           est_minutes: null, parent_id: null, area_ids: [], color: null, favorite: false, place: null,
           position: pos, completed_at: null, blocked_by: [], relates: [], sidebar: true, created_at: ts, updated_at: ts };
         tasks.push(t);
@@ -420,7 +406,7 @@ export function createLocalStore(opts = {}) {
     async bootstrap() {
       return {
         tasks: await this.tasks.list(), areas: await this.areas.list(), goals: await this.goals.list(),
-        filters: await this.filters.list(), locations: await this.locations.list(), travel: await this.travel.list(),
+        filters: await this.filters.list(), locations: await this.locations.list(),
         events: await this.events.list(), blocks: await this.blocks.list(),
       };
     },
@@ -428,7 +414,8 @@ export function createLocalStore(opts = {}) {
     // Trash restore: re-insert previously-deleted rows (dedup by id, order-preserving). Powers "Recently deleted".
     reinsert(kind, rows) {
       const rw = { task: [readTasks, writeTasks], area: [readAreas, writeAreas], goal: [readGoals, writeGoals],
-        event: [readEvents, writeEvents], block: [readBlocks, writeBlocks], filter: [readFilters, writeFilters], location: [readLocations, writeLocations] }[kind];
+        event: [readEvents, writeEvents], block: [readBlocks, writeBlocks], filter: [readFilters, writeFilters], location: [readLocations, writeLocations],
+        scheduleItem: [readScheduleItems, writeScheduleItems], blockDay: [readBlockDays, writeBlockDays] }[kind];
       if (!rw || !rows?.length) return false;
       const [read, write] = rw, cur = read(), have = new Set(cur.map(r => r.id));
       write([...cur, ...rows.filter(r => !have.has(r.id))]);
@@ -436,56 +423,33 @@ export function createLocalStore(opts = {}) {
     },
 
     defaultProject() { return readMeta().default_project_id || null; },
-    search(query, limit = 50) { return searchDocs(query, limit, uf, _search, readMeta().recent || []); },
+    search(query, limit = 50) { ensureIdx(); return searchDocs(query, limit, uf, _search, readMeta().recent || []); },
     recordSearchPick(id) { const meta = readMeta(); meta.recent = updateRecent(id, meta.recent); writeMeta(meta); },
     setDefaultProject(id) { const meta = readMeta(); meta.default_project_id = id; writeMeta(meta); reindex(); },
     runFilter(query, limit = 200) {
-      const tasks = readTasks(), areas = readAreas(), def = readMeta().default_project_id || null;
-      return matchQuery(query, tasks, { now: now(), areas, defaultProjectId: def, freeText: buildFreeText(uf, _search, tasks) }).slice(0, limit);
-    },
-
-    activity: {
-      async list() { return readActivity(); },
-      async note(goalId, text) { const log = readActivity(); const row = { id: uuid(), type: 'note', ts: now(), subject_type: 'goal', subject_id: goalId, text: text || '', void: false }; log.push(row); writeActivity(log); return row; },
-      async showUp(goalId, ts, note) { if (!goalId) return null; const log = readActivity(); const row = { id: uuid(), type: 'show_up', ts: ts ?? now(), subject_type: 'goal', subject_id: goalId, void: false }; if (note) row.text = note; log.push(row); writeActivity(log); return row; },
-      async graduate(goalId, ts) { if (!goalId) return null; const log = readActivity(); const row = { id: uuid(), type: 'graduate', ts: ts ?? now(), subject_type: 'goal', subject_id: goalId, void: false }; log.push(row); writeActivity(log); return row; },
-      async release(goalId, ts) { if (!goalId) return null; const log = readActivity(); const row = { id: uuid(), type: 'release', ts: ts ?? now(), subject_type: 'goal', subject_id: goalId, void: false }; log.push(row); writeActivity(log); return row; },
-      async finish(goalId, ts) { if (!goalId) return null; const log = readActivity(); const row = { id: uuid(), type: 'finish', ts: ts ?? now(), subject_type: 'goal', subject_id: goalId, void: false }; log.push(row); writeActivity(log); return row; },
-      async shelve(goalId, ts) { if (!goalId) return null; const log = readActivity(); const row = { id: uuid(), type: 'shelve', ts: ts ?? now(), subject_type: 'goal', subject_id: goalId, void: false }; log.push(row); writeActivity(log); return row; },
-      async unshelve(goalId, ts) { if (!goalId) return null; const log = readActivity(); const row = { id: uuid(), type: 'unshelve', ts: ts ?? now(), subject_type: 'goal', subject_id: goalId, void: false }; log.push(row); writeActivity(log); return row; },
-      async remove(id) { const log = readActivity().filter(a => a.id !== id); writeActivity(log); return true; },
+      ensureIdx(); const tasks = readTasks(), areas = readAreas(), def = readMeta().default_project_id || null;
+      return matchQuery(query, tasks, { now: now(), areas, defaultProjectId: def, placed: placedMap(readScheduleItems()), freeText: buildFreeText(uf, _search, tasks) }).slice(0, limit);
     },
 
     filters: {
       async list() { return readFilters().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); },
       async add({ name, query, color }) {
-        const ts = now();
-        const f = { id: uuid(), name: name || 'Filter', query: query || '', color: color ?? null, position: readFilters().length, created_at: ts, updated_at: ts };
-        writeFilters([...readFilters(), f]);
-        return f;
+        return addRow(readFilters, writeFilters, { name: name || 'Filter', query: query || '', color: color ?? null, position: readFilters().length });
       },
       async update(id, fields) { return patchRow(readFilters, writeFilters, id, fields); },
       async remove(id) { return dropRow(readFilters, writeFilters, id); },
-      async reorder(ids) {
-        const rows = readFilters();
-        ids.forEach((id, i) => { const f = rows.find(x => x.id === id); if (f) f.position = i; });
-        writeFilters(rows);
-        return true;
-      },
+      async reorder(ids) { return reorderRows(readFilters, writeFilters, ids); },
     },
 
     events: {
       async list() { return readEvents(); },
       async add(fields) {
-        const ts = now();
-        const e = {
-          id: uuid(), title: fields.title || '', notes: fields.notes ?? null,
+        return addRow(readEvents, writeEvents, {
+          title: fields.title || '', notes: fields.notes ?? null,
           starts_at: fields.starts_at, ends_at: fields.ends_at, all_day: fields.all_day ?? false,
           recurrence: fields.recurrence ?? null, location: fields.location ?? null, color: fields.color ?? null,
-          source: 'local', external_id: null, created_at: ts, updated_at: ts,
-        };
-        writeEvents([...readEvents(), e]);
-        return e;
+          source: 'local', external_id: null,
+        });
       },
       async update(id, fields) { return patchRow(readEvents, writeEvents, id, fields); },
       async remove(id) { return dropRow(readEvents, writeEvents, id); },
@@ -494,29 +458,30 @@ export function createLocalStore(opts = {}) {
     blocks: {
       async list() { return readBlocks(); },
       async add(fields) {
-        const ts = now();
-        const b = {
-          id: uuid(), title: fields.title || '', starts_at: fields.starts_at, ends_at: fields.ends_at,
+        return addRow(readBlocks, writeBlocks, {
+          title: fields.title || '', starts_at: fields.starts_at, ends_at: fields.ends_at,
           all_day: fields.all_day ?? false, recurrence: fields.recurrence ?? null,
           location_id: fields.location_id ?? null, areas: fields.areas ?? [],
           energy: fields.energy ?? null, availability: fields.availability ?? null,
-          color: fields.color ?? null, source: 'local', est_minutes: fields.est_minutes ?? null, created_at: ts, updated_at: ts,
-        };
-        writeBlocks([...readBlocks(), b]);
-        return b;
+          color: fields.color ?? null, source: 'local', est_minutes: fields.est_minutes ?? null,
+        });
       },
       async update(id, fields) { return patchRow(readBlocks, writeBlocks, id, fields); },
-      async remove(id) { return dropRow(readBlocks, writeBlocks, id); },
+      // parity with the DB: schedule_items.block_id and block_days.block_id both cascade
+      async remove(id) {
+        writeScheduleItems(readScheduleItems().filter(x => x.block_id !== id));
+        writeBlockDays(readBlockDays().filter(x => x.block_id !== id));
+        return dropRow(readBlocks, writeBlocks, id);
+      },
     },
 
     scheduleItems: {
       async list() { return readScheduleItems(); },
-      async add({ task_id, block_id, role, position }) {
-        const ts = now();
-        const item = { id: uuid(), task_id, block_id, role: role ?? 'during', position: position ?? 0, created_at: ts, updated_at: ts };
-        writeScheduleItems([...readScheduleItems(), item]);
-        return item;
+      async add({ task_id, block_id, role, position, date, start, duration_min }) {
+        return addRow(readScheduleItems, writeScheduleItems, { task_id, block_id: block_id ?? null, role: role ?? 'during',
+          position: position ?? 0, date: date ?? null, start: start ?? null, duration_min: duration_min ?? null });
       },
+      async update(id, fields) { return patchRow(readScheduleItems, writeScheduleItems, id, fields); },
       async remove(id) { return dropRow(readScheduleItems, writeScheduleItems, id); },
       async setRole(id, role) { return patchRow(readScheduleItems, writeScheduleItems, id, { role }); },
     },
@@ -534,6 +499,7 @@ export function createLocalStore(opts = {}) {
         return next;
       },
       async remove(id) { return dropRow(readBlockDays, writeBlockDays, id); },
+      async update(id, fields) { return patchRow(readBlockDays, writeBlockDays, id, fields); },
     },
 
     tasks: {
@@ -545,6 +511,7 @@ export function createLocalStore(opts = {}) {
       async create(fields) {
         try {
           const ts = now();
+          captureTz(fields);
           const parent_id = resolveParent(fields);
           const area_ids = resolveAreas(fields);
           const goal_ids = resolveGoals(fields);
@@ -554,18 +521,17 @@ export function createLocalStore(opts = {}) {
           }
           const rows = readTasks(); // read after resolveParent (may write a new root task)
           const recurrence = fields.recurrence ?? null;
-          let due_at = fields.due_at || null;
-          if (recurrence && !due_at) { const seeded = seedRecurrenceDue(recurrence, now()); if (seeded) due_at = seeded; }   // seeded due is rule-generated; a rule may carry its own time
+          let recur_from = fields.recur_from || null;
+          if (recurrence && !recur_from) { const seeded = seedRecurrenceDue(recurrence, now()); if (seeded) recur_from = seeded; }   // seeded due is rule-generated; a rule may carry its own time
           const row = {
             ...baseTask(),
             id: uuid(),
             content: fields.content,
             notes: fields.notes ?? null,
             importance: fields.importance ?? 'none',
-            due_at,
+            recur_from,
             available_from: fields.available_from ?? null,
             deadline_at: fields.deadline_at || null,
-            scheduled_at: fields.scheduled_at ?? null,
             est_minutes: fields.est_minutes || null,
             parent_id,
             area_ids,
@@ -579,23 +545,22 @@ export function createLocalStore(opts = {}) {
             checklist: fields.checklist ?? [],
             checklist_plain: fields.checklist_plain ?? false,
             milestone: fields.milestone ?? false,
+            // substrate columns — Supabase create persists these via its post-insert update; parity demands the same here
+            task_size: fields.task_size ?? null, anchor: fields.anchor ?? null, possible: fields.possible ?? null,
+            starts_at: fields.starts_at ?? null, ends_at: fields.ends_at ?? null, tz: fields.tz ?? null,
+            claim: fields.claim ?? null, accepts: fields.accepts ?? null,
             recurrence,
             created_at: ts,
             updated_at: ts,
           };
           rows.push(row);
           writeTasks(rows);
-          if (row.sidebar !== true) pushActivity('create', row);
           return row;
         } catch (e) { console.error('[store] create failed', e); return null; }
       },
-      async reorder(orderedIds) {
-        const rows = readTasks();
-        orderedIds.forEach((id, i) => { const r = rows.find(x => x.id === id); if (r) r.position = i; });
-        writeTasks(rows);
-        return true;
-      },
+      async reorder(orderedIds) { return reorderRows(readTasks, writeTasks, orderedIds); },
       async update(id, fields) {
+        captureTz(fields);
         const rows = readTasks();
         const row = rows.find(r => r.id === id);
         if (!row) return null;
@@ -610,10 +575,9 @@ export function createLocalStore(opts = {}) {
           delete fields.areas;
         }
         if (fields.goal_ids !== undefined) { resolved.goal_ids = resolveGoals(fields); delete fields.goal_ids; }
-        const prevDue = row.due_at;
+        const prevDue = row.recur_from;
         Object.assign(row, fields, resolved, { updated_at: nextTs(now(), row.updated_at) });
         writeTasks(rows);
-        if (fields.due_at !== undefined && prevDue && row.due_at && row.due_at.slice(0, 10) > prevDue.slice(0, 10)) pushActivity('postpone', row);
         return row;
       },
       async setChecklistItem(id, itemId, done) {
@@ -641,7 +605,7 @@ export function createLocalStore(opts = {}) {
           if (oldParentId && oldParentId !== (parentId ?? null)) {
             const toComplete = movedOutParents(rows, id, oldParentId, ts);   // same non-empty guard as remove(): no yield before writeTasks
             if (toComplete.length) await sweepMovedOut(toComplete, rows, ts,
-              (p, t) => { p.completed_at = t; p.updated_at = nextTs(t, p.updated_at); }, pushActivity);
+              (p, t) => { p.completed_at = t; p.updated_at = nextTs(t, p.updated_at); });
           }
           writeTasks(rows); return t;
         } catch (e) { console.error('[store] move failed', e); return null; }
@@ -666,13 +630,17 @@ export function createLocalStore(opts = {}) {
             if (r.blocked_by?.includes(id)) r.blocked_by = r.blocked_by.filter(x => x !== id);
             if (r.relates?.includes(id)) r.relates = r.relates.filter(x => x !== id);
           }
+          // Parity with the DB (schedule_items.task_id is ON DELETE CASCADE): a removed task takes its block
+          // attachments with it. Without this the local store kept orphans that drew as phantom attachments.
+          const si = readScheduleItems();
+          if (si.some(x => x.task_id === id)) writeScheduleItems(si.filter(x => x.task_id !== id));
           // Auto-complete old parent chain after id is removed (same rule as move-out).
           // Guard: only await when toComplete is non-empty — parallel remove() calls (e.g. convertToChecklist)
           // must not yield before writeTasks or each write overwrites the previous one.
           if (oldParentId) {
             const toComplete = movedOutParents(rows, id, oldParentId, ts);
             if (toComplete.length) await sweepMovedOut(toComplete, remaining, ts,
-              (p, t) => { p.completed_at = t; p.updated_at = nextTs(t, p.updated_at); }, pushActivity);
+              (p, t) => { p.completed_at = t; p.updated_at = nextTs(t, p.updated_at); });
           }
           writeTasks(remaining);
           return true;
@@ -680,13 +648,11 @@ export function createLocalStore(opts = {}) {
       },
       async setCompleted(id, done) {
         const rows = readTasks(); const ts = now();
-        const voidComplete = sid => { const log = readActivity(); for (let i = log.length - 1; i >= 0; i--) if (log[i].subject_id === sid && log[i].type === 'complete' && !log[i].void) { log[i].void = true; writeActivity(log); break; } };
-        const mark = (tid, val) => { const r = rows.find(x => x.id === tid); if (r) { const was = r.completed_at; r.completed_at = val; r.updated_at = nextTs(ts, r.updated_at); if (val && !was && r.sidebar !== true) pushActivity('complete', r); } };
+        const mark = (tid, val) => { const r = rows.find(x => x.id === tid); if (r) { r.completed_at = val; r.updated_at = nextTs(ts, r.updated_at); } };
         const target = rows.find(r => r.id === id); if (!target) return false;
-        // Recurring: log + advance due_at unless every statement ends (all-paused falls through to permanent complete).
+        // Recurring: advance recur_from unless every statement ends (all-paused falls through to permanent complete).
         if (done && recActive(target.recurrence) && !target.completed_at && !rows.some(r => r.parent_id === id)) {
-          target.completions.push(ts); target.updated_at = nextTs(ts, target.updated_at);
-          if (target.sidebar !== true) pushActivity('complete', target);
+          target.updated_at = nextTs(ts, target.updated_at);
           Object.assign(target, advanceRecurrence(target, ts));
           writeTasks(rows); return true;
         }
@@ -699,8 +665,6 @@ export function createLocalStore(opts = {}) {
           mark(id, ts);
           for (const pid of parentsToComplete(rows, id)) mark(pid, ts);
         } else {
-          voidComplete(id);
-          for (const a of ancestorIds(rows, id)) voidComplete(a);
           mark(id, null);
           for (const a of ancestorIds(rows, id)) mark(a, null);
         }
@@ -715,7 +679,6 @@ export function createLocalStore(opts = {}) {
         const was = t.archived_at;
         t.archived_at = val ? ts : null; t.updated_at = nextTs(ts, t.updated_at);
         if (val && recActive(t.recurrence)) t.recurrence = pauseRecurrence(t.recurrence);   // pause, never destroy
-        if (t.sidebar !== true && !!was !== !!val) pushActivity(val ? 'archive' : 'unarchive', t);
         writeTasks(rows);
         return true;
       },
@@ -725,8 +688,8 @@ export function createLocalStore(opts = {}) {
         const a = rows.find(r => r.id === id), b = rows.find(r => r.id === otherId);
         if (!a || !b) return false;
         const key = type === 'relates' ? 'relates' : 'blocked_by';
-        if (!a[key].includes(otherId)) { a[key].push(otherId); a.updated_at = nextTs(ts, a.updated_at); }
-        if (key === 'relates' && !b.relates.includes(id)) { b.relates.push(id); b.updated_at = nextTs(ts, b.updated_at); }
+        if (!(a[key] ?? []).includes(otherId)) { (a[key] = a[key] ?? []).push(otherId); a.updated_at = nextTs(ts, a.updated_at); }
+        if (key === 'relates' && !(b.relates ?? []).includes(id)) { (b.relates = b.relates ?? []).push(id); b.updated_at = nextTs(ts, b.updated_at); }
         writeTasks(rows);
         return true;
       },
@@ -734,8 +697,8 @@ export function createLocalStore(opts = {}) {
         const rows = readTasks(); const ts = now();
         const a = rows.find(r => r.id === id), b = rows.find(r => r.id === otherId);
         const key = type === 'relates' ? 'relates' : 'blocked_by';
-        if (a) { a[key] = a[key].filter(x => x !== otherId); a.updated_at = nextTs(ts, a.updated_at); }
-        if (key === 'relates' && b) { b.relates = b.relates.filter(x => x !== id); b.updated_at = nextTs(ts, b.updated_at); }
+        if (a) { a[key] = (a[key] ?? []).filter(x => x !== otherId); a.updated_at = nextTs(ts, a.updated_at); }
+        if (key === 'relates' && b) { b.relates = (b.relates ?? []).filter(x => x !== id); b.updated_at = nextTs(ts, b.updated_at); }
         writeTasks(rows);
         return true;
       },
@@ -750,96 +713,40 @@ export function createLocalStore(opts = {}) {
         const nm = (name ?? '').trim();
         const existing = areas.find(a => a.name === nm);   // reuse — no local equivalent of the DB unique index (areas_user_name_idx)
         if (existing) return existing;
-        const ts = now();
-        const pos = areas.length ? Math.max(...areas.map(l => l.position)) + 1 : 0;
-        const area = { id: uuid(), name: nm, color: color ?? null, icon: null, position: pos, favorite: false, created_at: ts, updated_at: ts };
-        areas.push(area);
-        writeAreas(areas);
-        return area;
+        return addRow(readAreas, writeAreas, { name: nm, color: color ?? null, icon: null,
+          position: areas.length ? Math.max(...areas.map(l => l.position)) + 1 : 0, favorite: false });
       },
-      async update(id, fields) {
-        const areas = readAreas();
-        const area = areas.find(x => x.id === id);
-        if (!area) return null;
-        Object.assign(area, fields, { updated_at: now() });
-        writeAreas(areas);
-        return area;
-      },
-      async reorder(orderedIds) {
-        const areas = readAreas();
-        orderedIds.forEach((id, i) => { const area = areas.find(x => x.id === id); if (area) area.position = i; });
-        writeAreas(areas);
-        return true;
-      },
-      async remove(id) {
-        writeAreas(readAreas().filter(area => area.id !== id));
-        const tasks = readTasks();
-        for (const t of tasks) {
-          if (t.area_ids) t.area_ids = t.area_ids.filter(aid => aid !== id);
-        }
-        writeTasks(tasks);
-        return true;
-      },
+      async update(id, fields) { return patchRow(readAreas, writeAreas, id, fields); },
+      async reorder(orderedIds) { return reorderRows(readAreas, writeAreas, orderedIds); },
+      async remove(id) { return removeAndScrub(readAreas, writeAreas, id, 'area_ids'); },
     },
 
     goals: {
       async list() { return readGoals().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); },
-      async create(fields) { const goals = readGoals(); const pos = goals.length ? Math.max(...goals.map(g => g.position ?? 0)) + 1 : 0; const g = mkGoal({ ...fields, position: fields.position ?? pos }); goals.push(g); writeGoals(goals); return g; },
-      async update(id, fields) { const goals = readGoals(); const g = goals.find(x => x.id === id); if (!g) return null; Object.assign(g, fields, { updated_at: now() }); writeGoals(goals); return g; },
-      async reorder(orderedIds) { const goals = readGoals(); orderedIds.forEach((id, i) => { const g = goals.find(x => x.id === id); if (g) g.position = i; }); writeGoals(goals); return true; },
-      async remove(id) { writeGoals(readGoals().filter(g => g.id !== id)); const tasks = readTasks(); for (const t of tasks) if (t.goal_ids) t.goal_ids = t.goal_ids.filter(gid => gid !== id); writeTasks(tasks); return true; },
-    },
-
-    identities: {
-      async list() { return readIdentities().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); },
-      async create(fields) { const all = readIdentities(); const pos = all.length ? Math.max(...all.map(i => i.position ?? 0)) + 1 : 0; const i = mkIdentity({ ...fields, position: fields.position ?? pos }); all.push(i); writeIdentities(all); return i; },
-      async findOrCreate(statement) { const st = (statement || '').trim(); if (!st) return null; const all = readIdentities(); const hit = all.find(i => i.statement === st); if (hit) return hit; const pos = all.length ? Math.max(...all.map(i => i.position ?? 0)) + 1 : 0; const i = mkIdentity({ statement: st, position: pos }); all.push(i); writeIdentities(all); return i; },
-      async update(id, fields) { const all = readIdentities(); const i = all.find(x => x.id === id); if (!i) return null; if ('statement' in fields) fields = { ...fields, statement: (fields.statement || '').trim() }; Object.assign(i, fields, { updated_at: now() }); writeIdentities(all); if ('statement' in fields) { const goals = readGoals(); let ch = false; for (const g of goals) if (g.identity_id === id) { g.identity = i.statement; ch = true; } if (ch) writeGoals(goals); } return i; },
-      async remove(id) { writeIdentities(readIdentities().filter(i => i.id !== id)); const goals = readGoals(); let ch = false; for (const g of goals) if (g.identity_id === id) { g.identity_id = null; g.identity = null; ch = true; } if (ch) writeGoals(goals); return true; },
-      async merge(fromId, toId) { if (!fromId || !toId || fromId === toId) return null; const toIdent = readIdentities().find(i => i.id === toId); const goals = readGoals(); let ch = false; for (const g of goals) if (g.identity_id === fromId) { g.identity_id = toId; if (toIdent) g.identity = toIdent.statement; ch = true; } if (ch) writeGoals(goals); writeIdentities(readIdentities().filter(i => i.id !== fromId)); return true; },
-      async reorder(orderedIds) { const all = readIdentities(); orderedIds.forEach((id, i) => { const x = all.find(y => y.id === id); if (x) x.position = i; }); writeIdentities(all); return true; },
+      async create(fields) { const goals = readGoals(); const pos = goals.length ? Math.max(...goals.map(g => g.position ?? 0)) + 1 : 0; return addRow(readGoals, writeGoals, goalRow({ ...fields, position: fields.position ?? pos })); },
+      async update(id, fields) { return patchRow(readGoals, writeGoals, id, fields); },
+      async reorder(orderedIds) { return reorderRows(readGoals, writeGoals, orderedIds); },
+      async remove(id) { return removeAndScrub(readGoals, writeGoals, id, 'goal_ids'); },
     },
 
     locations: {
       async list() { return readLocations().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); },
       async add({ name, icon = null, color = null, region = 'Home' }) {
-        const rows = readLocations();
-        const loc = Object.assign(mkLocation(name || 'Location', region, rows.length), { icon, color });
-        writeLocations([...rows, loc]); return loc;
+        return addRow(readLocations, writeLocations, { ...locationRow(name || 'Location', region, readLocations().length), icon, color });
       },
       async update(id, fields) { return patchRow(readLocations, writeLocations, id, fields); },
       async remove(id) {
         writeLocations(readLocations().filter(l => l.id !== id));
         const blks = readBlocks(); let bch = false; for (const b of blks) if (b.location_id === id) { b.location_id = null; bch = true; } if (bch) writeBlocks(blks);   // orphaned blocks become free
-        const tv = readTravel(); for (const k of Object.keys(tv)) if (k.split('>').includes(id)) delete tv[k]; writeTravel(tv);
-        const tasks = readTasks(); let ch = false; for (const t of tasks) if (t.location?.ids?.includes(id)) { t.location.ids = t.location.ids.filter(x => x !== id); ch = true; } if (ch) writeTasks(tasks);
-        const meta = readMeta(); if (meta.current_location_id === id) { meta.current_location_id = null; writeMeta(meta); }
+        const tasks = readTasks(); let tch = false; for (const t of tasks) if (t.location?.ids?.includes(id)) { t.location.ids = t.location.ids.filter(x => x !== id); tch = true; } if (tch) writeTasks(tasks);
         return true;
       },
-      async reorder(ids) { const rows = readLocations(); ids.forEach((id, i) => { const l = rows.find(x => x.id === id); if (l) l.position = i; }); writeLocations(rows); return true; },
+      async reorder(ids) { return reorderRows(readLocations, writeLocations, ids); },
     },
 
-    travel: {
-      async set(from, to, minutes) { const tv = readTravel(); tv[from + '>' + to] = minutes; writeTravel(tv); return true; },
-      async list() { return Object.entries(readTravel()).map(([k, minutes]) => { const [from, to] = k.split('>'); return { from, to, minutes }; }); },
-      async remove(from, to) { const tv = readTravel(); delete tv[from + '>' + to]; writeTravel(tv); return true; },
-    },
-    defaultTravel() { return readMeta().default_travel_min ?? 20; },
-    setDefaultTravel(min) { const m = readMeta(); m.default_travel_min = min; writeMeta(m); },
-    currentLocationId() { return readMeta().current_location_id ?? null; },
     homeLocationId() { return readMeta().home_location_id ?? null; },   // user's designated "home" place ("at home" NLP)
     setHomeLocation(id) { const m = readMeta(); m.home_location_id = m.home_location_id === id ? null : id; writeMeta(m); },
     currentRegion() { return readMeta().current_region ?? 'Home'; },
-    setCurrentLocation(id) {
-      const m = readMeta();
-      if (m.current_location_id !== id) { const log = readActivity(); log.push({ id: uuid(), type: 'location', ts: now(), subject_type: 'location', subject_id: id, ctx: { from: m.current_location_id ?? null }, void: false }); writeActivity(log); }
-      m.current_location_id = id;
-      writeMeta(m);
-    },
-    setCurrentRegion(name) {
-      const m = readMeta();
-      if (m.current_region !== name) { const log = readActivity(); log.push({ id: uuid(), type: 'region', ts: now(), subject_type: 'region', subject_id: name, ctx: { from: m.current_region ?? null }, void: false }); writeActivity(log); }
-      m.current_region = name; writeMeta(m);
-    },
+
   };
 }
