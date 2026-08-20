@@ -2415,8 +2415,12 @@ document.addEventListener('alpine:init', () => {
       if (dx) el.style.transform = `translateX(${Math.round(dx)}px)`;
     },
     projectPath(p) {
-      const parts = []; let cur = p;
-      while (cur) { parts.unshift(cur.content); cur = this.byId.get(cur.parent_id); }
+      const parts = []; const seen = new Set(); let cur = p;
+      while (cur && !seen.has(cur.id)) {
+        seen.add(cur.id);
+        parts.unshift(cur.content);
+        cur = this.byId.get(cur.parent_id);
+      }
       return parts.join(' / ');
     },
     // uFuzzy-ranked + subsequence fallback for short fragments; shared picker search
