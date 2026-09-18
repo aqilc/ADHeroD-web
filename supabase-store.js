@@ -501,7 +501,6 @@ export function createSupabaseStore(client) {
             available_from: fields.available_from ?? null, task_size: fields.task_size ?? null,
             anchor: fields.anchor ?? null, possible: fields.possible ?? null,
             starts_at: fields.starts_at ?? null, ends_at: fields.ends_at ?? null, tz: fields.tz ?? null,
-            claim: fields.claim ?? null, accepts: fields.accepts ?? null,
             // checklist_plain / importance sent via follow-up update (may be missing on older DBs; keeps the row safe)
             checklist: cleanChecklist(fields.checklist), completions: [], recurrence: rec,
             created_at: ts, updated_at: ts,
