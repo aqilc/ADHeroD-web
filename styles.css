@@ -688,6 +688,10 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   &:focus { opacity: 1; } }   /* higher specificity than the base .entry-del:focus reveal — must restate it or keyboard focus never shows the × */
 @media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del, .md-code:hover > .code-copy { opacity: 1; } }
 .code-copy { max-height: 100%; }
+code:has(> .code-copy) { position: relative; cursor: text; user-select: text; --row-bg: var(--bg); }
+:is(.title, .desc-line) code { --row-bg: var(--hover); }
+code > .code-copy { height: 100%; padding: 0 0 0 var(--sp-4); border-radius: inherit; background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-4)); .ico { width: var(--fs-11); height: var(--fs-11); } }
+@media (hover: hover) and (pointer: fine) { code:hover > .code-copy { opacity: 1; } }
 @media (hover: none) { .code-copy { opacity: 1; } }
 /* a cross-row drag-select tints the rows it spans — what ⌘C will copy (chkCopy kicks in at ≥2 rows) */
 .entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--accent) 12%, var(--panel)); }

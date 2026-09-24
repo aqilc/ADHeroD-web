@@ -1367,7 +1367,11 @@ document.addEventListener('alpine:init', () => {
     allProjectRows() {   // all sidebar projects at all depths always shown (roller uses this)
       // ONE position-sorted byParent index: the old form re-scanned every task for each project it found (O(projects·tasks) per roller paint).
       const rows = [], def = this.store.defaultProject(), byP = buildByParent(this.tasks), visit = (parentId, depth) => {
-        for (const p of byP.get(parentId) || []) if (p.sidebar && p.id !== def) { rows.push({ p, depth }); visit(p.id, depth + 1); }
+        for (const p of byP.get(parentId) || []) {
+          const shown = p.sidebar && p.id !== def;
+          if (shown) rows.push({ p, depth });
+          visit(p.id, depth + (shown ? 1 : 0));   // hidden parents must not hide sidebar descendants
+        }
       };
       visit(null, 0);
       return rows;
@@ -4535,7 +4539,7 @@ document.addEventListener('alpine:init', () => {
     copyCode(e) {
       const button = e.target.closest('.code-copy'); if (!button) return;
       e.preventDefault(); e.stopPropagation();
-      return this._copyText(button.closest('.md-code').querySelector('code').textContent, 'Copied');
+      return this._copyText(button.closest('code, .md-code').textContent, 'Copied');
     },
     codeKey(e) {
       if (e.target.closest('.code-copy') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();   // button keys must never edit/delete the containing row

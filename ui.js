@@ -43,7 +43,7 @@ const _md = (src, opts = {}) => {
   if (src == null || src === '') return '';
   const codes = [], raw = String(src), C = _sentinel(raw, '\uE000'), CE = C + '\uE001';
   // pull inline code out first so its content isn't touched by later rules
-  let s = raw.replace(/`([^`\n]+)`/g, (_, c) => `${C}${codes.push(`<code>${esc(c)}</code>`) - 1}${CE}`);
+  let s = raw.replace(/`([^`\n]+)`/g, (_, c) => `${C}${codes.push(`<code>${esc(c)}${opts.copy ? _copyCode : ''}</code>`) - 1}${CE}`);
   const inline = (t) => {
     const links = [], L = _sentinel(t, '\uE002'), LE = L + '\uE003';
     t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => `${L}${links.push(_link(url, txt)) - 1}${LE}`);
@@ -67,11 +67,11 @@ const _md = (src, opts = {}) => {
   return s.replace(new RegExp(C + '(\\d+)' + CE, 'g'), (_, i) => codes[+i]);
 };
 
-const _fenced = (src, live, inline = false) => {
+const _fenced = (src, live, inline = false, copy = false) => {
   const lines = String(src ?? '').split('\n'), out = [];
   for (let i = 0; i < lines.length; i++) {
     const open = _fenceOpen(lines[i]);
-    if (!open) { out.push(live ? _dLine(lines[i]) : _md(lines[i], { inline })); continue; }
+    if (!open) { out.push(live ? _dLine(lines[i]) : _md(lines[i], { inline, copy })); continue; }
     let end = i + 1; while (end < lines.length && !_fenceClose(lines[end])) end++;
     const closed = end < lines.length, body = lines.slice(i + 1, end), code = body.join('\n') + (closed && body.length ? '\n' : ''), block = _codeBlock(code, open[1]);
     if (live) out.push(`<span class="dm-mark">${esc(lines[i])}</span>${i < lines.length - 1 ? '\n' : ''}${block}${closed ? '<span class="dm-mark">' + esc(lines[end]) + '</span>' : ''}`);
@@ -80,7 +80,7 @@ const _fenced = (src, live, inline = false) => {
   }
   return out.join(live ? '\n' : inline ? ' ' : '<br>');
 };
-export const md = (src, opts = {}) => opts.literal ? _md(src, opts) : _fenced(src, false, !!opts.inline);
+export const md = (src, opts = {}) => opts.literal ? _md(src, opts) : _fenced(src, false, !!opts.inline, !!opts.copy);
 
 // Overlay for composer desc: textContent(mdLive(t))===t keeps caret aligned; .dm-mark fades markers behind the transparent contenteditable.
 export const mdLive = (src) => _fenced(src, true);
@@ -215,18 +215,18 @@ export const rowBodyHtml = (r, opts = {}) => {
   // Relations are a LINE-1 CITIZEN — the ladder sheds them like anything else, so a row with a relation is
   // no longer two lines at every width. NOTES are the deliberate exception: prose always owns its own line
   // (user, 2026-08-17), so it never competes with the title and never joins the meta line. → app.js LADDER
-  const notes = opts.notes !== false && t.notes ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(t.notes, { inline: true })}</span></div>` : '';
+  const notes = opts.notes !== false && t.notes ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(t.notes, { inline: true, copy: true })}</span></div>` : '';
   // Checklist items pre-split (text::desc) in mkRow; fall back for callers that pass a bare row.
   const storedCl = t.checklist || [], cl = !r.chk || storedCl.some(c => _hasFence(c.text)) ? storedCl.map(_chkParts) : r.chk;
   // Display-only sort: done below open (stable); data-ci = original index so toggling never reorders the stored array.
   const plain = !!t.checklist_plain;   // uncheckable: plain notes list — bullets instead of boxes, no done styling
   const { rows: clRows, hidden, more } = chkVisible(cl, plain, opts.chkOpen);
   const morePlaceholder = more ? `<button type="button" class="chk-row flex gap-8 chk-more" data-act="chk-more"><span class="chk-more-txt">${hidden ? '…' + hidden + ' more' : 'Show less'}</span></button>` : '';
-  const chkMd = s => _hasFence(s) ? md(s, { inline: true }) : mdTitle(s);
+  const chkMd = s => md(s, { inline: true, literal: !_hasFence(s), copy: true });
   const renderRow = ({ ci, done, txt, desc }) =>
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
   const chk = cl.length && !r.collapsed ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
-  const titleHtml = r.titleHtml ?? mdTitle(t.content);   // precomputed in mkRow (regex-cached); fall back for bare rows
+  const titleHtml = (r.titleHtml ?? mdTitle(t.content)).replaceAll('</code>', _copyCode + '</code>');   // cached inline-only title; copy controls belong to full rows, not pickers
   return chev + check + `<div class="body grow min-w-0"><div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${areas}${proj}${rels}</div><div class="r1r flex items-center gap-8 min-w-0">${sched}${est}${dl}${loc}${due}${rep}</div></div>${notes}${chk}</div>`;
 };
 
