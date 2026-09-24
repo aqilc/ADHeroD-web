@@ -570,7 +570,8 @@ export function createSupabaseStore(client) {
       async reorder(orderedIds) {
         const uid = await userId(), ts = new Date().toISOString();
         markEcho(...orderedIds);
-        await Promise.all(orderedIds.map((id, i) => client.from('tasks').update({ position: i, updated_at: ts }).eq('id', id).eq('user_id', uid)));
+        const results = await Promise.all(orderedIds.map((id, i) => client.from('tasks').update({ position: i, updated_at: ts }).eq('id', id).eq('user_id', uid)));
+        if (results.some(r => r.error)) { await refreshTasks(orderedIds); return false; }   // earlier writes may have succeeded; show the server's actual order
         const pos = new Map(orderedIds.map((id, i) => [id, i]));   // positions known → patch the cache, no read
         _cTasks = _cTasks.map(t => pos.has(t.id) ? { ...t, position: pos.get(t.id) } : t); rebuildIdx();
         return true;
@@ -585,7 +586,8 @@ export function createSupabaseStore(client) {
           if (parentId && projectDepth(rows, parentId) + subtreeDepth(rows, id) > MAX_DEPTH) return null;
           const oldParentId = t.parent_id;
           const ts = new Date().toISOString();
-          await client.from('tasks').update({ parent_id: parentId ?? null, position: toIndex, updated_at: ts }).eq('id', id).eq('user_id', uid);
+          const { error } = await client.from('tasks').update({ parent_id: parentId ?? null, position: toIndex, updated_at: ts }).eq('id', id).eq('user_id', uid);
+          if (error) return null;
           markEcho(id);
           const task = await fetchTask(id); putTask(task);
           // Auto-complete old parent chain after move-out.

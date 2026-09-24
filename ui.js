@@ -218,7 +218,7 @@ export const rowBodyHtml = (r, opts = {}) => {
   const chkMd = s => md(s, { inline: true, literal: !_hasFence(s), copy: true });
   const renderRow = ({ ci, done, txt, desc }) =>
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
-  const chk = cl.length && !r.collapsed ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
+  const chk = opts.checklist !== false && cl.length && !r.collapsed ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
   const titleHtml = (r.titleHtml ?? mdTitle(t.content)).replaceAll('</code>', _copyCode + '</code>');   // cached inline-only title; copy controls belong to full rows, not pickers
   return chev + check + `<div class="body grow min-w-0"><div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${areas}${proj}${rels}</div><div class="r1r flex items-center gap-8 min-w-0">${sched}${est}${dl}${loc}${due}${rep}</div></div>${notes}${chk}</div>`;
 };

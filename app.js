@@ -1366,14 +1366,17 @@ document.addEventListener('alpine:init', () => {
     },
     allProjectRows() {   // all sidebar projects at all depths always shown (roller uses this)
       // ONE position-sorted byParent index: the old form re-scanned every task for each project it found (O(projects·tasks) per roller paint).
-      const rows = [], def = this.store.defaultProject(), byP = buildByParent(this.tasks), visit = (parentId, depth) => {
+      const rows = [], seen = new Set(), def = this.store.defaultProject(), byP = buildByParent(this.tasks), visit = (parentId, depth) => {
         for (const p of byP.get(parentId) || []) {
+          if (seen.has(p.id)) continue;
+          seen.add(p.id);
           const shown = p.sidebar && p.id !== def;
           if (shown) rows.push({ p, depth });
           visit(p.id, depth + (shown ? 1 : 0));   // hidden parents must not hide sidebar descendants
         }
       };
       visit(null, 0);
+      for (const p of this.tasks) if (p.sidebar && !seen.has(p.id)) visit(p.parent_id, 0);   // legacy cycles/orphans remain navigable without rewriting data
       return rows;
     },
     rollerItems() {
@@ -1829,7 +1832,8 @@ document.addEventListener('alpine:init', () => {
         e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id);
         // Custom follow-cursor ghost (module-level vars — Alpine's Proxy must not wrap DOM elements)
         if (!_dragGhost) { _dragGhost = document.createElement('div'); _dragGhost.className = 'drag-ghost'; document.body.appendChild(_dragGhost); }
-        _dragGhost.innerHTML = `<div class="drag-ghost-row flex items-center gap-8">${this.taskLine(t)}</div><div class="drag-ghost-chip">${escHtml(t.content || 'Task')}</div>`;
+        const row = this._rowFromEl(e.target?.closest?.('.item')) || this._mkRowFn().mkRow(t, 0);
+        _dragGhost.innerHTML = `<div class="drag-ghost-row">${this.rowBody(row, { chevron: false, checklist: false, rels: false })}</div><div class="drag-ghost-chip">${escHtml(t.content || 'Task')}</div>`;
         const itemEl = e.target?.closest?.('.item');
         const r = itemEl?.getBoundingClientRect() || { left: (e.clientX ?? 0) - 20, top: (e.clientY ?? 0) - 10 };
         const offX = (e.clientX ?? 0) - r.left, offY = (e.clientY ?? 0) - r.top;
@@ -1884,7 +1888,7 @@ document.addEventListener('alpine:init', () => {
     },
     async drop() {
       const hint = this.taskDropHint, dragId = this.dragId;
-      this.taskDropHint = null; this.dragId = null; this._clearDrag();
+      this.dragEnd();   // repaint can detach the source before its dragend bubbles to the list
       if (!hint || !dragId) return;
       if (hint.mode === 'outdent') {   // reparent to grandparent, just after the former parent — always a real move
         const dt = this.byId.get(dragId);
@@ -1920,10 +1924,12 @@ document.addEventListener('alpine:init', () => {
     },
     // journaled move + sibling normalization; `pos` journals the drop intent, `order` is the full normalized sibling order
     async _moveTask(id, parent, pos, order) {
-      await this.perform('Moved', { target: 'task', kind: 'move', id, after: { parent, pos } });
-      await this.store.tasks.reorder(order);   // normalize sibling positions — not journaled, a reorder loses nothing
+      const entry = await this._apply({ target: 'task', kind: 'move', id, after: { parent, pos } });
+      if (!entry) return this.toast('Could not move task');
+      const ordered = await this.store.tasks.reorder(order);   // success/Undo must wait for this final write too
       await this.loadTasks();
       this._landOn(id);   // a drag can drop a row anywhere, incl. off-screen or into a collapsed/filtered-out spot
+      this._pushEntry(ordered ? 'Moved' : 'Task moved, but order could not be saved', entry);
     },
     dragEnd() {
       if (_ghostHandler) { document.removeEventListener('dragover', _ghostHandler); _ghostHandler = null; }
@@ -1997,9 +2003,7 @@ document.addEventListener('alpine:init', () => {
     railOver(kind, id) { this.railHot = kind + id; this.taskDropHint = null; this._setDropInto(null); },
     async railDrop(kind, id) {
       const dragId = this.dragId;
-      this.railHot = null; this.taskDropHint = null; this.dragId = null; this._clearDrag();
-      if (_ghostHandler) { document.removeEventListener('dragover', _ghostHandler); _ghostHandler = null; }
-      if (_dragGhost) _dragGhost.hidden = true;
+      this.dragEnd();
       const t = this.byId.get(dragId); if (!t) return;
       if (kind === 'area') {   // areas are tags (many-to-many) — add the tag, keep existing
         const ids = t.area_ids || [];
@@ -3687,7 +3691,9 @@ document.addEventListener('alpine:init', () => {
       if (op.kind === 'move') {
         const cur = this._rowById('task', op.id) || {};
         const before = { parent: cur.parent_id ?? null, pos: cur.position };
-        const fx = await this._captureCompletionFx(() => this.store.tasks.move(op.id, op.after.parent, op.after.pos));   // capture any auto-completed old parent
+        let moved;
+        const fx = await this._captureCompletionFx(async () => { moved = await this.store.tasks.move(op.id, op.after.parent, op.after.pos); });   // capture any auto-completed old parent
+        if (!moved) return null;
         await this._reverseFx(op.fx);   // reversal side: reopen the parent this move originally auto-completed
         return { kind: 'move', target: 'task', id: op.id, after: before, was: op.after, fx };
       }
@@ -3778,7 +3784,9 @@ document.addEventListener('alpine:init', () => {
         dir < 0 ? this.notify(e.label + ' undone', { actions: [{ label: 'Redo', fn: () => this.redo() }] }) : this.notify(e.label, { actions: [{ label: 'Undo', fn: () => this.undo() }] });
         return;
       }
-      e.op = await this._apply(e.op);
+      const inverse = await this._apply(e.op);
+      if (!inverse) return this.toast('Could not move task');
+      e.op = inverse;
       if (e.bin) e.restored = dir < 0;   // undo: mark restored (bin row visible again); redo: unmark
       this.cursor += dir; this._journalSave(); await this.reloadAll();
       if (e.target === 'task') this._landOn(e.op?.id ?? e.op?.fwd?.id ?? e.op?.ops?.[0]?.id);
@@ -4327,7 +4335,7 @@ document.addEventListener('alpine:init', () => {
     // --- Delegated row events (bound once on the <ul>, resolve the row by data-id) — see the list markup ---
     _rowFromEl(el) { return el ? (_rowMap?.get(el.dataset.id) ?? _doneMap?.get(el.dataset.id) ?? null) : null; },   // O(1) via Maps maintained in visibleRows(); active OR Done list
     listOver(e) {
-      if (e.target.closest('code, .md-code')) return this.clearHover();
+      if (e.target.closest('a, code, .md-code, .chk-list')) return this.clearHover();
       const el = e.target.closest?.('.item'), id = el?.dataset.id;
       if (id === this.hoverId) return;                  // mouseover fires per child element — skip if same row
       const r = id ? this._rowFromEl(el) : null;
@@ -5736,6 +5744,7 @@ document.addEventListener('alpine:init', () => {
       if (!d || !iso) return;
       this._clPlaced(d.id);
       const dm = allDay ? null : this._dropMin(e);   // null ⇒ month cell or all-day row (date only)
+      if (this.dragId) this.dragEnd();   // capture drop geometry before closing the list's Peek Pane
       const stamp = dm == null ? iso : iso + 'T' + this._fmtMin(dm);
       if (d.kind === 'task' || d.kind === 'due' || d.kind === 'deadline') {
         if (d.kind === 'task') {

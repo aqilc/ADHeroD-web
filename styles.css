@@ -214,7 +214,7 @@ html { --foot: 56px; }
   /* indent guides: 2px vertical line per depth level (matches checklist connector) */
   background-image: repeating-linear-gradient(to right, transparent 0 9px, color-mix(in srgb, var(--faint) 55%, transparent) 9px 11px, transparent 11px 22px);
   background-repeat: no-repeat; background-position: 17px 0; background-size: calc(var(--d, 0) * 22px) 100%;
-  &:hover:not(:has(code:hover, .md-code:hover)) { background-color: var(--hover); }
+  &:hover:not(:has(a:hover, code:hover, .md-code:hover, .chk-list:hover)) { background-color: var(--hover); }
   .body { position: relative; }
   .title { display: block; width: 100%; font-size: var(--fs-15); line-height: 18px; cursor: pointer; }
   &.done .title { color: var(--muted); text-decoration: line-through; }
@@ -294,6 +294,7 @@ html { --foot: 56px; }
 .title strong { font-weight: 600; }
 .title em { font-style: italic; }
 .title a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.item a:is(:hover, :focus-visible) { background: var(--hover); border-radius: var(--r-4); color: var(--accent); text-decoration-thickness: 2px; cursor: pointer; }
 .title code { font: var(--fs-13) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); }
 /* strikethrough (~~) reads as "struck out" — dim it, in titles + descriptions (rows and the composer editor) */
 .title s, .desc-line s, .desc s { color: var(--muted); }
@@ -387,6 +388,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-row.sorting { position: relative; z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
 .chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 2px solid color-mix(in srgb, var(--faint) 60%, transparent); background: none; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check */
 .chk-list .chk-rect { background: color-mix(in srgb, var(--faint) 8%, transparent); }   /* faint tint on the LIST checklist boxes only (composer entry boxes stay transparent) */
+.chk-list .chk-rect:not(.plain) { width: 14px; height: 14px; margin: calc((1lh - 14px) / 2) 1px 0; --ck: 11px; }   /* smaller mark, same 16px layout/hit footprint */
+.chk-list .chk-rect:not(.plain)::before { content: ""; position: absolute; inset: -3px; }
+.chk-list :is(.chk-txt, .chk-desc) { translate: 0 var(--sp-2); }
 .chk-row:hover .chk-rect { border-color: var(--muted); }   /* hovering the checkbox OR its text highlights the box */
 /* uncheckable list: the box becomes a plain bullet — same footprint, no interaction */
 .chk-rect.plain { border-color: transparent; background: none; pointer-events: none; cursor: default; }
@@ -444,9 +448,13 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 @media (prefers-reduced-motion: reduce) { .mr-panel { transition: opacity .18s var(--ease-out); } }
 /* Drag ghost: custom follow-cursor element; full task row appearance, compacts over .peek drop zone */
 .drag-ghost { position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none; will-change: transform; }
-.drag-ghost-row { display: flex; align-items: center; gap: var(--sp-8); min-width: 200px; max-width: min(320px, 70vw);
+.drag-ghost-row { display: flex; align-items: flex-start; gap: var(--sp-8); width: min(480px, calc(100vw - var(--sp-24))); /* readable card, bounded on phones */
   padding: var(--sp-8) var(--sp-10); border-radius: var(--r-8);
   background: var(--panel); box-shadow: var(--shadow-pop); opacity: .95; }
+.drag-ghost-row .row1 { flex-wrap: wrap; }
+.drag-ghost-row .r1l { flex-basis: 100%; flex-wrap: wrap; }
+.drag-ghost-row .r1r:empty { display: none; }
+.drag-ghost-row .title { flex-basis: 100%; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .drag-ghost-chip { display: none; padding: 3px var(--sp-10); border-radius: 999px;
   background: var(--panel); box-shadow: var(--shadow-pop);
   font-size: var(--fs-12); font-weight: 600; color: var(--ink);
@@ -689,9 +697,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   &:focus { opacity: 1; } }   /* higher specificity than the base .entry-del:focus reveal — must restate it or keyboard focus never shows the × */
 @media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del, .md-code:hover > .code-copy { opacity: 1; } }
 .code-copy { max-height: 100%; }
-code:has(> .code-copy) { position: relative; cursor: text; user-select: text; --row-bg: var(--bg); }
+code:has(> .code-copy) { display: inline-block; position: relative; cursor: text; user-select: text; --row-bg: var(--bg); }
 :is(.title, .desc-line) code { --row-bg: var(--hover); }
-code > .code-copy { height: 100%; padding: 0 0 0 var(--sp-4); border-radius: inherit; background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-4)); .ico { width: var(--fs-11); height: var(--fs-11); } }
+code > .code-copy { position: sticky; display: inline-flex; vertical-align: middle; height: var(--fs-11); margin-left: calc(-1 * (var(--fs-11) + var(--sp-4))); padding: 0 0 0 var(--sp-4); border-radius: inherit; background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-4)); .ico { width: var(--fs-11); height: var(--fs-11); } }
 @media (hover: hover) and (pointer: fine) { code:hover > .code-copy { opacity: 1; } }
 @media (hover: none) { .code-copy { opacity: 1; } }
 /* a cross-row drag-select tints the rows it spans — what ⌘C will copy (chkCopy kicks in at ≥2 rows) */
