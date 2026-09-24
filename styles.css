@@ -214,7 +214,7 @@ html { --foot: 56px; }
   /* indent guides: 2px vertical line per depth level (matches checklist connector) */
   background-image: repeating-linear-gradient(to right, transparent 0 9px, color-mix(in srgb, var(--faint) 55%, transparent) 9px 11px, transparent 11px 22px);
   background-repeat: no-repeat; background-position: 17px 0; background-size: calc(var(--d, 0) * 22px) 100%;
-  &:hover { background-color: var(--hover); }
+  &:hover:not(:has(code:hover, .md-code:hover)) { background-color: var(--hover); }
   .body { position: relative; }
   .title { display: block; width: 100%; font-size: var(--fs-15); line-height: 18px; cursor: pointer; }
   &.done .title { color: var(--muted); text-decoration: line-through; }
@@ -226,6 +226,7 @@ html { --foot: 56px; }
   &:hover .del { opacity: 1; }
 }
 /* Importance encoded in the checkbox color, Todoist-style (--pc set per task from importance) */
+.item:has(code:hover, .md-code:hover) { -webkit-user-drag: none; }   /* code selection wins over the row's HTML drag */
 .check {   /* shape is identity, not layout — rounding/flex stay here so every instance (html + JS builders) agrees */
   /* inline-flex: an 18px box in ANY context — a bare span parent leaves display:inline, which ignores width/height (composer tack sat 21px low) */
   position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 2.25px solid var(--pc, var(--faint)); border-radius: 50%; flex: none;
@@ -247,7 +248,7 @@ html { --foot: 56px; }
    The thing you can't start yet is the last thing that should be competing for attention. The ring stays SOLID:
    a dashed ring already means "archived" (dash-in-circle) and "add task" (ghost), and read as either. */
 .check.blocked { background: none; border-color: color-mix(in srgb, var(--pc, var(--faint)) 45%, transparent); }
-.item.waiting .title, .item.waiting .m, .item.waiting .badge { opacity: .62; }
+.item.waiting .title, .item.waiting .m, .item.waiting .badge, .item.waiting .chk-list { opacity: .62; }
 .check .lock-ico { position: absolute; inset: 0; margin: auto; width: var(--lk, 9px); height: var(--lk, 9px); color: var(--muted); opacity: .5; stroke-width: 3; pointer-events: none; }   /* --lk scales it for smaller rings (the 11px calendar chip), same lever as --dash above */
 /* Paused recurrence: amber border + pause icon instead of checkmark. */
 .check.paused { border-color: var(--amber, #f59e0b); }
@@ -327,7 +328,7 @@ html { --foot: 56px; }
 /* bold stays in the faded family — one step above the desc's own text, never jumping to title-level ink */
 .desc-line strong { color: var(--muted); font-weight: 600; }
 .desc-line em { font-style: italic; }
-.desc-line code { font: var(--fs-11) ui-monospace, SFMono-Regular, Menlo, monospace;
+.desc-line code { cursor: text; user-select: text; font: var(--fs-11) ui-monospace, SFMono-Regular, Menlo, monospace;
   background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); }
 /* mdLive(): markers faded (.dm-mark), styled text is real DOM (no overlay) — caret tracks it exactly */
 .dm-mark { color: var(--faint); }
@@ -335,6 +336,16 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .desc strong { font-weight: 600; color: var(--ink); }
 .desc em { font-style: italic; }
 .desc code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-2); }
+.md-code { display: block; position: relative; min-width: 0; padding: var(--sp-4) var(--sp-6); border-radius: var(--r-4); background: var(--hover); --row-bg: var(--hover); cursor: text; user-select: text; }
+.md-code > code { display: block; white-space: pre; overflow: auto; background: none; padding: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+:is(.desc-line, .chk-txt, .chk-desc):has(.md-code) { max-height: calc(1lh + 2 * var(--sp-4)); }
+:is(.desc-line, .chk-txt, .chk-desc) .md-code > code { max-height: 1lh; scrollbar-width: none; }
+.md-code-key { color: var(--p3); }
+.md-code-str { color: var(--p4); }
+.md-code-num { color: var(--gold); }
+.md-code-com { color: var(--muted); }
+.code-copy { display: flex; align-items: center; border: 0; color: var(--muted); cursor: pointer; user-select: none;
+  .ico { width: 14px; height: 14px; } &:hover, &:focus-visible { color: var(--ink); } }
 .desc .dm-h { font-weight: 600; color: var(--ink); }
 .desc a.dm-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 /* One line, always: a linked task's title is arbitrary text, and wrapping it gave every dependent row a
@@ -653,12 +664,12 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* checklist item live "::" editor. At rest: one line, title-first — the title shows fully and the ":: description"
    tail (small/faded, chkLive) is what clips at the edge. While editing: wrap to multiple lines so no text hides. */
 /* Two-state rule: at rest `nowrap` keeps rows one-line and compact (hard \n is IN the data — textContent
-   never loses it — but not rendered, so the list stays tight). While editing `[contenteditable="true"]`
+   never loses it — but not rendered, so the list stays tight). While editing `[contenteditable="plaintext-only"]`
    switches to `pre-wrap` so every stored line is visible and editable (#367: the WIP used `pre` at rest,
    which made every \n render as a break even outside edit mode, regressing the compact list). */
 .entry.chk .entry-txt { white-space: nowrap; overflow: hidden; cursor: text; }   /* editable-on-demand: plain-selectable until clicked, so a drag spans rows */
 .entry.chk div.entry-txt { min-height: 1lh; }   /* an EMPTY item's div must keep one line of height or it's unclickable */
-.entry.chk .entry-txt[contenteditable="true"] { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; }
+.entry.chk .entry-txt[contenteditable="plaintext-only"] { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; }
 .entry.chk .entry-txt .chk-idesc { font-size: var(--fs-11); color: var(--faint); }
 .entry.chk.done .entry-txt .chk-idesc { color: var(--muted); }
 /* the "new item" ghost is a textarea so it wraps and grows to multiple lines as you type a long item (grown in JS via
@@ -672,10 +683,12 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* Trash = hover overlay: absolute (no layout space) so every item — and the ghost, which has no trash — shows the SAME
    text width. A gradient fades the row's own bg in from the left so the icon reads over long text; appears on hover.
    Height = one text line (14px/1.35 + row padding), NOT the full row — a multiline item keeps its lower lines visible. */
-.entry.chk .entry-del { position: absolute; right: 0; top: 0; height: calc(1.35 * 14px + 2 * var(--sp-4)); padding: 0 var(--sp-4) 0 var(--sp-24);
+.entry.chk .entry-del, .code-copy { position: absolute; right: 0; top: 0; height: calc(1.35 * 14px + 2 * var(--sp-4)); padding: 0 var(--sp-4) 0 var(--sp-24);
   background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-16)); opacity: 0; transition: opacity .15s var(--ease-out);
   &:focus { opacity: 1; } }   /* higher specificity than the base .entry-del:focus reveal — must restate it or keyboard focus never shows the × */
-@media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del { opacity: 1; } }
+@media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del, .md-code:hover > .code-copy { opacity: 1; } }
+.code-copy { max-height: 100%; }
+@media (hover: none) { .code-copy { opacity: 1; } }
 /* a cross-row drag-select tints the rows it spans — what ⌘C will copy (chkCopy kicks in at ≥2 rows) */
 .entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 12%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
 /* small round check for subtask entries (smaller than the row .check) */
@@ -1330,7 +1343,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* selected row: faint accent wash; run-position class controls rounding (mirrors .inblock pattern). Painted imperatively via paintSel. */
 /* mix with --bg (opaque) to prevent alpha-doubling at sub-pixel row boundaries when rows tile flush */
 .item.selected { background-color: color-mix(in srgb, var(--accent) 12%, var(--bg)); border-radius: 0; }
-.item.selected:hover { background-color: color-mix(in srgb, var(--accent) 16%, var(--bg)); }
+.item.selected:hover:not(:has(code:hover, .md-code:hover)) { background-color: color-mix(in srgb, var(--accent) 16%, var(--bg)); }
 .item.sel-top { border-top-left-radius: var(--r-8); border-top-right-radius: var(--r-8); }
 .item.sel-bot { border-bottom-left-radius: var(--r-8); border-bottom-right-radius: var(--r-8); }
 .item.sel-single { border-radius: var(--r-8); }
@@ -1879,9 +1892,8 @@ textarea.inp { resize: vertical; }
 /* C1c pill rows: they LIGHT ON HOVER and fill when selected — never filled at rest. A permanent --hover fill
    turned the tray into a stack of grey slabs, which is exactly the heaviness C2 set out to remove. */
 .cl-side-list .item { padding-left: var(--sp-8); border-radius: var(--r); }
-@media (hover: hover) and (pointer: fine) { .cl-side-list .item:hover { background: var(--hover); } }
 .cl-side-list .item.sel, .cl-side-list .item.editing { background: var(--hover); }
-.cl-side-list .item:hover { background: color-mix(in srgb, var(--hover) 60%, var(--accent) 8%); }
+.cl-side-list .item:hover:not(:has(code:hover, .md-code:hover)) { background: color-mix(in srgb, var(--hover) 60%, var(--accent) 8%); }
 .cl-side-empty { color: var(--faint); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
 
 /* YEAR — 12 mini-months, heat-tinted days */

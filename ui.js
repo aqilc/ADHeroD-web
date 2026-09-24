@@ -8,21 +8,51 @@ const _mdUrl = u => /^(https?:\/\/|mailto:)/i.test(u) ? u
   : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u) ? 'mailto:' + u
   : /^www\.[^\s]+$/i.test(u) ? 'https://' + u : '';
 const _link = (url, text) => { const u = _mdUrl(url); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text); };
+const _langs = { bash: 'bash', sh: 'bash', cmd: 'cmd', bat: 'cmd', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', rust: 'rust', rs: 'rust', c: 'c' };
+const _keys = {
+  bash: 'if|then|else|elif|fi|for|while|until|do|done|case|esac|function|in',
+  cmd: 'if|else|for|in|do|set|call|goto|echo|not|exist|defined',
+  js: 'const|let|var|function|return|if|else|for|while|class|new|import|export|async|await|throw|try|catch',
+  ts: 'const|let|var|function|return|if|else|for|while|class|new|import|export|async|await|interface|type|enum|implements|public|private',
+  rust: 'fn|let|mut|const|if|else|for|while|loop|match|struct|enum|impl|trait|use|pub|mod|return|async|await',
+  c: 'auto|break|case|char|const|continue|default|do|double|else|enum|extern|float|for|goto|if|int|long|return|short|signed|sizeof|static|struct|switch|typedef|union|unsigned|void|volatile|while',
+};
+const _comments = { bash: '#[^\n]*', cmd: '(?<=^|\n)[ \t]*(?:rem\\b|::)[^\n]*', js: '\\/\\/[^\n]*|\\/\\*[\\s\\S]*?\\*\\/', ts: '\\/\\/[^\n]*|\\/\\*[\\s\\S]*?\\*\\/', rust: '\\/\\/[^\n]*|\\/\\*[\\s\\S]*?\\*\\/', c: '\\/\\/[^\n]*|\\/\\*[\\s\\S]*?\\*\\/' };
+const _highlight = (src, lang) => {
+  if (!lang) return esc(src);
+  const re = new RegExp(`(?<com>${_comments[lang]})|(?<str>"(?:\\\\.|[^"\\\\])*"|'(?:\\\\.|[^'\\\\])*'|\`(?:\\\\.|[^\`\\\\])*\`)|(?<key>\\b(?:${_keys[lang]})\\b)|(?<num>\\b(?:0x[\\dA-Fa-f]+|\\d+(?:\\.\\d+)?)\\b)`, lang === 'cmd' ? 'gi' : 'g');
+  let out = '', at = 0;
+  for (const m of src.matchAll(re)) { const kind = Object.keys(m.groups).find(k => m.groups[k] != null); out += esc(src.slice(at, m.index)) + `<span class="md-code-${kind}">${esc(m[0])}</span>`; at = m.index + m[0].length; }
+  return out + esc(src.slice(at));
+};
+const _copyCode = '<button class="code-copy" type="button" contenteditable="false" aria-label="Copy code" title="Copy code"><svg class="ico"><use href="#i-copy"/></svg></button>';
+const _codeBlock = (src, info) => { const key = String(info || '').toLowerCase(), lang = Object.hasOwn(_langs, key) ? _langs[key] : ''; return `<span class="md-code"${lang ? ` data-lang="${lang}"` : ''}><code>${_highlight(src, lang)}</code>${_copyCode}</span>`; };
+// ceiling: triple-backtick fences only; use a parser if nested fences or full Markdown are requested.
+const _fenceOpen = line => line.match(/^```([^\s`]*)[ \t]*\r?$/);
+const _fenceClose = line => /^```[ \t]*\r?$/.test(line);
+const _hasFence = src => String(src ?? '').split('\n').some(_fenceOpen);
+const _chkSep = src => {
+  let off = 0, fenced = false;
+  for (const line of String(src ?? '').split('\n')) { if (!fenced && _fenceOpen(line)) fenced = true; else if (fenced && _fenceClose(line)) fenced = false; else if (!fenced) { const i = line.indexOf('::'); if (i >= 0) return off + i; } off += line.length + 1; }
+  return -1;
+};
+const _chkParts = (c, ci) => { const sep = _chkSep(c.text); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; };
+const _sentinel = (src, mark) => { while (src.includes(mark)) mark += mark[0]; return mark; };
 // XSS-safe markdown for task notes (headings, bold, italic, code, links, bullets). Inline-styled spans, not a document renderer.
-export const md = (src, opts = {}) => {
+const _md = (src, opts = {}) => {
   if (src == null || src === '') return '';
-  const codes = [];
+  const codes = [], raw = String(src), C = _sentinel(raw, '\uE000'), CE = C + '\uE001';
   // pull inline code out first so its content isn't touched by later rules
-  let s = String(src).replace(/`([^`\n]+)`/g, (_, c) => `\uE000${codes.push(`<code>${esc(c)}</code>`) - 1}\uE000`);
+  let s = raw.replace(/`([^`\n]+)`/g, (_, c) => `${C}${codes.push(`<code>${esc(c)}</code>`) - 1}${CE}`);
   const inline = (t) => {
-    const links = [];
-    t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => `\uE001${links.push(_link(url, txt)) - 1}\uE001`);
-    t = t.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<)]+)/gi, (_, pre, url) => `${pre}\uE001${links.push(_link(url, url)) - 1}\uE001`);
+    const links = [], L = _sentinel(t, '\uE002'), LE = L + '\uE003';
+    t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => `${L}${links.push(_link(url, txt)) - 1}${LE}`);
+    t = t.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<)]+)/gi, (_, pre, url) => `${pre}${L}${links.push(_link(url, url)) - 1}${LE}`);
     t = esc(t);
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
     t = t.replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
     t = t.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<em>$2</em>').replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_/g, '$1<em>$2</em>');
-    return t.replace(/\uE001(\d+)\uE001/g, (_, i) => links[+i]);
+    return t.replace(new RegExp(L + '(\\d+)' + LE, 'g'), (_, i) => links[+i]);
   };
   // opts.inline: one line, strips heading/bullet markers; opts.literal: heading/bullet stay as-is
   s = s.split('\n').map(line => {
@@ -34,13 +64,28 @@ export const md = (src, opts = {}) => {
     }
     return inline(line);
   }).join(opts.inline || opts.literal ? ' ' : '<br>');
-  return s.replace(/\uE000(\d+)\uE000/g, (_, i) => codes[+i]);
+  return s.replace(new RegExp(C + '(\\d+)' + CE, 'g'), (_, i) => codes[+i]);
 };
 
+const _fenced = (src, live, inline = false) => {
+  const lines = String(src ?? '').split('\n'), out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const open = _fenceOpen(lines[i]);
+    if (!open) { out.push(live ? _dLine(lines[i]) : _md(lines[i], { inline })); continue; }
+    let end = i + 1; while (end < lines.length && !_fenceClose(lines[end])) end++;
+    const closed = end < lines.length, body = lines.slice(i + 1, end), code = body.join('\n') + (closed && body.length ? '\n' : ''), block = _codeBlock(code, open[1]);
+    if (live) out.push(`<span class="dm-mark">${esc(lines[i])}</span>${i < lines.length - 1 ? '\n' : ''}${block}${closed ? '<span class="dm-mark">' + esc(lines[end]) + '</span>' : ''}`);
+    else out.push(block);
+    i = Math.min(end, lines.length - 1);
+  }
+  return out.join(live ? '\n' : inline ? ' ' : '<br>');
+};
+export const md = (src, opts = {}) => opts.literal ? _md(src, opts) : _fenced(src, false, !!opts.inline);
+
 // Overlay for composer desc: textContent(mdLive(t))===t keeps caret aligned; .dm-mark fades markers behind the transparent contenteditable.
-export const mdLive = (src) => String(src ?? '').split('\n').map(_dLine).join('\n');
+export const mdLive = (src) => _fenced(src, true);
 const _dLine = (line) => {
-  const parts = [], S = '\uE000', E = '\uE001';
+  const parts = [], S = _sentinel(line, '\uE000'), E = S + '\uE001';
   const stash = (html) => S + (parts.push(html) - 1) + E;   // pull code/links out so their text isn't bold/italic-scanned
   let t = line.replace(/`([^`\n]+)`/g, (_, c) => stash(`<span class="dm-mark">\`</span><code>${esc(c)}</code><span class="dm-mark">\`</span>`));
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => {
@@ -73,7 +118,7 @@ export function chkVisible(cl, plain, open) {
 // Live editor for a composer checklist item: everything after the first "::" renders small/faded inline (the ::
 // is a dimmed marker). textContent(chkLive(t)) === t so the contenteditable caret math holds (same contract as mdLive).
 export const chkLive = (text) => {
-  const s = String(text ?? ''), i = s.indexOf('::');
+  const s = String(text ?? ''), i = _chkSep(s);
   return i < 0 ? mdLive(s)
     : `${mdLive(s.slice(0, i))}<span class="dm-mark">::</span><span class="chk-idesc">${mdLive(s.slice(i + 2))}</span>`;
 };
@@ -172,13 +217,14 @@ export const rowBodyHtml = (r, opts = {}) => {
   // (user, 2026-08-17), so it never competes with the title and never joins the meta line. → app.js LADDER
   const notes = opts.notes !== false && t.notes ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(t.notes, { inline: true })}</span></div>` : '';
   // Checklist items pre-split (text::desc) in mkRow; fall back for callers that pass a bare row.
-  const cl = r.chk || (t.checklist || []).map((c, ci) => { const sep = c.text.indexOf('::'); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; });
+  const storedCl = t.checklist || [], cl = !r.chk || storedCl.some(c => _hasFence(c.text)) ? storedCl.map(_chkParts) : r.chk;
   // Display-only sort: done below open (stable); data-ci = original index so toggling never reorders the stored array.
   const plain = !!t.checklist_plain;   // uncheckable: plain notes list — bullets instead of boxes, no done styling
   const { rows: clRows, hidden, more } = chkVisible(cl, plain, opts.chkOpen);
   const morePlaceholder = more ? `<button type="button" class="chk-row flex gap-8 chk-more" data-act="chk-more"><span class="chk-more-txt">${hidden ? '…' + hidden + ' more' : 'Show less'}</span></button>` : '';
+  const chkMd = s => _hasFence(s) ? md(s, { inline: true }) : mdTitle(s);
   const renderRow = ({ ci, done, txt, desc }) =>
-    `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${mdTitle(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${mdTitle(desc)}</span>` : ''}</div>`;
+    `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
   const chk = cl.length && !r.collapsed ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
   const titleHtml = r.titleHtml ?? mdTitle(t.content);   // precomputed in mkRow (regex-cached); fall back for bare rows
   return chev + check + `<div class="body grow min-w-0"><div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${areas}${proj}${rels}</div><div class="r1r flex items-center gap-8 min-w-0">${sched}${est}${dl}${loc}${due}${rep}</div></div>${notes}${chk}</div>`;

@@ -46,6 +46,7 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, mouseOnl
 
   container.addEventListener('pointerdown', e => {
     if (st || e.button) return;                           // one drag at a time — ignore extra pointers (emil §10)
+    if (e.target.closest('code, .md-code')) return;       // code owns native selection, never item reordering
     if (mouseOnly && e.pointerType === 'touch') return;   // leave touch to scroll the list
     if (enabled && !enabled()) return;
     const grab = e.target.closest(handleSel || itemSel);

@@ -82,6 +82,10 @@
   <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1-.24-.27-.39-.62-.39-1 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8.5" r="1"/></symbol>
 </defs></svg>
 <div x-data="adherod" x-cloak
+     @click.capture="copyCode($event)"
+     @keydown.capture="codeKey($event)"
+     @pointerdown.capture="if ($event.target.closest('.code-copy')) { $event.preventDefault(); $event.stopPropagation(); }"
+     @pointerup.capture="if ($event.target.closest('.code-copy')) $event.stopPropagation()"
      @keydown.window="onKey($event)"
      @keydown.escape.window="escape()">
 
@@ -387,8 +391,8 @@
             <button type="button" class="ac-row create flex" @click="createLocFromPicker()">New place "<span x-text="locPicker.frag.trim()"></span>"</button>
           </template>
         </div>
-        <!-- desc: contenteditable for inline md (markers faded); set imperatively via setDescText on open -->
-        <div class="desc" x-ref="desc" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Description"
+        <!-- Markdown at rest; plain text while editing. -->
+        <div class="desc" x-ref="desc" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Description"
              data-placeholder="Description" @input="onDescInput($event)" @compositionend="onDescInput()"
              @keydown="descKeydown($event)" @paste="descPaste($event)" @click="descClick($event)"></div>
         <!-- Relation chips, shown under the description so they're easy to see (add more via the Relations chip) -->
@@ -432,7 +436,7 @@
                 <div class="entry chk" :class="{ done: item.done && !chkPlain(), 'chk-alt': chkAlt(item), 'chk-hit': chkHit(item) }" :data-id="item.id">
                   <template x-if="editing && !chkGhost.trim()"><span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span></template>
                   <button type="button" class="chk-rect" :class="{ done: item.done && !chkPlain(), plain: chkPlain() }" @click="chkPlain() || toggleChecklistItem(item)"></button>
-                  <div class="entry-txt" role="textbox" tabindex="0" x-effect="if (document.activeElement !== $el) $el.innerHTML = chkHl(item)" @pointerdown="chkRowDown($event)" @pointerup="chkRowUp($el, $event)" @focus="chkFocus($el)" @input="chkInput(item, $event)" @keydown="entryKey($event)" @keydown.backspace="chkBackspace(item, $event)" @keydown.delete="chkBackspace(item, $event)" @keydown.enter="chkEnter($event, item)" @keydown.escape="entryEscape($event, () => $el.innerHTML = chkLive(item.text))" @blur="$el.contentEditable = 'false'; renameChecklistItem(item, $event.target.textContent)" @paste="chkPaste($event, item)" @keydown.stop></div>
+                  <div class="entry-txt" role="textbox" tabindex="0" x-effect="if (!$el.contains(document.activeElement)) $el.innerHTML = chkHl(item)" @pointerdown="chkRowDown($event)" @pointerup="chkRowUp($el, $event)" @focus="chkFocus($el)" @input="chkInput(item, $event)" @compositionend="chkInput(item, $event)" @keydown="entryKey($event)" @keydown.backspace="chkBackspace(item, $event)" @keydown.delete="chkBackspace(item, $event)" @keydown.enter="chkEnter($event, item)" @keydown.escape="entryEscape($event, () => $el.innerHTML = chkLive(item.text))" @blur="$el.contentEditable = 'false'; renameChecklistItem(item, $event.target.textContent)" @paste="chkPaste($event, item)" @keydown.stop></div>
                   <button type="button" class="entry-del" @click="removeChecklistItem(item)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
                 </div>
               </template>

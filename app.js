@@ -381,7 +381,7 @@ document.addEventListener('alpine:init', () => {
         if (!(e.ctrlKey || e.metaKey) || this.surface !== 'plan') return;
         e.stopPropagation(); this.clZoomWheel(e);
       }, { passive: false, capture: true });
-      // defer-to-blur decoration: desc and checklist items show raw text while focused, decorated on blur.
+      // Decorate on blur; raw text while editing. Pointer focus alone must not interrupt drag selection.
       // chk handlers use item.text (authoritative) not el.textContent (potentially stale on reused elements).
       const chkItem = (el) => {
         const id = el.closest?.('.entry.chk')?.dataset.id;
@@ -392,10 +392,10 @@ document.addEventListener('alpine:init', () => {
         const el = e.target;
         if (el === this.$refs.desc) return desc(el);
         if (!el.matches?.('.composer-entries .entry.chk:not(.ghost) .entry-txt')) return;
-        const item = chkItem(el); if (item) paint(el, item);
+        const item = chkItem(el); if (item) paint(el, item, e);
       }, true);
-      decorate('focus', el => this.onDescFocus(el), (el, item) => { this._chkBefore = item.text; el.textContent = item.text; });   // raw text while focused (+ the pre-edit value renameChecklistItem journals against)
-      decorate('blur', el => this.onDescBlur(el), (el, item) => { el.innerHTML = chkLiveRender(item.text); });    // decorated on blur
+      decorate('focus', el => this.onDescFocus(el), (el, item) => { this._chkBefore = item.text; });
+      decorate('blur', el => this.onDescBlur(el), (el, item, e) => { if (!el.contains(e.relatedTarget)) el.innerHTML = chkLiveRender(item.text); }); // don't remove a copy button receiving focus
       // Phone width is a real mode, not just a stylesheet: week view is dropped and the calendar's view
       // switcher moves into the dot strip, so the flag has to be reactive and the current view legal.
       matchMedia('(max-width: 640px)').addEventListener('change', (e) => {
@@ -646,7 +646,7 @@ document.addEventListener('alpine:init', () => {
     },
     onCanvasWheel(e) {   // horizontal trackpad scroll switches surfaces (like a swipe); one move per gesture
       if (this.overview || this.anyDialog() || this.dragging) return;
-      if (e.target.closest('input, textarea, [contenteditable], .inp')) return;                      // don't hijack scroll started over an editable field
+      if (e.target.closest('input, textarea, [contenteditable], .inp, .composer, code, .md-code')) return;   // don't hijack scroll started over native text interaction
       if (Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;                                          // horizontal-dominant gestures only
       if (this._ownedByScroller(e.target, e.currentTarget, 'x', e.deltaX)) return;                   // defer to a real horizontal scroller that can still scroll
       // One page per swipe: after a switch, stay locked through the inertial tail. Release when deltaX ≈0, user pauses, or deltaX doubles back (only a genuine new flick reverses).
@@ -669,7 +669,7 @@ document.addEventListener('alpine:init', () => {
     },
     canvasDown(e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
-      if (e.target.closest('input, textarea, [contenteditable], .inp, .cd-seg')) return;   // let text selection start inside a field (and a view tap in the strip), don't begin a surface swipe
+      if (e.target.closest('input, textarea, [contenteditable], .inp, .composer, code, .md-code, .cd-seg')) return;   // let native text interaction (and a view-strip tap) win
       if (this.drag.active) return;   // ignore extra touch points once a drag owns the pointer
       this.drag = { active: true, x0: e.clientX, y0: e.clientY, w: this.$refs.canvas.offsetWidth, t0: e.timeStamp || performance.now(), id: e.pointerId, axis: null, from: e.target };
     },
@@ -1657,6 +1657,7 @@ document.addEventListener('alpine:init', () => {
       this._t = setTimeout(() => { if (!this._closing) return; this.clip = false; this.growH = null; done && done(); }, 240);
     },
     openComposer() {
+      const focusBefore = document.activeElement;
       this._draftSid = crypto.randomUUID();   // identity of THIS draft session: every add-composer has editing === null, so a task id can't tell two blank drafts apart
       // If the tapped task's TOP is in view, DON'T scroll — grow it in place (its bottom may extend below the
       // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. We test the
@@ -1688,9 +1689,11 @@ document.addEventListener('alpine:init', () => {
         const ghost = this.editing && (this.draft.checklist.length || this.childTasks(this.editing).length)
           && document.querySelector('.composer-entries .entry.ghost .entry-txt');
         const c = ghost || this.$refs.content;
-        c?.focus({ preventScroll: true });
-        // Editing → caret at the END of the title (ready to append a chip); adding starts empty so it's moot.
-        if (!ghost && c && this.editing) this._caret(c);
+        // Default focus must not steal a click/Tab that reached the composer before this deferred callback.
+        if (c && (document.activeElement === focusBefore || !this.$refs.composer.contains(document.activeElement))) {
+          c.focus({ preventScroll: true });
+          if (!ghost && this.editing) this._caret(c);
+        }
         if (!this._skipOpenScroll) {   // off-screen → glide composer into view
           const comp = this.$refs.composer, sc = this._listScroller(); if (!comp || !sc) return;
           // ONE glide, aimed at the composer WHILE IT GROWS. This used to be a scrollIntoView at a pixel
@@ -1783,7 +1786,7 @@ document.addEventListener('alpine:init', () => {
     rowBody(r, opts) { return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), ...(this.groupBy === 'project' ? { proj: false } : {}), ...opts }); },
     // body is inert x-html — delegate here; editTask measures .item
     onRowClick(r, e) {
-      if (e.target.closest('a')) return;   // markdown link — let the browser follow it
+      if (e.target.closest('a, code, .md-code')) return;   // links and code own their clicks/selection
       if (e.metaKey || e.ctrlKey) return this.toggleSel(r.t.id);                                  // Ctrl/Cmd-click toggles selection
       if (e.shiftKey) { getSelection()?.removeAllRanges(); return this.selectRange(r.t.id); }     // Shift-click extends the range (drop any accidental text highlight)
       this.selAnchor = r.t.id;   // a plain click seeds the range anchor for a later Shift-click
@@ -2809,19 +2812,16 @@ document.addEventListener('alpine:init', () => {
       for (const k of PILL_KINDS) this._restoreField(k, s.f[k]);
       this._nlpPrev = s; this.syncTitle();
     },
-    // --- Inline live-markdown editor (contenteditable description) ---
-    // mdLive keeps textContent === raw text; caret saved as char offset, restored 1:1 after innerHTML re-render
-    // mdLive + a trailing <br> sentinel when the raw ends in \n: Chromium collapses a caret parked past a bare trailing
-    // newline back before it (so typing lands on the wrong line) — the <br> gives the empty last line a caret home.
-    // textContent ignores the <br>, so the textContent===raw contract still holds.
+    // --- Markdown at rest, plain editing. A trailing <br> gives an empty last line a caret home;
+    // textContent ignores it, so both representations retain the exact source. ---
     _descHtml(text) { return mdLiveRender(text) + (text.endsWith('\n') ? '<br>' : ''); },
+    _plainHtml(text) { return escHtml(text) + (text.endsWith('\n') ? '<br>' : ''); },
     setDescText(text) { const el = this.$refs.desc; if (el) el.innerHTML = this._descHtml(text || ''); },
-    chkLive(text) { return chkLiveRender(text); },   // x-init source for the composer checklist item live "::" editor
-    // Rows are contenteditable set once via x-init; Alpine x-for reuses keyed elements across reopen/undo without re-running it,
-    // so refresh each idle row's markup from the draft after any wholesale draft.checklist change.
+    chkLive(text) { return chkLiveRender(text); },
+    // Alpine reuses keyed rows across reopen/undo: refresh idle markup after wholesale draft changes.
     syncChkRows() {
       document.querySelectorAll('.composer-entries .entry.chk:not(.ghost) .entry-txt').forEach(el => {
-        if (document.activeElement === el) return;
+        if (el.contains(document.activeElement)) return;
         const item = this.draft.checklist.find(c => c.id === el.closest('.entry.chk')?.dataset.id);
         if (item) el.innerHTML = chkLiveRender(item.text);
       });
@@ -2837,7 +2837,7 @@ document.addEventListener('alpine:init', () => {
     onDescFocus(el) {
       const off = this._caretOffset(el), raw = this.draft.notes || '';
       this._descBefore = raw;   // blur is the commit boundary: one ⌘Z step per focus session, however much was typed
-      el.textContent = raw;
+      el.innerHTML = this._plainHtml(raw);
       this._setCaret(el, off ?? raw.length);
     },
     onDescBlur(el) {
@@ -2854,22 +2854,12 @@ document.addEventListener('alpine:init', () => {
       // (caught by the composer's capture handler before this runs, so there's no modifier case left to handle).
       if (e.key !== 'Enter' || e.metaKey || e.ctrlKey) return;
       e.preventDefault();
-      this.descInsert('\n');
+      this.insertPlainText('\n');
     },
-    // The ONE way text enters the description. Never execCommand: 'insertText' drops a '\n' outright in this WebView,
-    // and its multi-line paste arrives as <br>/<div> nodes that textContent silently flattens — so draft.notes lost
-    // every pasted newline, and the next re-render (Enter, save) redrew the field from that flattened raw.
-    // Splice into the raw instead (mdLive keeps textContent===raw with real \n; pre-wrap renders it), then put the
-    // caret back INSIDE the text node — one parked past a standalone trailing \n collapses back before it.
-    descInsert(str) {
-      const el = this.$refs.desc; if (!el) return;
-      const off = this._caretOffset(el); if (off == null) return;
-      const text = el.textContent, nt = text.slice(0, off) + str + text.slice(off);
-      this.draft.notes = nt;
-      el.innerHTML = this._descHtml(nt);
-      this._setCaret(el, off + str.length);
-    },
-    descPaste(e) { e.preventDefault(); this.descInsert((e.clipboardData || window.clipboardData).getData('text/plain')); },
+    // Escaped HTML inserts literal newlines (insertText creates div/brs that textContent loses),
+    // replaces the selection, and stays on the native undo stack. Only the trailing caret sentinel is markup.
+    insertPlainText(str) { document.execCommand('insertHTML', false, this._plainHtml(str)); },
+    descPaste(e) { e.preventDefault(); this.insertPlainText((e.clipboardData || window.clipboardData).getData('text/plain')); },
     descClick(e) { const a = e.target.closest?.('a.dm-link'); if (a) { e.preventDefault(); window.open(a.href, '_blank', 'noopener'); } },
     // stable across innerHTML re-render (mdLive never changes text, only wraps it)
     _caretOffset(el) {
@@ -3937,17 +3927,18 @@ document.addEventListener('alpine:init', () => {
     // rows again — an in-row drag (select a word to retype it) never leaves the band, so that row keeps editing.
     chkDragOut(e) {
       const a = document.activeElement;
-      if (!this._chkDownAt || !e.buttons || a?.contentEditable !== 'true' || !a.matches('.entry.chk:not(.ghost) .entry-txt')) return;
+      if (!this._chkDownAt || !e.buttons || !a?.isContentEditable || !a.matches('.entry.chk:not(.ghost) .entry-txt')) return;
       const r = a.getBoundingClientRect();
       if (e.clientY < r.top || e.clientY > r.bottom) a.contentEditable = 'false';
     },
     chkRowUp(el, e) {
       const d = this._chkDownAt; this._chkDownAt = null; this._chkPointer = false;
       if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;   // a drag-select → keep the selection, don't edit
-      if (el.contentEditable === 'true') return;   // already editing (2nd click of dblclick) — let browser word-select natively
-      el.contentEditable = 'true'; el.focus();
-      const r = document.caretRangeFromPoint?.(e.clientX, e.clientY);      // caret at the click point (best-effort)
+      if (el.isContentEditable) return;   // already editing (2nd click of dblclick) — let browser word-select natively
+      const r = document.caretRangeFromPoint?.(e.clientX, e.clientY);
       if (r && el.contains(r.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+      const off = this._caretOffset(el);   // preserve the clicked source position before removing decoration
+      this.chkFocus(el); el.focus(); this._setCaret(el, off);
     },
     // auto-grow the ghost textarea to fit its wrapped content (field-sizing isn't universally implemented)
     // hidden → scrollHeight 0: keep auto, else the ghost re-shows 0px tall (unclickable)
@@ -3956,26 +3947,19 @@ document.addEventListener('alpine:init', () => {
     // mode on focus (that would trap a cross-row drag-select in one contenteditable). _chkPointer marks the mouse path;
     // chkRowUp then decides click-to-edit vs drag. Keyboard focus (no pointer) falls through and enables editing.
     chkFocus(el) {
-      if (this._chkPointer) return;   // mouse path: chkRowUp decides click-to-edit vs drag
-      el.contentEditable = 'true';
+      if (this._chkPointer || el.isContentEditable) return;   // mouse path: chkRowUp decides click-to-edit vs drag
+      el.contentEditable = 'plaintext-only';
+      el.innerHTML = this._plainHtml(el.textContent);
       // A div that becomes editable while already focused has NO caret inside it, so keystrokes do nothing —
       // place a collapsed caret at the end so keyboard Tab-in is immediately typable.
       this._caret(el);
     },
-    // Enter → sibling item below · Shift+Enter → newline INSIDE the item (execCommand drops '\n' in this
-    // WebView — splice like descKeydown) · ⌘/Ctrl+Enter → save & close the composer.
+    // Enter → sibling item below · Shift+Enter → plain newline · ⌘/Ctrl+Enter → save & close.
     chkEnter(e, item) {
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) return this.submitAndClose();
       if (!e.shiftKey) return this.insertChkAfter(item);
-      const el = e.target, off = this._caretOffset(el); if (off == null) return;
-      // at the very end, a LONE trailing \n collapses the caret back before it — double it in the HTML
-      // so the caret lands on a real empty line. item.text stores only the real inserted \n (no sentinel);
-      // renameChecklistItem on blur reads item.text via the capture handler, not el.textContent.
-      const text = el.textContent, ins = text.slice(0, off) + '\n' + text.slice(off);
-      el.innerHTML = chkLiveRender(off === text.length ? ins + '\n' : ins);
-      item.text = ins;
-      this._setCaret(el, off + 1);
+      this.insertPlainText('\n');
     },
     // Ghost enter: Shift+Enter falls through to the textarea's native newline; plain Enter commits.
     ghostEnter(e, kind) { if (e.shiftKey) return; e.preventDefault(); if (e.metaKey || e.ctrlKey) this.submitAndClose(); else this.commitGhostStay(kind); },
@@ -3985,7 +3969,7 @@ document.addEventListener('alpine:init', () => {
       const it = { id: crypto.randomUUID(), text: '', done: false };
       this.draft.checklist.splice(this.draft.checklist.indexOf(item) + 1, 0, it);
       this.sortChecklist();
-      this.$nextTick(() => { const el = document.querySelector(`.composer-entries .entry.chk[data-id="${it.id}"] .entry-txt`); if (el) { el.contentEditable = 'true'; el.focus(); } });   // rows are editable-on-demand: make editable before focusing
+      this.$nextTick(() => document.querySelector(`.composer-entries .entry.chk[data-id="${it.id}"] .entry-txt`)?.focus());
     },
     // --- Subtask rows are pill editors too: the SAME title engine, aimed via _nlpFocus at the focused row. ---
     // On focus, point the engine at this row and rebuild its sub-draft from the pills already in its DOM (the
@@ -4107,7 +4091,6 @@ document.addEventListener('alpine:init', () => {
     // END: on the way UP you're arriving from below, where the down-ladder lands it at 0.
     _focusEntry(next) {
       if (!next) return false;
-      if (next.tagName === 'DIV') next.contentEditable = 'true';   // checklist row: editable-on-demand, make editable before focus
       next.focus();
       if (next.isContentEditable) this._setCaret(next, next.textContent.length);
       else { const n = next.value.length; next.setSelectionRange?.(n, n); }
@@ -4134,15 +4117,10 @@ document.addEventListener('alpine:init', () => {
     },
     // Enter on a subtask row: commit (blur → rename) and jump to the ghost "new subtask" prompt.
     focusEntryGhost(input) { input.closest('.entry-list')?.querySelector('.entry.ghost .entry-txt')?.focus(); },
-    // defer-to-blur when markdown is present: skip innerHTML rewrite so ⌘Z is preserved.
-    // Pure "::" text (no markdown) still rewrites live so the separator shows while typing.
+    // Never repaint an active editor: native typing/selection/undo own its DOM until blur.
     chkInput(item, e) {
       if (e.isComposing) return;
-      const el = e.target, text = el.textContent;
-      item.text = text;
-      if (/[*_~`<&]/.test(text)) return;   // markdown present → skip rewrite, blur will decorate
-      const off = this._caretOffset(el), html = chkLiveRender(text);
-      if (el.innerHTML !== html) { el.innerHTML = html; this._setCaret(el, off); }
+      item.text = e.target.textContent;
     },
     // paste multiline text → new items split ONLY at bullet markers ("- "/"* "). Lines without a bullet are
     // continuations that join the current item (space-joined) — so a wrapped/multi-line sentence isn't torn apart.
@@ -4176,13 +4154,11 @@ document.addEventListener('alpine:init', () => {
     },
     // Splice text in at the caret, verbatim. item=null ⇒ the ghost (a textarea on x-model), else a live item editor.
     _chkPasteRaw(el, item, text) {
-      const at = item ? (this._caretOffset(el) ?? el.textContent.length) : (el.selectionStart ?? el.value.length);
-      const src = item ? el.textContent : el.value, end = item ? at : (el.selectionEnd ?? at);
+      if (item) return this.insertPlainText(text);
+      const at = el.selectionStart ?? el.value.length;
+      const src = el.value, end = el.selectionEnd ?? at;
       const next = src.slice(0, at) + text + src.slice(end);
-      if (!item) { this.chkGhost = next; this.$nextTick(() => { el.setSelectionRange(at + text.length, at + text.length); this.taGrow(el); }); return; }
-      item.text = next;
-      el.innerHTML = chkLiveRender(next);
-      this._setCaret(el, at + text.length);
+      this.chkGhost = next; this.$nextTick(() => { el.setSelectionRange(at + text.length, at + text.length); this.taGrow(el); });
     },
     // tint the checklist rows a cross-row selection spans — previews what ⌘C will copy (chkCopy kicks in at ≥2 rows)
     _chkSelTint() {
@@ -4280,9 +4256,26 @@ document.addEventListener('alpine:init', () => {
       this._paintKb();
       if (_kbEl) this._revealRow(id);
     },
+    async _copyText(text, msg) {
+      try { await navigator.clipboard.writeText(text); }
+      catch { const ta = Object.assign(document.createElement('textarea'), { value: text }); document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      if (msg) this.toast(msg);
+    },
+    copyCode(e) {
+      const button = e.target.closest('.code-copy'); if (!button) return;
+      e.preventDefault(); e.stopPropagation();
+      return this._copyText(button.closest('.md-code').querySelector('code').textContent, 'Copied');
+    },
+    codeKey(e) {
+      if (e.target.closest('.code-copy') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();
+      if (e.key !== 'Tab' || e.shiftKey || !e.target.matches('.desc, .entry.chk .entry-txt') || !/^```[^\s`]*[ \t]*\r?$/m.test(e.target.textContent)) return;
+      const el = e.target; el.blur();
+      const button = el.querySelector('.code-copy'); if (button) { e.preventDefault(); button.focus(); }
+    },
     // --- Delegated row events (bound once on the <ul>, resolve the row by data-id) — see the list markup ---
     _rowFromEl(el) { return el ? (_rowMap?.get(el.dataset.id) ?? _doneMap?.get(el.dataset.id) ?? null) : null; },   // O(1) via Maps maintained in visibleRows(); active OR Done list
     listOver(e) {
+      if (e.target.closest('code, .md-code')) return this.clearHover();
       const el = e.target.closest?.('.item'), id = el?.dataset.id;
       if (id === this.hoverId) return;                  // mouseover fires per child element — skip if same row
       const r = id ? this._rowFromEl(el) : null;
@@ -4293,7 +4286,7 @@ document.addEventListener('alpine:init', () => {
       if (sec) return this.toggleSec(sec.dataset.sec);
       const r = this._rowFromEl(e.target.closest?.('.item')); if (r) this.onRowClick(r, e);
     },
-    listDragStart(e) { if (e.target.closest('.chk-row')) return e.preventDefault(); const r = this._rowFromEl(e.target.closest?.('.item')); if (r) this.dragStart(r.t, e, r.depth); },   // a checklist-row drag is pointer-based, not the row's HTML5 drag
+    listDragStart(e) { if (e.target.closest('.chk-row, code, .md-code')) return e.preventDefault(); const r = this._rowFromEl(e.target.closest?.('.item')); if (r) this.dragStart(r.t, e, r.depth); },   // native selection and checklist sorting own their drags
     // Pointer-drag a task's checklist rows to reorder — scoped to that one task's .chk-list (never leaks / reparents).
     initListChkSort(el) {
       makeSortable(el, { itemSel: '.chk-row', scopeSel: '.chk-list', mouseOnly: true, onCommit: (from, to, scope) => this.reorderTaskChecklist(from, to, scope) });
