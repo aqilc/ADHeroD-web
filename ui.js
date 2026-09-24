@@ -26,16 +26,11 @@ const _highlight = (src, lang) => {
   return out + esc(src.slice(at));
 };
 const _copyCode = '<button class="code-copy" type="button" contenteditable="false" aria-label="Copy code" title="Copy code"><svg class="ico"><use href="#i-copy"/></svg></button>';
-const _codeBlock = (src, info) => { const key = String(info || '').toLowerCase(), lang = Object.hasOwn(_langs, key) ? _langs[key] : ''; return `<span class="md-code"${lang ? ` data-lang="${lang}"` : ''}><code>${_highlight(src, lang)}</code>${_copyCode}</span>`; };
+const _codeBlock = (src, info, compact) => { const key = String(info || '').toLowerCase(), lang = Object.hasOwn(_langs, key) ? _langs[key] : ''; return `<span class="md-code${compact ? ' md-code-inline' : ''}"${lang ? ` data-lang="${lang}"` : ''}><code>${_highlight(src, lang)}</code>${_copyCode}</span>`; };
 // ceiling: triple-backtick fences only; use a parser if nested fences or full Markdown are requested.
-const _fenceOpen = line => line.match(/^```([^\s`]*)[ \t]*\r?$/);
-const _fenceClose = line => /^```[ \t]*\r?$/.test(line);
-const _hasFence = src => String(src ?? '').split('\n').some(_fenceOpen);
-const _chkSep = src => {
-  let off = 0, fenced = false;
-  for (const line of String(src ?? '').split('\n')) { if (!fenced && _fenceOpen(line)) fenced = true; else if (fenced && _fenceClose(line)) fenced = false; else if (!fenced) { const i = line.indexOf('::'); if (i >= 0) return off + i; } off += line.length + 1; }
-  return -1;
-};
+const _fences = /```([\s\S]*?)(```|$)/g;
+const _hasFence = src => String(src ?? '').includes('```');
+const _chkSep = src => String(src ?? '').replace(_fences, m => ' '.repeat(m.length)).indexOf('::');
 const _chkParts = (c, ci) => { const sep = _chkSep(c.text); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; };
 const _sentinel = (src, mark) => { while (src.includes(mark)) mark += mark[0]; return mark; };
 // XSS-safe markdown for task notes (headings, bold, italic, code, links, bullets). Inline-styled spans, not a document renderer.
@@ -68,17 +63,15 @@ const _md = (src, opts = {}) => {
 };
 
 const _fenced = (src, live, inline = false, copy = false) => {
-  const lines = String(src ?? '').split('\n'), out = [];
-  for (let i = 0; i < lines.length; i++) {
-    const open = _fenceOpen(lines[i]);
-    if (!open) { out.push(live ? _dLine(lines[i]) : _md(lines[i], { inline, copy })); continue; }
-    let end = i + 1; while (end < lines.length && !_fenceClose(lines[end])) end++;
-    const closed = end < lines.length, body = lines.slice(i + 1, end), code = body.join('\n') + (closed && body.length ? '\n' : ''), block = _codeBlock(code, open[1]);
-    if (live) out.push(`<span class="dm-mark">${esc(lines[i])}</span>${i < lines.length - 1 ? '\n' : ''}${block}${closed ? '<span class="dm-mark">' + esc(lines[end]) + '</span>' : ''}`);
-    else out.push(block);
-    i = Math.min(end, lines.length - 1);
+  const raw = String(src ?? ''), prose = s => live ? s.split('\n').map(_dLine).join('\n') : _md(s, { inline, copy });
+  let out = '', at = 0;
+  for (const m of raw.matchAll(_fences)) {
+    // Only a newline-ended opening line is language metadata; same-line commands stay literal.
+    const head = m[1].match(/^([^\s`]*)[ \t]*\r?\n/), prefix = head?.[0] || '', block = _codeBlock(m[1].slice(prefix.length), head?.[1], !m[1].includes('\n'));
+    out += prose(raw.slice(at, m.index)) + (live ? `<span class="dm-mark">${esc('```' + prefix)}</span>${block}${m[2] ? '<span class="dm-mark">```</span>' : ''}` : block);
+    at = m.index + m[0].length;
   }
-  return out.join(live ? '\n' : inline ? ' ' : '<br>');
+  return out + prose(raw.slice(at));
 };
 export const md = (src, opts = {}) => opts.literal ? _md(src, opts) : _fenced(src, false, !!opts.inline, !!opts.copy);
 

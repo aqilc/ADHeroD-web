@@ -4544,7 +4544,7 @@ document.addEventListener('alpine:init', () => {
     codeKey(e) {
       if (e.target.closest('.code-copy') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();   // button keys must never edit/delete the containing row
       // Editing uses raw text; restore decoration before Tab searches for the copy control.
-      if (e.key !== 'Tab' || e.shiftKey || !e.target.matches('.desc, .entry.chk .entry-txt') || !/^```[^\s`]*[ \t]*\r?$/m.test(e.target.textContent)) return;
+      if (e.key !== 'Tab' || e.shiftKey || !e.target.matches('.desc, .entry.chk .entry-txt') || !e.target.textContent.includes('```')) return;
       const el = e.target; el.blur();
       const button = el.querySelector('.code-copy'); if (button) { e.preventDefault(); button.focus(); }
     },
