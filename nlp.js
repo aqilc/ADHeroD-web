@@ -162,32 +162,52 @@ export function parseDateText(s, now = new Date()) {
 }
 
 // Recurrence grammar ("every[!] <rule>") — shared by parseQuick (strips) and parseRecurrence (date field).
+// It mirrors the When popover's sentence — "every N unit [on <days>] at <time>, <n> times, ending <date>" —
+// so every word that surface RENDERS is typeable, including its empty-value glyphs (`–`, `∞`, `never`).
 const REC_DAY_RE = '(?:sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|urday)?\\b';
-const REC_RULE = '(?:(?:' + REC_DAY_RE + ')(?:\\s*,\\s*|\\s+)?)+|weekday|\\d+\\s*(?:days?|weeks?|months?|years?)|days?|weeks?|months?|years?|\\d{1,2}(?:st|nd|rd|th)';
+const REC_DAYS = '(?:(?:' + REC_DAY_RE + ')(?:\\s*,\\s*|\\s+)?)+';
+const REC_RULE = REC_DAYS + '|weekday|\\d+\\s*(?:days?|weeks?|months?|years?)|days?|weeks?|months?|years?|\\d{1,2}(?:st|nd|rd|th)';
+const REC_ON = '\\s+on\\s+(' + REC_DAYS + '|the\\s+\\d{1,2}(?:st|nd|rd|th))';   // must hug the rule, so "work on the deck" is prose
+const REC_AT = '\\s+at\\s+(–|\\d{1,2}(?::\\d{2})?\\s*[ap]m|(?:[01]?\\d|2[0-3]):[0-5]\\d)';   // a TIME only — never "at <place>"
 // The count needs `for` or the popover's own comma (", 3 times"): a bare "<n> times" is ordinary English
-// ("every day 2 times daily" is a frequency, not an end) and eating it silently loses title text.
-const REC_FULL = '\\severy(!?)(?:\\s+(' + REC_RULE + '))?(?:(?:\\s*,\\s*|\\s+for\\s+)(\\d+)\\s+times?|\\s+x(\\d+)|\\s+(until|ending)\\s+(.+))?(?=\\s|$)';
-function buildRecurrence(bang, rule, count, xCount, until, now) {
-  if (!rule && !bang) return null;   // bare "every" with no rule/bang is not a recurrence
+// ("every day 2 times daily" is a frequency, not an end) and eating it silently loses title text. The
+// until-tail is bounded (≤3 comma-free words + an optional ", <year>") so a following clause still binds.
+const REC_END = '(?:\\s*,\\s*|\\s+for\\s+)(\\d+|∞)\\s+times?|\\s+x(\\d+)|(?:\\s*,\\s*|\\s+)(?:until|ending)\\s+(never|[^\\s,]+(?:\\s+[^\\s,]+){0,2}(?:,\\s*\\d{4})?)';
+const REC_FULL = '\\severy(!?)(?:\\s+(' + REC_RULE + '))?(?:' + REC_ON + ')?(?:' + REC_AT + ')?((?:' + REC_END + ')*)(?=\\s|$)';
+// End clauses may co-occur and repeat; `ends` is single-valued, so the LAST clause with a real value wins
+// (reading order) — "∞ times"/"ending never" are placeholders, so a printed "3 times, ending never" survives.
+// Returns the prose it could NOT resolve, to hand back to the title as the sibling `only`/`by` matchers do.
+function applyEnds(rec, tail, now) {
+  let rest = '';
+  for (const [raw, count, xCount, until] of (tail || '').matchAll(new RegExp(REC_END, 'gi'))) {
+    if (count === '∞' || /^never$/i.test(until || '')) continue;
+    if (count || xCount) rec.ends = { count: +(count || xCount) };
+    else { const d = parseDate(until.trim(), now); if (d) rec.ends = { date: d }; else rest += raw; }
+  }
+  return rest;
+}
+function buildRecurrence(bang, rule, on, at, tail, now) {
+  if (!rule && !bang) return {};   // bare "every" with no rule/bang is not a recurrence
   const rec = { freq: 'day', interval: 1, from_completion: !!bang, ends: null, done_count: 0 };
   const body = (rule || '').toLowerCase();
   const n = body.match(/^(\d+)/), interval = n ? +n[1] : 1;
+  const wdays = t => (t.match(new RegExp(REC_DAY_RE, 'g')) || []).map(d => DAYS.indexOf(d.slice(0, 3)));
   if (/weekday/.test(body)) Object.assign(rec, { freq: 'week', weekdays: [1, 2, 3, 4, 5] });
-  else if (new RegExp('^' + REC_DAY_RE).test(body)) {
-    rec.freq = 'week';
-    rec.weekdays = (body.match(new RegExp(REC_DAY_RE, 'g')) || []).map(d => DAYS.indexOf(d.slice(0, 3)));
-  } else if (/days?$/.test(body)) Object.assign(rec, { freq: 'day', interval });
+  else if (new RegExp('^' + REC_DAY_RE).test(body)) Object.assign(rec, { freq: 'week', weekdays: wdays(body) });
+  else if (/days?$/.test(body)) Object.assign(rec, { freq: 'day', interval });
   else if (/weeks?$/.test(body)) Object.assign(rec, { freq: 'week', interval });
   else if (/months?$/.test(body)) Object.assign(rec, { freq: 'month', interval });
   else if (/years?$/.test(body)) Object.assign(rec, { freq: 'year', interval });
   else if (/^\d/.test(body)) Object.assign(rec, { freq: 'month', month_day: interval });   // "15th"
-  if (count || xCount) rec.ends = { count: +(count || xCount) };
-  else if (until) { const d = parseDate(until.trim(), now); if (d) rec.ends = { date: d }; }   // a non-date tail is prose, not an end
-  return rec;
+  const onLow = (on || '').toLowerCase();   // the "on …" chip OWNS the freq it implies (weekly set / monthly day)
+  if (/^the\b/.test(onLow)) Object.assign(rec, { freq: 'month', month_day: +onLow.match(/\d+/)[0] });
+  else if (onLow) Object.assign(rec, { freq: 'week', weekdays: wdays(onLow) });
+  if (at && at !== '–') rec.at = parseTime(at);
+  return { rec, rest: applyEnds(rec, tail, now) };
 }
 export function parseRecurrence(s, now = new Date()) {
   const m = (' ' + (s || '') + ' ').match(new RegExp(REC_FULL, 'i'));
-  return m ? buildRecurrence(m[1], m[2], m[3], m[4], m[6], now) : null;
+  return m ? buildRecurrence(m[1], m[2], m[3], m[4], m[5], now).rec ?? null : null;
 }
 
 // hybrid tokenizer: live preview keeps tokens; strips on save. `locations` (the places already in use) guards
@@ -217,13 +237,11 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   });
 
   // consumed before dates so "every monday" is a rule, not a dueIso
-  s = s.replace(new RegExp(REC_FULL, 'gi'), (_m, bang, rule, count, xCount, untilWord, until) => {
-    const rec = buildRecurrence(bang, rule, count, xCount, until, now);
+  s = s.replace(new RegExp(REC_FULL, 'gi'), (_m, bang, rule, on, at, tail) => {
+    const { rec, rest } = buildRecurrence(bang, rule, on, at, tail, now);
     if (!rec) return _m;
     o.recurrence = rec;
-    // the rule is real but its "until/ending" tail isn't a date — hand the prose back to the title,
-    // as the sibling `only`/`by` matchers already do rather than swallowing what the user typed
-    return untilWord && !rec.ends ? ' ' + untilWord + ' ' + until + ' ' : ' ';
+    return rest ? rest + ' ' : ' ';   // `rest` keeps its own leading separator, so the prose reads back verbatim
   });
 
   // 'only <date>' walls BOTH sides — a one-day world-window ("vote only tue"). Leading form only:
@@ -322,6 +340,10 @@ export function classifyToken(text, now = new Date(), locations = []) {
   return hits.length === 1 ? hits[0] : null;                          // none or ambiguous → null
 }
 
+// Longest recognisable token, in words: the When popover's full repeat sentence
+// ("every 2 weeks on Mon Wed at 9am, 3 times, ending Sep 1"). Bounds both token scans.
+const TOK_MAX_WORDS = 13;
+
 export function tokenizeAll(text, now = new Date(), locations = []) {
   const parts = (text || '').match(/\s+|\S+/g) || [];      // alternating whitespace / word runs
   const isWord = p => /\S/.test(p);
@@ -331,7 +353,7 @@ export function tokenizeAll(text, now = new Date(), locations = []) {
   while (i < parts.length) {
     if (!isWord(parts[i])) { addText(parts[i]); i++; continue; }
     let best = null, bestJ = i, bestSpan = '', span = '';
-    for (let j = i; j < parts.length && j - i <= 6; j++) {
+    for (let j = i; j < parts.length && j - i <= TOK_MAX_WORDS * 2; j++) {   // parts alternate word/gap
       span += parts[j];
       if (!isWord(parts[j])) continue;                     // only test at word ends
       const cls = classifyToken(span.trim(), now, locations);
@@ -383,7 +405,7 @@ export function matchTrailingToken(pending, now = new Date(), locations = []) {
   if (imp) return { kind: 'imp', value: imp.value, start: imp.start };
   const offsets = []; const re = /\S+/g; let m;
   while ((m = re.exec(text))) offsets.push(m.index);
-  for (const start of offsets.slice(-6)) {
+  for (const start of offsets.slice(-TOK_MAX_WORDS)) {
     const tok = classifyToken(text.slice(start), now, locations);
     if (tok) return { ...tok, start };
   }

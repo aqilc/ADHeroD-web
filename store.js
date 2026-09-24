@@ -1,4 +1,5 @@
 import { isoDate } from './nlp.js';
+import { isNotesName } from './predicates.js';
 import { makeFuzzy, buildSearchDocs, rankDocs, defaultDocs, matchQuery } from './search.js';
 import { nextTs } from './recovery.js';
 
@@ -15,7 +16,7 @@ export const baseTask = () => {
     est_minutes: null, parent_id: null, area_ids: [], goal_ids: [], color: null, favorite: false, place: null, location: { mode: 'any', ids: [] }, milestone: false,
     position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], sidebar: false, checklist: [], checklist_plain: false,
     recurrence: null, completions: [], created_at: ts, updated_at: ts,
-    starts_at: null, ends_at: null, tz: null, claim: null, accepts: null,
+    starts_at: null, ends_at: null, tz: null,
   };
 };
 // Depth of the subtree rooted at id (id alone = 1). Cycle-safe.
@@ -99,24 +100,66 @@ const addMonths = (d, n) => {
 const monthDayStep = (d, md, n) => { const x = addMonths(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)), n);
   x.setUTCDate(Math.min(md, _daysInMonth(x.getUTCFullYear(), x.getUTCMonth()))); return x; };
 
+// month_day is a scalar (legacy) or a list (ICS BYMONTHDAY) — always read as a sorted list.
+const mdays = r => (Array.isArray(r.month_day) ? r.month_day : [r.month_day]).filter(n => n != null).sort((a, b) => a - b);
+// The nth (1-5, or -1 = last) weekday `wd` of month `m` (0-based) — ICS BYDAY ordinals, "3rd Thursday".
+const nthWeekday = (y, m, n, wd) => {
+  if (n < 0) { const last = new Date(Date.UTC(y, m, _daysInMonth(y, m))); return addDays(last, -((last.getUTCDay() - wd + 7) % 7)); }
+  const first = new Date(Date.UTC(y, m, 1));
+  return addDays(first, ((wd - first.getUTCDay() + 7) % 7) + (n - 1) * 7);
+};
+const weekStart = d => addDays(d, -((d.getUTCDay() + 6) % 7));   // Monday-start week (ICS WKST default)
+
 // Advance a UTC-midnight date by one step of the recurrence rule. Shared by nextOccurrence + calendar.js.
 export const recurStep = (r, d) => {
-  if (r.freq === 'day') return addDays(d, r.interval);
+  const iv = r.interval || 1;
+  if (r.freq === 'day') return addDays(d, iv);
   if (r.freq === 'week') {
-    if (r.weekdays?.length) { let x = addDays(d, 1); while (!r.weekdays.includes(x.getUTCDay())) x = addDays(x, 1); return x; }
-    return addDays(d, r.interval * 7);
+    if (r.weekdays?.length) {
+      let x = addDays(d, 1);
+      while (!r.weekdays.includes(x.getUTCDay())) x = addDays(x, 1);
+      // interval counts WEEKS, not steps: skip ahead only once the walk crosses into a new week, so
+      // "every 2 weeks on Mon+Wed" stays biweekly instead of collapsing to weekly.
+      return iv > 1 && +weekStart(x) !== +weekStart(d) ? addDays(x, (iv - 1) * 7) : x;
+    }
+    return addDays(d, iv * 7);
   }
   if (r.freq === 'month') {
-    // month_day: clamp to month-end ("31st" → Feb 28/29 etc.).
-    if (r.month_day != null) return monthDayStep(d, r.month_day, 1);
-    return addMonths(d, r.interval);
+    if (r.nth != null && r.weekdays?.length) {
+      const here = nthWeekday(d.getUTCFullYear(), d.getUTCMonth(), r.nth, r.weekdays[0]);
+      if (here > d) return here;   // this month's instance is still ahead of us
+      const nx = addMonths(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)), iv);
+      return nthWeekday(nx.getUTCFullYear(), nx.getUTCMonth(), r.nth, r.weekdays[0]);
+    }
+    const md = mdays(r);
+    if (md.length) {
+      // another listed day later this month, else roll `interval` months to the first one. Clamped to month-end.
+      const next = md.find(n => n > d.getUTCDate());
+      if (next != null) { const x = new Date(d); x.setUTCDate(Math.min(next, _daysInMonth(d.getUTCFullYear(), d.getUTCMonth()))); if (x > d) return x; }
+      return monthDayStep(d, md[0], iv);
+    }
+    return addMonths(d, iv);
   }
-  return addMonths(d, r.interval * 12);   // year
+  if (r.months?.length) {   // yearly BYMONTH: walk the listed months, rolling the year every `interval`
+    const ms = [...r.months].sort((a, b) => a - b), next = ms.find(n => n > d.getUTCMonth() + 1);
+    const ty = next != null ? d.getUTCFullYear() : d.getUTCFullYear() + iv, tm = (next ?? ms[0]) - 1;
+    const x = new Date(d); x.setUTCDate(1); x.setUTCFullYear(ty); x.setUTCMonth(tm);
+    x.setUTCDate(Math.min(d.getUTCDate(), _daysInMonth(ty, tm)));
+    return x;
+  }
+  return addMonths(d, iv * 12);   // year
 };
 // month_day also matches on month-end when it overshoots.
-export const recurMatches = (r, d) => r.freq === 'week' && r.weekdays?.length ? r.weekdays.includes(d.getUTCDay())
-  : r.freq === 'month' && r.month_day != null
-    ? d.getUTCDate() === Math.min(r.month_day, _daysInMonth(d.getUTCFullYear(), d.getUTCMonth())) : true;
+export const recurMatches = (r, d) => {
+  if (r.freq === 'week' && r.weekdays?.length) return r.weekdays.includes(d.getUTCDay());
+  if (r.freq === 'month') {
+    if (r.nth != null && r.weekdays?.length) return +d === +nthWeekday(d.getUTCFullYear(), d.getUTCMonth(), r.nth, r.weekdays[0]);
+    const md = mdays(r);
+    if (md.length) { const dim = _daysInMonth(d.getUTCFullYear(), d.getUTCMonth()); return md.some(n => d.getUTCDate() === Math.min(n, dim)); }
+  }
+  if (r.freq === 'year' && r.months?.length) return r.months.includes(d.getUTCMonth() + 1);
+  return true;
+};
 
 // --- multiple repeat statements (V3 phase 2): recurrence = one rule object (legacy) or an array of rules ---
 export const recRules = rec => !rec ? [] : Array.isArray(rec) ? rec : [rec];
@@ -248,6 +291,9 @@ export function createLocalStore(opts = {}) {
   const BLOCK_DAYS_KEY = 'adherod.block_days';
   const readBlockDays = () => readKey(BLOCK_DAYS_KEY);
   const writeBlockDays = v => writeKey(BLOCK_DAYS_KEY, v);
+  const REMINDERS_KEY = 'adherod.reminders';
+  const readReminders = () => readKey(REMINDERS_KEY);
+  const writeReminders = v => writeKey(REMINDERS_KEY, v);
   const GOALS_KEY = 'adherod.goals';
   const readGoals = () => readKey(GOALS_KEY);
   const writeGoals = v => writeKey(GOALS_KEY, v);   // no reindex
@@ -267,8 +313,10 @@ export function createLocalStore(opts = {}) {
   function ensureBacklog() {
     const tasks = readTasks();
     const meta = readMeta();
-    if (meta.default_project_id && tasks.some(t => t.id === meta.default_project_id)) return;
-    const root = tasks.find(t => t.parent_id === null);
+    // A notes-named root must NEVER be the default project (the default is hidden from the nav and swallows
+    // new tasks) — reject it on adopt AND fall through when a stale meta already points at one (self-heal).
+    if (meta.default_project_id && tasks.some(t => t.id === meta.default_project_id && !isNotesName(t.content))) return;
+    const root = tasks.find(t => t.parent_id === null && !isNotesName(t.content));
     if (root) { meta.default_project_id = root.id; writeMeta(meta); return; }   // adopt existing root as default
     const ts = now();
     const backlog = { ...baseTask(), id: uuid(), content: 'Backlog', created_at: ts, updated_at: ts };
@@ -346,7 +394,7 @@ export function createLocalStore(opts = {}) {
     // ensureBacklog so it can never be adopted as the default project.
     if (!meta.notes_seeded) {
       const tasks = readTasks();
-      if (!tasks.some(t => t.parent_id === null && t.content === 'Notes')) {
+      if (!tasks.some(t => t.parent_id === null && isNotesName(t.content))) {
         const ts = now();
         writeTasks([...tasks, { ...baseTask(), id: uuid(), content: 'Notes', sidebar: true, created_at: ts, updated_at: ts }]);
       }
@@ -415,7 +463,8 @@ export function createLocalStore(opts = {}) {
     reinsert(kind, rows) {
       const rw = { task: [readTasks, writeTasks], area: [readAreas, writeAreas], goal: [readGoals, writeGoals],
         event: [readEvents, writeEvents], block: [readBlocks, writeBlocks], filter: [readFilters, writeFilters], location: [readLocations, writeLocations],
-        scheduleItem: [readScheduleItems, writeScheduleItems], blockDay: [readBlockDays, writeBlockDays] }[kind];
+        scheduleItem: [readScheduleItems, writeScheduleItems], blockDay: [readBlockDays, writeBlockDays],
+        reminder: [readReminders, writeReminders] }[kind];
       if (!rw || !rows?.length) return false;
       const [read, write] = rw, cur = read(), have = new Set(cur.map(r => r.id));
       write([...cur, ...rows.filter(r => !have.has(r.id))]);
@@ -448,7 +497,9 @@ export function createLocalStore(opts = {}) {
           title: fields.title || '', notes: fields.notes ?? null,
           starts_at: fields.starts_at, ends_at: fields.ends_at, all_day: fields.all_day ?? false,
           recurrence: fields.recurrence ?? null, location: fields.location ?? null, color: fields.color ?? null,
-          source: 'local', external_id: null,
+          // source stays 'local' — the enum has no other member; an .ics import's provenance is external_id,
+          // which is also what a re-drop dedups on. ics_seq gates whether a re-drop may overwrite.
+          source: 'local', external_id: fields.external_id ?? null, ics_seq: fields.ics_seq ?? null,
         });
       },
       async update(id, fields) { return patchRow(readEvents, writeEvents, id, fields); },
@@ -462,7 +513,6 @@ export function createLocalStore(opts = {}) {
           title: fields.title || '', starts_at: fields.starts_at, ends_at: fields.ends_at,
           all_day: fields.all_day ?? false, recurrence: fields.recurrence ?? null,
           location_id: fields.location_id ?? null, areas: fields.areas ?? [],
-          energy: fields.energy ?? null, availability: fields.availability ?? null,
           color: fields.color ?? null, source: 'local', est_minutes: fields.est_minutes ?? null,
         });
       },
@@ -484,6 +534,24 @@ export function createLocalStore(opts = {}) {
       async update(id, fields) { return patchRow(readScheduleItems, writeScheduleItems, id, fields); },
       async remove(id) { return dropRow(readScheduleItems, writeScheduleItems, id); },
       async setRole(id, role) { return patchRow(readScheduleItems, writeScheduleItems, id, { role }); },
+    },
+
+    // User-authored reminders (kind:'user'). The server brain owns fire_at/level; the client owns the
+    // sentence — when + severity + repetition + message. Anchored rows carry no absolute `at`, and vice versa.
+    reminders: {
+      async list() { return readReminders(); },
+      async add({ task_id, anchor, offset_minutes, at, severity, repeat, times, message }) {
+        const anc = anchor || 'absolute';
+        return addRow(readReminders, writeReminders, {
+          ref_type: 'task', ref_id: task_id, kind: 'user', anchor: anc,
+          offset_minutes: anc === 'absolute' ? null : (offset_minutes ?? 0),
+          at: anc === 'absolute' ? (at ?? null) : null,
+          severity: severity ?? 'ping', repeat: repeat ?? null, times: times ?? null,
+          message: message ?? null, paused: false,
+        });
+      },
+      async update(id, fields) { return patchRow(readReminders, writeReminders, id, fields); },
+      async remove(id) { return dropRow(readReminders, writeReminders, id); },
     },
 
     blockDays: {
@@ -548,7 +616,6 @@ export function createLocalStore(opts = {}) {
             // substrate columns — Supabase create persists these via its post-insert update; parity demands the same here
             task_size: fields.task_size ?? null, anchor: fields.anchor ?? null, possible: fields.possible ?? null,
             starts_at: fields.starts_at ?? null, ends_at: fields.ends_at ?? null, tz: fields.tz ?? null,
-            claim: fields.claim ?? null, accepts: fields.accepts ?? null,
             recurrence,
             created_at: ts,
             updated_at: ts,

@@ -8,6 +8,13 @@ const dateOf = iso => iso.slice(0, 10);
 export function occurrencesInRange(rule, startsAtIso, fromIso, toIso, max = 400) {
   const from = dateOf(fromIso), to = dateOf(toIso), clock = timeOf(startsAtIso);
   const at = d => _iso(d) + (clock ? 'T' + clock : '');
+  // Multiple rules (tasks already store an array; ICS files carry several RRULEs) — union them, de-duped and ordered.
+  // Without this an array falls through the `!rule.freq` guard below and the whole series renders as one occurrence.
+  if (Array.isArray(rule)) {
+    const seen = new Set();
+    for (const r of rule) for (const s of occurrencesInRange(r, startsAtIso, fromIso, toIso, max)) seen.add(s);
+    return [...seen].sort();
+  }
   if (!rule || !rule.freq) { const day = dateOf(startsAtIso); return day >= from && day <= to ? [startsAtIso] : []; }   // null/malformed → one-off
   const out = [];
   let cur = _d(startsAtIso), count = 0;   // anchor always matches by construction
@@ -21,7 +28,9 @@ export function occurrencesInRange(rule, startsAtIso, fromIso, toIso, max = 400)
     const day = _iso(cur);
     if (day > to) break;
     if (rule.ends?.date && day > rule.ends.date) break;
-    out.push(at(cur));
+    // exdates (ICS EXDATE, and how a moved occurrence is represented: excluded here + a standalone event).
+    // ceiling: an excluded day still consumes an `ends.count` slot, matching how most calendars read COUNT.
+    if (!rule.exdates?.includes(day)) out.push(at(cur));
     if (rule.ends?.count != null && ++count >= rule.ends.count) break;
     cur = recurStep(rule, cur);
   }
@@ -90,7 +99,7 @@ export function blocksInRange(blocks, fromIso, toIso, blockDays = []) {
       const s = bd?.actual_start || start;
       if (!inWin(dateOf(s))) return;   // moved onto another day, outside this window
       out.push({ block: b, id: b.id, title: b.title, start: s, end: bd?.actual_end || addMinutes(s, dur), src: dateOf(start),
-        location_id: b.location_id, areas: b.areas || [], energy: b.energy, availability: b.availability, color: b.color });
+        location_id: b.location_id, areas: b.areas || [], color: b.color });
     };
     for (const start of occurrencesInRange(b.recurrence, b.starts_at, from, to)) push(start, bds.find(d => d.date === dateOf(start)));
     for (const d of bds)   // moved IN from a day outside the window (an in-window source is already resolved above)

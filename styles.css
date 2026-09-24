@@ -748,6 +748,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     &:hover { background: var(--hover); }
     span { flex: 1; text-align: left; }
     b { color: var(--muted); font-weight: 400; font-size: var(--fs-12); } }
+  .q.sug { color: var(--muted); .ico { width: 15px; height: 15px; color: var(--faint); } }
   .q.clear { color: var(--muted); .ico { color: var(--muted); } }
 }
 
@@ -916,6 +917,37 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   .ico { width: 13px; height: 13px; flex: none; }
   &:hover { background: var(--hover); } }
 /* Project/area/relations popovers: wider, scrollable; right-sized icons (not the default huge SVG) */
+/* Reminders popover — the sentence rows. Severity reads twice: the lead icon's shape, and the
+   dots+word control at the end. Never red (that is the deadline's alone). */
+.pop.rem-pop { min-width: 300px; }
+.rem-row { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-6) var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-13); }
+.rem-row:hover { background: var(--hover); }
+.rem-lead { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none; border-radius: var(--r-6); color: var(--muted); background: none; border: none; cursor: pointer;
+  .ico { width: 15px; height: 15px; flex: none; }
+  &:hover { background: var(--hover); }
+  &.gentle { color: var(--muted); } &.ping { color: var(--ink); } &.alarm { color: var(--warm-ink); } }
+.rem-seg { padding: 1px var(--sp-6); border-radius: var(--r-4); background: color-mix(in srgb, var(--hover) 70%, transparent); color: var(--ink); }
+.rem-tag { font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+.rem-sev { display: inline-flex; align-items: center; gap: var(--sp-4); margin-left: auto; font-size: var(--fs-12); color: var(--muted); padding: 1px var(--sp-6); border-radius: var(--r-4); background: none; border: none; cursor: pointer;
+  &:hover { background: var(--hover); }
+  .dots { display: inline-flex; gap: 2px; }
+  .dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--faint); opacity: .4; }
+  &.s1 .dots i:nth-child(1) { opacity: 1; }
+  &.s2 .dots i:nth-child(-n+2) { opacity: 1; background: var(--muted); }
+  &.s3 .dots i { opacity: 1; background: var(--warm-ink); } }
+.rem-del { color: var(--faint); background: none; border: none; cursor: pointer; padding: 0 var(--sp-2); flex: none;
+  .ico { width: 13px; height: 13px; flex: none; } &:hover { color: var(--muted); } }
+/* a paused reminder still reads as itself, just stood down — never deleted, never hidden */
+.rem-row.paused { .rem-lead, .rem-sev { color: var(--faint); } .rem-seg { background: none; color: var(--faint); } .dots i { opacity: .25; } }
+/* suggestions: grounded, 1–3, one tap to become a row; a covered one is not rendered at all */
+.rem-sug-head { padding: var(--sp-6) var(--sp-4) var(--sp-2);
+  font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--faint);
+  }
+.rem-sug { display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left; padding: var(--sp-6) var(--sp-8);
+  border-radius: var(--r-6); font-size: var(--fs-13); color: var(--muted); background: none; border: none; cursor: pointer;
+  .ico { width: 15px; height: 15px; flex: none; color: var(--faint); }
+  .plus { margin-left: auto; font-size: 19px; line-height: 1; color: var(--muted); padding: 0 var(--sp-2); }
+  &:hover { background: var(--hover); color: var(--ink); } }
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 .pop.rel-pop { min-width: 280px; padding: var(--sp-8) var(--sp-10); }
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 10%, var(--hover)); }
@@ -2176,3 +2208,26 @@ html[data-theme="dark"] { color-scheme: dark; }
   &:focus-within { border-color: var(--muted); }
   input { field-sizing: content; min-width: 70px; max-width: 160px; padding: 0; border: none; background: none; color: var(--ink); font-size: var(--fs-12);   /* 70px fits the placeholder; 160px caps growth inside the pop */
     &::placeholder { color: var(--faint); } } }
+
+/* Import preview — same sheet idiom as the shortcuts cheat-sheet, widened for a JSON path + message. */
+.import-sheet{width:min(560px,92vw);max-height:88vh;overflow-y:auto}
+.imp-list{gap:var(--sp-2);margin-top:var(--sp-8)}
+.imp-row,.imp-problem{padding:var(--sp-4) var(--sp-6);border-radius:var(--r-6)}
+.imp-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imp-meta{flex:none}
+.imp-problem{background:var(--hover);align-items:baseline}
+.imp-problem code{flex:none;color:var(--muted);font-size:var(--fs-11)}
+
+/* Page-wide file-drop veil. Calm: a blur wash, no border, one line of instruction. */
+.drop-veil{position:fixed;inset:0;z-index:60;background:color-mix(in oklch,var(--bg) 72%,transparent);backdrop-filter:blur(6px)}
+.drop-note{padding:var(--sp-16) var(--sp-24);border-radius:var(--r);background:var(--panel);box-shadow:var(--shadow);font-size:var(--fs-14);
+  animation:drop-in 160ms var(--ease-out) both}
+@keyframes drop-in{from{opacity:0;transform:scale(.97)}}
+@media (prefers-reduced-motion:reduce){.drop-note{animation:none}}
+
+/* Bulk-add guide — the shortcuts-sheet idiom with room for a JSON sample. */
+.guide-sheet{width:min(560px,92vw);max-height:88vh;overflow-y:auto}
+/* The sample scrolls INSIDE its own box: it is reference material, and letting it grow pushed the
+   "Copy prompt" action — the whole point of the sheet — below the fold. */
+.guide-pre{margin:var(--sp-6) 0 0;padding:var(--sp-8) var(--sp-10);border-radius:var(--r-6);background:var(--hover);
+  font-size:var(--fs-11);line-height:1.5;white-space:pre;overflow:auto;max-height:210px}

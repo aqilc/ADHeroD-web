@@ -24,8 +24,6 @@ export function hydrateTask(row) {
     starts_at: row.starts_at ?? null,
     ends_at: row.ends_at ?? null,
     tz: row.tz ?? null,
-    claim: row.claim ?? null,
-    accepts: row.accepts ?? null,
     parent_id: row.parent_id ?? null,
     area_ids: row.area_ids ?? [],
     goal_ids: row.goal_ids ?? [],
@@ -80,7 +78,6 @@ export function dehydrateTask(task) {
       completions: task.completions ?? [],
       recurrence: task.recurrence ?? null,
       starts_at: task.starts_at ?? null, ends_at: task.ends_at ?? null, tz: task.tz ?? null,
-      claim: task.claim ?? null, accepts: task.accepts ?? null,
     },
     // task↔task edges live in one table now, discriminated by `type`.
     task_relations: [
@@ -123,7 +120,6 @@ function hydrateBlock(row) {
     recurrence: row.recurrence ?? null,
     location_id: row.location_id ?? null,
     areas: row.area_ids ?? [],
-    energy: row.energy ?? null, availability: row.availability ?? null,
     color: row.color ?? null, source: row.source ?? 'local',
     est_minutes: row.est_minutes ?? null,
     created_at: row.created_at, updated_at: row.updated_at,
@@ -212,6 +208,7 @@ export function createSupabaseStore(client) {
     };
   }
   const COLL = {
+    reminders: collection('reminders', { order: 'created_at' }),
     events: collection('events', { order: 'starts_at', hydrate: hydrateEvent }),
     blocks: collection('blocks', { order: 'starts_at', hydrate: hydrateBlock }),
     goals: collection('goals', { order: 'position', hydrate: hydrateGoal }),
@@ -410,12 +407,14 @@ export function createSupabaseStore(client) {
       add: fields => COLL.events.insert({
         title: fields.title || '', notes: fields.notes ?? null,
         starts_at: fields.starts_at, ends_at: fields.ends_at, all_day: fields.all_day ?? false,
-        color: fields.color ?? null, source: 'local', external_id: null,
+        // ics_seq is deliberately NOT here: against a DB that hasn't had the column applied an unknown column
+        // fails the WHOLE insert, so it rides a follow-up update that can fail on its own (web/CLAUDE.md).
+        color: fields.color ?? null, source: 'local', external_id: fields.external_id ?? null,
         location_mode: fields.location?.mode ?? 'any', location_ids: fields.location?.ids ?? [],
         recurrence: fields.recurrence ?? null,
       }),
       update(id, fields) {
-        const upd = pick(fields, ['title', 'notes', 'starts_at', 'ends_at', 'all_day', 'color', 'source', 'external_id']);
+        const upd = pick(fields, ['title', 'notes', 'starts_at', 'ends_at', 'all_day', 'color', 'source', 'external_id', 'ics_seq']);
         if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;
         if ('location' in fields) { upd.location_mode = fields.location?.mode ?? 'any'; upd.location_ids = fields.location?.ids ?? []; }
         return COLL.events.patch(id, upd);
@@ -429,11 +428,11 @@ export function createSupabaseStore(client) {
         title: fields.title || '', starts_at: fields.starts_at, ends_at: fields.ends_at,
         all_day: fields.all_day ?? false, location_id: fields.location_id ?? null,
         area_ids: fields.areas ?? [],
-        energy: fields.energy ?? null, availability: fields.availability ?? null, color: fields.color ?? null, source: 'local',
+        color: fields.color ?? null, source: 'local',
         recurrence: fields.recurrence ?? null,
       }),
       update(id, fields) {
-        const upd = pick(fields, ['title', 'starts_at', 'ends_at', 'all_day', 'location_id', 'energy', 'availability', 'color', 'source', 'est_minutes']);
+        const upd = pick(fields, ['title', 'starts_at', 'ends_at', 'all_day', 'location_id', 'color', 'source', 'est_minutes']);
         if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;
         if ('areas' in fields) upd.area_ids = fields.areas ?? [];
         return COLL.blocks.patch(id, upd);
@@ -441,7 +440,22 @@ export function createSupabaseStore(client) {
       remove: id => COLL.blocks.del(id),
     },
 
-    scheduleItems: {
+      // User-authored reminders. severity/repeat/times/message/paused are POST-db:apply columns: an unknown
+    // column rejects the whole INSERT, so retry once without them — a missing column costs its fields, never the row.
+    reminders: {
+      list: () => COLL.reminders.list(),
+      async add({ task_id, anchor, offset_minutes, at, severity, repeat, times, message }) {
+        const anc = anchor || 'absolute';
+        const row = { ref_type: 'task', ref_id: task_id, kind: 'user', anchor: anc,
+          offset_minutes: anc === 'absolute' ? null : (offset_minutes ?? 0), at: anc === 'absolute' ? (at ?? null) : null };
+        const extra = { severity: severity ?? 'ping', repeat: repeat ?? null, times: times ?? null, message: message ?? null, paused: false };
+        return (await COLL.reminders.insert({ ...row, ...extra })) || COLL.reminders.insert(row);
+      },
+      update: (id, fields) => COLL.reminders.patch(id, fields),
+      remove: id => COLL.reminders.del(id),
+    },
+
+  scheduleItems: {
       list: () => COLL.schedule_items.list(),
       add: ({ task_id, block_id, role, position, date, start, duration_min }) => COLL.schedule_items.insert({
         task_id, block_id: block_id ?? null, role: role ?? 'during', position: position ?? 0,
@@ -525,7 +539,7 @@ export function createSupabaseStore(client) {
           const uid = await userId(); const ts = new Date().toISOString();
           captureTz(fields);
           const curr = _cTasks.find(x => x.id === id);
-          const upd = { updated_at: nextTs(ts, curr?.updated_at), ...pick(fields, ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'task_size', 'anchor', 'possible', 'starts_at', 'ends_at', 'tz', 'claim', 'accepts', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'sidebar', 'milestone', 'checklist_plain']) };
+          const upd = { updated_at: nextTs(ts, curr?.updated_at), ...pick(fields, ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'task_size', 'anchor', 'possible', 'starts_at', 'ends_at', 'tz', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'sidebar', 'milestone', 'checklist_plain']) };
           if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;   // one jsonb column now
           if ('location' in fields) { upd.location_mode = fields.location?.mode ?? 'any'; upd.location_ids = fields.location?.ids ?? []; }
           if ('areas' in fields || 'area_ids' in fields) upd.area_ids = await resolveAreaIds(fields);

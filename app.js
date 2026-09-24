@@ -15,10 +15,12 @@ document.head.insertAdjacentHTML('beforeend',
 
 import { createLocalStore, descendantIds, ancestorIds, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, isBlocked, MAX_DEPTH, pendingSweep, placedMap } from './store.js';
 import { guardedFields, trashView, pruneJournal } from './recovery.js';
-import { inNotes } from './predicates.js';
-import { parseDateText, parseRecurrence, isoDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, tokenizeAll, parseImportanceWords, recurrenceLabel, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
+import { inNotes, isNotesName } from './predicates.js';
+import { anchorsFor, suggestionsFor, isRepeating, leadIcon, userReminders, previewText, offsetLabel } from './reminders.js';
+import { parseDateText, parseRecurrence, isoDate, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, tokenizeAll, parseImportanceWords, recurrenceLabel, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize } from './search.js';
 import { calendarItems, blocksInRange, occurrencesInRange, timeOf, sizeFromMinutes, minutesForSize } from './calendar.js';
+import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
 import { esc as escHtml, mdLive as mdLiveRender, chkLive as chkLiveRender, byDone, chkVisible, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, areaChipHtml } from './ui.js';
@@ -149,7 +151,7 @@ const PILL_SPEC = {
 };
 // Decode a pill's dataset.value back to its typed JS value (JSON-encoded kinds vs string vs number).
 function pillValue(kind, raw) { const sp = PILL_SPEC[kind]; return sp.json ? JSON.parse(raw) : sp.num ? +raw : raw; }
-const DIALOG_KEYS = ['shortcutsOpen', 'trashOpen', 'locMgr', 'filterEdit', 'eventEdit', 'blockEdit', 'delAsk'];
+const DIALOG_KEYS = ['shortcutsOpen', 'trashOpen', 'locMgr', 'filterEdit', 'eventEdit', 'blockEdit', 'delAsk', 'importPreview', 'guideOpen'];
 // Completion-relevant fields for undo/redo fx diff — shared across _captureCompletionFx and _performOne task-delete path.
 const FX_FIELDS = t => ({ completed_at: t.completed_at ?? null, recur_from: t.recur_from ?? null, completions: t.completions, recurrence: t.recurrence, checklist: t.checklist ?? null });
 // Picker specs — drives openPicker/refreshPicker/pickPill/pickerKeydown generically.
@@ -177,7 +179,7 @@ for (const k in PICKERS) if (PICKERS[k].word) {
   PICKERS[k].find = txt => { let i = -1, m; re.lastIndex = 0; while ((m = re.exec(txt))) i = m.index + m[0].length - n; return i; };
 }
 // The composer draft's empty shape — one source of truth for the title draft, resetDraft, and subtask sub-drafts.
-const emptyDraft = () => ({ content: '', notes: '', importance: 'none', on: '', available_from: '', deadline_at: '', durMin: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] }, needs: [], neededBy: [] });
+const emptyDraft = () => ({ content: '', notes: '', importance: 'none', on: '', available_from: '', deadline_at: '', durMin: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], recurrence: null, location: { mode: 'any', ids: [] }, needs: [], neededBy: [], reminders: [] });
 let _chkQ = null, _chkFuzzy = null;   // ghost-find memo (query+len → id→ranges) + its uFuzzy instance
 const QF_DUE = { today: { verb: 'due', label: 'today', col: 'var(--q-today)' }, overdue: { verb: '', label: 'overdue', col: 'var(--p1)' }, has: { verb: 'that', label: 'has a date', col: 'var(--accent)' }, none: { verb: 'with', label: 'no date', col: 'var(--faint)' } };
 // Filter-editor due chips: [query word, label, QF_DUE key for the colour]. The list says 'has a date', AQL says `any` —
@@ -233,7 +235,8 @@ document.addEventListener('alpine:init', () => {
     dragOverRegion: null,   // region currently hovered as a drop target
     events: [],             // calendar events, loaded from store
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
-    scheduleItems: [],      // task↔block attachments; [] before migration is applied
+    scheduleItems: [],
+    reminders: [],           // user-authored reminder rows; [] before db:apply carries the user columns      // task↔block attachments; [] before migration is applied
     blockDays: [],          // block_day answer rows (start/skip/undo written here and on Android)
     clView: 'month',        // calendar view: day | week | month
     clSideOpen: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle + drop-hover day iso
@@ -289,6 +292,9 @@ document.addEventListener('alpine:init', () => {
     draft: emptyDraft(),
     subDraft: emptyDraft(),           // scratch draft the focused subtask editor's pills write to (rebuilt from that row's DOM on focus)
     composer: { open: false },
+    importPreview: null,              // { kind:'ics'|'tasks', name, items, problems, busy } — the ONE import surface
+    fileDrag: false,                  // a file is over the window (page-wide .ics drop)
+    guideOpen: false,                 // bulk-add format + copyable assistant prompt
     palette: { open: false, q: '', sel: 0 },
     listQ: '',          // ⌘K escalates to palette
     showCompleted: false,   // view-controls toggle; completed tasks hidden by default, persisted to localStorage
@@ -363,6 +369,7 @@ document.addEventListener('alpine:init', () => {
       }
       await this.reloadAll();
       await this._migratePlaceStrings();
+      await this._healNotesSidebar();
       this._journalLoad();
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
       setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
@@ -2189,6 +2196,7 @@ document.addEventListener('alpine:init', () => {
         durMin: min,
         project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: [...(t.area_ids || [])], goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })).sort(byDone), recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
         location: t.location ? { ...t.location, ids: [...(t.location.ids || [])] } : { mode: 'any', ids: [] },
+        reminders: userReminders(this.reminders, t.id).map(r => ({ ...r })),
       };
     },
     // The composer IS a row in the visible list, so a task the current view doesn't hold (another project, a
@@ -2226,6 +2234,43 @@ document.addEventListener('alpine:init', () => {
       this.pickerQ = '';
       this._initDraftSafety();   // baseline + restore any unsaved draft for this task
       this.openComposer();
+    },
+    // ── Reminders (composer) ───────────────────────────────────────────────────────────────────────
+    // The draft stages the sentences; _saveReminders reconciles on save, so Cancel really cancels.
+    remLead(r) { return leadIcon(r); },
+    remWhen(r) {
+      if (r.anchor && r.anchor !== 'absolute') {
+        const a = anchorsFor(this._draftTaskShape()).find(x => x.key === r.anchor), n = Math.abs(r.offset_minutes || 0);
+        const off = !n ? 'at' : n % 1440 === 0 ? (n / 1440) + 'd' : n % 60 === 0 ? (n / 60) + 'h' : n + 'm';
+        return (n ? off + ((r.offset_minutes || 0) < 0 ? ' before ' : ' after ') : 'at ') + (a?.label || r.anchor).toLowerCase();
+      }
+      return (r.times || []).length ? r.times.join(' + ') : this.remTimeLabel(r.at);
+    },
+    remTimeLabel(at) { return at ? (isoDate(new Date()) === (at || '').slice(0, 10) ? '' : this.dayName(at) + ' ') + timeOf(at) : 'no time'; },
+    dayName(at) { const d = new Date(at); return isNaN(d) ? '' : ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]; },
+    // The suggestion engine reads the draft's OWN facts, so it stays right while the user is still typing.
+    _draftTaskShape() { const d = this.draft; return { deadline_at: d.deadline_at, available_from: d.available_from, recur_from: d.on, recurrence: d.recurrence }; },
+    remSuggest() { return suggestionsFor(this._draftTaskShape(), this.draft.reminders); },
+    remAdd(sug) {
+      this.draft.reminders.push({ id: 'new-' + Math.random().toString(36).slice(2, 9), _new: true,
+        anchor: sug.anchor, offset_minutes: sug.offset_minutes ?? null, at: sug.at || null, severity: 'ping', repeat: null, times: null, paused: false });
+    },
+    remDrop(id) { this.draft.reminders = this.draft.reminders.filter(r => r.id !== id); },
+    remCycleSev(r) { const o = ['gentle', 'ping', 'alarm']; r.severity = o[(o.indexOf(r.severity || 'ping') + 1) % 3]; },
+    // The lead switch is the pause, and only a self-repeating reminder has something to pause.
+    remLeadTap(r) { if (isRepeating(r)) r.paused = !r.paused; else this.remCycleSev(r); },
+    remLabel() { const n = this.draft.reminders.length; return n ? String(n) : 'Remind'; },
+    // Create-then-delete: a reconcile never leaves the user with fewer reminders than they authored.
+    async _saveReminders(taskId, d) {
+      const had = userReminders(this.reminders, taskId), keep = new Set();   // derived rows are the brain's — never ours to delete
+      for (const r of d.reminders || []) {
+        const fields = { severity: r.severity, repeat: r.repeat, times: r.times, message: r.message ?? null, paused: !!r.paused };
+        if (r._new) { const row = await this.store.reminders.add({ task_id: taskId, anchor: r.anchor, offset_minutes: r.offset_minutes, at: r.at, ...fields });
+          if (row) keep.add(row.id); }
+        else { await this.store.reminders.update(r.id, fields); keep.add(r.id); }
+      }
+      for (const r of had) if (!keep.has(r.id)) await this.store.reminders.remove(r.id);
+      if (had.length || (d.reminders || []).length) await this._reloadFor('reminder');
     },
     // sidebar project → navigate, not edit
     openTaskById(id) { const t = this.byId.get(id); if (!t) return; this.isSidebar(t) ? this.setNav('project', t.id) : this.editTask(t); },
@@ -2747,6 +2792,19 @@ document.addEventListener('alpine:init', () => {
       }
       if (close) { this.draft.dateText = ''; this.pop = null; }
     },
+    // Grounded scheduling suggestions: clock-facts only (today/tomorrow/weekend/nextweek).
+    // Suppressed by similarity (same day as draft.on); deduped; max 3 shown.
+    calSuggestions() {
+      const on = (this.draft.on || '').slice(0, 10);
+      const seen = new Set();
+      return [
+        { label: 'Today', iso: quickDate('today') },
+        { label: 'Tomorrow', iso: quickDate('tomorrow') },
+        { label: 'This weekend', iso: quickDate('weekend') },
+        { label: 'Next week', iso: quickDate('nextweek') },
+      ].filter(s => { if (s.iso === on || seen.has(s.iso)) return false; seen.add(s.iso); return true; }).slice(0, 3);
+    },
+    calSugApply(iso) { this.draft.on = iso; this.dreg = 'on'; this.pop = null; },
     dueLabel() {
       // Recurring: show each rule + its ending (until <date> / N×) so a repeat's end is visible on the
       // button without opening the picker; every rule in a multi-repeat carries its own end.
@@ -3177,6 +3235,7 @@ document.addEventListener('alpine:init', () => {
         });
         _carryHint = null;   // defensive: cleared by _listModel if the surface was visible, else clear here
         if (updated) await this._saveSched(editId, draft);   // the ON register lands as a date-item, never as recur_from
+        if (updated) await this._saveReminders(editId, draft);
         if (updated && await this._applyDraftLinks(editId, draft)) await this.loadTasks();
         if (!updated) {
           // Save failed — reopen the composer with the user's unsaved edits so nothing is silently lost.
@@ -3272,6 +3331,8 @@ document.addEventListener('alpine:init', () => {
       for (const [c, a] of [
         [this.shortcutsOpen, ()=>this.shortcutsOpen=false], [this.trashOpen, ()=>this.trashOpen=false],
         [this.palette.open, ()=>this.palette.open=false], [this.confirm, ()=>this.confirmNo()],
+        [this.guideOpen, ()=>this.guideOpen=false],
+        [this.importPreview, ()=>this.importPreview=null],   // above the rest: it is the frontmost thing when open
         [this.delAsk, ()=>this.delAsk=null], [this.locMgr, ()=>this.locMgr=false],
         [this.filterEdit, ()=>this.filterEdit=null],
         [this.eventEdit, ()=>this.eventEdit=null], [this.blockEdit, ()=>this.blockEdit=null],
@@ -3318,6 +3379,7 @@ document.addEventListener('alpine:init', () => {
         location: async () => { this.locations = await st.locations.list(); this.homeLocationId = st.homeLocationId(); this.currentRegion = st.currentRegion(); },
         // _rowV too: a date-item IS a row's date now, so a placement change must repaint the list, not just the calendar
         scheduleItem: async () => { const si = await st.scheduleItems.list(); _calDataV++; this._rowV++; this.scheduleItems = si; },
+        reminder: async () => { this.reminders = await st.reminders.list(); this._rowV++; },
         blockDay: async () => { const bd = await st.blockDays.list();
           if (window.__bdTestSync) { if (window.__bdBaseOrder) { window.Alpine.disableEffectScheduling(() => { this.blockDays = bd; }); _calDataV++; } else { _calDataV++; window.Alpine.disableEffectScheduling(() => { this.blockDays = bd; }); } } else { _calDataV++; this.blockDays = bd; } },
       };
@@ -3872,6 +3934,7 @@ document.addEventListener('alpine:init', () => {
         row.position = maxPos + 1;
       }
       await this._saveSched(row.id, this.draft);   // the ON register lands as a date-item, never as recur_from
+      await this._saveReminders(row.id, this.draft);
       await this._applyDraftLinks(row.id);   // before the reload below, so the new links are in the first render
       this.tasks.push(row); if (row.parent_id) this.parentIds.add(row.parent_id);   // keep hasChildren truthful until loadTasks rebuilds
       await Promise.all([this.loadTasks(), this.loadAreas()]);
@@ -4052,9 +4115,10 @@ document.addEventListener('alpine:init', () => {
         .every(k => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
     },
     // Commit an edited child row: rebuild its sub-draft from the row's pills, and update the child if anything changed.
-    // Skips while a picker is mid-selection (blur fires before the pick lands — the pick refocuses + a later blur commits).
+    // The mid-pick skip lives on the @blur call site, NOT here — clicking a suggestion blurs first (the pick
+    // refocuses + a later blur commits), but ⌘Enter with the picker still open must still flush, or the save
+    // silently throws away everything typed into the row.
     async commitChildEdit(c, advance = false) {
-      if (this.areaPicker.open) return;
       const el = document.querySelector('.composer-entries .entry[data-id="' + c.id + '"] .entry-txt.sub-ce');
       if (el) this.focusSubEditor(el, c);            // rebuild subDraft from this row's DOM (idempotent)
       const fields = this._subFields(this.subDraft);
@@ -4256,22 +4320,6 @@ document.addEventListener('alpine:init', () => {
       this._paintKb();
       if (_kbEl) this._revealRow(id);
     },
-    async _copyText(text, msg) {
-      try { await navigator.clipboard.writeText(text); }
-      catch { const ta = Object.assign(document.createElement('textarea'), { value: text }); document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
-      if (msg) this.toast(msg);
-    },
-    copyCode(e) {
-      const button = e.target.closest('.code-copy'); if (!button) return;
-      e.preventDefault(); e.stopPropagation();
-      return this._copyText(button.closest('.md-code').querySelector('code').textContent, 'Copied');
-    },
-    codeKey(e) {
-      if (e.target.closest('.code-copy') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();
-      if (e.key !== 'Tab' || e.shiftKey || !e.target.matches('.desc, .entry.chk .entry-txt') || !/^```[^\s`]*[ \t]*\r?$/m.test(e.target.textContent)) return;
-      const el = e.target; el.blur();
-      const button = el.querySelector('.code-copy'); if (button) { e.preventDefault(); button.focus(); }
-    },
     // --- Delegated row events (bound once on the <ul>, resolve the row by data-id) — see the list markup ---
     _rowFromEl(el) { return el ? (_rowMap?.get(el.dataset.id) ?? _doneMap?.get(el.dataset.id) ?? null) : null; },   // O(1) via Maps maintained in visibleRows(); active OR Done list
     listOver(e) {
@@ -4422,6 +4470,9 @@ document.addEventListener('alpine:init', () => {
     onPaste(e) {
       const text = (e.clipboardData || window.clipboardData)?.getData('text') || '';
       if (!text) return;
+      // A structured payload takes the whole paste — it can never be a title. The sentinel is what makes
+      // this safe to intercept: ordinary text, markdown and unrelated JSON all fall through untouched.
+      if (looksLikePayload(text)) { e.preventDefault(); return this.openImport('tasks', text); }
       const segs = tokenizeAll(text, new Date(), this.locNames());
       if (!segs.some(s => s.kind)) return;          // no tokens → let the browser paste normally
       e.preventDefault();
@@ -4433,6 +4484,172 @@ document.addEventListener('alpine:init', () => {
         onConfirm: () => this.insertSegments(segs, range),
         onCancel: () => this.insertAtRange(range, document.createTextNode(text)),
       });
+    },
+    // ─── Import — dropped .ics calendars and pasted {"adherod":1} payloads ────────────────────────
+    // Both paths land in ONE preview. Nothing is written until the payload validates clean and you press
+    // the button: a partly-applied bad import is the worst outcome this feature can have.
+    _importCtx() {
+      return { lists: this.tasks.filter(t => t.sidebar).map(t => t.content), areas: this.areas.map(a => a.name),
+               places: this.locNames(), today: isoDate(new Date()) };
+    },
+    openImport(kind, text, name = '') {
+      const r = kind === 'ics' ? parseICS(text) : parsePayload(text, this._importCtx());
+      this.importPreview = { kind, name, items: r.items, problems: r.problems, busy: false };
+    },
+    // Preview rows draw with the SAME component as the palette, the sweep dialog and the relation wells —
+    // rowBodyHtml in minimal mode. This is taskLine's sibling: taskLine adapts a SAVED row (byId lookups for
+    // parent and areas), and an import item has no id, no byId entry, and a list that may not exist yet.
+    importLine(it) {
+      const f = it.fields || {};
+      const t = { content: it.content, completed_at: null, archived_at: null, recurrence: f.recurrence ?? null, checklist: f.checklist || [] };
+      const known = new Map((this.areas || []).map(a => [a.name.trim().toLowerCase(), a]));
+      return rowBodyHtml({
+        t, pc: this.pc(f.importance || 'none'), titleHtml: mdTitleFn(it.content),
+        // A declared-but-not-yet-created area has no row to read a colour off — fall back to the default
+        // rather than dropping the chip, so the preview shows what you are agreeing to either way.
+        areas: (it.areaNames || []).map(n => { const a = known.get(n.trim().toLowerCase()); return { name: n, icon: a?.icon, color: a?.color || this.areaDefault }; }),
+        projName: it.listName || '', isDefaultProj: false, note: false, rels: [], chk: f.checklist || [],
+      }, { minimal: true });
+    },
+    // Only what the row itself does NOT already say: the check carries importance, the chip carries the
+    // list, the area chips carry areas. Repeating them here was noise.
+    importRowMeta(it) {
+      if (it.kind === 'event') return [it.starts_at.replace('T', ' '), it.recurrence ? 'repeats' : '', it.detached_from ? 'moved occurrence' : ''].filter(Boolean).join(' · ');
+      const f = it.fields || {};
+      return [it.on ? 'on ' + it.on.date + (it.on.time ? ' ' + it.on.time : '') : '',
+        f.deadline_at ? 'by ' + f.deadline_at : '', f.recurrence ? 'repeats' : '',
+        f.est_minutes ? f.est_minutes + 'm' : '',
+        it.needs?.length ? 'needs ' + it.needs.length : '', it.reminders?.length ? 'reminder' : ''].filter(Boolean).join(' · ');
+    },
+    guideExample() { return JSON.stringify(PROMPT_EXAMPLE, null, 2); },
+    copyPrompt() { return this._copyText(importPrompt(this._importCtx()), 'Prompt copied — paste it to your assistant'); },
+    importTitle() {
+      const p = this.importPreview; if (!p) return '';
+      return p.kind === 'ics' ? (p.name || 'Calendar') : 'Add tasks';
+    },
+    async _copyText(text, msg) {
+      try { await navigator.clipboard.writeText(text); }
+      catch { const ta = Object.assign(document.createElement('textarea'), { value: text }); document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }   // no clipboard permission → the old way still works
+      if (msg) this.toast(msg);
+    },
+    copyCode(e) {
+      const button = e.target.closest('.code-copy'); if (!button) return;
+      e.preventDefault(); e.stopPropagation();
+      return this._copyText(button.closest('.md-code').querySelector('code').textContent, 'Copied');
+    },
+    codeKey(e) {
+      if (e.target.closest('.code-copy') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();   // button keys must never edit/delete the containing row
+      // Editing uses raw text; restore decoration before Tab searches for the copy control.
+      if (e.key !== 'Tab' || e.shiftKey || !e.target.matches('.desc, .entry.chk .entry-txt') || !/^```[^\s`]*[ \t]*\r?$/m.test(e.target.textContent)) return;
+      const el = e.target; el.blur();
+      const button = el.querySelector('.code-copy'); if (button) { e.preventDefault(); button.focus(); }
+    },
+    // Naming every problem only pays off if you can hand the list back to whatever wrote the payload.
+    copyProblems() {
+      const p = this.importPreview; if (!p?.problems.length) return;
+      const head = `${p.problems.length} problem${p.problems.length === 1 ? '' : 's'} with this import — fix them and resend the whole payload:`;
+      return this._copyText([head, ...p.problems.map(x => `- ${x.path}: ${x.message}`)].join('\n'), 'Problems copied');
+    },
+
+    // Page-wide file drop. Gated on a FILE drag so it never steals the task/event drags, and on the
+    // extension so an unrelated file is left unclaimed — the OS then shows its own bounce-back, which is
+    // the honest answer. A .ics we CAN'T read says so out loud instead of doing nothing.
+    onFileDragOver(e) {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault(); this.fileDrag = true;
+    },
+    onFileDragLeave(e) { if (!e.relatedTarget) this.fileDrag = false; },   // null relatedTarget = left the window, not a child
+    async onFileDrop(e) {
+      if (!e.dataTransfer?.types?.includes('Files')) return;
+      e.preventDefault(); this.fileDrag = false;
+      const files = [...(e.dataTransfer.files || [])].filter(f => f.name.toLowerCase().endsWith('.ics'));
+      if (!files.length) return;   // not ours — stay silent, same as a non-.ics drop on macOS
+      let text;
+      try { text = (await Promise.all(files.map(f => f.text()))).join('\n'); }
+      catch { return this.toast("Couldn't read that calendar"); }
+      const r = parseICS(text);
+      if (!r.items.length && !r.problems.length) return this.toast('No events in that file');
+      this.importPreview = { kind: 'ics', name: files.map(f => f.name).join(', '), items: r.items, problems: r.problems, busy: false };
+    },
+
+    async applyImport() {
+      const p = this.importPreview;
+      if (!p || p.problems.length || p.busy || !p.items.length) return;
+      p.busy = true;
+      try { await (p.kind === 'ics' ? this._importEvents(p.items) : this._importTasks(p.items)); this.importPreview = null; }
+      finally { if (this.importPreview) this.importPreview.busy = false; }
+    },
+    _nEvents(n) { return n + (n === 1 ? ' event' : ' events'); },
+    // New UIDs are created; an existing UID refreshes ONLY on a higher SEQUENCE, so re-dropping an older
+    // export can't roll data back and re-dropping the same file can't clobber edits made since.
+    async _importEvents(items) {
+      const uidRow = () => new Map((this.events || []).filter(e => e.external_id).map(e => [e.external_id, e]));
+      const before = uidRow(), ops = [], refresh = [];
+      for (const it of items) {
+        const fields = { title: it.title, starts_at: it.starts_at, ends_at: it.ends_at, all_day: it.all_day, recurrence: it.recurrence ?? null };
+        const prev = it.external_id ? before.get(it.external_id) : null;
+        if (!prev) ops.push({ kind: 'create', target: 'event', fields: { ...fields, external_id: it.external_id ?? null } });
+        else if (icsReplaces(prev.ics_seq, it.seq)) refresh.push([prev.id, fields]);
+      }
+      for (const [id, fields] of refresh) await this._journalRowChange('Updated event', 'event', id, () => this.store.events.update(id, fields), { bin: true });
+      if (ops.length) await this.perform(`Imported ${this._nEvents(ops.length)}`, { kind: 'composite', target: 'event', ops }, { bin: true });
+      if (!ops.length && !refresh.length) return this.toast('Already imported — nothing changed');
+      // ics_seq rides a follow-up update, never the insert: an unknown column fails the WHOLE row, so a
+      // not-yet-applied column must cost this one field instead of the whole import.
+      const after = uidRow();
+      for (const it of items) {
+        const row = it.external_id && after.get(it.external_id);
+        if (row && (it.seq ?? 0) !== (row.ics_seq ?? 0)) { try { await this.store.events.update(row.id, { ics_seq: it.seq ?? 0 }); } catch {} }
+      }
+      await this._reloadFor('event');
+    },
+    // Create-first, roll back on ANY failure — worst case is a no-op, never half a paste. Relations,
+    // placements and reminders are separate passes because create() carries none of them (and LocalStore
+    // drops blocked_by/relates at create outright, so a create-time link would work only when signed in).
+    async _importTasks(items) {
+      const made = new Map(), created = [], lists = new Map(), rows = new Map();
+      try {
+        for (const it of items) {
+          const fields = { ...it.fields, content: it.content };
+          if (it.parentRef) fields.parent_id = made.get(it.parentRef)?.id ?? null;
+          else if (it.listName) fields.parent_id = await this._importList(it.listName, lists, created);
+          if (it.areaNames?.length) fields.areas = it.areaNames;            // names → find-or-create, both stores
+          if (it.fields.location) fields.location = { mode: it.fields.location.mode, ids: this._locIds(it.fields.location.names) };
+          const row = await this.store.tasks.create(fields);
+          if (!row) throw new Error(`could not create “${it.content}”`);
+          created.push(row); rows.set(it, row); if (it.ref) made.set(it.ref, row);
+        }
+        for (const it of items) {
+          const id = rows.get(it).id;
+          for (const ref of it.needs) await this.store.tasks.link(id, made.get(ref).id);
+          for (const ref of it.relates) await this.store.tasks.link(id, made.get(ref).id, 'relates');
+          if (it.on) await this.store.scheduleItems.add({ task_id: id, date: it.on.date, start: it.on.time || null });
+          for (const r of it.reminders || []) await this.store.reminders.add({ task_id: id, ...r });
+        }
+      } catch (err) {
+        for (const row of [...created].reverse()) { try { await this.store.tasks.remove(row.id); } catch {} }
+        await Promise.all([this.loadTasks(), this.loadAreas()]);
+        return this.toast(`Import failed — nothing was added (${err.message})`);
+      }
+      await Promise.all([this.loadTasks(), this.loadAreas()]);
+      // One entry for the whole paste. Only the ROOTS are listed: removing a task takes its subtree with it.
+      const roots = created.filter(r => !created.some(c => c.id === r.parent_id));
+      this._pushEntry(`Added ${this._nTasks(created.length)}`, { kind: 'composite', target: 'task',
+        ops: roots.map(r => ({ kind: 'remove', target: 'task', id: r.id, rows: this._rowsForDelete('task', r.id) })).reverse() }, { bin: true });
+      await this._reloadFor('scheduleItem');
+    },
+    async _importList(name, cache, created) {
+      const key = name.trim().toLowerCase();
+      if (cache.has(key)) return cache.get(key);
+      const found = this.tasks.find(t => t.sidebar && t.content.trim().toLowerCase() === key);
+      if (found) { cache.set(key, found.id); return found.id; }
+      const row = await this.store.tasks.create({ content: name, sidebar: true, parent_id: null });
+      if (!row) throw new Error(`could not create the list “${name}”`);
+      created.push(row); cache.set(key, row.id); return row.id;
+    },
+    _locIds(names = []) {
+      const by = new Map((this.locations || []).map(l => [l.name.trim().toLowerCase(), l.id]));
+      return names.map(n => by.get(n.trim().toLowerCase())).filter(Boolean);
     },
     insertAtRange(range, node) {
       const el = this._nlpEl(); el.focus();
@@ -5705,7 +5922,7 @@ document.addEventListener('alpine:init', () => {
       const cur = this.clBlockDay(blockId, iso);
       if (!cur?.id) return;
       const lbl = label ?? (fields.status === 'running' ? 'Started block' : fields.status === 'skipped' ? 'Skipped block' : 'Undid block day');
-      const rollback = Object.fromEntries(Object.keys(fields).map(k => [k, prev?.[k] ?? null]));
+      const rollback = Object.fromEntries(Object.keys(fields).map(k => [k, prev?.[k] ?? (k === 'status' ? 'pending' : null)]));
       if (Object.keys(rollback).length) this._pushEntry(lbl, { kind: 'update', target: 'blockDay', id: cur.id, after: rollback, was: fields });
     },
     // The Start/Skip panel says "today", so it may only appear for the occurrence that LIVES today — the one you
@@ -5754,11 +5971,17 @@ document.addEventListener('alpine:init', () => {
       }
       if (migrated) await this.loadTasks();
     },
+    async _healNotesSidebar() {
+      // A root 'Notes' predating the seeder (sidebar falsy) shows in every hasChildren-based picker but
+      // vanishes from the roller, whose allProjectRows() requires `sidebar`. Heal the fact, not the readers.
+      const n = this.tasks.find(t => !t.parent_id && isNotesName(t.content) && !t.sidebar);
+      if (n && await this.store.tasks.update(n.id, { sidebar: true })) await this.loadTasks();
+    },
 
     async reloadAll() {
       if (this.store.requiresAuth && !this.session) return;   // cloud adapter: wait until signed in
       // ONE parallel round-trip set (cloud): the whole account in a single query + the two side lists
-      const [b, si, bd] = await Promise.all([this.store.bootstrap(), this.store.scheduleItems.list(), this.store.blockDays.list()]);
+      const [b, si, bd, rem] = await Promise.all([this.store.bootstrap(), this.store.scheduleItems.list(), this.store.blockDays.list(), this.store.reminders.list().catch(() => [])]);
       // ALL awaits above, ONE synchronous block below: Alpine flushes effects during an await, so a reactive
       // write followed by an awaited gap ran renders against the OLD memo keys — and the version bumps after
       // the gap are module-scope, so nothing re-woke (month chips stayed stale after an event edit).
@@ -5767,7 +5990,7 @@ document.addEventListener('alpine:init', () => {
       this.tasks = b.tasks; this.byId = new Map(b.tasks.map(t => [t.id, t])); this.parentIds = new Set(b.tasks.map(t => t.parent_id).filter(Boolean));   // ← list renders (reactive) from here
       this.filters = b.filters; this.locations = b.locations;
       this.events = b.events; this.blocks = b.blocks;
-      this.scheduleItems = si; this.blockDays = bd;
+      this.scheduleItems = si; this.blockDays = bd; this.reminders = rem;
       this.homeLocationId = this.store.homeLocationId(); this.currentRegion = this.store.currentRegion();
       this._defId = this.store.defaultProject();
     },
