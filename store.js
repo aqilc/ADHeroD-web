@@ -8,13 +8,19 @@ import { nextTs } from './recovery.js';
 
 // Max nesting depth (root = 1; Backlog counts as a level). Shared by store guards + app.js drag guards.
 export const MAX_DEPTH = 4;
+// Legacy storage/undo/bin payloads: explicit overview wins, including false.
+export const overviewFields = fields => {
+  if (!('sidebar' in fields)) return fields;
+  const { sidebar, ...rest } = fields;
+  return { ...rest, overview: rest.overview ?? sidebar };
+};
 // Canonical task record — single source of truth. Used by seed/create/normalize AND tests.
 export const baseTask = () => {
   const ts = new Date().toISOString();
   return {
     id: crypto.randomUUID(), content: '', notes: null, importance: 'none', recur_from: null, available_from: null, deadline_at: null,
     est_minutes: null, parent_id: null, area_ids: [], goal_ids: [], color: null, favorite: false, place: null, location: { mode: 'any', ids: [] }, milestone: false,
-    position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], sidebar: false, checklist: [], checklist_plain: false,
+    position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], overview: false, checklist: [], checklist_plain: false,
     recurrence: null, completions: [], created_at: ts, updated_at: ts,
     starts_at: null, ends_at: null, tz: null,
   };
@@ -271,8 +277,8 @@ export function createLocalStore(opts = {}) {
   // Drop a row + scrub its id out of the tasks column that references it (parity with the DB's delete_area/delete_goal RPCs).
   const removeAndScrub = (read, write, id, key) => { dropRow(read, write, id); const tasks = readTasks(); for (const t of tasks) if (t[key]) t[key] = t[key].filter(x => x !== id); writeTasks(tasks); return true; };
 
-  const readTasks = () => readKey(TASKS_KEY);
-  const writeTasks = v => { writeKey(TASKS_KEY, v); reindex(); };
+  const readTasks = () => readKey(TASKS_KEY).map(overviewFields);
+  const writeTasks = v => { writeKey(TASKS_KEY, v.map(overviewFields)); reindex(); };
   const readAreas = () => readKey(AREAS_KEY);
   const writeAreas = v => { writeKey(AREAS_KEY, v); reindex(); };
   const readMeta = () => readKey(META_KEY);
@@ -396,7 +402,7 @@ export function createLocalStore(opts = {}) {
       const tasks = readTasks();
       if (!tasks.some(t => t.parent_id === null && isNotesName(t.content))) {
         const ts = now();
-        writeTasks([...tasks, { ...baseTask(), id: uuid(), content: 'Notes', sidebar: true, created_at: ts, updated_at: ts }]);
+        writeTasks([...tasks, { ...baseTask(), id: uuid(), content: 'Notes', overview: true, created_at: ts, updated_at: ts }]);
       }
       meta.notes_seeded = true; writeMeta(meta);
     }
@@ -422,7 +428,7 @@ export function createLocalStore(opts = {}) {
         const pos = tasks.length ? Math.min(...tasks.map(x => x.position ?? 0)) - 1 : 0;
         t = { id: uuid(), content: fields.project, notes: null, recur_from: null, deadline_at: null,
           est_minutes: null, parent_id: null, area_ids: [], color: null, favorite: false, place: null,
-          position: pos, completed_at: null, blocked_by: [], relates: [], sidebar: true, created_at: ts, updated_at: ts };
+          position: pos, completed_at: null, blocked_by: [], relates: [], overview: true, created_at: ts, updated_at: ts };
         tasks.push(t);
         writeTasks(tasks);
       }
@@ -577,6 +583,7 @@ export function createLocalStore(opts = {}) {
         return tasks.sort((x, y) => (x.position ?? 0) - (y.position ?? 0) || y.created_at.localeCompare(x.created_at));
       },
       async create(fields) {
+        fields = overviewFields(fields);
         try {
           const ts = now();
           captureTz(fields);
@@ -609,7 +616,7 @@ export function createLocalStore(opts = {}) {
             place: fields.place ?? null,
             location: fields.location ?? { mode: 'any', ids: [] },
             position: rows.length ? Math.min(...rows.map(r => r.position ?? 0)) - 1 : 0,
-            sidebar: fields.sidebar ?? false,
+            overview: fields.overview ?? false,
             checklist: fields.checklist ?? [],
             checklist_plain: fields.checklist_plain ?? false,
             milestone: fields.milestone ?? false,
@@ -627,6 +634,7 @@ export function createLocalStore(opts = {}) {
       },
       async reorder(orderedIds) { return reorderRows(readTasks, writeTasks, orderedIds); },
       async update(id, fields) {
+        fields = overviewFields(fields);
         captureTz(fields);
         const rows = readTasks();
         const row = rows.find(r => r.id === id);
@@ -634,6 +642,7 @@ export function createLocalStore(opts = {}) {
         const resolved = {};
         if (fields.project !== undefined || fields.parent_id !== undefined) {
           resolved.parent_id = resolveParent(fields);
+          if (resolved.parent_id && descendantIds(rows, id).includes(resolved.parent_id)) return null;
           delete fields.project;
           _treeDirty = true;
         }
@@ -814,6 +823,8 @@ export function createLocalStore(opts = {}) {
     homeLocationId() { return readMeta().home_location_id ?? null; },   // user's designated "home" place ("at home" NLP)
     setHomeLocation(id) { const m = readMeta(); m.home_location_id = m.home_location_id === id ? null : id; writeMeta(m); },
     currentRegion() { return readMeta().current_region ?? 'Home'; },
+    theme() { return readMeta().theme ?? null; },
+    setTheme(theme) { writeMeta({ ...readMeta(), theme }); },
 
   };
 }

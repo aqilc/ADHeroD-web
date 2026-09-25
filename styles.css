@@ -143,7 +143,7 @@ html { --foot: 56px; }
 .rl-prog::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--bg); }
 .rl-wrap.rl-focus .rl-prog::after { background: color-mix(in srgb, var(--rlc, var(--accent)) 9%, var(--bg)); }
 .rl-nm { flex: 1; font-size: var(--fs-15); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rl-wrap.rl-focus .rl-nm { color: var(--rlc, var(--accent)); font-weight: 700; }
+.rl-wrap.rl-focus .rl-nm { color: color-mix(in srgb, var(--rlc, var(--accent)) 35%, var(--ink)); font-weight: 700; }
 .rl-cnt { font-size: var(--fs-13); color: var(--muted); font-variant-numeric: tabular-nums; }
 .rl-more { background: none; border: 0; color: var(--muted); cursor: pointer; font-weight: 700; letter-spacing: 1px; opacity: .5; padding: 0 var(--sp-2); font-size: var(--fs-15); }
 .rl-more:hover { opacity: 1; }
@@ -250,9 +250,9 @@ html { --foot: 56px; }
 .check.blocked { background: none; border-color: color-mix(in srgb, var(--pc, var(--faint)) 45%, transparent); }
 .item.waiting .title, .item.waiting .m, .item.waiting .badge, .item.waiting .chk-list { opacity: .62; }
 .check .lock-ico { position: absolute; inset: 0; margin: auto; width: var(--lk, 9px); height: var(--lk, 9px); color: var(--muted); opacity: .5; stroke-width: 3; pointer-events: none; }   /* --lk scales it for smaller rings (the 11px calendar chip), same lever as --dash above */
-/* Paused recurrence: amber border + pause icon instead of checkmark. */
-.check.paused { border-color: var(--amber, #f59e0b); }
-.check.paused .pause-ico { position: absolute; inset: 0; margin: auto; width: 8px; height: 8px; color: var(--amber, #f59e0b); fill: currentColor; stroke: none; pointer-events: none; }
+/* Paused recurrence: themed border + pause icon instead of checkmark. */
+.check.paused { border-color: var(--gold); }
+.check.paused .pause-ico { position: absolute; inset: 0; margin: auto; width: 8px; height: 8px; color: var(--gold); fill: currentColor; stroke: none; pointer-events: none; }
 .check.prog { background: conic-gradient(var(--pc) calc(var(--p, 0) * 1%), transparent 0); border-color: var(--pc);
   &:hover { background: conic-gradient(var(--pc) calc(var(--p, 0) * 1%), color-mix(in srgb, var(--pc) 15%, transparent) 0); } }
 /* Archived (can't be completed anymore): inert archive glyph instead of the circle/checkmark; no fill, no hover. */
@@ -309,7 +309,7 @@ html { --foot: 56px; }
 /* Badge rules cover BOTH lines: _fit's ladder moves a badge to .row2.meta, and scoped to .r1r alone the
    moved badge lost its icon size (no viewBox → the 300×150 replaced-element default) and its flex contract. */
 :is(.r1r, .row2.meta) .m { .ico { width: 12px; height: 12px; } }
-:is(.r1r, .row2.meta) .m.dl.over { color: var(--p1); }
+:is(.r1r, .row2.meta) .m.dl.over { color: var(--deadline); }
 :is(.r1r, .row2.meta) .m:not(.loc) { flex: none; }   /* every badge except the location chip holds its size */
 :is(.r1r, .row2.meta) .m.loc { min-width: 0; flex: 0 1 auto; }
 :is(.r1r, .row2.meta) .m.loc > span { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* loc text shrinks first, down to a ~3-4 letter floor, then the title truncates */
@@ -342,9 +342,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .md-code-inline { display: inline-block; max-width: 100%; vertical-align: middle; }
 :is(.desc-line, .chk-txt, .chk-desc):has(.md-code) { max-height: calc(1lh + 2 * var(--sp-4)); }
 :is(.desc-line, .chk-txt, .chk-desc) .md-code > code { max-height: 1lh; scrollbar-width: none; }
-.md-code-key { color: var(--p3); }
-.md-code-str { color: var(--p4); }
-.md-code-num { color: var(--gold); }
+.md-code-key { color: var(--syntax-key); }
+.md-code-str { color: var(--syntax-string); }
+.md-code-num { color: var(--syntax-number); }
 .md-code-com { color: var(--muted); }
 .code-copy { display: flex; align-items: center; border: 0; color: var(--muted); cursor: pointer; user-select: none;
   .ico { width: 14px; height: 14px; } &:hover, &:focus-visible { color: var(--ink); } }
@@ -367,12 +367,12 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   display: inline-block; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .nlp-pill[data-kind="imp"]  { --rc: var(--p1); }
 .nlp-pill[data-kind="date"] { --rc: var(--accent); }
-.nlp-pill[data-kind="dur"]  { --rc: #8b5cf6; }
-.nlp-pill[data-kind="proj"] { --rc: #3aa655; }
-.nlp-pill[data-kind="area"]  { --rc: #e8862a; }
-.nlp-pill[data-kind="rec"]  { --rc: #2d7ff9; }
-.nlp-pill[data-kind="deadline"] { --rc: #d6336c; }
-.nlp-pill[data-kind="loc"]  { --rc: #0891b2; }
+.nlp-pill[data-kind="dur"]  { --rc: var(--hint-duration); }
+.nlp-pill[data-kind="proj"] { --rc: var(--hint-project); }
+.nlp-pill[data-kind="area"]  { --rc: var(--hint-area); }
+.nlp-pill[data-kind="rec"]  { --rc: var(--hint-recurrence); }
+.nlp-pill[data-kind="deadline"] { --rc: var(--deadline); }
+.nlp-pill[data-kind="loc"]  { --rc: var(--hint-location); }
 .nlp-pill[data-kind="needs"] { --rc: var(--accent); }
 .nlp-pill[data-kind="neededBy"] { --rc: var(--p1); }
 /* Checklist: rectangle boxes (distinct from round task checkbox); –6px aligns box with subtask column */
@@ -388,7 +388,6 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-row.sorting { position: relative; z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
 .chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 2px solid color-mix(in srgb, var(--faint) 60%, transparent); background: none; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check */
 .chk-list .chk-rect { background: color-mix(in srgb, var(--faint) 8%, transparent); }   /* faint tint on the LIST checklist boxes only (composer entry boxes stay transparent) */
-.chk-list .chk-rect:not(.plain) { width: 14px; height: 14px; margin: calc((1lh - 14px) / 2) 1px 0; --ck: 11px; }   /* smaller mark, same 16px layout/hit footprint */
 .chk-list .chk-rect:not(.plain)::before { content: ""; position: absolute; inset: -3px; }
 .chk-list :is(.chk-txt, .chk-desc) { translate: 0 var(--sp-2); }
 .chk-row:hover .chk-rect { border-color: var(--muted); }   /* hovering the checkbox OR its text highlights the box */
@@ -548,7 +547,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   padding: 1.5px var(--sp-8); border-radius: var(--r-6); white-space: nowrap; color: var(--muted); background: var(--hover);
   .badge-rep { width: 11px; height: 11px; flex: none; } }   /* repeat glyph inherits the badge's color */
 .badge.overdue { color: var(--p1); background: color-mix(in srgb, var(--p1) 13%, transparent); }
-.badge.today { color: #d6890f; background: color-mix(in srgb, #e8a33b 20%, transparent); }
+.badge.today { color: var(--warm-ink); background: color-mix(in srgb, var(--warm) 16%, transparent); }
 .badge.soon { color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .badge.missed { color: color-mix(in srgb, var(--accent) 80%, var(--muted)); background: color-mix(in srgb, var(--accent) 9%, transparent); }
 /* No fill ⇒ no chip: the inline padding goes with the background, else the date reads as text inset by an
@@ -698,6 +697,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 @media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del, .md-code:hover > .code-copy { opacity: 1; } }
 .code-copy { max-height: 100%; }
 code:has(> .code-copy) { display: inline-block; position: relative; cursor: text; user-select: text; --row-bg: var(--bg); }
+:is(.title, .desc-line, .chk-txt, .chk-desc):has(code) { text-overflow: clip; } /* ellipsis hides an entire inline-block, even with room for its first characters */
 :is(.title, .desc-line) code { --row-bg: var(--hover); }
 code > .code-copy { position: sticky; display: inline-flex; vertical-align: middle; height: var(--fs-11); margin-left: calc(-1 * (var(--fs-11) + var(--sp-4))); padding: 0 0 0 var(--sp-4); border-radius: inherit; background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-4)); .ico { width: var(--fs-11); height: var(--fs-11); } }
 @media (hover: hover) and (pointer: fine) { code:hover > .code-copy { opacity: 1; } }
@@ -736,7 +736,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   display: inline-flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-10); border: none; border-radius: var(--r-8);
   font-size: var(--fs-12); font-weight: 600;
   background: color-mix(in srgb, var(--pc) 15%, transparent);
-  color: color-mix(in srgb, var(--pc) 78%, var(--ink));
+  color: var(--ink);
   .ico { color: var(--pc); width: 13px; height: 13px; }
   &:hover { background: color-mix(in srgb, var(--pc) 24%, transparent); }
   &.sel { background: color-mix(in srgb, var(--pc) 28%, transparent); box-shadow: inset 0 0 0 1.5px var(--pc); }
@@ -806,12 +806,12 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   /* constraint walls = full-height bracket OVERLAYS (day beneath stays full size): ⌈ start (amber) · ⌉
      deadline (red) · both red = only-day. ONE bordered glyph per side — bar+stub pieces seam under the halo. */
   .bar { display: none; position: absolute; z-index: 3; top: 2px; bottom: 2px; width: 6px; pointer-events: none;
-    border: 0 solid var(--p1); border-top-width: 2px; border-bottom-width: 2px; }
+    border: 0 solid var(--deadline); border-top-width: 2px; border-bottom-width: 2px; }
   .bar.l { left: 0px; border-left-width: 2px; border-color: var(--accent); }
   .bar.r { right: 0px; border-right-width: 2px; }
   &.fsel .bar.l { display: block; animation: cap-in-l 180ms var(--ease-out); }   /* fsel, not "st" — .st is the stepper primitive */
   &.dsel .bar.r { display: block; animation: cap-in 180ms var(--ease-out); }   /* the wall LANDS (display flip restarts it when the class hops cells) */
-  &.only .bar { border-color: var(--p1); }   /* an only-day has no soft side — both walls red */
+  &.only .bar { border-color: var(--deadline); }   /* an only-day has no soft side — both walls red */
   &.today .bar, &.sel .bar { filter: drop-shadow(1px 0 0 var(--panel)) drop-shadow(-1px 0 0 var(--panel)) drop-shadow(0 1px 0 var(--panel)) drop-shadow(0 -1px 0 var(--panel)); }   /* glyph-shaped 1px halo keeps red legible over the deep fill */
   .ordn { position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%); font-size: 9px; font-weight: 800; line-height: 12px; min-width: 13px; height: 12px; padding: 0 2px; text-align: center; color: var(--warm-ink); background: color-mix(in srgb, var(--accent) 16%, var(--panel)); border-radius: 999px; box-shadow: 0 0 0 1.5px var(--panel); }   /* bottom badge; the panel halo lets the marks pass visually behind it */
 }
@@ -1003,7 +1003,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .lp-row { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px var(--sp-4) var(--sp-2);
   .c .tkk { width: 11px; height: 11px; margin: 0 3px 0 -2px; } }
 .c.sel { background: var(--accent); color: var(--on-accent); font-weight: 600; }
-.c.selx { background: var(--p1); color: var(--on-accent); font-weight: 600; }
+.c.selx { background: var(--deadline); color: var(--on-accent); font-weight: 600; }
 .c.x { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
 .lp-more { display: inline-flex; align-items: center; background: var(--hover); color: var(--muted); font-weight: 500; font-size: var(--fs-12); border: none; border-radius: var(--r-pill); padding: 0 var(--sp-8); height: 19px; cursor: pointer;
   &:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--warm-ink); } }
@@ -1016,8 +1016,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &:hover { color: var(--ink); } }
 /* Chip that requires a selection pulses its border when save is attempted without a value */
 /* Deadline red register — softened p1 border + ink when deadline is set (precedent: .chip.required) */
-.chip.dl.set { border-color: color-mix(in srgb, var(--p1) 38%, var(--edge)); color: color-mix(in srgb, var(--p1) 66%, var(--ink)); }
-.chip.dl.set .ico { color: var(--p1); }
+.chip.dl.set { border-color: color-mix(in srgb, var(--deadline) 38%, var(--edge)); color: color-mix(in srgb, var(--deadline) 66%, var(--ink)); }
+.chip.dl.set .ico { color: var(--deadline); }
 .chip.required { border-color: var(--p1); color: var(--p1); animation: req-pulse .35s ease 2; }
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
@@ -1038,7 +1038,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);
     .ico { width: 19px; height: 19px; }
     &:hover { color: var(--p1); } }
-  .side-btn { background: none; border: none; cursor: pointer;
+  .overview-btn { background: none; border: none; cursor: pointer;
     color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);
     .ico { width: 19px; height: 19px; }
     &:hover { color: var(--accent); } }
@@ -1142,7 +1142,27 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .palette-foot { gap: var(--sp-16); padding: var(--sp-8) var(--sp-16); border-top: 1px solid var(--hair); }
 /* nav Search affordance keeps its ⌘K hint pill */
 /* Shortcuts cheat-sheet (?) */
-.shortcuts-sheet { min-width: 320px; max-width: 420px; max-height: 88vh; overflow-y: auto; }
+.shortcuts-sheet { width: min(760px, calc(100vw - var(--sp-24))); min-width: 0; max-width: none; max-height: 88vh; overflow-y: auto; }
+.shortcuts-sheet .sheet-x { margin-left: auto; }
+.sk-start, .sk-reference { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-16) var(--sp-24); }
+.sk-start { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: var(--sp-24); gap: var(--sp-8); --sk-key-h: calc(var(--sp-24) + 2 * var(--sp-2)); }
+.sk-reference { --sk-key-h: var(--sp-20); }
+.sk-section { grid-column: 1 / -1; }
+.sk-tile { position: relative; display: flex; flex-direction: column; gap: var(--sp-8); background: var(--hover); border-radius: var(--r); padding: var(--sp-12); }
+.sk-key { font-size: var(--fs-17); }
+.sk-key kbd { font-size: inherit; }
+.shortcuts-sheet kbd { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; height: var(--sk-key-h); margin-inline: 0; vertical-align: middle; }
+.shortcuts-sheet .sk-letter { font-family: ui-monospace, monospace; }
+.shortcuts-sheet .sk-mod { font-size: 1.05em; }
+.sk-start strong { padding-inline-start: var(--sp-6); font-size: var(--fs-13); font-weight: 600; } /* optical alignment with keycap glyphs */
+.sk-tile:has(.sk-launch) .sk-key { padding-right: var(--sp-24); }
+.sk-launch { position: absolute; top: var(--sp-12); right: var(--sp-12); width: var(--sp-24); height: var(--sp-24); padding: 0; border: none; border-radius: var(--r-4); background: transparent; color: var(--muted); font-size: var(--fs-15); cursor: pointer; }
+.sk-launch:hover { background: var(--hover); color: var(--ink); }
+.sk-launch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sk-reference .sk { align-items: baseline; }
+.sk-reference .sk > span:first-child { flex-shrink: 0; }
+.sk-reference .sk > span:last-child { text-align: right; }
+@media (max-width: 600px) { .sk-start { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sk-reference { grid-template-columns: 1fr; } }
 .sheet-head { font-family: var(--font-display); font-size: var(--fs-22); font-weight: 600; margin-bottom: var(--sp-10); }
 /* Quiet icon button base — no fill, muted; each site keeps its border, size, and hover delta.
    .icon-btn intentionally carries border:1px solid transparent (dialog control system, ui-lint). */
@@ -1179,8 +1199,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .tdiff-text { color: var(--ink); }
 .tdiff-del { background: color-mix(in srgb, var(--p1) 9%, transparent); }
 .tdiff-del .tdiff-sign { color: var(--p1); }
-.tdiff-add { background: color-mix(in srgb, #3aa655 12%, transparent); }
-.tdiff-add .tdiff-sign { color: #3aa655; }   /* diff-add is semantically green; not tied to --p3 */
+.tdiff-add { background: color-mix(in srgb, var(--positive) 12%, transparent); }
+.tdiff-add .tdiff-sign { color: var(--positive); }   /* diff-add is semantically green; not tied to --p3 */
 .tdiff-chg { background: color-mix(in srgb, var(--ink) 5%, transparent); }   /* a change (not add/delete): neutral, no red/green */
 .tdiff-chg .tdiff-sign { color: var(--muted); }
 .tdiff-more .tdiff-text { color: var(--faint); font-size: var(--fs-11); }
@@ -1433,11 +1453,9 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .inp::placeholder, .ev-field::placeholder { color: var(--muted); }
-/* native select chrome → custom chevron, styled exactly like a text input */
+/* Native chevron follows color-scheme without an embedded fixed-color SVG. */
 select.inp, select.ev-field, .dialog-select {
-  appearance: none; -webkit-appearance: none; padding-right: var(--sp-24); cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239a9aa0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right var(--sp-8) center;
+  appearance: auto; padding-right: var(--sp-24); cursor: pointer;
 }
 .inp.grow { flex: 1; min-width: 0; }
 textarea.inp { resize: vertical; }
@@ -1556,8 +1574,9 @@ textarea.inp { resize: vertical; }
 .cl-month-inner { position: relative;
   background-image: linear-gradient(to right, var(--hair) 0 1px, transparent 1px),
                     linear-gradient(to bottom, var(--hair) 0 1px, transparent 1px);
-  background-size: calc(100% / 7) 100%, 100% var(--rowh, 100%);
-  background-position: -1px -1px, 0 -1px; background-repeat: repeat-x, repeat-y; }
+  /* Tile vertically too: a full-spacer-height texture loses its rules on the ~100-year scroll surface. */
+  background-size: calc(100% / 7) 1px, 100% var(--rowh, 100%);
+  background-position: -1px -1px, 0 -1px; background-repeat: repeat, repeat-y; }
 .cl-wk { position: absolute; left: 0; right: 0; display: grid; grid-template-columns: repeat(7, 1fr); }
 /* Cells paint NO background. They used to carry a translucent tint that the bar also carried, so the wash read
    the same through both; once the bar went transparent that tint became a visible step at the header's bottom
@@ -1893,7 +1912,7 @@ textarea.inp { resize: vertical; }
 .cl-ag-dot { width: 7px; height: 7px; border-radius: 999px; background: var(--mark); }
 /* marks are MOMENTS, not blocks: no duration, no elapsed dimming (a deadline does not stop mattering at 5pm) */
 .cl-ag-row.mark .cl-ag-t { font-size: var(--fs-11); }
-.cl-ag-row.task-deadline .cl-ag-d { color: var(--p1); font-weight: 600; }
+.cl-ag-row.task-deadline .cl-ag-d { color: var(--deadline); font-weight: 600; }
 .cl-ag-m .cl-dl-ico { width: 13px; height: 13px; flex: none; color: var(--mark); }
 .cl-ag-b { min-width: 0; }
 .cl-ag-n { display: block; font-size: var(--fs-14); line-height: 1.35; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2107,7 +2126,7 @@ textarea.inp { resize: vertical; }
   .add-task-btn { padding: var(--sp-12) var(--sp-10) var(--sp-12) 18px; font-size: var(--fs-15); }
   .composer-opts .chip { height: 40px; padding: 0 var(--sp-12); font-size: var(--fs-13); }
   .composer-actions .primary, .composer-actions .ghost { padding: var(--sp-12) var(--sp-16); font-size: var(--fs-15); }
-  .composer-actions .del-btn, .composer-actions .side-btn { padding: var(--sp-10); }
+  .composer-actions .del-btn, .composer-actions .overview-btn { padding: var(--sp-10); }
   .composer-card .desc { font-size: var(--fs-15); }
 }
 
@@ -2162,7 +2181,7 @@ textarea.inp { resize: vertical; }
 /* Inline sign-in / phone forms — reuse .inp/.primary; Sign in left, the magic-link alt hugs the right edge */
 .set-form { margin-top: var(--sp-10); }
 .set-form .set-msg { margin: 0; }
-.set-form .set-msg.err { color: var(--deep); }
+.set-form .set-msg.err { color: var(--danger); }
 .set-actions .set-alt { margin-left: auto; }
 .set-alt { border: none; background: none; padding: var(--sp-4) 0; cursor: pointer; }
 .set-alt:hover { color: var(--warm-ink); }
@@ -2191,6 +2210,19 @@ textarea.inp { resize: vertical; }
 .set-row .seg button { flex: none; padding: var(--sp-4) var(--sp-10); }
 /* selected theme = quiet panel + shadow, not the shared accent fill */
 .set-row .seg button.on { background: var(--panel); border-color: var(--edge); color: var(--ink-hi); font-weight: 600; box-shadow: var(--shadow-sm); }
+.set-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-8); padding: var(--sp-6) 0; }
+.set-themes button { min-width: 0; padding: var(--sp-4); border: none; border-radius: var(--r-8); background: none; color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
+.set-themes button:hover, .set-themes button[aria-pressed="true"] { background: var(--hover); color: var(--ink); }
+.set-themes button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.theme-preview { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-8) var(--sp-10) var(--sp-4); border-radius: var(--r-4); background: var(--preview-bg); overflow: hidden; }
+.theme-preview b { color: var(--preview-ink); font-size: var(--fs-12); text-align: left; margin-bottom: var(--sp-4); }
+.theme-preview > span { display: flex; align-items: center; gap: var(--sp-4); white-space: nowrap; }
+.theme-preview i { width: var(--sp-6); height: var(--sp-6); border: 1px solid var(--preview-accent); border-radius: 50%; flex: none; }
+.theme-preview em { width: 65%; height: 2px; background: var(--preview-muted); border-radius: var(--r-pill); }
+.theme-preview > span:nth-child(3) em { width: 45%; }
+.theme-preview small { display: flex; justify-content: center; gap: var(--sp-4); margin-top: var(--sp-4); }
+.theme-preview small i { width: var(--sp-8); height: 2px; border: none; background: var(--preview-muted); }
+.theme-preview small i:first-child { background: var(--preview-accent); }
 /* Switch primitive (.swt) — a compact two-mode pill, text INSIDE a recessed track; the active segment
    rides raised on the panel. Both segments are DIRECT click targets. Wrapper variant tints the active
    side's text: .by = wall red (When pop's On|By register). */
@@ -2198,15 +2230,14 @@ textarea.inp { resize: vertical; }
 .swt button { border: none; background: none; height: 18px; min-width: 26px; padding: 0 var(--sp-6); border-radius: 999px; color: var(--muted); font-size: var(--fs-11); font-weight: 600; cursor: pointer; transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
   &:hover { color: var(--ink); }
   &.on { background: var(--panel); color: var(--ink); } }
-.swt.by button.on { color: color-mix(in srgb, var(--p1) 68%, var(--ink)); }
+.swt.by button.on { color: color-mix(in srgb, var(--deadline) 68%, var(--ink)); }
 @media (prefers-reduced-motion: reduce) { .swt button { transition: none; } }
 /* starter shortcuts: two quiet columns of label + kbd */
 .set-keys { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2) var(--sp-16); padding: 0 var(--sp-10) var(--sp-4); }   /* horizontal inset matches .set-row so labels align */
 .set-key { padding: var(--sp-2) 0; }
-/* settings rows flush with section headers — no extra left indent vs the label */
-.settings-card .set-row { padding-inline-start: 0; }
+/* Shortcut text stays flush with section headers; clickable rows keep their hover inset. */
 .settings-card .set-keys { padding-inline-start: 0; }
-/* Manual theme override (settings → Appearance): #theme-override re-injects the token set; this pins the
+/* Manual appearance (settings → Appearance): #design-tokens re-injects the token set; this pins the
    browser color-scheme and re-keys the one prefers-color-scheme-dependent rule to the override. */
 html[data-theme="light"] { color-scheme: light; }
 html[data-theme="dark"] { color-scheme: dark; }

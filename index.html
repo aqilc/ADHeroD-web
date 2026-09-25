@@ -54,7 +54,7 @@
   <symbol id="i-tag-camera" viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></symbol>
   <symbol id="i-tag-gift" viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
-  <symbol id="i-promote" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></symbol>
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="2" y="3" width="12" height="4" rx="1.5"/><rect x="2" y="10" width="20" height="4" rx="1.5"/><rect x="7" y="17" width="12" height="4" rx="1.5"/></symbol>
   <symbol id="i-repeat" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><polygon points="7 4 19 12 7 20 7 4"/></symbol>
@@ -438,9 +438,9 @@
               </div>
               <!-- The ghost doubles as find: matches float to the top + highlight (display only — stored order
                    untouched, nothing hidden); grips drop while the order is temporary. Enter still adds. -->
-              <template x-for="item in draft.checklist" :key="item.id">
+              <template x-for="item in checklistRows()" :key="item.id">
                 <div class="entry chk" :class="{ done: item.done && !chkPlain(), 'chk-alt': chkAlt(item), 'chk-hit': chkHit(item) }" :data-id="item.id">
-                  <template x-if="editing && !chkGhost.trim()"><span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span></template>
+                  <template x-if="editing && !chkGhost.trim() && (!item.done || chkPlain())"><span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span></template>
                   <button type="button" class="chk-rect" :class="{ done: item.done && !chkPlain(), plain: chkPlain() }" @click="chkPlain() || toggleChecklistItem(item)"></button>
                   <div class="entry-txt" role="textbox" tabindex="0" x-effect="if (!$el.contains(document.activeElement)) $el.innerHTML = chkHl(item)" @pointerdown="chkRowDown($event)" @pointerup="chkRowUp($el, $event)" @focus="chkFocus($el)" @input="chkInput(item, $event)" @compositionend="chkInput(item, $event)" @keydown="entryKey($event)" @keydown.backspace="chkBackspace(item, $event)" @keydown.delete="chkBackspace(item, $event)" @keydown.enter="chkEnter($event, item)" @keydown.escape="entryEscape($event, () => $el.innerHTML = chkLive(item.text))" @blur="$el.contentEditable = 'false'; renameChecklistItem(item, $event.target.textContent)" @paste="chkPaste($event, item)" @keydown.stop></div>
                   <button type="button" class="entry-del" @click="removeChecklistItem(item)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
@@ -723,7 +723,7 @@
               <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="createFilteredProj()" @keydown.stop>
               <template x-for="p in filteredProjects()" :key="p.id">
                 <div>
-                  <!-- task-projects read as the TASKS they are (checkbox + title + areas); sidebar projects keep the # row -->
+                  <!-- task-projects read as the TASKS they are (checkbox + title + areas); overview projects keep the # row -->
                   <template x-if="taskProj(p)">
                     <button type="button" class="pop-item task-line" :class="{ sel: draft.project_id === p.id }" @click="pickProject(p)" x-html="taskLine(p)"></button>
                   </template>
@@ -751,7 +751,7 @@
               <button type="button" class="pop-item" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
             </div></template></template>
           </div>
-          <button type="button" class="side-btn inline-flex items-center" x-show="editing && !editingTask()?.sidebar" @click="askSidebarPromote()" title="Promote to project"><svg class="ico"><use href="#i-promote"/></svg></button>
+          <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
           <button type="button" class="del-btn inline-flex items-center" x-show="editing" @click="deleteEditing()" title="Delete task"><svg class="ico"><use href="#i-trash"/></svg></button>
           <button type="button" class="ghost" @click="closeComposer()">Cancel</button>
           <button type="submit" class="primary" :disabled="!draft.content.trim()" x-text="editing ? 'Save' : 'Add task'"></button>
@@ -1135,9 +1135,9 @@
     <!-- Nav settings popovers live OUTSIDE the roller so its overflow (and the overview's backdrop-filter containing block) can't clip them; positioned via navPopXY (viewport coords). -->
     <template x-if="overview && navPopProj()">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
-        <button class="nav-pop-item" @click="startRename(navPopProj().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
+        <button class="nav-pop-item" @click.stop="startRename(navPopProj().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })" x-text="navPopProj().favorite ? '&#9733; Unfavorite' : '&#9734; Favorite'"></button>
-        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { sidebar: !navPopProj().sidebar })" x-text="navPopProj().sidebar ? 'Remove from list' : 'Pin to list'"></button>
+        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { overview: !navPopProj().overview })" x-text="navPopProj().overview ? 'Hide from Overview' : 'Show in Overview'"></button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
         <div class="nav-pop-sep"></div>
@@ -1146,7 +1146,7 @@
     </template>
     <template x-if="overview && navPopArea()">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
-        <button class="nav-pop-item" @click="startRename(navPopArea().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
+        <button class="nav-pop-item" @click.stop="startRename(navPopArea().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchArea(navPopArea().id, { color: v }))" x-html="swatchRow(navPopArea().color, areaDefault)"></div>
         <div class="nav-pop-label">Icon</div>
@@ -1174,7 +1174,6 @@
        step behind. Escape via the central escape() chain; backdrop click closes. Sign-in: email → OTP (magic link
        + 6-digit code from one email). No Automations section: none exist yet. -->
   <div class="settings" x-show="settingsOpen" x-cloak @click.self="settingsOpen = false"
-       x-init="theme !== 'system' && setTheme(theme)"
        @online.window="online = true" @offline.window="online = false">
     <div class="card settings-card" @click.stop>
       <h1>Account &amp; settings</h1>
@@ -1227,12 +1226,22 @@
         </div>
       </template>
       <div class="set-sec"><span class="section-label">Appearance</span>
-        <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-palette"/></svg>Theme
+        <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-palette"/></svg>Mode
           <div class="seg">
             <button type="button" :class="{ on: theme === 'light' }" @click="setTheme('light')">Light</button>
             <button type="button" :class="{ on: theme === 'system' }" @click="setTheme('system')">System</button>
             <button type="button" :class="{ on: theme === 'dark' }" @click="setTheme('dark')">Dark</button>
           </div>
+        </div>
+        <div class="set-themes" role="group" aria-label="Color theme">
+          <template x-for="t in themeColors" :key="t.id">
+            <button type="button" :data-color-theme="t.id" :aria-label="t.label" :aria-pressed="colorTheme === t.id" :style="t.preview" @click="setColorTheme(t.id)">
+              <span class="theme-preview" aria-hidden="true"><b x-text="t.label"></b>
+                <span><i></i><em></em></span><span><i></i><em></em></span><span><i></i><em></em></span>
+                <small><i></i><i></i></small>
+              </span>
+            </button>
+          </template>
         </div>
       </div>
       <!-- starter shortcuts: teach the power path by keeping it visible (full sheet stays on ?) -->
@@ -1262,7 +1271,7 @@
   <!-- All modal dialogs live in one backdrop; clicking it closes every open dialog (closeDialogs). -->
   <div class="dialog-backdrop flex items-center justify-center" :class="{ 'palette-backdrop': palette.open }" x-show="anyDialog()" x-cloak @click="closeDialogs()">
 
-    <!-- Generic confirm dialog (yes/no prompts: cascade-complete, send-to-sidebar, …) -->
+    <!-- Generic confirm dialog (yes/no prompts: cascade-complete, show-in-overview, …) -->
     <div class="dialog" @click.stop x-show="confirm">
       <p x-text="confirm?.message"></p>
       <template x-if="confirm?.bodyHtml"><div x-html="confirm.bodyHtml"></div></template>
@@ -1336,22 +1345,57 @@
     </div>
 
     <!-- Keyboard shortcuts cheat-sheet (?) -->
-    <div class="dialog shortcuts-sheet" @click.stop x-show="shortcutsOpen">
-      <div class="sheet-head flex items-center justify-between">Keyboard shortcuts<button class="sheet-x flex-none inline-flex items-center justify-center" @click="shortcutsOpen = false" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
+    <div class="dialog shortcuts-sheet" x-data="{ mod: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl' }" @click.stop x-show="shortcutsOpen">
+      <div class="sheet-head flex items-center justify-between"><span>Keyboard shortcuts</span><button class="sheet-x flex-none inline-flex items-center justify-center" @click="shortcutsOpen = false" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
+      <div class="sk-start">
+        <template x-for="s in [
+          ['<kbd>␣</kbd> or <kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Find anything','find'], ['<kbd class=sk-letter>q</kbd>','Capture a thought','add'],
+          ['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd> then <kbd>↵</kbd>','Work through your list'], ['<kbd>⌘</kbd><kbd>↵</kbd>','Save and return'],
+          ['<kbd class=sk-letter>x</kbd>','Mark it done'], ['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd>','Take it back']
+        ]" :key="s[1]">
+          <div class="sk-tile"><span class="sk-key" x-html="s[0].replaceAll('⌘', mod)"></span><strong x-text="s[1]"></strong><template x-if="s[2]"><button class="sk-launch" :aria-label="s[1]" :title="s[1]" @click="shortcutsOpen = false; if (s[2] === 'find') openPalette(); else { if (surface !== 'lists') setNav('all'); startAdd(); }">↗</button></template></div>
+        </template>
+      </div>
+      <div class="sk-reference">
       <template x-for="g in [
-        {l:'Essentials',r:[['<kbd>Space</kbd> · <kbd>⌘K</kbd>','Go to anything'],['<kbd>q</kbd>','New task'],['<kbd>⌘</kbd><kbd>↵</kbd>','Save & close'],['<kbd>⌘</kbd><kbd>z</kbd> · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>z</kbd>','Undo / redo'],['<kbd>esc</kbd>','Close any open overlay'],['<kbd>b</kbd>','Bin'],['<kbd>x</kbd>','Complete focused'],['<kbd>1</kbd>–<kbd>2</kbd> · <kbd>←</kbd><kbd>→</kbd>','Jump / step surfaces'],['<kbd>j</kbd>/<kbd>k</kbd>','Move focus']]},
-        {l:'Global',r:[['<kbd>Space</kbd>','Go to anything'],['<kbd>⌘K</kbd>','Go to anything (works while typing)'],['<kbd>1</kbd>–<kbd>2</kbd> · <kbd>←</kbd><kbd>→</kbd>','Jump / step surfaces'],['<kbd>q</kbd>','New task'],['<kbd>g</kbd>','Backlog'],['<kbd>a</kbd>','All'],['<kbd>⌘</kbd><kbd>z</kbd> · <kbd>⌘</kbd><kbd>⇧</kbd><kbd>z</kbd>','Undo / redo'],['<kbd>b</kbd>','Bin'],['<kbd>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
-        {l:'Task list',r:[['<kbd>j</kbd>/<kbd>k</kbd> · <kbd>↑</kbd><kbd>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd>e</kbd>','Open focused'],['<kbd>x</kbd>','Complete focused'],['<kbd>⇧</kbd><kbd>↑</kbd><kbd>↓</kbd>','Extend selection'],['<kbd>/</kbd>','Search tasks'],['<kbd>f</kbd>','Filter tasks']]},
-        {l:'Plan',r:[['<kbd>d</kbd>/<kbd>w</kbd>/<kbd>m</kbd>','Day / week / month'],['<kbd>↑</kbd><kbd>↓</kbd>','Scroll an hour · hold 3s to travel'],['<kbd>⇧</kbd><kbd>↑</kbd><kbd>↓</kbd>','Travel a day / week / month']]},
-        {l:'Composer',r:[['<kbd>⌘</kbd><kbd>↵</kbd>','Save & close'],['<kbd>esc</kbd>','Close']]},
-        {l:'Composer title syntax',r:[['<b>! · !! · ~ · tomorrow · 2h · #project · @area · every week</b>','Tokens (! focus · !! must · ~ someday)'],['<b>::</b>','Description after title'],['<b>**bold**</b> · <b>*italic*</b>','Inline formatting']]}
+        {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],['<kbd>1</kbd>–<kbd>4</kbd> · <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Jump / step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> · <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
+        {l:'Overview',r:[['<kbd class=sk-letter>h</kbd>/<kbd class=sk-letter>l</kbd> · <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Move across surfaces'],['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move through Lists destinations'],['<kbd>↵</kbd>','Open overview selection'],['<kbd>1</kbd>–<kbd>4</kbd>','Open surface directly'],['<kbd class=sk-letter>o</kbd>','Close overview']]},
+        {l:'Finder',r:[['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move finder selection'],['<kbd>↵</kbd>','Open finder selection'],['<kbd>⌘</kbd><kbd class=sk-letter>s</kbd>','Save query as filter']]},
+        {l:'Task list',r:[['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd class=sk-letter>e</kbd>','Open focused'],['<kbd class=sk-letter>x</kbd>','Complete focused'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Extend selection'],['<kbd>/</kbd>','Search tasks'],['<kbd class=sk-letter>f</kbd>','Filter tasks']]},
+        {l:'Plan',r:[['<kbd class=sk-letter>d</kbd>/<kbd class=sk-letter>w</kbd>/<kbd class=sk-letter>m</kbd>','Day / week / month'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Scroll an hour · hold 3s to travel'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⌘</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Travel a day / week / month']]},
+        {l:'Composer',r:[['<kbd>↵</kbd>','Save / add another'],['<kbd>⌘</kbd><kbd>↵</kbd>','Save & close'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⇥</kbd>','Move between fields'],['<kbd>esc</kbd>','Close']]},
+        {l:'Composer entries',r:[['<kbd>↵</kbd>','Add next entry'],['<kbd class=sk-mod>⇧</kbd><kbd>↵</kbd>','New line in entry'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Navigate open picker'],['<kbd>↵</kbd>','Choose picker option']]},
+        {l:'Syntaxes'},
+        {l:'Composer syntax',r:[
+          ['<b>!</b> · <b>!!</b> · <b>~</b>','Importance symbols'],['<b>focus on</b> · <b>must</b> · <b>someday</b>','Importance words'],
+          ['<b>tomorrow</b> · <b>fri</b> · <b>next week</b>','Schedule a day or window'],['<b>in 3 days</b> · <b>aug 10</b> · <b>2026-12-25</b>','Schedule relative to now'],
+          ['<b>5pm</b> · <b>noon</b>','Set a time'],['<b>30m</b> · <b>1h30m</b>','Set duration'],
+          ['<b>by fri</b> · <b>due tomorrow</b> · <b>^ aug 10</b>','Set deadline'],['<b>only tue</b>','Restrict to one day'],
+          ['<b>#project</b>','Choose project'],['<b>@area</b>','Add area'],['<b>at Office</b>','Require a location'],['<b>away from Home</b>','Exclude a location'],
+          ['<b>needs Report</b> · <b>needed by Launch</b>','Add dependency'],['<b>Item :: detail</b>','Checklist description only']]},
+        {l:'Filter syntax',r:[
+          ['<b>#work</b> · <b>##work</b>','Project / descendants'],['<b>@errands</b>','Area'],['<b>importance:must,focus</b>','Importance'],
+          ['<b>due:overdue</b> · <b>due:today..eow</b>','Due date'],['<b>deadline:any</b> · <b>deadline:eow</b>','Deadline'],
+          ['<b>is:open</b> · <b>is:recurring</b> · <b>is:blocked</b>','State'],['<b>in:title</b> · <b>in:notes</b>','Search field'],
+          ['<b>AND</b> · <b>OR</b> · <b>NOT</b> · <b>( )</b> · <b>-@home</b>','Combine / negate'],
+          ['<b>#work importance:must due:overdue</b>','Example: urgent overdue work'],
+          ['<b>(is:blocked OR deadline:today) is:open</b>','Example: blocked or due today'],
+          ['<b>report in:notes -@home</b>','Example: notes away from home']]},
+        {l:'Recurrence syntax',r:[
+          ['<b>every day</b> · <b>every 2 weeks</b>','Repeat on an interval'],['<b>every! week</b>','Repeat from completion'],
+          ['<b>every 2 weeks on mon wed at 9am</b>','Choose repeat days and time'],['<b>every day, 3 times</b>','End after a count'],
+          ['<b>every week ending sep 1</b>','End on a date']]},
+        {l:'Description Markdown',r:[
+          ['<b>**bold**</b> · <b>*italic*</b> · <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],
+          ['<b>```code```</b>','Code block'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> · <b>- Item</b>','Heading / bullet']]}
       ]" :key="g.l">
-        <div class="sheet-grp"><div class="section-label" x-text="g.l"></div>
-          <template x-for="[k,d] in g.r" :key="d">
-            <div class="sk flex items-center gap-6 muted-12"><span x-html="k"></span><span x-text="d"></span></div>
+        <div :class="g.r ? 'sheet-grp' : 'sk-section'"><div class="section-label" x-text="g.l"></div>
+          <template x-for="[k,d] in g.r || []" :key="d">
+            <div class="sk flex items-center gap-6 muted-12"><span x-html="k.replaceAll('⌘', mod).replaceAll(' · ', ' or ')"></span><span x-text="d"></span></div>
           </template>
         </div>
       </template>
+      </div>
     </div>
 
     <!-- Bin, b — recover deletions + revert bulk changes from the last 30 days, across reloads -->

@@ -64,7 +64,7 @@ export function calendarItems(events, tasks, fromIso, toIso, now, placed) {
   }
   const inRange = iso => { const day = dateOf(iso); return day >= from && day <= to; };
   for (const t of tasks || []) {
-    if (t.parent_id === null || t.sidebar) continue;   // skip projects + sidebar items
+    if (t.parent_id === null || t.overview) continue;   // skip projects + overview items
     // THE placement is the task's date-item (`placed`); never falls back to recur_from, which is only a
     // recurrence anchor now and gets its own marker when the task has no placement.
     const at = placed?.get(t.id);
@@ -114,4 +114,3 @@ export function blocksInRange(blocks, fromIso, toIso, blockDays = []) {
 export const SIZES = { tiny: [1, 8, 5], short: [9, 15, 15], session: [16, 60, 45], multi: [61, Infinity, 150] };
 export const sizeFromMinutes = (m) => { if (!m) return null; for (const k in SIZES) { const [lo, hi] = SIZES[k]; if (m >= lo && m <= hi) return k; } return 'multi'; };
 export const minutesForSize = (k) => SIZES[k]?.[2] ?? 0;
-

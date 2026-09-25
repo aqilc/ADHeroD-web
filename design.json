@@ -77,7 +77,10 @@
     "hair": "hsl(30 30% 30% / .09)",
     "hover": "oklch(.91 .008 57)",
     "accent": "#df6b12",
-    "accent-info": "#2670e6",
+    "accent-info": "#32675B",
+    "deadline": "#B4472D", "danger": "#B32630", "positive": "#287347",
+    "syntax-key": "#7048A5", "syntax-string": "var(--accent-info)", "syntax-number": "#895814",
+    "hint-duration": "#7048A5", "hint-project": "var(--positive)", "hint-area": "#895814", "hint-recurrence": "var(--accent-info)", "hint-location": "#28717B",
     "warm": "#df6b12",
     "warm-ink": "#b4520c",
     "gold": "#b8791a",
@@ -116,7 +119,10 @@
     "edge-hi": "rgba(255,196,138,.24)",
     "hover": "#282217",
     "accent": "#ff9448",
-    "accent-info": "#3f82ef",
+    "accent-info": "#93B8A6",
+    "deadline": "#EFA08A", "danger": "#FF9B9B", "positive": "#8BD5A5",
+    "syntax-key": "#C1A2EE", "syntax-string": "var(--accent-info)", "syntax-number": "#E7BC80",
+    "hint-duration": "#C1A2EE", "hint-project": "var(--positive)", "hint-area": "#E7BC80", "hint-recurrence": "var(--accent-info)", "hint-location": "#88CAD5",
     "warm": "#ff9448",
     "warm-ink": "#ffb072",
     "gold": "#f0b64e",
@@ -138,7 +144,7 @@
     "shadow-sm": "0 0 0 1px rgba(255,255,255,.045), inset 0 1px 0 rgba(255,255,255,.05), 0 1px 3px rgba(0,0,0,.4)",
     "shadow-pop": "0 0 0 1px rgba(255,255,255,.06), inset 0 1px 0 rgba(255,255,255,.06), 0 6px 14px hsl(20 60% 3% / .5), 0 22px 48px hsl(20 60% 3% / .45)"
   },
-  "//themes": "Theme registry — Android-only (web injects light/dark directly). base = which scheme block (light is always the :root foundation; dark overlays it, matching web's cascade). over = chrome overrides. Symbolic tokens (priority/quick/palette) are top-level = theme-invariant. Neutral overrides are provisional pending B1/D visual verification.",
+  "//themes": "Shared registry: base scheme + over tokens. Web lists light entries with a family label, paired by id with their dark variant. Priority/quick/palette stay theme-invariant. Legacy neutral entries remain native-only.",
   "themes": {
     "hearth-dark": {
       "label": "Hearth Dark",
@@ -146,7 +152,130 @@
     },
     "hearth-light": {
       "label": "Hearth Light",
+      "family": "Hearth",
       "base": "light"
+    },
+    "graphite-light": {
+      "label": "Graphite Light", "family": "Graphite", "base": "light",
+      "over": {
+        "deadline": "#9E3752", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#23616A",
+        "bg": "#E3E7ED", "panel": "#F7F9FC", "ink": "#20242B", "ink-hi": "var(--ink)", "muted": "#59616E", "faint": "#596372", "hover": "#D9DFE8",
+        "accent": "#2054C5", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, #CCD9EF, var(--bg) 70%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .12)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .12)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .15)"
+      }
+    },
+    "graphite-dark": {
+      "label": "Graphite Dark", "base": "dark",
+      "over": {
+        "deadline": "#F1A0B6", "accent-info": "var(--accent)", "syntax-key": "var(--accent)",
+        "bg": "#15171A", "panel": "#202328", "ink": "#E7EAF0", "ink-hi": "var(--ink)", "muted": "#A9B1BF", "faint": "#929CAA", "hover": "#2D323A",
+        "accent": "#8AAEFF", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#15171A", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .35)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .3)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .4)"
+      }
+    },
+    "slate-light": {
+      "label": "Slate Light", "family": "Slate", "base": "light",
+      "over": {
+        "deadline": "#963F34", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#23616A",
+        "bg": "#DCEBF1", "panel": "#F2F8FB", "ink": "#1B2B34", "ink-hi": "var(--ink)", "muted": "#495B67", "faint": "#506471", "hover": "#CDDFE8",
+        "accent": "#006273", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, #BDDDE8, var(--bg) 70%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .12)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .12)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .15)"
+      }
+    },
+    "slate-dark": {
+      "label": "Slate Dark", "base": "dark",
+      "over": {
+        "deadline": "#F0A48F", "accent-info": "var(--accent)", "syntax-key": "var(--accent)",
+        "bg": "#121B22", "panel": "#1C2933", "ink": "#E4EDF2", "ink-hi": "var(--ink)", "muted": "#A3B8C5", "faint": "#95AEBD", "hover": "#293C48",
+        "accent": "#64D5E7", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#121B22", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .35)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .3)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .4)"
+      }
+    },
+    "chalk-light": {
+      "label": "Chalk Light", "family": "Chalk", "base": "light",
+      "over": {
+        "deadline": "#923D2C", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#23616A",
+        "bg": "#E4EDDF", "panel": "#F6FAF2", "ink": "#202B25", "ink-hi": "var(--ink)", "muted": "#56665B", "faint": "#546358", "hover": "#D5E2CF",
+        "accent": "#1D6543", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, #CDDFC3, var(--bg) 70%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .12)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .12)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .15)"
+      }
+    },
+    "chalk-dark": {
+      "label": "Chalk Dark", "base": "dark",
+      "over": {
+        "deadline": "#EEAB94", "accent-info": "var(--accent)", "syntax-key": "var(--accent)",
+        "bg": "#151B18", "panel": "#212A25", "ink": "#E7EEE9", "ink-hi": "var(--ink)", "muted": "#A6B9AD", "faint": "#9CAE9F", "hover": "#303D34",
+        "accent": "#7DD5A8", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#151B18", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .35)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .3)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .4)"
+      }
+    },
+    "mist-light": {
+      "label": "Mist Light", "family": "Mist", "base": "light",
+      "over": {
+        "deadline": "#8F395B", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#23616A",
+        "bg": "#ECE2F2", "panel": "#FBF6FD", "ink": "#292536", "ink-hi": "var(--ink)", "muted": "#5B536A", "faint": "#62576F", "hover": "#E1D5E9",
+        "accent": "#5946AC", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, #DDC9ED, var(--bg) 70%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .12)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .12)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .15)"
+      }
+    },
+    "mist-dark": {
+      "label": "Mist Dark", "base": "dark",
+      "over": {
+        "deadline": "#EFA2C2", "accent-info": "var(--accent)", "syntax-key": "var(--accent)",
+        "bg": "#19171F", "panel": "#25222E", "ink": "#EEEAF4", "ink-hi": "var(--ink)", "muted": "#B8ADC8", "faint": "#A99EBA", "hover": "#373140",
+        "accent": "#B5A3F5", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#19171F", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
+        "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
+        "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%)", "bg-foot": "none",
+        "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .35)", "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .3)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .4)"
+      }
+    },
+    "onyx-light": {
+      "label": "Onyx Light", "family": "Onyx", "base": "light",
+      "over": {
+        "deadline": "#96394E", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#23616A",
+        "bg": "#DADDE2", "panel": "#F3F4F6", "ink": "#22252B", "ink-hi": "var(--ink)",
+        "muted": "#4C535E", "faint": "#4C535E", "hover": "#CDD1D8", "accent": "#2F529E",
+        "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)",
+        "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)", "hair": "color-mix(in srgb, var(--ink) 8%, transparent)",
+        "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)", "ember-cold": "var(--hover)", "ember-mid": "var(--muted)",
+        "ember-hot": "var(--accent)", "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, #C4CAD4, var(--bg) 70%)", "bg-foot": "none", "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .12)",
+        "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .12)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .15)"
+      }
+    },
+    "onyx-dark": {
+      "label": "Onyx Dark", "base": "dark",
+      "over": {
+        "deadline": "#EFA3B6", "accent-info": "var(--accent)", "syntax-key": "var(--accent)",
+        "bg": "#08090B", "panel": "#111317", "ink": "#F0F2F5", "ink-hi": "var(--ink)",
+        "muted": "#B0B7C2", "faint": "#979FAB", "hover": "#202329", "accent": "#A8BEF8",
+        "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)",
+        "on-accent": "#08090B", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)", "hair": "color-mix(in srgb, var(--ink) 8%, transparent)",
+        "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)", "ember-cold": "var(--hover)", "ember-mid": "var(--muted)",
+        "ember-hot": "var(--accent)", "bg-wash": "linear-gradient(var(--bg), var(--bg))", "bg-foot": "none", "shadow": "0 0 0 1px var(--hair), 0 6px 20px rgb(0 0 0 / .35)",
+        "shadow-sm": "0 0 0 1px var(--hair), 0 1px 3px rgb(0 0 0 / .3)", "shadow-pop": "0 0 0 1px var(--edge), 0 8px 32px rgb(0 0 0 / .4)"
+      }
     },
     "neutral-dark": {
       "label": "Neutral Dark",

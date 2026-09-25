@@ -4,10 +4,12 @@ import { descendantIds, projectDepth, subtreeDepth, pendingSweep, ancestorIds, p
 import { makeFuzzy, buildSearchDocs, matchQuery } from './search.js';
 import { nextTs } from './recovery.js';
 import { isoDate } from './nlp.js';
+import { overviewFields } from './store.js';
 
 // ─── Pure row ↔ object mapping ───────────────────────────────────────────────
 
 export function hydrateTask(row) {
+  row = overviewFields(row);
   const rel = row.task_relations ?? [];   // sole embed; split by type into blocked_by/relates
   return {
     id: row.id,
@@ -36,7 +38,7 @@ export function hydrateTask(row) {
     archived_at: row.archived_at ?? null,
     blocked_by: rel.filter(r => r.type === 'needs').map(r => r.related_id),
     relates: rel.filter(r => r.type === 'relates').map(r => r.related_id),
-    sidebar: row.sidebar ?? false,
+    overview: row.overview ?? false,
     milestone: row.milestone ?? false,
     checklist: (row.checklist ?? []).map(({ id, text, done }) => ({ id, text, done })),   // array order IS the order
     checklist_plain: row.checklist_plain ?? false,
@@ -51,6 +53,7 @@ export function hydrateTask(row) {
 const cleanChecklist = list => (list ?? []).map(it => ({ id: it.id || crypto.randomUUID(), text: it.text, done: it.done ?? false }));
 
 export function dehydrateTask(task) {
+  task = overviewFields(task);
   return {
     row: {
       content: task.content,
@@ -71,7 +74,7 @@ export function dehydrateTask(task) {
       position: task.position ?? 0,
       completed_at: task.completed_at ?? null,
       archived_at: task.archived_at ?? null,
-      sidebar: task.sidebar ?? false,
+      overview: task.overview ?? false,
       milestone: task.milestone ?? false,
       checklist_plain: task.checklist_plain ?? false,
       checklist: cleanChecklist(task.checklist),
@@ -140,6 +143,7 @@ export function createSupabaseStore(client) {
 
   // once warm, list() is a cache hit; mutations refetch only affected rows
   let _settings = {}, _cTasks = [], _cAreas = [], _cDef = null;
+  let themeWrite = Promise.resolve();   // slow earlier selections must not overwrite the latest one
   let _loaded = false, _areasLoaded = false, _settingsLoaded = false;
   const _uf = makeFuzzy();
   let _cIdx = buildSearchDocs([], [], null), _idxDirty = false;
@@ -229,6 +233,11 @@ export function createSupabaseStore(client) {
     if (!_newColsLive) for (const k of NEW_COLS) delete payload[k];
     if (!Object.keys(payload).length) return { error: null };
     let res = await client.from('tasks').update(payload).eq('id', id).eq('user_id', uid);
+    // ceiling: old databases keep sidebar; remove the fallback once all deployments migrate.
+    if (res.error && 'overview' in payload && /(?:column.*overview.*does not exist|could not find.*overview.*column)/i.test(res.error.message || '')) {
+      const { overview, ...rest } = payload;
+      return client.from('tasks').update({ ...rest, sidebar: overview }).eq('id', id).eq('user_id', uid);
+    }
     if (res.error && NEW_COLS.some(k => k in payload) && /column|schema/i.test(res.error.message || '')) {
       _newColsLive = false;
       for (const k of NEW_COLS) delete payload[k];
@@ -360,6 +369,16 @@ export function createSupabaseStore(client) {
 
     // sync reads from cache (matches LocalStore; called during render)
     defaultProject() { return _settings.default_project_id ?? null; },
+    theme() { return _settings.theme ?? null; },
+    setTheme(theme) { return themeWrite = themeWrite.catch(() => {}).then(async () => {
+      const uid = await userId();
+      // Ensure the row without inserting a not-yet-migrated column or replacing existing settings.
+      const created = await client.from('user_settings').upsert({ user_id: uid }, { onConflict: 'user_id', ignoreDuplicates: true });
+      if (created.error) throw created.error;
+      const { data, error } = await client.from('user_settings').update({ theme }).eq('user_id', uid).select('theme');
+      if (error || data?.length !== 1) throw error || new Error('Theme was not saved');
+      _settings = { ..._settings, theme };
+    }); },
     async setDefaultProject(id) { await patchSettings({ default_project_id: id }); },
     search(query, limit = 50) { ensureIdx(); return searchDocs(query, limit, _uf, _cIdx, _settings.recent ?? []); },
     recordSearchPick(id) {
@@ -381,7 +400,9 @@ export function createSupabaseStore(client) {
       if (kind === 'task') {
         for (const t of rows) {
           const { row, task_relations } = dehydrateTask(t);
+          const overview = row.overview; delete row.overview;
           if ((await client.from('tasks').upsert({ id: t.id, user_id: uid, created_at: t.created_at ?? new Date().toISOString(), updated_at: new Date().toISOString(), ...row }, { onConflict: 'id' })).error) return false;
+          if ((await taskUpdateTolerant(t.id, uid, { overview })).error) return false;
           if (task_relations.length) await client.from('task_relations').upsert(task_relations.map(r => ({ ...r, task_id: t.id, user_id: uid })), { onConflict: 'task_id,related_id,type' });
         }
         await fetchAllTasks(); return true;
@@ -490,6 +511,7 @@ export function createSupabaseStore(client) {
       },
 
       async create(fields) {
+        fields = overviewFields(fields);
         try {
           const uid = await userId(); const ts = new Date().toISOString();
           captureTz(fields);
@@ -510,7 +532,7 @@ export function createSupabaseStore(client) {
             place: fields.place ?? null,
             location_mode: fields.location?.mode ?? 'any', location_ids: fields.location?.ids ?? [],
             area_ids: await resolveAreaIds(fields), goal_ids: fields.goal_ids ?? [],
-            position, completed_at: null, archived_at: null, sidebar: fields.sidebar ?? false,
+            position, completed_at: null, archived_at: null,
             milestone: fields.milestone ?? false,
             available_from: fields.available_from ?? null, task_size: fields.task_size ?? null,
             anchor: fields.anchor ?? null, possible: fields.possible ?? null,
@@ -523,9 +545,10 @@ export function createSupabaseStore(client) {
           // …and they MUST still be written, or a signed-in user's importance chip is set in the composer and
           // silently gone on Save. Separate statement so a pre-migration column costs these fields, not the task.
           const post = {};
+          if (fields.overview) post.overview = true;
           if (fields.importance && fields.importance !== 'none') post.importance = fields.importance;
           if (fields.checklist_plain) post.checklist_plain = true;
-          if (Object.keys(post).length) await taskUpdateTolerant(id, uid, post);
+          if (Object.keys(post).length && (await taskUpdateTolerant(id, uid, post)).error) return null;
           markEcho(id);
           if (fields.blocked_by?.length) await setRelationType(id, uid, 'needs', fields.blocked_by);
           if (fields.relates?.length) await setRelationType(id, uid, 'relates', fields.relates);
@@ -535,11 +558,13 @@ export function createSupabaseStore(client) {
       },
 
       async update(id, fields) {
+        fields = overviewFields(fields);
         try {
+          if (fields.parent_id && descendantIds(await taskRows(), id).includes(fields.parent_id)) return null;
           const uid = await userId(); const ts = new Date().toISOString();
           captureTz(fields);
           const curr = _cTasks.find(x => x.id === id);
-          const upd = { updated_at: nextTs(ts, curr?.updated_at), ...pick(fields, ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'task_size', 'anchor', 'possible', 'starts_at', 'ends_at', 'tz', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'sidebar', 'milestone', 'checklist_plain']) };
+          const upd = { updated_at: nextTs(ts, curr?.updated_at), ...pick(fields, ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'task_size', 'anchor', 'possible', 'starts_at', 'ends_at', 'tz', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'overview', 'milestone', 'checklist_plain']) };
           if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;   // one jsonb column now
           if ('location' in fields) { upd.location_mode = fields.location?.mode ?? 'any'; upd.location_ids = fields.location?.ids ?? []; }
           if ('areas' in fields || 'area_ids' in fields) upd.area_ids = await resolveAreaIds(fields);

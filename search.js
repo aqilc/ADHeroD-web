@@ -23,7 +23,7 @@ export function buildSearchDocs(tasks, areas, defaultProjectId) {
   for (const t of tasks) {
     if (t.id === defaultProjectId) continue;
     const title = t.content || '';
-    if (t.sidebar) {
+    if (t.overview) {
       haystack.push(title + SEP + pathOf(t));
       meta.push({ id: t.id, type: 'project', completed: !!t.completed_at, titleLen: title.length, title });
       continue;
@@ -52,7 +52,7 @@ const titleTier = (title, ql, ranges, titleLen) => {
   return 4;
 };
 
-// completed tasks partitioned to the bottom; within each block: title-tier, then sidebar projects/areas over tasks, then uFuzzy order/shorter title
+// completed tasks partitioned to the bottom; within each block: title-tier, then overview projects/areas over tasks, then uFuzzy order/shorter title
 export function rankDocs(uf, haystack, meta, query, limit = 50) {
   const q = (query || '').trim();
   if (!q) return [];
@@ -164,12 +164,12 @@ export function matchQuery(query, tasks, ctx) {
   let scope = null; walk(ast, n => { if (n.q === 'in') scope = n.val; });
   const termSets = {}; walk(ast, n => { if (n.term != null && n.term !== '' && !(n.term in termSets)) termSets[n.term] = ctx.freeText(n.term, scope); });
   const projCache = {};
-  const projIds = name => projCache[name] || (projCache[name] = new Set(tasks.filter(t => t.sidebar && t.id !== ctx.defaultProjectId && (t.content || '').toLowerCase().includes(name.toLowerCase())).map(t => t.id)));
+  const projIds = name => projCache[name] || (projCache[name] = new Set(tasks.filter(t => t.overview && t.id !== ctx.defaultProjectId && (t.content || '').toLowerCase().includes(name.toLowerCase())).map(t => t.id)));
   const inProject = (t, name, sub) => { const ps = projIds(name); if (!sub) return ps.has(t.parent_id); let c = byId.get(t.parent_id), seen = new Set(); while (c && !seen.has(c.id)) { if (ps.has(c.id)) return true; seen.add(c.id); c = byId.get(c.parent_id); } return false; };
   const areaMatch = (ids, name) => (ids || []).some(id => { const g = ctx.areas.find(x => x.id === id); return g && g.name.toLowerCase().includes(name.toLowerCase()); });
   const isFlag = (t, f) => ({
     done: () => !!t.completed_at, open: () => !t.completed_at && !t.archived_at, archived: () => !!t.archived_at, any: () => true,
-    recurring: () => !!t.recurrence, project: () => !!t.sidebar, leaf: () => !hasChild.has(t.id),
+    recurring: () => !!t.recurrence, project: () => !!t.overview, leaf: () => !hasChild.has(t.id),
     must: () => t.importance === 'must', focus: () => t.importance === 'focus', someday: () => t.importance === 'someday',
     daily: () => t.recurrence?.freq === 'day', weekly: () => t.recurrence?.freq === 'week',
     monthly: () => t.recurrence?.freq === 'month', yearly: () => t.recurrence?.freq === 'year',
@@ -195,7 +195,7 @@ export function matchQuery(query, tasks, ctx) {
   walk(ast, n => { if (n.q === 'is' && (n.val === 'done' || n.val === 'any')) includeDone = true; if (n.q === 'is' && (n.val === 'archived' || n.val === 'any')) includeArchived = true; if (n.q === 'is' && n.val === 'project') wantProject = true; });
   const pred = compile(ast);
   // Archived excluded by default (like completed); surfaced only via is:archived / is:any.
-  const res = tasks.filter(t => t.id !== ctx.defaultProjectId && (includeDone || !t.completed_at) && (includeArchived || !t.archived_at) && (wantProject || !t.sidebar) && pred(t));
+  const res = tasks.filter(t => t.id !== ctx.defaultProjectId && (includeDone || !t.completed_at) && (includeArchived || !t.archived_at) && (wantProject || !t.overview) && pred(t));
   const key = t => [t.completed_at ? 1 : 0, when(t) ? when(t).slice(0, 10) : '9999', impRank(t.importance)].join('|');
   return res.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0).map(t => t.id);
 }

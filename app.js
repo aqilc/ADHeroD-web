@@ -10,10 +10,27 @@ const _scale = (d) => [
   Object.entries(d.priority).map(([k, v]) => `--p${k}:${v}`),
   Object.entries(d.quick).map(([k, v]) => `--q-${k}:${v}`),
 ].flat().join(';');
-document.head.insertAdjacentHTML('beforeend',
-  `<style id="design-tokens">:root{${_scale(DESIGN)};${_vars(DESIGN.light)}}@media (prefers-color-scheme: dark){:root{${_vars(DESIGN.dark)}}}</style>`);
+const THEME_COLORS = Object.entries(DESIGN.themes).filter(([, t]) => t.family).map(([id, t]) => ({
+  id: id.replace('-light', ''), label: t.family,
+  preview: ['bg', 'panel', 'ink', 'muted', 'accent'].map(k => {
+    const dark = DESIGN.themes[id.replace('-light', '-dark')];
+    return `--preview-${k}:light-dark(${t.over?.[k] || DESIGN.light[k]},${dark.over?.[k] || DESIGN.dark[k] || DESIGN.light[k]})`;
+  }).join(';'),
+}));
+const savedColorTheme = account => [localStorage.getItem('adherod.colorTheme'), account, 'hearth'].find(id => THEME_COLORS.some(t => t.id === id));
+const savedAppearance = () => ['light', 'dark'].includes(localStorage.getItem('adherod.theme')) ? localStorage.getItem('adherod.theme') : 'system';
+function applyTheme(mode, family) {
+  const vars = scheme => _vars({ ...DESIGN.light, ...(scheme === 'dark' ? DESIGN.dark : {}), ...DESIGN.themes[family + '-' + scheme]?.over });
+  let el = document.getElementById('design-tokens');
+  if (!el) { el = document.createElement('style'); el.id = 'design-tokens'; document.head.appendChild(el); }
+  el.textContent = `:root{${_scale(DESIGN)};${vars(mode === 'dark' ? 'dark' : 'light')}}` +
+    (mode === 'system' ? `@media (prefers-color-scheme: dark){:root{${vars('dark')}}}` : '');
+  if (mode === 'system') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = mode;
+}
+applyTheme(savedAppearance(), savedColorTheme()); // Before Alpine boots: no flash of the previous palette.
 
-import { createLocalStore, descendantIds, ancestorIds, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, isBlocked, MAX_DEPTH, pendingSweep, placedMap } from './store.js';
+import { createLocalStore, descendantIds, ancestorIds, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, isBlocked, MAX_DEPTH, pendingSweep, placedMap, overviewFields } from './store.js';
 import { guardedFields, trashView, pruneJournal } from './recovery.js';
 import { inNotes, isNotesName } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, leadIcon, userReminders, previewText, offsetLabel } from './reminders.js';
@@ -154,6 +171,15 @@ function pillValue(kind, raw) { const sp = PILL_SPEC[kind]; return sp.json ? JSO
 const DIALOG_KEYS = ['shortcutsOpen', 'trashOpen', 'locMgr', 'filterEdit', 'eventEdit', 'blockEdit', 'delAsk', 'importPreview', 'guideOpen'];
 // Completion-relevant fields for undo/redo fx diff — shared across _captureCompletionFx and _performOne task-delete path.
 const FX_FIELDS = t => ({ completed_at: t.completed_at ?? null, recur_from: t.recur_from ?? null, completions: t.completions, recurrence: t.recurrence, checklist: t.checklist ?? null });
+const normalizeTaskOp = op => {
+  if (!op) return op;
+  if (op.kind === 'composite') { for (const child of op.ops || []) normalizeTaskOp(child); return op; }
+  if (op.target !== 'task') return op;
+  for (const key of ['before', 'after', 'expect', 'was', 'fields']) if (op[key]) op[key] = overviewFields(op[key]);
+  if (op.rows) op.rows = op.rows.map(overviewFields);
+  for (const change of op.fx?.changed || []) if (change.before) change.before = overviewFields(change.before);
+  return op;
+};
 // Picker specs — drives openPicker/refreshPicker/pickPill/pickerKeydown generically.
 // `char` is the trigger TEXT (not always one char — "at " opens the places), `val` maps a match row to the
 // pill value, `find` locates the trigger in the node's text (default: the last occurrence of `char`).
@@ -319,7 +345,7 @@ document.addEventListener('alpine:init', () => {
     subGhost: '',
     chkGhost: '',
     hoverId: null,      // highlights row + direct subtasks as one block
-    focusId: null,      // keyboard-focused list row (j/k/↑↓); Enter/e opens it, x/Space completes it
+    focusId: null,      // keyboard-focused list row (j/k/↑↓); Enter/e opens it, x completes it
     sel: [],            // multi-select: ids of selected task rows (drives the edit bar; the row .selected class is painted imperatively, never a per-row reactive :class — list-perf)
     selAnchor: null,    // range anchor for Shift-click / Shift+↑↓
     selMenu: null,      // open edit-bar sub-menu: 'move'|'prio'|'due'|null
@@ -348,7 +374,7 @@ document.addEventListener('alpine:init', () => {
     // Global color list (user-extendable via settings later) + the gray default for areas with no color.
     colors: DESIGN.palette,
     L: DESIGN.lang.labels,
-    areaDefault: '#9aa0a6',
+    areaDefault: 'var(--muted)',
     areaIcons: ['i-tag-tag','i-tag-home','i-tag-briefcase','i-tag-star','i-tag-heart','i-tag-book','i-tag-cart','i-tag-dollar','i-tag-code','i-tag-dumbbell','i-tag-plane','i-tag-bell','i-tag-flame','i-tag-leaf','i-tag-music','i-tag-map','i-tag-zap','i-tag-globe','i-tag-camera','i-tag-gift'],
     // Task-list drag state
     taskDropHint: null,
@@ -369,7 +395,7 @@ document.addEventListener('alpine:init', () => {
       }
       await this.reloadAll();
       await this._migratePlaceStrings();
-      await this._healNotesSidebar();
+      await this._healNotesOverview();
       this._journalLoad();
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
       setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
@@ -726,7 +752,7 @@ document.addEventListener('alpine:init', () => {
       return 'All';
     },
     hasChildren(id) { return this.parentIds.has(id); },
-    isSidebar(t) { return !!t.sidebar; },
+    isOverviewProject(t) { return !!t.overview; },
     // Filter view: runFilter's ordered ids mapped to live task objects (order preserved).
     filterTasks() {
       const f = this.activeFilter(); if (!f) return [];
@@ -738,10 +764,10 @@ document.addEventListener('alpine:init', () => {
       if (type === 'project') return this.childTasks(id);
       if (type === 'backlog') return this.childTasks(def);
       if (type === 'area') return this.tasks.filter(t => t.area_ids?.includes(id));
-      // All: tasks whose parent is a container (root, backlog, sidebar project). byId keeps this O(n) — tasks.find per task melted at ~1k rows.
+      // All: tasks whose parent is a container (root, backlog, overview project). byId keeps this O(n) — tasks.find per task melted at ~1k rows.
       const byId = this.byId;
-      const inProject = pid => pid === null || pid === def || !!byId.get(pid)?.sidebar;
-      return this.tasks.filter(t => !t.sidebar && t.id !== def && inProject(t.parent_id));
+      const inProject = pid => pid === null || pid === def || !!byId.get(pid)?.overview;
+      return this.tasks.filter(t => !t.overview && t.id !== def && inProject(t.parent_id));
     },
     listHit(t) {
       const q = this.listQ.trim().toLowerCase(); if (!q) return true;
@@ -846,12 +872,12 @@ document.addEventListener('alpine:init', () => {
       // where a project is a legitimate row rather than the thing the list is about.
       const subSec = this.groupBy === 'none' && this.navSel.type === 'project';
       const { mkRow, byParent, byId } = this._mkRowFn(true, cmp);
-      let out = []; const done = [];   // active rows (main list) + below-the-line (completed via 'done' lens, archived via 'archived' lens)
+      let out = []; const done = [], seen = new Set();   // one row per id, even with cyclic cloud data
       // Additive lenses: OPEN tasks always fill the main list; the 'done' lens adds completed tasks and the
       // 'archived' lens adds archived tasks to the below-the-line section (both, when both are on).
       // Filter view: matches + their ANCESTOR CHAIN as context rows (r.ctx), so a matched subtask keeps its parents.
       // Flat was wrong twice over — hits arrived orphaned, and a project (never a match itself, matchQuery drops
-      // sidebars) simply vanished, which reads as "my whole checklist is missing from the filter".
+      // overview projects) simply vanished, which reads as "my whole checklist is missing from the filter".
       if (this.navSel.type === 'filter') {
         let rows = filtering ? this.filterTasks().filter(t => this.rowPass(t)) : this.filterTasks();
         if (cmp) rows = rows.slice().sort(cmp);
@@ -876,6 +902,7 @@ document.addEventListener('alpine:init', () => {
         }
         if (cmp) roots.sort(cmp);
         const visitF = (t, depth) => {
+          if (seen.has(t.id)) return; seen.add(t.id);
           out.push(Object.assign(mkRow(t, depth), { ctx: !keep.get(t.id) }));
           for (const c of (byParent.get(t.id) || [])) if (keep.has(c.id)) visitF(c, depth + 1);
         };
@@ -887,7 +914,7 @@ document.addEventListener('alpine:init', () => {
         let keep = null;
         if (filtering) {
           keep = new Set();
-          const addSubtree = (id) => { keep.add(id); for (const c of (byParent.get(id) || [])) addSubtree(c.id); };
+          const addSubtree = (id) => { if (keep.has(id)) return; keep.add(id); for (const c of (byParent.get(id) || [])) addSubtree(c.id); };
           for (const r of roots) if (this.rowPass(r)) addSubtree(r.id);
           // Text search (not quick-filters) also surfaces matching SUBTASKS: add each text-matched task that
           // clears the quick-filter gates, plus its ancestor chain for context. Quick-filters stay top-level-only.
@@ -899,22 +926,23 @@ document.addEventListener('alpine:init', () => {
           }
         }
         // a completed (non-archived) root + its whole subtree → the Done list, tree-structured
-        const visitDone = (t, depth) => { done.push(mkRow(t, depth)); for (const c of (byParent.get(t.id) || [])) visitDone(c, depth + 1); };
+        const visitDone = (t, depth) => { if (seen.has(t.id)) return; seen.add(t.id); done.push(mkRow(t, depth)); for (const c of (byParent.get(t.id) || [])) visitDone(c, depth + 1); };
         const visit = (t, depth) => {
           if (keep && !keep.has(t.id)) return;
           // A completed/archived ROOT (+ its subtree) goes to the Done section or is hidden. A completed/archived
           // SUBTASK under an ACTIVE parent stays inline (struck / dashed) so it keeps its place in the tree.
           if (t.archived_at && depth === 0) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
           if (t.completed_at && depth === 0) { if (this.showCompleted) visitDone(t, 0); return; }
+          if (seen.has(t.id)) return; seen.add(t.id);
           out.push(mkRow(t, depth));
-          if (this.isSidebar(t) && depth > 0) return;
+          if (this.isOverviewProject(t) && depth > 0) return;
           if (!filtering && this.collapsed[t.id]) return;   // searching/filtering reveals matches regardless of collapse
           for (const c of (byParent.get(t.id) || [])) visit(c, depth + 1);
         };
         if (cmp) roots = roots.slice().sort(cmp);
         // Subprojects sink BELOW the project's own tasks: they become section heads, and a head sitting mid-list
         // reads as though the loose tasks after it belonged to it. sort is stable, so each group keeps its order.
-        if (subSec) roots = roots.slice().sort((a, b) => (this.isSidebar(a) ? 1 : 0) - (this.isSidebar(b) ? 1 : 0));
+        if (subSec) roots = roots.slice().sort((a, b) => (this.isOverviewProject(a) ? 1 : 0) - (this.isOverviewProject(b) ? 1 : 0));
         // Sections come from the group, the order INSIDE one from the sort — so grouping never throws your sort away.
         if (this.groupBy !== 'none') {
           const rk = new Map(roots.map(t => [t.id, this._groupOf(t).rank]));
@@ -924,9 +952,9 @@ document.addEventListener('alpine:init', () => {
       }
       if (this.navSel.type === 'filter') { const [secs, kept] = this._promoteSections(out, r => !!r.ctx); _secMemo = secs; out = kept; }
       else if (this.groupBy !== 'none') { const [secs, kept] = this._sectionize(out); _secMemo = secs; out = kept; }
-      // Inside a project, its sidebar subprojects become section heads even with grouping OFF — a subproject is
+      // Inside a project, its overview subprojects become section heads even with grouping OFF — a subproject is
       // a container, and drawn as one more row it read as a sibling of the tasks it actually holds.
-      else if (subSec) { const [secs, kept] = this._promoteSections(out, r => this.isSidebar(r.t)); _secMemo = secs; out = kept; }
+      else if (subSec) { const [secs, kept] = this._promoteSections(out, r => this.isOverviewProject(r.t)); _secMemo = secs; out = kept; }
       else _secMemo = [];
       // Neighbor ids so itemBlock (the hover "block" highlight) is O(1)/row — for both the active and Done lists.
       for (const arr of [out, done]) for (let k = 0; k < arr.length; k++) {
@@ -942,7 +970,7 @@ document.addEventListener('alpine:init', () => {
     // Which section a ROOT task belongs to. rank orders the sections; the unset bucket always sinks last.
     _groupOf(t) {
       const LAST = 1e9, by = this.groupBy;
-      if (by === 'project') { const p = this.byId.get(t.parent_id); const on = p && p.sidebar && p.id !== this.store.defaultProject();
+      if (by === 'project') { const p = this.byId.get(t.parent_id); const on = p && p.overview && p.id !== this.store.defaultProject();
         return on ? { k: p.id, label: p.content || 'Project', rank: p.position ?? 0 } : { k: '_none', label: 'No project', rank: LAST }; }
       if (by === 'area') { const a = this.areaObjs(t.area_ids)[0];
         return a ? { k: a.id, label: a.name, rank: a.position ?? 0 } : { k: '_none', label: 'No area', rank: LAST }; }
@@ -974,14 +1002,14 @@ document.addEventListener('alpine:init', () => {
     // When a section IS a project, its head wears the same conic pie the picker gives that project — "how far
     // along is this" belongs where the project is being worked, not only where it's chosen. Keyed off byId, so
     // it fires for project grouping and subproject sections alike and stays inert for date/area/importance keys.
-    _secPie(k) { const p = this.byId.get(k); return p?.sidebar ? { pct: this.projectProgress(k) / 100, pieColor: p.color || '' } : {}; },
+    _secPie(k) { const p = this.byId.get(k); return p?.overview ? { pct: this.projectProgress(k) / 100, pieColor: p.color || '' } : {}; },
     // Filter view: a ROOT ancestor that only provides context becomes a section HEAD rather than a dimmed row —
     // same vocabulary as grouping ("these rows live under this"), one less idiom to learn. Deeper ancestors stay
     // inline context rows, and everything under a head shifts up a level so the indent still reads as the tree.
     // A root that MATCHED stays a plain row: it's a result in its own right, not a container.
     // A depth-0 row that `isHead` claims becomes a section HEAD instead of a row, and its subtree shifts up a
     // level so the indent still reads as the tree. Two callers, one idiom: a filter view promotes the ancestors
-    // that only provide context, a project view promotes its sidebar subprojects.
+    // that only provide context, a project view promotes its overview subprojects.
     _promoteSections(rows, isHead) {
       const secs = [], kept = []; let head = null;
       for (const r of rows) {
@@ -1268,15 +1296,23 @@ document.addEventListener('alpine:init', () => {
         areas: this.areaObjs(t.area_ids).map(l => ({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })),
         childCount: kids.length,
         hasProgress: hasKids || hasCl,
-        progress: hasKids ? Math.round(kids.filter(c => c.completed_at || c.archived_at).length / kids.length * 100) : (hasCl ? Math.round(cl.filter(c => c.done).length / cl.length * 100) : 0),
+        progress: this.rowProgress(t, kids),
         blocked: (t.blocked_by ?? []).some(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; }), // inline isBlocked over byId — hot per-row path
       };
     },
-    // Keyboard focus over the visible list rows (j/k/↑↓ move; Enter/e open; x/Space complete).
+    // Enter keyboard navigation where the reader is, not at the corpus boundary.
     moveFocus(d) {
       const rows = this.visibleRows();
       if (!rows.length) { this._setKbFocus(null); return; }
-      const cur = rows.findIndex(r => r.t.id === this.focusId);
+      const sc = this._listScroller(), box = sc?.getBoundingClientRect();
+      const onScreen = el => { const r = el?.getBoundingClientRect(); return r && box && r.height > 0 && r.bottom > box.top && r.top < box.bottom; };
+      let cur = rows.findIndex(r => r.t.id === this.focusId);
+      if (cur < 0 || !onScreen(this._rowEl(this.focusId))) {
+        const ids = new Set([...sc.querySelectorAll('.list .item')].filter(onScreen).map(el => el.dataset.id));
+        const at = d > 0 ? rows.findIndex(r => ids.has(r.t.id)) : rows.findLastIndex(r => ids.has(r.t.id));
+        if (at >= 0) { this._setKbFocus(rows[at].t.id); return; }
+        cur = -1;
+      }
       const next = cur < 0 ? (d > 0 ? 0 : rows.length - 1) : Math.max(0, Math.min(rows.length - 1, cur + d));
       this._setKbFocus(rows[next].t.id);
     },
@@ -1337,6 +1373,7 @@ document.addEventListener('alpine:init', () => {
       await this._bulk(`Set priority · ${this._nTasks(this.sel.length)}`, Array.from(this.sel, id => ({ kind: 'update', target: 'task', id, after: { importance: v } })));
     },
     async selMoveToProject(p) {
+      if (this.sel.some(id => descendantIds(this.tasks, id).includes(p.id))) return this.toast('Cannot move a task into itself or its subtasks');
       await this._bulk(`Moved ${this._nTasks(this.sel.length)} to ${p.content}`, Array.from(this.sel, id => ({ kind: 'update', target: 'task', id, after: { parent_id: p.id } })));
     },
     async selAddArea(a) {
@@ -1364,26 +1401,26 @@ document.addEventListener('alpine:init', () => {
       this._rowV++;
       localStorage.setItem('adherod.nav.collapsed', JSON.stringify(this.collapsed));
     },
-    allProjectRows() {   // all sidebar projects at all depths always shown (roller uses this)
+    overviewProjectRows() {   // all overview projects at all depths always shown (roller uses this)
       // ONE position-sorted byParent index: the old form re-scanned every task for each project it found (O(projects·tasks) per roller paint).
       const rows = [], seen = new Set(), def = this.store.defaultProject(), byP = buildByParent(this.tasks), visit = (parentId, depth) => {
         for (const p of byP.get(parentId) || []) {
           if (seen.has(p.id)) continue;
           seen.add(p.id);
-          const shown = p.sidebar && p.id !== def;
+          const shown = p.overview && p.id !== def;
           if (shown) rows.push({ p, depth });
-          visit(p.id, depth + (shown ? 1 : 0));   // hidden parents must not hide sidebar descendants
+          visit(p.id, depth + (shown ? 1 : 0));   // hidden parents must not hide overview descendants
         }
       };
       visit(null, 0);
-      for (const p of this.tasks) if (p.sidebar && !seen.has(p.id)) visit(p.parent_id, 0);   // legacy cycles/orphans remain navigable without rewriting data
+      for (const p of this.tasks) if (p.overview && !seen.has(p.id)) visit(p.parent_id, 0);   // legacy cycles/orphans remain navigable without rewriting data
       return rows;
     },
     rollerItems() {
       // no special 'all' picker item — "All tasks" is now a seeded, removable filter in the Filters section.
       const it = [{ kind: 'sec', label: 'Projects' },
                   { kind: 'backlog', type: 'backlog', id: null, label: 'Backlog' }];
-      for (const { p, depth } of this.allProjectRows())
+      for (const { p, depth } of this.overviewProjectRows())
         it.push({ kind: 'proj', type: 'project', id: p.id, label: p.content, depth, p });
       it.push({ kind: 'sec', label: 'Filters', add: 'filter' });
       for (const f of this.filters) it.push({ kind: 'filter', type: 'filter', id: f.id, label: f.name, f });
@@ -1432,7 +1469,7 @@ document.addEventListener('alpine:init', () => {
       if (kind === 'area') return this.areas;
       if (kind === 'filter') return this.filters;
       const p = this.byId.get(id); if (!p) return [];
-      return this.tasks.filter(x => x.parent_id === p.parent_id && x.sidebar && x.id !== this.store.defaultProject()).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+      return this.tasks.filter(x => x.parent_id === p.parent_id && x.overview && x.id !== this.store.defaultProject()).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     },
     async navReorder(kind, id, dir) {
       const sibs = this._navSibs(kind, id), i = sibs.findIndex(x => x.id === id), j = i + dir;
@@ -1454,7 +1491,7 @@ document.addEventListener('alpine:init', () => {
       this.startRename(a.id);
     },
     rollerCount(it) {
-      const open = t => !this.isSidebar(t) && !t.completed_at && !t.archived_at;
+      const open = t => !this.isOverviewProject(t) && !t.completed_at && !t.archived_at;
       if (it.kind === 'backlog') { const d = this.store.defaultProject(); return this.tasks.filter(t => open(t) && t.parent_id === d).length; }
       // descendantIds already includes it.id — no re-concat (that double-counted direct children). One scan over tasks, not one per descendant.
       if (it.kind === 'proj') { const ids = new Set(descendantIds(this.tasks, it.id)); return this.tasks.filter(t => open(t) && ids.has(t.parent_id)).length; }
@@ -1521,7 +1558,7 @@ document.addEventListener('alpine:init', () => {
     // carrying their own highlight — skipped here, so the non-matching rows keep alternating among themselves.
     // (Position is re-derived here, NOT taken from x-for's idx: a keyed x-for leaves idx stale on reused rows
     // after an unshift, which banded the list off-by-one.)
-    chkAlt(c) { const m = this.chkFind(), l = this.draft.checklist;
+    chkAlt(c) { const m = this.chkFind(), l = this.checklistRows();
       return m?.has(c.id) ? false : !!(l.slice(l.findIndex(x => x.id === c.id) + 1).filter(x => !m?.has(x.id)).length % 2); },
     // Row HTML while finding: raw text + <mark> sub-matches (md/:: styling pauses for the transient
     // state; textContent contract for the caret still holds — mark wraps text only).
@@ -1549,7 +1586,7 @@ document.addEventListener('alpine:init', () => {
       if (!this.delAsk) return [];
       const excl = new Set(descendantIds(this.tasks, this.delAsk.id)), def = this.store.defaultProject();
       if (this.delAsk.kind === 'project') return this.tasks.filter(p => !excl.has(p.id) && this.hasChildren(p.id));
-      return this.tasks.filter(p => !excl.has(p.id) && (p.id === def || p.sidebar || this.hasChildren(p.id)));
+      return this.tasks.filter(p => !excl.has(p.id) && (p.id === def || p.overview || this.hasChildren(p.id)));
     },
     startDeleteProject(id) {
       this.navPop = null;
@@ -1858,7 +1895,7 @@ document.addEventListener('alpine:init', () => {
       // drag-left outdent only in above/below zones — prevents nest-drag from hijacking into
       const dt = this.byId.get(this.dragId);
       const par = dt && this.byId.get(dt.parent_id);
-      if (mode !== 'into' && e.clientX - (this._dragX0 ?? e.clientX) < -30 && par && !par.sidebar) {
+      if (mode !== 'into' && e.clientX - (this._dragX0 ?? e.clientX) < -30 && par && !par.overview) {
         this.taskDropHint = { id: this.dragId, mode: 'outdent', depth: Math.max(0, (this._dragDepth ?? 1) - 1) };
         this._setDropInto(null);
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
@@ -1893,7 +1930,7 @@ document.addEventListener('alpine:init', () => {
       if (hint.mode === 'outdent') {   // reparent to grandparent, just after the former parent — always a real move
         const dt = this.byId.get(dragId);
         const par = dt && this.byId.get(dt.parent_id);
-        if (!par || par.sidebar) return;
+        if (!par || par.overview) return;
         const newParentId = par.parent_id ?? null;
         const sibs = this.tasks.filter(x => x.parent_id === newParentId && x.id !== dragId).sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
         const insertAt = sibs.findIndex(x => x.id === par.id) + 1;
@@ -1996,7 +2033,7 @@ document.addEventListener('alpine:init', () => {
     // --- Drag-to-move edge rail: Backlog + every project + every area as compact drop targets. ---
     railItems() {
       const items = [{ kind: 'backlog', id: null, label: 'Backlog', icon: 'i-backlog', color: '' }];
-      for (const { p } of this.allProjectRows()) items.push({ kind: 'proj', id: p.id, label: p.content, icon: this.isNote(p.id) ? 'i-tack' : 'i-hash', color: p.color || '' });
+      for (const { p } of this.overviewProjectRows()) items.push({ kind: 'proj', id: p.id, label: p.content, icon: this.isNote(p.id) ? 'i-tack' : 'i-hash', color: p.color || '' });
       for (const l of this.areas) items.push({ kind: 'area', id: l.id, label: l.name, icon: l.icon || 'i-tag-tag', color: l.color || this.areaDefault });
       return items;
     },
@@ -2050,7 +2087,7 @@ document.addEventListener('alpine:init', () => {
       // Zero motion does NOT mean zero protection: grow/collapse still reflows layout and scroll anchoring
       // still drifts, so at scale 0 the glide JUMPS to the target immediately and then re-asserts the LIVE
       // target each frame for the RAW duration — the reader's position is managed, nothing visibly animates.
-      const zero = this.reduceMotion();
+      const zero = !ms || this.reduceMotion();
       if (!zero) ms = motion.t(ms);
       // keyed on the scroller: a second request SUPERSEDES the first (motion.run), re-easing from wherever we are
       const t0 = performance.now();
@@ -2076,7 +2113,7 @@ document.addEventListener('alpine:init', () => {
     _rowAway(id) { const sc = this._listScroller(), el = id && this._rowEl(id); return !!sc && !!id && (el ? this._rowOffscreen(sc, el) : this._modelTop(id) != null); },
     // Bring a row in when it's off-screen. The target is the row's LIVE position, so a list re-render or a row
     // growing under us retargets instead of missing (that was #307, and scrollIntoView could not be told).
-    _revealRow(id) {
+    _revealRow(id, ms = 340) {
       if (!this._rowAway(id)) return;
       const sc = this._listScroller();
       // ONE glide owns the scroller, always — writing scrollTop by hand here loses to whatever hold is still
@@ -2095,7 +2132,7 @@ document.addEventListener('alpine:init', () => {
         // branches can still part by |est − real| at the handover. Tens of px (one re-aim), not the 840px class.
         const m = this._listModel(), i = m.ix.get(id), y = this._modelTop(id); if (y == null) return sc.scrollTop;
         const h = m.ent[i].h, top = y - sc.scrollTop;
-        return sc.scrollTop + this._revealBy(top - 12, top + h - sc.clientHeight + 12, h > sc.clientHeight); });
+        return sc.scrollTop + this._revealBy(top - 12, top + h - sc.clientHeight + 12, h > sc.clientHeight); }, ms);
     },
     // How far to scroll so a row sits in view. under/over = px its top falls short of the 12px line / its
     // bottom overshoots the fold. A row taller than the viewport can never have both ≤ 0, so chasing the
@@ -2202,7 +2239,7 @@ document.addEventListener('alpine:init', () => {
         dueTime: si?.start || timeOf(t.recur_from || ''),
         deadline_at: (t.deadline_at || '').slice(0, 16),   // 16, not 10: a timed deadline must survive an edit round-trip (F16)
         durMin: min,
-        project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: [...(t.area_ids || [])], goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })).sort(byDone), recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
+        project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: [...(t.area_ids || [])], goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })), recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
         location: t.location ? { ...t.location, ids: [...(t.location.ids || [])] } : { mode: 'any', ids: [] },
         reminders: userReminders(this.reminders, t.id).map(r => ({ ...r })),
       };
@@ -2215,7 +2252,7 @@ document.addEventListener('alpine:init', () => {
       if (this.surface === 'lists' && this.rowIndexOf(t.id) >= 0) return false;
       let root = t, seen = new Set();
       while (root.parent_id && !seen.has(root.id)) { seen.add(root.id); const p = this.byId.get(root.parent_id); if (!p) break; root = p; }
-      const inProj = this.isSidebar(root) && root.id !== this.store.defaultProject();
+      const inProj = this.isOverviewProject(root) && root.id !== this.store.defaultProject();
       this.setNav(inProj ? 'project' : 'all', inProj ? root.id : null);   // setNav also moves the surface to Lists
       return true;
     },
@@ -2280,8 +2317,8 @@ document.addEventListener('alpine:init', () => {
       for (const r of had) if (!keep.has(r.id)) await this.store.reminders.remove(r.id);
       if (had.length || (d.reminders || []).length) await this._reloadFor('reminder');
     },
-    // sidebar project → navigate, not edit
-    openTaskById(id) { const t = this.byId.get(id); if (!t) return; this.isSidebar(t) ? this.setNav('project', t.id) : this.editTask(t); },
+    // overview project → navigate, not edit
+    openTaskById(id) { const t = this.byId.get(id); if (!t) return; this.isOverviewProject(t) ? this.setNav('project', t.id) : this.editTask(t); },
     navTargets() {   // non-corpus palette targets: surfaces + filters + action commands
       const t = this.surfaceOrder.map(s => ({ kind: 'nav', type: 'surface', id: s, title: SURF_META[s].label, icon: SURF_META[s].icon }));
       for (const f of this.filters) t.push({ kind: 'nav', type: 'filter', id: f.id, title: f.name, color: f.color || 'var(--muted)' });
@@ -2492,10 +2529,10 @@ document.addEventListener('alpine:init', () => {
       if (ranked) return ranked.map(i => candidates[i]);
       return candidates.filter((_, i) => this._seqMatch(hay[i], q));   // short-fragment fallback
     },
-    // Projects you can file under: sidebar projects (even empty) and any parent task; minus the default.
-    // sidebar projects first (stable within groups); task-projects (tasks acting as containers) trail
-    filteredProjects() { const def = this.store.defaultProject(); return this.pickerMatches(this.tasks.filter(t => t.id === def || t.sidebar || this.hasChildren(t.id))).sort((a, b) => (b.sidebar === true || b.id === def ? 1 : 0) - (a.sidebar === true || a.id === def ? 1 : 0)); },
-    taskProj(p) { return !p.sidebar && p.id !== this.store.defaultProject(); },   // container task, not a real sidebar project
+    // Projects you can file under: overview projects (even empty) and any parent task; minus the default.
+    // Overview projects first (stable within groups); task-projects (tasks acting as containers) trail.
+    filteredProjects() { const def = this.store.defaultProject(); return this.pickerMatches(this.tasks.filter(t => t.id === def || t.overview || this.hasChildren(t.id))).sort((a, b) => (b.overview === true || b.id === def ? 1 : 0) - (a.overview === true || a.id === def ? 1 : 0)); },
+    taskProj(p) { return !p.overview && p.id !== this.store.defaultProject(); },   // container task, not an overview project
     pickProject(project) { this.draft.project_id = project.id; this.draft.project = project.content; this.projRequired = false; this.pickerQ = ''; this.pop = null; },
     defaultProjName() {
       const id = this.store.defaultProject();
@@ -2504,7 +2541,7 @@ document.addEventListener('alpine:init', () => {
     async createFilteredProj() {
       const name = this.pickerQ.trim(); if (!name) return;
       const existing = this.tasks.find(x => x.content === name && x.parent_id === null);
-      const project = existing || await this.store.tasks.create({ content: name, parent_id: null, sidebar: true });
+      const project = existing || await this.store.tasks.create({ content: name, parent_id: null, overview: true });
       if (!project) return;
       await this.loadTasks();
       this.pickProject(project);
@@ -3100,12 +3137,12 @@ document.addEventListener('alpine:init', () => {
       return this.areas.filter(a => this._seqMatch(a.name, frag));
     },
     areaMatches() { return this.resolveArea(this.areaPicker.frag); },
-    // "#" means file it under a project — sidebar projects + the default, not every task that happens to have children.
-    projMatches() { const def = this.store.defaultProject(); return this.pickerMatches(this.tasks.filter(t => t.sidebar || t.id === def), this.projPicker.frag); },
+    // "#" means file it under a project — overview projects + the default, not every task that happens to have children.
+    projMatches() { const def = this.store.defaultProject(); return this.pickerMatches(this.tasks.filter(t => t.overview || t.id === def), this.projPicker.frag); },
     locMatches() { const q = this.locPicker.frag.trim().toLowerCase(); return this.locations.filter(l => !q || l.name.toLowerCase().includes(q)); },
     // Dependencies autocomplete over EXISTING open tasks — a dependency on something that doesn't exist yet
     // is a note, and notes already have a field.
-    linkMatches(frag) { return this.pickerMatches(this.tasks.filter(t => t.id !== this.editing && !t.sidebar && t.id !== this.store.defaultProject() && !t.completed_at && !t.archived_at), frag).slice(0, 8); },
+    linkMatches(frag) { return this.pickerMatches(this.tasks.filter(t => t.id !== this.editing && !t.overview && t.id !== this.store.defaultProject() && !t.completed_at && !t.archived_at), frag).slice(0, 8); },
     // needs/needed-by share ONE popup (never open together): these aim it at whichever is live.
     _linkType() { return this.needsPicker.open ? 'needs' : this.nbyPicker.open ? 'neededBy' : null; },
     linkPicker() { const t = this._linkType(); return t ? this[PICKERS[t].key] : null; },
@@ -3222,7 +3259,7 @@ document.addEventListener('alpine:init', () => {
       }
       if (this.editing) {
         // Capture before close (closeComposer resets draft/editing async via _growClose callback)
-        const editId = this.editing, fields = this.draftFields(), draft = this.draft;
+        const editId = this.editing, fields = this.draftFields(), draft = this.draft, before = this.byId.get(this.editing);
         const sc = this._listScroller(), stBefore = sc ? sc.scrollTop : 0;
         // A save is ALWAYS slow enough to warrant feedback (composer collapse + reloadAll dominate; the store write
         // itself is quick, so the only-if-slow 150ms gate never tripped). Spin the checkmark IMMEDIATELY and let it
@@ -3236,9 +3273,11 @@ document.addEventListener('alpine:init', () => {
         await this._journalRowChange('Saved task', 'task', editId, async () => {
           updated = await this.store.tasks.update(editId, fields);
           if (updated) {
-            // A completed task whose checklist now has an undone item must reopen (e.g. you just added one).
             const cl = updated.checklist || [];
-            if (updated.completed_at && cl.length && !cl.every(c => c.done)) { await this.store.tasks.setCompleted(updated.id, false); updated = this._rowById('task', updated.id); }
+            const done = cl.length > 0 && cl.every(c => c.done);
+            // Only a newly finished checklist advances recurrence; later text edits must not complete it again.
+            if (!updated.checklist_plain && !this.hasChildren(editId) && cl.length && (updated.completed_at ? !done : done && !(before.checklist?.length && before.checklist.every(c => c.done))))
+              await this.store.tasks.setCompleted(editId, done);
           }
         });
         _carryHint = null;   // defensive: cleared by _listModel if the surface was visible, else clear here
@@ -3620,7 +3659,7 @@ document.addEventListener('alpine:init', () => {
       }
       if (this.editing === payload.taskId && !this.draft.checklist.some(c => c.id === payload.item.id)) {
         this.draft.checklist.splice(at(this.draft.checklist), 0, payload.item);
-        this.sortChecklist(); this.syncChkRows();
+        this.syncChkRows();
       }
       return true;
     },
@@ -3637,7 +3676,7 @@ document.addEventListener('alpine:init', () => {
     async _createRow(t, fields) { const r = this._res(t); return r.create ? r.create(fields) : r.add(fields); },
 
     _journalLoad() {
-      try { const j = JSON.parse(localStorage.getItem('adherod.journal')); if (j) { this.journal = j.entries || []; this.cursor = j.cursor ?? this.journal.length; } } catch {}
+      try { const j = JSON.parse(localStorage.getItem('adherod.journal')); if (j) { this.journal = j.entries || []; this.cursor = j.cursor ?? this.journal.length; for (const e of this.journal) normalizeTaskOp(e.op); } } catch {}
       const p = pruneJournal(this.journal, this.cursor, Date.now()); this.journal = p.journal; this.cursor = p.cursor;
     },
     _journalFlush() {
@@ -3948,6 +3987,7 @@ document.addEventListener('alpine:init', () => {
       await this._saveSched(row.id, this.draft);   // the ON register lands as a date-item, never as recur_from
       await this._saveReminders(row.id, this.draft);
       await this._applyDraftLinks(row.id);   // before the reload below, so the new links are in the first render
+      if (!row.checklist_plain && row.checklist?.length && row.checklist.every(c => c.done)) await this.store.tasks.setCompleted(row.id, true);
       this.tasks.push(row); if (row.parent_id) this.parentIds.add(row.parent_id);   // keep hasChildren truthful until loadTasks rebuilds
       await Promise.all([this.loadTasks(), this.loadAreas()]);
       this._clearPending('new');   // saved → the recovered-draft slot is spent
@@ -3957,14 +3997,14 @@ document.addEventListener('alpine:init', () => {
       return row;
     },
 
-    childTasks(id) { return this.tasks.filter(t => t.parent_id === id).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); },
-    addChecklistItem(text) { if (!text.trim()) return; const it = { id: crypto.randomUUID(), text: text.trim(), done: false }; this.draft.checklist.unshift(it); this.sortChecklist(); this._pushChkItem(it, this.draft.checklist.indexOf(it), null, it.text); },   // new items land at the TOP of the open bucket
-    // The composer keeps the array open-first/done-last (stable) so the array order == the visual order (drag indices map 1:1).
-    sortChecklist() { this.draft.checklist.sort(byDone); },
+    childTasks(id) { return this.tasks.filter(t => t.parent_id === id && t.id !== id).sort((a, b) => (a.position ?? 0) - (b.position ?? 0)); },
+    addChecklistItem(text) { if (!text.trim()) return; const it = { id: crypto.randomUUID(), text: text.trim(), done: false }; this.draft.checklist.unshift(it); this._pushChkItem(it, 0, null, it.text); },
+    // Bucket only the display: unchecking restores the item's saved position.
+    checklistRows() { return chkVisible(this.draft.checklist, this.chkPlain(), true).rows; },
     // Uncheckable: the checklist renders as a plain notes list (no boxes, no done styling) everywhere
     chkPlain() { return !!this.editingTask()?.checklist_plain; },
     async toggleChecklistPlain() { const t = this.editingTask(); if (t && await this.store.tasks.update(t.id, { checklist_plain: !t.checklist_plain })) await this.loadTasks(); },
-    toggleChecklistItem(item) { item.done = !item.done; this.sortChecklist(); },   // toggling done moves the item to the done bucket
+    toggleChecklistItem(item) { item.done = !item.done; },
     removeChecklistItem(item) { const i = this.draft.checklist.indexOf(item); if (i >= 0) this.draft.checklist.splice(i, 1); if ((item.text || '').trim()) this._pushChkItem(item, i, item.text, null); },
     // Backspace on an empty checklist row deletes it and lands the caret on the neighboring entry.
     chkBackspace(item, e) {
@@ -4043,7 +4083,6 @@ document.addEventListener('alpine:init', () => {
     insertChkAfter(item) {
       const it = { id: crypto.randomUUID(), text: '', done: false };
       this.draft.checklist.splice(this.draft.checklist.indexOf(item) + 1, 0, it);
-      this.sortChecklist();
       this.$nextTick(() => document.querySelector(`.composer-entries .entry.chk[data-id="${it.id}"] .entry-txt`)?.focus());
     },
     // --- Subtask rows are pill editors too: the SAME title engine, aimed via _nlpFocus at the focused row. ---
@@ -4225,7 +4264,6 @@ document.addEventListener('alpine:init', () => {
       const at = item == null ? 0 : this.draft.checklist.indexOf(item) + 1;
       const before = JSON.parse(JSON.stringify(this.draft.checklist));
       this.draft.checklist.splice(at, 0, ...items);
-      this.sortChecklist();
       this._pushDraftEdit('Pasted checklist items', 'chk-multi', { before, after: JSON.parse(JSON.stringify(this.draft.checklist)) });   // ONE ⌘Z step for the whole paste, not one per item
     },
     // Splice text in at the caret, verbatim. item=null ⇒ the ghost (a textarea on x-model), else a live item editor.
@@ -4277,12 +4315,15 @@ document.addEventListener('alpine:init', () => {
     // SAVED task — that is the scope of "no grip in the composer": it was asked for on the NEW-task composer,
     // where nothing is saved yet and the grip crowds the row. Removing it from both took it off saved tasks too.
     initEntrySort(el, kind) {
-      makeSortable(el, { itemSel: '.entry:not(.ghost)', handleSel: '.entry-grip',
+      makeSortable(el, { itemSel: kind === 'sub' ? '.entry:not(.ghost)' : '.entry:not(.ghost):not(.done)', handleSel: '.entry-grip',
         onCommit: (from, to) => kind === 'sub' ? this.reorderSubtasks(from, to) : this.reorderChecklist(from, to) });
     },
+    _reorderChecklist(cl, from, to, plain) {
+      const open = cl.filter(c => plain || !c.done); open.splice(to, 0, open.splice(from, 1)[0]);
+      let i = 0; return cl.map(c => plain || !c.done ? open[i++] : c);
+    },
     async reorderChecklist(from, to) {
-      this.draft.checklist.splice(to, 0, this.draft.checklist.splice(from, 1)[0]);
-      this.sortChecklist();   // buckets are authoritative — a drop that crossed the open/done split snaps back to its own bucket
+      this.draft.checklist = this._reorderChecklist(this.draft.checklist, from, to, this.chkPlain());
       if (this.editing) await this._journalRowChange('Reordered checklist', 'task', this.editing, () => this.store.tasks.update(this.editing, { checklist: this.draft.checklist }));
     },
     async reorderSubtasks(from, to) {
@@ -4330,7 +4371,7 @@ document.addEventListener('alpine:init', () => {
       this.focusId = id;
       if (id) this._ensureRow(id);
       this._paintKb();
-      if (_kbEl) this._revealRow(id);
+      if (_kbEl) this._revealRow(id, 0);   // keyboard steps settle immediately, including same-frame key repeats
     },
     // --- Delegated row events (bound once on the <ul>, resolve the row by data-id) — see the list markup ---
     _rowFromEl(el) { return el ? (_rowMap?.get(el.dataset.id) ?? _doneMap?.get(el.dataset.id) ?? null) : null; },   // O(1) via Maps maintained in visibleRows(); active OR Done list
@@ -4349,13 +4390,11 @@ document.addEventListener('alpine:init', () => {
     listDragStart(e) { if (e.target.closest('.chk-row, code, .md-code')) return e.preventDefault(); const r = this._rowFromEl(e.target.closest?.('.item')); if (r) this.dragStart(r.t, e, r.depth); },   // native selection and checklist sorting own their drags
     // Pointer-drag a task's checklist rows to reorder — scoped to that one task's .chk-list (never leaks / reparents).
     initListChkSort(el) {
-      makeSortable(el, { itemSel: '.chk-row', scopeSel: '.chk-list', mouseOnly: true, onCommit: (from, to, scope) => this.reorderTaskChecklist(from, to, scope) });
+      makeSortable(el, { itemSel: '.chk-row[data-ci]:not(.done)', scopeSel: '.chk-list', mouseOnly: true, onCommit: (from, to, scope) => this.reorderTaskChecklist(from, to, scope) });
     },
     async reorderTaskChecklist(from, to, scope) {
       const id = scope.closest('.item')?.dataset.id, t = this.byId.get(id); if (!t) return;
-      const cis = [...scope.querySelectorAll('.chk-row')].map(r => +r.dataset.ci);   // current visual order → original array indices
-      cis.splice(to, 0, cis.splice(from, 1)[0]);
-      const cl = t.checklist || [], next = cis.map(i => cl[i]).filter(Boolean);
+      const next = this._reorderChecklist(t.checklist || [], from, to, t.checklist_plain);
       // Journal against the captured id so ⌘Z reverses THIS reorder — not an earlier action on another task.
       await this._journalRowChange('Reordered checklist', 'task', id, () => this.store.tasks.update(id, { checklist: next }));
     },
@@ -4367,9 +4406,12 @@ document.addEventListener('alpine:init', () => {
     // dragOver already recorded the intent in taskDropHint, and drop() reads only that.
     listDrop() { this.drop(); },
     hasProgress(t) { return this.hasChildren(t.id) || (t.checklist || []).length > 0; },   // parentIds Set — never an O(n) childTasks scan per row
-    rowProgress(t) {
-      const kids = this.childTasks(t.id);
-      if (kids.length) return Math.round(kids.filter(c => c.completed_at || c.archived_at).length / kids.length * 100);
+    rowProgress(t, kids = this.childTasks(t.id)) {
+      if (kids.length) {
+        const timed = kids.every(c => c.est_minutes > 0); let total = 0, done = 0;
+        for (const c of kids) { const n = timed ? c.est_minutes : 1; total += n; if (c.completed_at || c.archived_at) done += n; }
+        return Math.round(done / total * 100);
+      }
       const cl = t.checklist || [];
       return cl.length ? Math.round(cl.filter(c => c.done).length / cl.length * 100) : 0;
     },
@@ -4501,7 +4543,7 @@ document.addEventListener('alpine:init', () => {
     // Both paths land in ONE preview. Nothing is written until the payload validates clean and you press
     // the button: a partly-applied bad import is the worst outcome this feature can have.
     _importCtx() {
-      return { lists: this.tasks.filter(t => t.sidebar).map(t => t.content), areas: this.areas.map(a => a.name),
+      return { lists: this.tasks.filter(t => t.overview).map(t => t.content), areas: this.areas.map(a => a.name),
                places: this.locNames(), today: isoDate(new Date()) };
     },
     openImport(kind, text, name = '') {
@@ -4653,9 +4695,9 @@ document.addEventListener('alpine:init', () => {
     async _importList(name, cache, created) {
       const key = name.trim().toLowerCase();
       if (cache.has(key)) return cache.get(key);
-      const found = this.tasks.find(t => t.sidebar && t.content.trim().toLowerCase() === key);
+      const found = this.tasks.find(t => t.overview && t.content.trim().toLowerCase() === key);
       if (found) { cache.set(key, found.id); return found.id; }
-      const row = await this.store.tasks.create({ content: name, sidebar: true, parent_id: null });
+      const row = await this.store.tasks.create({ content: name, overview: true, parent_id: null });
       if (!row) throw new Error(`could not create the list “${name}”`);
       created.push(row); cache.set(key, row.id); return row.id;
     },
@@ -4683,15 +4725,16 @@ document.addEventListener('alpine:init', () => {
       if (frag.lastChild && frag.lastChild.nodeType === 1) frag.appendChild(document.createTextNode(' '));   // caret home after a trailing pill
       this.insertAtRange(range, frag);
     },
-    askSidebarPromote() {
+    askShowInOverview() {
       const id = this.editing;
-      this.askConfirm({ message: "Promote this task to a project? It'll show in the project tree for navigation.",
-        confirmLabel: 'Promote', onConfirm: () => this.promoteToSidebar(id) });
+      this.askConfirm({ message: "Show this task in Overview? It'll stay in its current project.",
+        confirmLabel: 'Show in Overview', onConfirm: () => this.showInOverview(id) });
     },
-    async promoteToSidebar(id) {
+    async showInOverview(id) {
       if (!id) return;
-      if (await this.store.tasks.update(id, { sidebar: true, parent_id: null })) await this.loadTasks();   // sidebar projects are top-level
-      this.closeComposer(true);   // the edited task became a sidebar project — close + drop its draft
+      if (!await this.store.tasks.update(id, { overview: true })) return;
+      await this.loadTasks();
+      this.closeComposer(true);   // the edited task became an overview project — close + drop its draft
     },
     // Shared sweep-check: if completing `id` would also complete open dependents (children/blockers),
     // show the confirm dialog and return true — the caller must stop and let the dialog finish the job.
@@ -4821,8 +4864,8 @@ document.addEventListener('alpine:init', () => {
 
     // --- Calendar (continuous Month · page-per-week Week/Day — iOS/macOS-Calendar-style) ---
     listView() { return this.surface === 'lists'; },   // task-list views (all/backlog/project/area/filter) live on the Lists surface
-    // Open = not completed/archived/sidebar/parent. Callers append their own clauses (block-fill adds unscheduled/overdue).
-    _openLeaf(t) { return !t.completed_at && !t.archived_at && !this.isSidebar(t) && !this.hasChildren(t.id); },
+    // Open = not completed/archived/overview/parent. Callers append their own clauses (block-fill adds unscheduled/overdue).
+    _openLeaf(t) { return !t.completed_at && !t.archived_at && !this.isOverviewProject(t) && !this.hasChildren(t.id); },
     async loadEvents() { const ev = await this.store.events.list(); _calDataV++; this.events = ev; },
     // must bust _calDataV too — without it a block added between two event loads never reaches the memo, and the
     // calendar keeps drawing the previous set until some unrelated task/event change happens to bump the sig
@@ -4830,7 +4873,7 @@ document.addEventListener('alpine:init', () => {
     _clDate() { return new Date(this.clAnchor + 'T00:00'); },
     _clWeekStart(d) { const x = new Date(d); x.setDate(x.getDate() - x.getDay()); x.setHours(0, 0, 0, 0); return x; },   // Sunday
     // threadless items go WARM, never grey — grey is what made scheduled tasks read as disabled
-    clItemColor(it) { return it.color || (it.kind === 'task-deadline' ? 'var(--p2)' : it.kind === 'task-due' ? 'var(--p4)' : 'var(--accent)'); },
+    clItemColor(it) { return it.color || (it.kind === 'task-deadline' ? 'var(--deadline)' : it.kind === 'task-due' ? 'var(--accent-info)' : 'var(--accent)'); },
     _clTime(s) { return this.clAgTime(this._clMin(s)); },
     _monthLabel(d) { return this._lbl('m|' + (d.getFullYear() * 12 + d.getMonth()), () => d.toLocaleDateString([], { month: 'long', year: 'numeric' })); },
     _weekIdx(d) { return Math.round((this._clWeekStart(d).getTime() - CL_EPOCH.getTime()) / 604800000); },
@@ -5984,17 +6027,19 @@ document.addEventListener('alpine:init', () => {
       }
       if (migrated) await this.loadTasks();
     },
-    async _healNotesSidebar() {
-      // A root 'Notes' predating the seeder (sidebar falsy) shows in every hasChildren-based picker but
-      // vanishes from the roller, whose allProjectRows() requires `sidebar`. Heal the fact, not the readers.
-      const n = this.tasks.find(t => !t.parent_id && isNotesName(t.content) && !t.sidebar);
-      if (n && await this.store.tasks.update(n.id, { sidebar: true })) await this.loadTasks();
+    async _healNotesOverview() {
+      // A root 'Notes' predating the seeder (overview falsy) shows in every hasChildren-based picker but
+      // vanishes from the roller, whose overviewProjectRows() requires `overview`. Heal the fact, not the readers.
+      const n = this.tasks.find(t => !t.parent_id && isNotesName(t.content) && !t.overview);
+      if (n && await this.store.tasks.update(n.id, { overview: true })) await this.loadTasks();
     },
 
     async reloadAll() {
       if (this.store.requiresAuth && !this.session) return;   // cloud adapter: wait until signed in
+      const store = this.store;
       // ONE parallel round-trip set (cloud): the whole account in a single query + the two side lists
-      const [b, si, bd, rem] = await Promise.all([this.store.bootstrap(), this.store.scheduleItems.list(), this.store.blockDays.list(), this.store.reminders.list().catch(() => [])]);
+      const [b, si, bd, rem] = await Promise.all([store.bootstrap(), store.scheduleItems.list(), store.blockDays.list(), store.reminders.list().catch(() => [])]);
+      if (store !== this.store) return;   // a slow previous account must not repaint the current one
       // ALL awaits above, ONE synchronous block below: Alpine flushes effects during an await, so a reactive
       // write followed by an awaited gap ran renders against the OLD memo keys — and the version bumps after
       // the gap are module-scope, so nothing re-woke (month chips stayed stale after an event edit).
@@ -6006,6 +6051,8 @@ document.addEventListener('alpine:init', () => {
       this.scheduleItems = si; this.blockDays = bd; this.reminders = rem;
       this.homeLocationId = this.store.homeLocationId(); this.currentRegion = this.store.currentRegion();
       this._defId = this.store.defaultProject();
+      this.colorTheme = savedColorTheme(this.store.theme());
+      applyTheme(this.theme, this.colorTheme);
     },
 
     async signIn() {
@@ -6055,7 +6102,9 @@ document.addEventListener('alpine:init', () => {
     // --- Account & settings popup (corner gear). Sign-in/phone reuse the auth machine above; surfaces + theme persist locally. ---
     settingsOpen: false,
     online: navigator.onLine,         // gear status dot + account-row sub (listeners live on the popup markup)
-    theme: localStorage.getItem('adherod.theme') || 'system',
+    theme: savedAppearance(),
+    colorTheme: savedColorTheme(),
+    themeColors: THEME_COLORS,
     // Wipe this device's local copy and reload — the escape hatch when local storage is stale (e.g. a re-seeded
     // demo won't overwrite existing data). Signed-in accounts re-sync from the cloud; local-only data is gone.
     resetLocalData() {
@@ -6070,14 +6119,18 @@ document.addEventListener('alpine:init', () => {
         },
       });
     },
-    setTheme(t) {   // 'light'|'system'|'dark' — honest override: re-inject the token vars + color-scheme; system removes it
+    setTheme(t) {
       this.theme = t;
       t === 'system' ? localStorage.removeItem('adherod.theme') : localStorage.setItem('adherod.theme', t);
-      let el = document.getElementById('theme-override');
-      if (t === 'system') { el?.remove(); delete document.documentElement.dataset.theme; return; }
-      if (!el) { el = document.createElement('style'); el.id = 'theme-override'; document.head.appendChild(el); }
-      el.textContent = `:root{${_vars(DESIGN[t])}}`;   // later in <head> than #design-tokens → wins both scheme directions
-      document.documentElement.dataset.theme = t;      // drives color-scheme + the one scheme-keyed rule (see styles.css)
+      applyTheme(t, this.colorTheme);
+    },
+    async setColorTheme(id) {
+      if (!THEME_COLORS.some(t => t.id === id)) return;
+      this.colorTheme = id;
+      localStorage.setItem('adherod.colorTheme', id);
+      applyTheme(this.theme, id);
+      try { await this.store.setTheme(id); }
+      catch { if (this.colorTheme === id) this.notify('Theme saved locally; account default could not sync.'); }
     },
   }));
 });
