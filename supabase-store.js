@@ -3,6 +3,7 @@
 import { chkIds, childIndex, descendantIds, projectDepth, subtreeDepth, pendingSweep, ancestorsToReopen, parentsToComplete, movedOutParents, removedOutParents, recActive, MAX_DEPTH, resolveAreaNames, searchDocs, buildFreeText, updateRecent, advanceRecurrence, pauseRecurrence, seedRecurrenceDue, captureTz, placedMap, REFS, liveRefs, overviewFields } from './store.js';
 import { makeFuzzy, buildSearchDocs, matchQuery } from './search.js';
 import { isoDate } from './nlp.js';
+import { inNotes } from './predicates.js';
 
 // ─── Pure row ↔ object mapping ───────────────────────────────────────────────
 
@@ -723,6 +724,7 @@ export function createSupabaseStore(client) {
         const uid = await userId(); const ts = new Date().toISOString();
         const rows = await taskRows().catch(() => null); if (!rows) return false;   // unloaded and unreachable: not saved
         const target = rows.find(r => r.id === id); if (!target) return false;
+        if (done && inNotes(target)) return true;   // a note is reference, never done: every completing path lands here
 
         // Recurring: advance recur_from unless every statement ends (all-paused falls through to permanent complete).
         if (done && recActive(target.recurrence) && !target.completed_at && !rows.some(r => r.parent_id === id)) {

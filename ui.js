@@ -161,8 +161,8 @@ const recList = rec => Array.isArray(rec) ? rec : rec ? [rec] : [];   // = store
 // what its state looks like. tag='span' renders it inert (a picker row is not a place to tick something off).
 export const checkHtml = (r, tag = 'button', extra = '', recArr = recList(r.t.recurrence)) => {
   const t = r.t, done = !!t.completed_at, archived = !done && !!t.archived_at;
-  // A note's slot mark: slanted tack pin — inert, same slot (never bare, never a box, never pressable).
-  if (r.note) return `<span class="check note${extra ? ' ' + extra : ''}${done ? ' done' : ''}"><svg class="ico"><use href="#i-tack"/></svg></span>`;
+  // A note's slot mark: slanted tack pin — inert, same slot (never bare, never a box, never pressable). No .done: a done note keeps its tack, never the tick.
+  if (r.note) return `<span class="check note${extra ? ' ' + extra : ''}"><svg class="ico"><use href="#i-tack"/></svg></span>`;
   const isPaused = !done && !archived && recArr.length > 0 && recArr.every(x => x.paused);
   // archived → inert archive glyph (means "set aside"); suppress done/prog/blocked/paused overlays.
   const steps = !!r.step && !r.blocked;   // a blocked Steps task keeps the blocked check
@@ -210,7 +210,7 @@ export const rowBodyHtml = (r, opts = {}) => {
   const sched = m(opts.schedTime, 'i-clock', opts.schedTime, 'sched');
   // Size bucket, not a clock + "45m": the same four glyphs the composer's Size picker uses, so the row and the
   // control that sets it speak one vocabulary. Text-free — the duration rides along as the tooltip.
-  const est = m(badges && r.estSize, 'i-size-' + r.estSize, '', 'est', ` title="${esc(r.est + (r.estRollup ? ' — total of subtasks' : ''))}"`);
+  const est = m(badges && r.estSize, 'i-size-' + r.estSize, '', 'est', ` title="${esc(r.est + (r.estRollup ? ' (total of subtasks)' : ''))}"`);
   const dl = m(badges && t.deadline_at, 'i-flag', r.dl?.label, 'dl' + (r.dl?.overdue ? ' over' : ''));
   const loc = m(badges && r.loc, r.locX ? 'i-pin-off' : 'i-pin', r.loc, 'loc');
   // "after done" repeats (any rule from_completion) get the repeat+check glyph in both the due badge and the standalone chip.
@@ -276,7 +276,7 @@ const segHtml = (seg) => !seg ? '' : `<span class="cd-seg">${seg.views.map(v =>
   `<button type="button" data-v="${esc(v)}" data-sk="Day / week / month" data-sk-key="${esc(v[0])}" class="cd-segb${v === seg.cur ? ' on' : ''}" aria-label="${esc(v)} view" aria-pressed="${v === seg.cur}">${esc(v[0].toUpperCase())}</button>`).join('')}</span>`
   + `<button type="button" data-act="today" class="cd-act cd-today" aria-label="Today"${seg.today ? '' : ' style="visibility:hidden"'}>T</button>`   // keeps its slot: toggling it never re-centres the strip
   + `<button type="button" data-act="side" class="cd-act${seg.side ? ' on' : ''}" aria-label="Task panel" aria-pressed="${!!seg.side}"><svg class="ico cd-ico" aria-hidden="true"><use href="#i-panel-r"/></svg></button>`
-  + '<button type="button" data-act="add" data-sk="New task" class="cd-act" aria-label="New task — hold for event" title="New task — hold for event">＋</button>';
+  + '<button type="button" data-act="add" data-sk="New task" class="cd-act" aria-label="New task (hold for event)" title="New task (hold for event)">＋</button>';
 
 export const dotStripHtml = (surfaces, idx) =>
   surfaces.map((s, i) => {
@@ -284,7 +284,7 @@ export const dotStripHtml = (surfaces, idx) =>
     // Its own icon, on every dot — the pip it replaces named nothing, so a far surface was only reachable by
     // counting positions. The icon is the constant; the label is what drops away with distance.
     const ico = raw(`<svg class="ico cd-ico" aria-hidden="true"><use href="#${esc(s.icon || 'i-all')}"/></svg>`);
-    if (i === idx) { const dot = html`<button type="button" data-idx="${i}" data-sk="Overview" class="cd cd-cur" aria-label="${s.label} — open menu" aria-haspopup="dialog">${ico}<span class="cd-lab">${s.label}</span></button>`;
+    if (i === idx) { const dot = html`<button type="button" data-idx="${i}" data-sk="Overview" class="cd cd-cur" aria-label="${s.label}, open menu" aria-haspopup="dialog">${ico}<span class="cd-lab">${s.label}</span></button>`;
       return s.seg ? `<span class="cd-plan">${dot}${segHtml(s.seg)}</span>` : dot; }
     if (d === 1)   return html`<button type="button" data-idx="${i}" data-sk="Go to ${s.label}" class="cd cd-near" aria-label="${s.label}">${ico}<span class="cd-lab">${s.label}</span></button>`;
     return html`<button type="button" data-idx="${i}" data-sk="Go to ${s.label}" class="cd cd-far" aria-label="${s.label}">${ico}</button>`;

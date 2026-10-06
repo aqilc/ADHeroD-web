@@ -2,6 +2,7 @@
 import uFuzzy from './vendor/uFuzzy.esm.js';
 import { parseDate, isoDate, impRank } from './nlp.js';
 import { esc } from './ui.js';
+import { inNotes } from './predicates.js';
 
 const SEP = '';   // field separator: a word boundary uFuzzy won't match across, kept out of display
 
@@ -192,7 +193,7 @@ export function matchQuery(query, tasks, ctx) {
   const today = todayISO(ctx.now), open = t => !t.completed_at && !t.archived_at;
   const flags = {   // once per query: compile picks one per is: leaf
     done: t => !!t.completed_at, open, archived: t => !!t.archived_at, any: () => true,
-    recurring: t => !!t.recurrence, project: t => !!t.overview, leaf: t => !hasChild.has(t.id),
+    recurring: t => !!t.recurrence, project: t => !!t.overview, leaf: t => !hasChild.has(t.id), note: inNotes,
     must: t => t.importance === 'must', focus: t => t.importance === 'focus', someday: t => t.importance === 'someday',
     daily: t => t.recurrence?.freq === 'day', weekly: t => t.recurrence?.freq === 'week',
     monthly: t => t.recurrence?.freq === 'month', yearly: t => t.recurrence?.freq === 'year',

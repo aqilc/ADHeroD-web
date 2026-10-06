@@ -1,19 +1,11 @@
 // Pure predicate module — things categorization (freeze §3).
-// No imports. O(1) per call given byId map; parent-chain walk O(depth), cycle-safe via seen Set.
+// No imports. O(1) per call.
 
 // contract: occurrence-status integration is a later slice; isDone reads only completed_at.
 export const isDone = t => !!t.completed_at;
 
-// A thing is a note iff its parent chain tops out at a ROOT project named 'Notes'. The name IS the
-// setting — no flag, no escape hatch: rename or delete that project and its whole subtree is tasks
-// again. Depth cap doubles as the cycle guard (twin: pg_mail/functions/in_notes.sql).
-// Case-insensitive: a user-renamed "notes"/"NOTES" root must keep noting its subtree (twin: in_notes.sql).
-export const isNotesName = (c) => (c || '').trim().toLowerCase() === 'notes';
-export function inNotes(t, byId) {
-  let r = t;
-  for (let d = 0; r?.parent_id && d < 200; d++) r = byId?.get(r.parent_id);
-  return !!r && r.parent_id == null && isNotesName(r.content);
-}
+// A note is the thing's own flag, never inherited (twin: pg_mail/functions/in_notes.sql).
+export const inNotes = t => t?.task_type === 'note';
 
 export const isReference = inNotes;
 

@@ -60,7 +60,7 @@ const FREQ = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' };
 // an approximated rule produces a calendar that is wrong in a way you only notice weeks later.
 export function ruleFromRRULE(text, path) {
   const parts = Object.fromEntries(text.split(';').filter(Boolean).map(p => { const i = p.indexOf('='); return [p.slice(0, i).toUpperCase(), p.slice(i + 1)]; }));
-  const bad = k => problem(path, `${k} isn't representable — the app's repeat model has no equivalent, and approximating it would silently create the wrong dates.`);
+  const bad = k => problem(path, `Repeat rule not supported (${k})`);
   for (const k of ['BYSETPOS', 'BYWEEKNO', 'BYYEARDAY']) if (parts[k]) return { problem: bad(k) };
   const freq = FREQ[parts.FREQ];
   if (!freq) return { problem: parts.FREQ ? bad(`FREQ=${parts.FREQ}`) : problem(path, 'RRULE has no FREQ.') };
@@ -70,7 +70,7 @@ export function ruleFromRRULE(text, path) {
   if (parts.BYDAY) {
     const days = parts.BYDAY.split(',').map(s => s.trim());
     const ord = days.map(d => /^(-?\d+)/.exec(d)).filter(Boolean);
-    if (ord.length && days.length > 1) return { problem: problem(path, 'BYDAY mixes an ordinal with several weekdays — the app can express one ordinal weekday per month, not a set.') };
+    if (ord.length && days.length > 1) return { problem: problem(path, 'BYDAY mixes an ordinal with several weekdays. Only one ordinal weekday per month is supported.') };
     if (ord.length) {
       if (freq !== 'month') return { problem: bad(`an ordinal BYDAY under FREQ=${parts.FREQ}`) };
       r.nth = +ord[0][1];
@@ -125,9 +125,9 @@ export function parseICS(text) {
 
 function finishEvent(e, items, problems) {
   const path = `event ${e.idx + 1}${e.title ? ` (${e.title})` : ''}`;
-  if (!e.start) return problems.push(problem(path, 'has no DTSTART, so there is no date to put it on.'));
-  if (e.rdate) return problems.push(problem(path, 'uses RDATE (extra one-off dates bolted onto a series), which the repeat model cannot represent.'));
-  if (e.rrule.length > 1) return problems.push(problem(path, 'has more than one RRULE. An event holds a single repeat rule; two would render as one.'));
+  if (!e.start) return problems.push(problem(path, 'has no DTSTART.'));
+  if (e.rdate) return problems.push(problem(path, 'uses RDATE (extra one-off dates), which isn\'t supported.'));
+  if (e.rrule.length > 1) return problems.push(problem(path, 'has more than one RRULE. Only one repeat rule is supported.'));
 
   let ends = e.end ? e.end.iso : (e.durMin != null ? shift(e.start, e.durMin) : null);
   // An all-day end is EXCLUSIVE in ICS but INCLUSIVE here — via DTEND *or* DURATION, so a one-day
@@ -140,7 +140,7 @@ function finishEvent(e, items, problems) {
     if (p) return problems.push(p);
     if (e.exdates.length) rule.exdates = e.exdates;
     item.recurrence = rule;
-  } else if (e.exdates.length) return problems.push(problem(path, 'has EXDATE but no RRULE — there is no series for it to subtract from.'));
+  } else if (e.exdates.length) return problems.push(problem(path, 'has EXDATE but no RRULE. Nothing to subtract from.'));
   // A RECURRENCE-ID event IS the moved occurrence: it imports as a standalone event, and the series it was
   // lifted out of carries the matching EXDATE. Nothing to represent beyond flagging it for the caller.
   if (e.recurrenceId) item.detached_from = e.recurrenceId;
@@ -165,10 +165,11 @@ export const icsReplaces = (existingSeq, incomingSeq) => (incomingSeq ?? 0) > (e
 const SEVERITY = ['gentle', 'ping', 'alarm'];
 const LOC_MODE = ['any', 'only', 'except'];
 const ANCHOR = ['deadline', 'start', 'due'];
+const TYPE = ['task', 'note'];
 const MAX_DEPTH = 4;
 
 const TOP_KEYS = ['adherod', 'lists', 'areas', 'tasks'];
-const TASK_KEYS = ['id', 'title', 'notes', 'importance', 'minutes', 'list', 'areas', 'checklist', 'subtasks',
+const TASK_KEYS = ['id', 'title', 'type', 'notes', 'importance', 'minutes', 'list', 'areas', 'checklist', 'subtasks',
   'on', 'window_from', 'deadline', 'repeat', 'reminders', 'location', 'needs', 'relates'];
 const REPEAT_KEYS = ['freq', 'interval', 'weekdays', 'month_day', 'nth', 'months', 'count', 'until', 'exdates'];
 const REMINDER_KEYS = ['anchor', 'at', 'offset', 'severity'];
@@ -180,7 +181,7 @@ const unknown = (obj, allowed, path, problems) => {
 };
 const oneOf = (v, list, path, label, problems) => {
   if (v == null) return true;
-  if (!list.includes(v)) { problems.push(problem(path, `${label} must be one of ${list.join(', ')} — got ${JSON.stringify(v)}.`)); return false; }
+  if (!list.includes(v)) { problems.push(problem(path, `${label} must be one of ${list.join(', ')}, got ${JSON.stringify(v)}.`)); return false; }
   return true;
 };
 
@@ -194,9 +195,9 @@ export function looksLikePayload(text) {
 export function parsePayload(text, { lists = [], areas = [], places = [], today } = {}) {
   const problems = [], t = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
   let doc;
-  try { doc = JSON.parse(t); } catch (e) { return { items: [], problems: [problem('(document)', `not valid JSON — ${e.message}`)] }; }
+  try { doc = JSON.parse(t); } catch (e) { return { items: [], problems: [problem('(document)', `not valid JSON: ${e.message}`)] }; }
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { items: [], problems: [problem('(document)', 'the top level must be a JSON object.')] };
-  if (doc.adherod !== 1) return { items: [], problems: [problem('adherod', `expected "adherod": 1 — got ${JSON.stringify(doc.adherod)}.`)] };
+  if (doc.adherod !== 1) return { items: [], problems: [problem('adherod', `expected "adherod": 1, got ${JSON.stringify(doc.adherod)}.`)] };
   unknown(doc, TOP_KEYS, '(document)', problems);
   if (!Array.isArray(doc.tasks) || !doc.tasks.length) problems.push(problem('tasks', 'must be a non-empty array of tasks.'));
 
@@ -214,10 +215,11 @@ export function parsePayload(text, { lists = [], areas = [], places = [], today 
     const item = { kind: 'task', ref: raw.id ?? null, depth, parentRef, content: String(raw.title ?? '').trim(), fields: {}, needs: [], relates: [] };
     if (raw.id != null) {
       if (typeof raw.id !== 'string') problems.push(problem(`${path}.id`, 'must be a string.'));
-      else if (ids.has(raw.id)) problems.push(problem(`${path}.id`, `duplicate id "${raw.id}" — ids must be unique within the payload.`));
+      else if (ids.has(raw.id)) problems.push(problem(`${path}.id`, `duplicate id "${raw.id}". Ids must be unique.`));
       else ids.set(raw.id, item);
     }
     if (raw.notes != null) { if (typeof raw.notes !== 'string') problems.push(problem(`${path}.notes`, 'must be a string.')); else item.fields.notes = raw.notes; }
+    if (oneOf(raw.type, TYPE, `${path}.type`, 'type', problems) && raw.type === 'note') item.fields.task_type = 'note';
     if (oneOf(raw.importance, IMPORTANCE, `${path}.importance`, 'importance', problems) && raw.importance != null) item.fields.importance = raw.importance;
     if (raw.minutes != null) {
       if (!Number.isInteger(raw.minutes) || raw.minutes < 0) problems.push(problem(`${path}.minutes`, 'must be a whole number of minutes, 0 or more.'));
@@ -235,7 +237,7 @@ export function parsePayload(text, { lists = [], areas = [], places = [], today 
     if (raw.checklist != null) item.fields.checklist = [...enumerate(raw.checklist, `${path}.checklist`, problems)].map(([, s]) => ({ text: s, done: false }));
     for (const [key, col] of [['window_from', 'available_from'], ['deadline', 'deadline_at']]) {
       if (raw[key] == null) continue;
-      if (!isDate(raw[key])) problems.push(problem(`${path}.${key}`, `must be a date as YYYY-MM-DD — got ${JSON.stringify(raw[key])}. Dates are always explicit; the importer never guesses one from words.`));
+      if (!isDate(raw[key])) problems.push(problem(`${path}.${key}`, `must be a date as YYYY-MM-DD, got ${JSON.stringify(raw[key])}.`));
       else item.fields[col] = raw[key];
     }
     if (item.fields.available_from && item.fields.deadline_at && item.fields.deadline_at < item.fields.available_from)
@@ -256,7 +258,7 @@ export function parsePayload(text, { lists = [], areas = [], places = [], today 
   // hallucinated link, and nothing downstream (client or Postgres) prevents a needs-cycle.
   for (const it of items) for (const key of ['needs', 'relates'])
     for (const ref of it[key]) if (!ids.has(ref)) problems.push(problem(`${label(it)}.${key}`, `refers to id "${ref}", which no task in this payload declares.`));
-  for (const cyc of cycles(items, ids)) problems.push(problem(label(cyc[0]), `these tasks need each other in a loop: ${cyc.map(c => c.content).join(' → ')} → ${cyc[0].content}. Nothing could ever be started.`));
+  for (const cyc of cycles(items, ids)) problems.push(problem(label(cyc[0]), `these tasks need each other in a loop: ${cyc.map(c => c.content).join(' → ')} → ${cyc[0].content}.`));
 
   return { items, problems };
 };
@@ -273,11 +275,11 @@ function* enumerate(v, path, problems) {
 const strList = (v, path, problems) => v == null ? [] : [...enumerate(v, path, problems)].map(([, s]) => s);
 
 function readOn(v, path, problems) {
-  if (typeof v === 'string') { if (!isDate(v)) { problems.push(problem(path, `must be a date as YYYY-MM-DD — got ${JSON.stringify(v)}.`)); return null; } return { date: v, time: null }; }
+  if (typeof v === 'string') { if (!isDate(v)) { problems.push(problem(path, `must be a date as YYYY-MM-DD, got ${JSON.stringify(v)}.`)); return null; } return { date: v, time: null }; }
   if (!v || typeof v !== 'object') { problems.push(problem(path, 'must be a date string or { date, time }.')); return null; }
   unknown(v, ['date', 'time'], path, problems);
-  if (!isDate(v.date)) { problems.push(problem(`${path}.date`, `must be a date as YYYY-MM-DD — got ${JSON.stringify(v.date)}.`)); return null; }
-  if (v.time != null && !isTime(v.time)) { problems.push(problem(`${path}.time`, `must be a 24-hour time as HH:MM — got ${JSON.stringify(v.time)}.`)); return null; }
+  if (!isDate(v.date)) { problems.push(problem(`${path}.date`, `must be a date as YYYY-MM-DD, got ${JSON.stringify(v.date)}.`)); return null; }
+  if (v.time != null && !isTime(v.time)) { problems.push(problem(`${path}.time`, `must be a 24-hour time as HH:MM, got ${JSON.stringify(v.time)}.`)); return null; }
   return { date: v.date, time: v.time ?? null };
 }
 
@@ -286,7 +288,7 @@ function readLocation(v, path, knownPlaces, problems) {
   unknown(v, ['mode', 'places'], path, problems);
   if (!oneOf(v.mode, LOC_MODE, `${path}.mode`, 'mode', problems)) return null;
   const names = [...enumerate(v.places ?? [], `${path}.places`, problems)].map(([, s]) => s);
-  for (const [i, n] of names.entries()) if (!knownPlaces.has(low(n))) problems.push(problem(`${path}.places[${i}]`, `no place named "${n}". Places can't be created by an import — add it in the app first.`));
+  for (const [i, n] of names.entries()) if (!knownPlaces.has(low(n))) problems.push(problem(`${path}.places[${i}]`, `no place named "${n}" (add it in the app first).`));
   return { mode: v.mode ?? 'any', names };
 }
 
@@ -303,7 +305,7 @@ function readRepeat(v, path, problems) {
   }
   if (v.nth != null) {
     if (!Number.isInteger(v.nth) || v.nth === 0 || v.nth > 5 || v.nth < -1) { problems.push(problem(`${path}.nth`, 'must be 1-5, or -1 for the last one in the month.')); return null; }
-    if (v.freq !== 'month' || !r.weekdays?.length) { problems.push(problem(`${path}.nth`, 'only means something with "freq": "month" and exactly one weekday (e.g. the 3rd Thursday).')); return null; }
+    if (v.freq !== 'month' || !r.weekdays?.length) { problems.push(problem(`${path}.nth`, 'only means something with "freq": "month" and exactly one weekday.')); return null; }
     r.nth = v.nth;
   }
   if (v.month_day != null) {
@@ -315,9 +317,9 @@ function readRepeat(v, path, problems) {
     if (!Array.isArray(v.months) || !v.months.every(n => Number.isInteger(n) && n >= 1 && n <= 12)) { problems.push(problem(`${path}.months`, 'must be an array of month numbers 1-12.')); return null; }
     r.months = [...v.months].sort((a, b) => a - b);
   }
-  if (v.count != null && v.until != null) { problems.push(problem(path, 'has both "count" and "until" — a repeat ends one way or the other, not both.')); return null; }
+  if (v.count != null && v.until != null) { problems.push(problem(path, 'has both "count" and "until". Use one, not both.')); return null; }
   if (v.count != null) { if (!Number.isInteger(v.count) || v.count < 1) { problems.push(problem(`${path}.count`, 'must be a whole number 1 or greater.')); return null; } r.ends = { count: v.count }; }
-  if (v.until != null) { if (!isDate(v.until)) { problems.push(problem(`${path}.until`, `must be a date as YYYY-MM-DD — got ${JSON.stringify(v.until)}.`)); return null; } r.ends = { date: v.until }; }
+  if (v.until != null) { if (!isDate(v.until)) { problems.push(problem(`${path}.until`, `must be a date as YYYY-MM-DD, got ${JSON.stringify(v.until)}.`)); return null; } r.ends = { date: v.until }; }
   if (v.exdates != null) { const ex = [...enumerate(v.exdates, `${path}.exdates`, problems)].map(([, s]) => s); if (ex.some(s => !isDate(s))) { problems.push(problem(`${path}.exdates`, 'must all be dates as YYYY-MM-DD.')); return null; } if (ex.length) r.exdates = ex; }
   return r;
 }
@@ -330,16 +332,16 @@ function readReminders(v, path, today, problems) {
     if (!r || typeof r !== 'object' || Array.isArray(r)) { problems.push(problem(p, 'must be an object.')); continue; }
     unknown(r, REMINDER_KEYS, p, problems);
     if (!oneOf(r.severity, SEVERITY, `${p}.severity`, 'severity', problems)) continue;
-    if (r.anchor != null && r.at != null) { problems.push(problem(p, 'has both "anchor" and "at" — a reminder hangs off a date the task already has, or off an absolute one, not both.')); continue; }
+    if (r.anchor != null && r.at != null) { problems.push(problem(p, 'has both "anchor" and "at". Use one, not both.')); continue; }
     if (r.anchor != null) {
       if (!oneOf(r.anchor, ANCHOR, `${p}.anchor`, 'anchor', problems)) continue;
-      if (r.offset != null && !Number.isInteger(r.offset)) { problems.push(problem(`${p}.offset`, 'must be a whole number of minutes — negative for before, positive for after.')); continue; }
+      if (r.offset != null && !Number.isInteger(r.offset)) { problems.push(problem(`${p}.offset`, 'must be a whole number of minutes (negative = before, positive = after).')); continue; }
       out.push({ anchor: r.anchor, offset_minutes: r.offset ?? 0, severity: r.severity ?? 'ping' });
     } else if (r.at != null) {
       const at = String(r.at);
-      if (!/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/.test(at)) { problems.push(problem(`${p}.at`, `must be an exact moment as YYYY-MM-DDTHH:MM — got ${JSON.stringify(r.at)}.`)); continue; }
+      if (!/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/.test(at)) { problems.push(problem(`${p}.at`, `must be an exact moment as YYYY-MM-DDTHH:MM, got ${JSON.stringify(r.at)}.`)); continue; }
       // The database refuses a reminder in the past, so catching it here beats a failed insert mid-import.
-      if (today && at.slice(0, 10) < today) { problems.push(problem(`${p}.at`, `is in the past (${at}). A reminder can only be set for the future.`)); continue; }
+      if (today && at.slice(0, 10) < today) { problems.push(problem(`${p}.at`, `is in the past (${at}).`)); continue; }
       out.push({ anchor: 'absolute', at, severity: r.severity ?? 'ping' });
     } else problems.push(problem(p, 'needs either "anchor" (deadline/start/due) or "at" (an exact moment).'));
   }
@@ -365,23 +367,24 @@ const bullet = (label, xs) => `${label}: ${xs.length ? xs.map(x => `"${x}"`).joi
 export function importPrompt({ lists = [], areas = [], places = [], today = '' } = {}) {
   return `You are helping me turn my material into tasks for my task app.
 
-Read what I give you next and reply with ONE fenced JSON block in the format below — nothing else, no commentary before or after. I paste your reply straight into the app, which validates it strictly and REFUSES the whole thing if anything is off, so precision matters more than coverage: leave a field out rather than guessing at it.
+Read what I give you next and reply with ONE fenced JSON block in the format below, nothing else: no commentary before or after. I paste your reply straight into the app, which validates it strictly and REFUSES the whole thing if anything is off, so precision matters more than coverage. Leave a field out rather than guess.
 
 Today is ${today}. Work out every date yourself and write it as YYYY-MM-DD; the app does not read words like "next Friday". Times are 24-hour HH:MM.
 
 My existing ${bullet('lists', lists)}
 My existing ${bullet('areas', areas)}
 My existing ${bullet('places', places)}
-Use those names exactly when they fit. To put tasks in a NEW list, add its name to the top-level "lists" array — that is what tells the app to create it. Areas work the same way via "areas". Places CANNOT be created; only use one that already exists.
+Use those names exactly when they fit. To put tasks in a NEW list, add its name to the top-level "lists" array. Areas work the same way via "areas". Places CANNOT be created; only use one that already exists.
 
 Rules the validator enforces:
 - Every field name must be one of the ones listed below. An unrecognised field fails the whole import, so never invent one.
 - "title" is required. Everything else is optional.
+- "type" is "task" (the default) or "note": a note is reference material I keep, never completed or reminded.
 - "importance" is one of: must, focus, none, someday.
 - "minutes" is a whole number (how long the task takes).
 - "on" is when I plan to DO it: { "date": "YYYY-MM-DD", "time": "HH:MM" } (time optional). "deadline" is a hard due date; "window_from" is the earliest it can start. Do not invent a deadline that my material does not actually state.
 - "subtasks" nests tasks (4 levels deep at most). "checklist" is a flat list of strings for trivial steps.
-- "needs" lists the "id"s of tasks that must be done first — ids are yours to make up, they only have to be unique inside this block, and they must refer to tasks in this same block. Dependencies must not form a loop.
+- "needs" lists the "id"s of tasks that must be done first. Ids are yours to make up, unique inside this block, and must refer to tasks in this same block. Dependencies must not form a loop.
 - "repeat" is { "freq": "day"|"week"|"month"|"year", "interval": 1, ... } with optional "weekdays" (0=Sunday..6), "month_day", "nth" (1-5 or -1 for last, with "freq":"month" and a single weekday, e.g. the 3rd Thursday), "months" (1-12), and one ending: "count" OR "until".
 - "reminders" is a list of either { "anchor": "deadline"|"start"|"due", "offset": minutes-before-as-a-negative-number } or { "at": "YYYY-MM-DDTHH:MM" } for an exact moment, each optionally with "severity": "gentle"|"ping"|"alarm". An "at" must be in the future.
 - "location" is { "mode": "only"|"except", "places": ["..."] }.

@@ -143,7 +143,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   transition: background-color .18s var(--ease-out), border-color .18s var(--ease-out), box-shadow .18s var(--ease-out); }
 /* focus keeps the default box, recolored to the item's OWN color (filter/project/area) — accent when it has none */
 .rl-wrap.rl-focus .rl-box { border-color: var(--rlc, var(--accent)); background: color-mix(in srgb, var(--rlc, var(--accent)) 9%, var(--bg)); box-shadow: var(--shadow); }
-.rl-ic { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; }
+.rl-ic { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--muted); }   /* an uncoloured glyph (Backlog, a filter) is muted like an uncoloured project ring, never the text's ink */
 .rl-ic .ico { width: 18px; height: 18px; flex: none; }
 .rl-prog { border-radius: 50%; background: conic-gradient(var(--pc) calc(var(--p) * 360deg), color-mix(in srgb, var(--pc) 22%, var(--hover)) 0); position: relative; }   /* empty arc tinted toward the project color */
 .rl-prog::after { content: ''; position: absolute; inset: 4px; border-radius: 50%; background: var(--bg); }
@@ -412,10 +412,32 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-rect.plain { border-color: transparent; background: none; pointer-events: none; cursor: default; }
 .chk-rect.plain::after { content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 2px; border-radius: 1px; background: var(--muted); }   /* DASH (gallery pick P2, 2026-08-13) — encloses nothing, so nothing reads as fillable */
 /* Note things: RULED LINES in the .check slot — the glyph for "there is writing here" (gallery pick N6,
-   2026-08-13). Inert (a note isn't asking to be done); declared after .check.done so the mark survives on
-   a completed note unchanged (order wins at equal specificity — no amber fill, no tick). */
+   2026-08-13). Inert (a note isn't asking to be done); checkHtml never gives it .done, so a completed note
+   keeps the mark unchanged (no amber fill, no tick). */
 .check.note { border-color: transparent; background: none; cursor: default; pointer-events: none; }
 .check.note .ico { width: 18px; height: 18px; flex: none; color: var(--muted); }
+/* Composer type toggle (#104): the draft's type in front, the other mark peeking from under it (larger on hover).
+   A swap orbits both 180deg round their midpoint; the angle pairs 0/180 and 180/360 turn them the same way, so they pass
+   on opposite sides. z-index is an integer, so it flips at the halfway point, where the two are furthest apart. */
+.type-tog { position: relative; flex: none; width: 18px; height: 18px;
+  /* 24px hit box (G5), unscaled: the mark scales inside it; the 18px panel disc hides the peek where they cross mid-swap.
+     At rest --my keeps the peek's ink 1px clear of that disc: a merely touching disc edge eats a ring's stroke (read as a spinner). */
+  > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; --a: 0deg; --s: 1; --mx: 2px; --my: 7.5px; z-index: 1;
+    transform: translate(var(--mx), var(--my)) rotate(var(--a)) translate(calc(-1 * var(--mx)), calc(-1 * var(--my))) rotate(calc(-1 * var(--a)));
+    transition: transform .26s var(--ease-in-out), z-index .26s var(--ease-in-out); }
+  .check { scale: var(--s); transition: scale .26s var(--ease-in-out), background-color .12s var(--ease-out); }
+  > button:disabled { cursor: default; }
+  &:not(.note) > :last-child, &.note > :first-child { --a: 180deg; --s: .55; z-index: 0; }
+  &.note > :last-child { --a: 360deg; }
+  @media (hover: hover) and (pointer: fine) { &:not(.note) > :last-child:hover, &.note > :first-child:hover { --mx: 3px; --my: 9px; --s: .7; } }
+  /* touch: no hover, so each mark gets the row check's 40px column, split where the two meet. Only the ::after
+     takes a finger: the buttons' boxes and the row check's own slop overlap the peek's mark, and a disabled front has none */
+  @media (pointer: coarse) { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -11px -11px -1px; pointer-events: auto; }
+    &:not(.note) > :last-child::after, &.note > :first-child::after { inset: 1px -7px -23px -15px; } }
+}
+@media (prefers-reduced-motion: reduce) { .type-tog :is(button, .check) { transition: none; } .type-tog > button { animation: tt-fade .15s var(--ease-out); } .type-tog.note > button { animation-name: tt-fade-b; } }   /* a fresh name restarts the fade on each swap */
+@keyframes tt-fade { from { opacity: 0; } }
+@keyframes tt-fade-b { from { opacity: 0; } }
 .chk-rect.done { background: var(--accent); border-color: var(--accent); --ck: 12.1px; --ck-y: .5px; }
 /* title-first: no width cap, so a long title spans the whole row and truncates only when it alone overflows;
    the desc sits inline after it and, via its huge shrink factor, gives up width FIRST so a short title never shrinks for a long desc. */

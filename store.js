@@ -1,8 +1,8 @@
 // Pure tree/recurrence helpers + LocalStore, the offline default adapter (same interface as supabase-store.js; api-surface.test locks it).
 import { isoDate } from './nlp.js';
-import { isNotesName } from './predicates.js';
 import { makeFuzzy, buildSearchDocs, rankDocs, defaultDocs, matchQuery } from './search.js';
 import { nextTs } from './recovery.js';
+import { inNotes } from './predicates.js';
 
 // Max nesting depth (root = 1; Backlog counts as a level). Shared by store guards + app.js drag guards.
 export const MAX_DEPTH = 4;
@@ -63,11 +63,11 @@ export function projectDepth(projects, id) {
   return depth;
 }
 
-// Incomplete descendants + incomplete blockers that a completion of `id` would sweep (archived rows excluded — never force-completed).
+// Incomplete descendants + incomplete blockers that a completion of `id` would sweep (archived rows and notes excluded — never force-completed).
 // byId/kids: the app passes the indexes it holds — two O(n) builds per call otherwise.
 export function pendingSweep(rows, id, byId = new Map(rows.map(r => [r.id, r])), kids = childIndex(rows)) {
-  const t = byId.get(id); if (!t) return [];
-  return [...new Set([...descendantIds(rows, id, kids).slice(1), ...(t.blocked_by || [])])].filter(x => { const r = byId.get(x); return r && !r.completed_at && !r.archived_at; });
+  const t = byId.get(id); if (!t || inNotes(t)) return [];   // a note never completes, so it sweeps nothing
+  return [...new Set([...descendantIds(rows, id, kids).slice(1), ...(t.blocked_by || [])])].filter(x => { const r = byId.get(x); return r && !r.completed_at && !r.archived_at && !inNotes(r); });
 }
 export function ancestorIds(rows, id) {
   const out = [], seen = new Set([id]); let cur = rows.find(r => r.id === id);
@@ -78,8 +78,8 @@ export function ancestorIds(rows, id) {
 // once it lands open (create, reparent, un-complete, undo, unarchive). Pure; both stores apply it (pg twin: reopen_ancestors).
 export const ancestorsToReopen = (rows, id) => { const t = rows.find(r => r.id === id);
   return t && !t.completed_at && !t.archived_at ? ancestorIds(rows, id).filter(a => rows.find(r => r.id === a)?.completed_at) : []; };
-// Parent ids (bottom-up) to auto-complete after id is marked done — stops when a sibling is still open, or at the default
-// project, which never auto-completes (pg twin: auto_complete_parent).
+// Parent ids (bottom-up) to auto-complete after id is marked done — stops when a sibling is still open, at a note (never
+// done, so an open child of its own parent), or at the default project, which never auto-completes (pg twin: auto_complete_parent).
 export function parentsToComplete(rows, id, defaultId) {
   const out = [], marked = new Set(); let cur = rows.find(r => r.id === id);
   while (cur?.parent_id) {
@@ -87,7 +87,7 @@ export function parentsToComplete(rows, id, defaultId) {
     const kids = rows.filter(r => r.parent_id === parent.id);
     // archived children count as satisfied (like completed) so a parent can close when its remaining work is done/abandoned.
     const done = kids.length && kids.every(k => k.completed_at || k.archived_at || marked.has(k.id));
-    if (done && parent.id !== defaultId) { if (!parent.completed_at && !parent.archived_at) { out.push(parent.id); marked.add(parent.id); } cur = parent; }
+    if (done && parent.id !== defaultId && !inNotes(parent)) { if (!parent.completed_at && !parent.archived_at) { out.push(parent.id); marked.add(parent.id); } cur = parent; }
     else break;
   }
   return out;
@@ -410,10 +410,8 @@ export function createLocalStore(opts = {}) {
   function ensureBacklog() {
     const tasks = readTasks();
     const meta = readMeta();
-    // A notes-named root must NEVER be the default project (the default is hidden from the nav and swallows
-    // new tasks) — reject it on adopt AND fall through when a stale meta already points at one (self-heal).
-    if (meta.default_project_id && tasks.some(t => t.id === meta.default_project_id && !isNotesName(t.content))) return;
-    const root = tasks.find(t => t.parent_id === null && !isNotesName(t.content));
+    if (meta.default_project_id && tasks.some(t => t.id === meta.default_project_id)) return;
+    const root = tasks.find(t => t.parent_id === null);
     if (root) { meta.default_project_id = root.id; writeMeta(meta); return; }   // adopt existing root as default
     const ts = now();
     const backlog = { ...baseTask(), id: uuid(), content: 'Backlog', created_at: ts, updated_at: ts };
@@ -483,17 +481,6 @@ export function createLocalStore(opts = {}) {
         writeFilters([{ id: uuid(), name: 'All tasks', query: 'is:any', color: null, position: -1, created_at: ts, updated_at: ts }, ...fs]);
       }
       meta.all_tasks_filter_seeded = true; writeMeta(meta);
-    }
-    // Notes is an ordinary root project whose NAME is the setting: everything under it reads as a note
-    // (predicates.js inNotes). Seeded once — deletable, and re-creatable by name alone. Runs after
-    // ensureBacklog so it can never be adopted as the default project.
-    if (!meta.notes_seeded) {
-      const tasks = readTasks();
-      if (!tasks.some(t => t.parent_id === null && isNotesName(t.content))) {
-        const ts = now();
-        writeTasks([...tasks, { ...baseTask(), id: uuid(), content: 'Notes', overview: true, created_at: ts, updated_at: ts }]);
-      }
-      meta.notes_seeded = true; writeMeta(meta);
     }
   }
 
@@ -839,6 +826,7 @@ export function createLocalStore(opts = {}) {
         const [rows, edit, get] = cow(TASKS_KEY), ts = now();
         const mark = (tid, val) => { const r = edit(tid); if (r) { r.completed_at = val; r.updated_at = nextTs(ts, r.updated_at); } };
         const target = rows.find(r => r.id === id); if (!target) return false;
+        if (done && inNotes(target)) return true;   // a note is reference, never done: every completing path lands here
         // Recurring: advance recur_from unless every statement ends (all-paused falls through to permanent complete).
         if (done && recActive(target.recurrence) && !target.completed_at && !rows.some(r => r.parent_id === id)) {
           const t = edit(id);

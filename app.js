@@ -31,7 +31,7 @@ applyTheme(savedAppearance(), savedColorTheme()); // Before Alpine boots: no fla
 
 import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, MAX_DEPTH, pendingSweep, placedMap, overviewFields, liveRefs } from './store.js';
 import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, jMigrate } from './recovery.js';
-import { inNotes, isNotesName } from './predicates.js';
+import { inNotes } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, userReminders, offsetLabel } from './reminders.js';
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, bodyText } from './search.js';
@@ -351,6 +351,13 @@ window.addEventListener('unhandledrejection', e => { if (e.reason?.isFromCancell
 
 // ── Alpine component: state + every surface (to end of file) ──
 document.addEventListener('alpine:init', () => {
+  // x-text as Alpine's, minus the rewrite of an unchanged value: a binding reading the rows (the empty copy, the Done
+  // count) re-runs on every tick, and replacing even a hidden text node cost the tick ~1.1 est-ms of its ~5 at 1k.
+  // ceiling: replaces Alpine 3.15.12's x-text — re-diff it on an Alpine upgrade.
+  Alpine.directive('text', (el, { expression }, { effect, evaluateLater }) => {
+    const get = evaluateLater(expression);
+    effect(() => get(v => { const text = v == null ? '' : String(v); if (el.textContent !== text) Alpine.mutateDom(() => { el.textContent = text; }); }));
+  });
   // ceiling: patches Alpine 3.15.12's x-show internals — revisit on an Alpine upgrade. Untransitioned, it showed a frame
   // late and its deferred hide applied the newest hide, so close → open → close in one frame stayed up. A show lands now
   // and drops the pending hide; hides keep their frame (a transitioned parent's leave still waits for its children).
@@ -516,7 +523,8 @@ document.addEventListener('alpine:init', () => {
     // LocalStore needs no auth; cloud adopts the existing session before loading.
     async init() {
       _appRaw = window.Alpine.raw(this.$el._x_dataStack[0]);
-      this._jQueue(() => this._journalLoad());   // before any await: a boot-window write queues behind it
+      const loaded = this._jQueue(() => this._journalLoad());   // before any await: a boot-window write queues behind it
+      this._serial('journal', () => loaded);   // a ⌘Z pressed before the read lands steps once it has, never into an empty journal
       // Flush debounced writes synchronously before page closes — no data lost between keystrokes/actions.
       const flushAll = () => { if (_wiping) return; clearTimeout(_draftT); this._flushDraftNow(); this._journalStash(); };
       window.addEventListener('pagehide', flushAll);
@@ -596,9 +604,9 @@ document.addEventListener('alpine:init', () => {
       for (const [k, p] of Object.entries(this._pendingMap())) if (k.startsWith('save:')) await this._binSave(k, p); else if (dead.includes(k)) await this._binSave(k, { ...p, acct: acctOf(k) }, true);
       await this.reloadAll();
       await this._migratePlaceStrings();
-      await this._healNotesOverview();
       if (this.sticky) { this.startAdd(); this.$watch('draft.content', q => this.listQ = q || ''); }   // the title adds AND filters: its text, never its pills
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
+      this._migrateNotes();       // not awaited: its per-row writes never hold up live sync
       setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
       if (window.desktopWindow) {   // the Windows app (desktop/main.ts) downloads updates in the background
         if (!this.sticky) this.desk = await desktopWindow('desk');
@@ -1306,7 +1314,7 @@ document.addEventListener('alpine:init', () => {
       for (const r of roots) walk(r, 0);
       if (this.sticky) {   // the sticky note: every open task, flat, as the Mac note (wOrder, N11 user 08-17) — today, overdue, later, undated; then when, importance
         const pm = this._placedMap(), today = this._nowDay, k = new Map();
-        out = out.filter(r => placeable(r.t) && (!filtering || this.rowPass(r.t)));
+        out = out.filter(r => placeable(r.t) && (filtering ? this.rowPass(r.t) : r.t.task_type !== 'note'));   // a note is never done: only a search shows it
         for (const r of out) { const w = this.whenOf(r.t, pm) || '', d = w.slice(0, 10); r.depth = 0; k.set(r, [!w ? 3 : d === today ? 0 : d < today ? 1 : 2, w, impRank(r.t.importance)]); }
         out.sort((a, b) => { const x = k.get(a), y = k.get(b); return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || x[2] - y[2]; });
         _secMemo = []; _visKey = key; return this._linkRows(out, done);
@@ -1708,11 +1716,9 @@ document.addEventListener('alpine:init', () => {
     // one row shape for every consumer (list, link picker)
     mkRow(t, depth, byParent, byId, def, now, edMemo, pm) {
       const kids = byParent.get(t.id) || [], parent = byId.get(t.parent_id), cl = t.checklist || [];
-      const hasKids = kids.length > 0, hasCl = cl.length > 0;
+      const hasKids = kids.some(c => !inNotes(c)), hasCl = cl.length > 0;   // a note child never fills the ring
       // Steps: the row leads with the first open step (stored order) and the pie counts steps, never subtasks.
       const si = t.task_type === 'steps' && !t.checklist_plain ? cl.findIndex(x => !x.done) : -1;
-      // A note's inert dot already says "note", so `in Notes` on a top-level one just repeats the glyph.
-      const pNote = !!parent && inNotes(parent, byId), notesRoot = pNote && !parent.parent_id;
       const em = edMemo ? this.effDurMin(t, byParent, edMemo) : (t.est_minutes || 0);   // roll up subtasks when no own duration
       // ONE date fact: the placement (or, for a repeat, its next occurrence). A placement is an INTENTION that
       // reflows on miss, so it never wears the overdue band: a missed one wears the deadline red as a line, never the fill.
@@ -1722,7 +1728,7 @@ document.addEventListener('alpine:init', () => {
       else if (dueB && t.recurrence && dueB.kind === 'overdue') dueB = { ...dueB, kind: '' };
       return {
         t, depth, pc: this.pc(t.importance), collapsed: !!this.collapsed[t.id],
-        note: inNotes(t, byId),   // note → inert dot instead of the checkbox
+        note: inNotes(t),   // note → inert dot instead of the checkbox
         // Precomputed here (cached in _visMemo) so a state-only re-render doesn't redo the title regex / checklist split per row.
         titleHtml: mdTitleFn(t.content),
         chk: cl.map(chkParts),
@@ -1739,7 +1745,7 @@ document.addEventListener('alpine:init', () => {
         rels: (t.blocked_by ?? []).map(id => ({ id, type: 'blocked_by', icon: 'i-stop', name: byId.get(id)?.content || '' })),
         due: dueB,
         dl: t.deadline_at ? deadlineLeft(t.deadline_at, now) : null,
-        projName: parent && !notesRoot ? parent.content : '',
+        projName: parent ? parent.content : '',
         projColor: parent && parent.color ? 'color:' + parent.color : '',
         isDefaultProj: !!t.parent_id && t.parent_id === def,
         areas: this.areaObjs(t.area_ids).map(l => ({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })),
@@ -1810,7 +1816,7 @@ document.addEventListener('alpine:init', () => {
       else if (!keep) this.clearSel();
     },
     async selComplete() {
-      const ops = this.selTasks().filter(t => !t.completed_at && !t.archived_at).map(t => ({ kind: 'complete', target: 'task', mode: 'forward', fwd: { id: t.id, done: true } }));
+      const ops = this.selTasks().filter(t => !t.completed_at && !t.archived_at && !inNotes(t)).map(t => ({ kind: 'complete', target: 'task', mode: 'forward', fwd: { id: t.id, done: true } }));
       await this._bulk(`Completed ${this._nTasks(ops.length)}`, ops);
     },
     _selRoots(ids = this.sel) { const s = new Set(ids); return ids.filter(id => !this._chain(this.byId.get(id)?.parent_id).some(a => s.has(a))); },   // a selected ancestor carries its subtree
@@ -1824,7 +1830,7 @@ document.addEventListener('alpine:init', () => {
       const kids = childIndex(this.tasks);   // once per batch, not per selected row
       if (this.sel.some(id => descendantIds(this.tasks, id, kids).includes(p.id))) return this.toast('Cannot move a task into itself or its subtasks');
       const ids = this._selRoots(), at = projectDepth(this.tasks, p.id);   // reparenting a selected descendant too would flatten it out of its parent
-      if (ids.some(id => at + subtreeDepth(this.tasks, id, kids) > MAX_DEPTH)) return this.toast(`Too deep — tasks nest at most ${MAX_DEPTH} levels`);
+      if (ids.some(id => at + subtreeDepth(this.tasks, id, kids) > MAX_DEPTH)) return this.toast(`Too deep. Tasks nest at most ${MAX_DEPTH} levels`);
       // drag's path (railDrop): move() closes a parent its last open subtask left. A failed move keeps the selection: the retry is one click
       if (await this._moveTask(ids, p.id, [...this.childTasks(p.id).flatMap(x => ids.includes(x.id) ? [] : [x.id]), ...ids], { label: n => `Moved ${this._nTasks(n === ids.length ? this.sel.length : n)} to ${p.content}`, bin: true })) this.clearSel();   // n: the roots that landed
     },
@@ -1930,7 +1936,7 @@ document.addEventListener('alpine:init', () => {
       if (i < 0 || j < 0 || j >= sibs.length) return;   // already at an end — a no-op, not an error
       const ids = sibs.map(x => x.id); [ids[i], ids[j]] = [ids[j], ids[i]];
       const api = kind === 'area' ? this.store.areas : kind === 'filter' ? this.store.filters : this.store.tasks;
-      if (!await api.reorder(ids)) return this.toast('Could not reorder');
+      if (!await api.reorder(ids)) return this.toast('Failed reordering');
       await this._reloadFor(kind === 'area' || kind === 'filter' ? kind : 'task');
     },
     // The rail lists filters and areas but had no way to MAKE one — filters were reachable only by saving a
@@ -1939,7 +1945,7 @@ document.addEventListener('alpine:init', () => {
     async rollerAdd(kind, r) {
       if (kind === 'filter') return this.openFilterEditor();
       const a = await this.store.areas.create({ name: 'New area' });
-      if (!a) return this.toast('Could not add area');
+      if (!a) return this.toast('Failed adding area');
       await this._reloadFor('area');
       this._navPopAt(r);
       this.startRename(a.id);
@@ -1947,11 +1953,11 @@ document.addEventListener('alpine:init', () => {
     // One tree index and one open-per-area tally per paint, shared by every row: per row they made it O(projects·tasks).
     _rollerIdx() {
       const areaOpen = new Map();
-      for (const t of this.tasks) if (!t.completed_at && !t.archived_at) for (const a of t.area_ids || []) areaOpen.set(a, (areaOpen.get(a) || 0) + 1);
+      for (const t of this.tasks) if (!t.completed_at && !t.archived_at && !inNotes(t)) for (const a of t.area_ids || []) areaOpen.set(a, (areaOpen.get(a) || 0) + 1);
       return { kids: childIndex(this.tasks), areaOpen };
     },
     rollerCount(it, ix = this._rollerIdx()) {
-      const open = t => t && !this.isOverviewProject(t) && !t.completed_at && !t.archived_at;
+      const open = t => t && !this.isOverviewProject(t) && !t.completed_at && !t.archived_at && !inNotes(t);   // a note is reference, not work
       if (it.kind === 'backlog') { const d = this.store.defaultProject(); return this.tasks.filter(t => open(t) && t.parent_id === d).length; }
       if (it.kind === 'proj') return descendantIds(this.tasks, it.id, ix.kids).filter(id => open(this.byId.get(id))).length;   // the root is a project, so open() drops it
       if (it.kind === 'area') return ix.areaOpen.get(it.id) || 0;
@@ -1960,7 +1966,7 @@ document.addEventListener('alpine:init', () => {
     },
     rollerData(it, ri, ix) {   // enrich a roller item with the icon/color/count/progress the box needs
       const d = { ...it, ridx: ri, count: this.rollerCount(it, ix) };
-      if (it.kind === 'proj') { d.color = it.p.color || ''; if (this.isNote(it.id)) d.icon = 'i-tack'; else { d.icon = 'prog'; d.progress = this.projectProgress(it.id, ix?.kids) / 100; } }   // notes project: the glyph, not a progress ring — notes don't "complete"
+      if (it.kind === 'proj') { d.color = it.p.color || ''; d.icon = 'prog'; d.progress = this.projectProgress(it.id, ix?.kids) / 100; }
       else if (it.kind === 'area') { d.icon = it.l.icon || 'i-tag-tag'; d.color = it.l.color || this.areaDefault; }
       else if (it.kind === 'filter') { d.icon = it.f.query === 'is:any' ? 'i-all' : 'i-search'; d.color = it.f.color || ''; }   // the 'All tasks' null filter keeps its original glyph; filters aren't otherwise icon-configurable
       else if (it.kind === 'backlog') d.icon = 'i-backlog';
@@ -1975,7 +1981,7 @@ document.addEventListener('alpine:init', () => {
 
     // --- Nav management ---
     projectProgress(id, kids) {
-      const ids = descendantIds(this.tasks, id, kids).slice(1);
+      const ids = descendantIds(this.tasks, id, kids).slice(1).filter(x => !inNotes(this.byId.get(x)));   // notes aren't work
       if (!ids.length) return 0;
       return Math.round(ids.filter(x => this.byId.get(x)?.completed_at).length / ids.length * 100);
     },
@@ -1991,9 +1997,6 @@ document.addEventListener('alpine:init', () => {
     // The nav settings popover renders at the overview level (not inside the clipping roller) — resolve its entity here.
     navPopProj() { return this.navPop?.type === 'proj' ? this.byId.get(this.navPop.id) : null; },
     navPopArea() { return this.navPop?.type === 'area' ? this.areas.find(l => l.id === this.navPop.id) : null; },
-    // --- Notes: membership, not a flag — everything under a root project named 'Notes' is a note ---
-    isNote(id) { const t = this.byId.get(id); return !!t && inNotes(t, this.byId); },
-    pickIsNote() { return this.isNote(this.draft.project_id); },
     // Ghost text doubles as find (uFuzzy, same matcher as the pickers): .chk-hit floats matches via
     // flex order (the lane done rows sink through) — no DOM moves, stored order untouched, nothing hidden.
     chkFind() {   // memo per (query, list length): item id → match ranges (null = hit without range info)
@@ -2052,13 +2055,13 @@ document.addEventListener('alpine:init', () => {
       // signed in, the move and the DELETE are two requests: a failure may follow a move that landed — journal what did
       const gone = ok || !this.byId.has(id), moved = ok ? kids : kids.filter(k => this.byId.get(k.id)?.parent_id === target);
       settled();   // the entry below holds what landed
-      if (!gone && !moved.length) { this.toast(`“${label}” didn’t save — try again`); return false; }
+      if (!gone && !moved.length) { this.toast(`Failed saving “${label}”. Try again?`); return false; }
       const entry = { kind: 'composite', target: 'task', _fxCapture: fx, ops: [
         ...gone ? [{ kind: 'reinsert', target: 'task', id, rows: [taskRow], ...refs }] : [],
         ...moved.map(k => ({ kind: 'move', target: 'task', id: k.id, after: { parent: k.parent, pos: k.pos } })),
       ] };
       this._finalizeFx(entry); this._pushEntry(label, entry, { bin: gone, silent: !ok });
-      if (!ok) this.toast(`“${label}” didn’t fully save — the list shows what’s saved`);
+      if (!ok) this.toast(`“${label}” didn’t fully save. The list shows what’s saved`);
       return ok;
     },
     async confirmDelete() {
@@ -2231,10 +2234,10 @@ document.addEventListener('alpine:init', () => {
         // the top. scrollIntoView never had to care because it resolved its pixel once and forgot.
         const cr = comp.getBoundingClientRect();
         if (!this.composer.open || !comp.isConnected || !cr.height) return sc.scrollTop;
-        const sr = sc.getBoundingClientRect(), H = this._seenH(sc), lift = sc.scrollTop + cr.bottom - sr.top - H + 12;
-        // above the fold, or taller than the viewport → sit on its top; otherwise lift only what's cut off. Both absolute:
-        // aimed at the live scrollTop once in view, the glide's own easing pulled back from it every frame (±12px wobble).
-        return cr.top < sr.top || cr.height > H ? sc.scrollTop + cr.top - sr.top - 8 : lift > start + 16 ? lift : start;
+        const sr = sc.getBoundingClientRect(), H = this._seenH(sc), top = sc.scrollTop + cr.top - sr.top - 8, lift = top + cr.height - H + 20;
+        // taller than the viewport → sit on its top; otherwise the start, clamped so it's all in. Absolute, never the live scrollTop
+        // (the easing pulled back from it every frame, ±12px wobble) nor a bare start: one that hid it bounced the glide back there.
+        return cr.height > H ? top : Math.min(top, lift > start + 16 ? lift : start);
       }, 420);   // outlasts the 220ms grow, so the target is still live for the whole of it
     },
     // Imperative edit styling (no list rebuild): crossfade height on the edited row + hide its subtree. Run on
@@ -2298,15 +2301,13 @@ document.addEventListener('alpine:init', () => {
     // x-html; relation picker + cascade-complete use the same markup (ui.js)
     taskLine(t, markedTitle) {
       const parent = this.byId.get(t.parent_id);
-      const pNote = !!parent && inNotes(parent, this.byId);
-      const notesRoot = pNote && !parent.parent_id;
       return rowBodyHtml({
         t, pc: this.pc(t.importance),
         titleHtml: markedTitle != null ? markedTitle : mdTitleFn(t.content),
         areas: this.areaObjs(t.area_ids).map(l => ({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })),
-        projName: parent && !notesRoot ? parent.content : '',
+        projName: parent ? parent.content : '',
         isDefaultProj: !!t.parent_id && t.parent_id === this._defId,
-        note: inNotes(t, this.byId),   // can't short-circuit via pNote: Notes root itself has parent=undefined so pNote=false but inNotes=true
+        note: inNotes(t),
         rels: [], chk: [],
       }, { minimal: true });
     },
@@ -2484,7 +2485,7 @@ document.addEventListener('alpine:init', () => {
         const inv = await this._apply({ target: 'task', kind: 'move', id, after: { parent, pos: pos(id) } });
         if (inv) { landed.push(id); invs.push(inv); }
       }
-      if (!landed.length) { await this.loadTasks(); this.toast('Could not move task'); return false; }
+      if (!landed.length) { await this.loadTasks(); this.toast('Failed moving task'); return false; }
       if (landed.length < ids.length) {   // a row that stayed keeps its place among its old siblings; the landed ones go in after the row they dropped after
         const prev = order[order.indexOf(ids[0]) - 1], stay = before.filter(x => !landed.includes(x));
         stay.splice(stay.indexOf(prev) + 1, 0, ...landed);
@@ -2494,11 +2495,11 @@ document.addEventListener('alpine:init', () => {
       await this.loadTasks();
       const entry = invs.length > 1 ? { kind: 'composite', target: 'task', ops: invs.reverse() } : invs[0], label = name?.(landed.length) ?? (landed.length > 1 ? `Moved ${this._nTasks(landed.length)}` : 'Moved');
       this._finalizeFx(entry);
-      if (!ordered && same && ![entry, ...entry.ops || []].some(o => o.fx?.changed.length)) { this.toast('Could not reorder'); return false; }   // nothing moved: no entry, ⌘Z keeps the one before
+      if (!ordered && same && ![entry, ...entry.ops || []].some(o => o.fx?.changed.length)) { this.toast('Failed reordering'); return false; }   // nothing moved: no entry, ⌘Z keeps the one before
       if (this.collapsed[parent] && _rowMap.has(parent)) this.toggleTaskCollapse(parent);   // into a parent shown folded: open it, as the ghost drew. View state: ⌘Z leaves it open
       this._landOn(landed[0]);   // a drag can drop a row anywhere, incl. off-screen or into a filtered-out spot
       const ok = ordered && landed.length === ids.length;
-      this._pushEntry(label, entry, { bin: bin || landed.length > 1, ...!ok && { msg: `“${label}” didn’t fully save — the list shows what’s saved` } });   // several rows: a bulk change, in Recent changes as the edit bar's Move
+      this._pushEntry(label, entry, { bin: bin || landed.length > 1, ...!ok && { msg: `“${label}” didn’t fully save. The list shows what’s saved` } });   // several rows: a bulk change, in Recent changes as the edit bar's Move
       return ok;
     },
     dragEnd() {
@@ -2567,7 +2568,7 @@ document.addEventListener('alpine:init', () => {
     // --- Drag-to-move edge rail: Backlog + every project + every area as compact drop targets. ---
     railItems() {
       const items = [{ kind: 'backlog', id: null, label: 'Backlog', icon: 'i-backlog', color: '' }];
-      for (const { p } of this.overviewProjectRows()) items.push({ kind: 'proj', id: p.id, label: p.content, icon: this.isNote(p.id) ? 'i-tack' : 'i-hash', color: p.color || '' });
+      for (const { p } of this.overviewProjectRows()) items.push({ kind: 'proj', id: p.id, label: p.content, icon: 'i-hash', color: p.color || '' });
       for (const l of this.areas) items.push({ kind: 'area', id: l.id, label: l.name, icon: l.icon || 'i-tag-tag', color: l.color || this.areaDefault });
       return items;
     },
@@ -2902,9 +2903,7 @@ document.addEventListener('alpine:init', () => {
         return `${lead}<span class="pick-name">${name}</span><span class="pick-tag">${r.type === 'command' ? 'Action' : r.type}</span>`;
       }
       const marked = this.searchTitleHTML(r);
-      // hash-ico, not pick-ico: this glyph stands in for the '#' beside it, so it wears the hash icon's box (15px).
-      // At the 18px lead-icon size a notes project read as a heavier, bigger row than every hash project under it.
-      if (r.type === 'project') return `${this.isNote(r.obj?.id) ? '<svg class="ico hash-ico"><use href="#i-tack"/></svg>' : '<span class="hash">#</span>'}<span class="pick-name">${marked}</span>`;
+      if (r.type === 'project') return `<span class="hash">#</span><span class="pick-name">${marked}</span>`;
       const color = r.obj.color || this.areaDefault;
       return `<svg class="ico area-ico" style="color:${color}"><use href="#${r.obj.icon || 'i-tag-tag'}"/></svg><span class="pick-name">${marked}</span>`;
     },
@@ -3105,7 +3104,7 @@ document.addEventListener('alpine:init', () => {
       const name = this.pickerQ.trim(); if (!name) return;
       const existing = this.tasks.find(x => x.content === name && x.parent_id === null);
       const project = existing || await this._newTask({ content: name, parent_id: null, overview: true });
-      if (!project) return this.toast(`Could not create “${name}” — try again`);   // the name stays typed in the picker
+      if (!project) return this.toast(`Failed creating “${name}”. Try again?`);   // the name stays typed in the picker
       await this.loadTasks();
       this.pickProject(project);
     },
@@ -3630,7 +3629,7 @@ document.addEventListener('alpine:init', () => {
       if ((!tok || tok.kind === 'date') && start >= 0 && this.swallowIntoPrevDate(node, start, pending.slice(start), off)) return true;   // [next week] + "sun" → [next week sunday]
       if (!tok) return false;
       const token = pending.slice(tok.start);
-      if (tok.kind === 'area') { this.pillifyArea(node, tok, token, off); return true; }         // area tokens carry a NAME → resolve to an id first
+      if (tok.kind === 'area') return this.pillifyArea(node, tok, token, off);         // area tokens carry a NAME → resolve to an id first; the promise lets Enter wait
       this.insertPill(node, tok.start, tok.kind, tok.value, token, off);
       return true;
     },
@@ -3784,7 +3783,7 @@ document.addEventListener('alpine:init', () => {
     pickLink(id) { const t = this._linkType(); if (t) this.pickPill(t, id); },
     // Click-only (no Enter): "Meet Sam at 5pm" + Enter must submit the task, never invent a place called "5pm".
     async createLocFromPicker() { const nm = this.locPicker.frag.trim(); if (!nm) return; await this.addLocation(nm); this.pickPill('loc', nm); },
-    locOpenCount(id) { return this.tasks.filter(t => !t.completed_at && !t.archived_at && (t.location?.ids || []).includes(id)).length; },
+    locOpenCount(id) { return this.tasks.filter(t => !t.completed_at && !t.archived_at && !inNotes(t) && (t.location?.ids || []).includes(id)).length; },
     // Open, then immediately re-derive at/frag from the node — the trigger keydown lands before its own character
     // is inserted, so anything already typed past it (a paste, a fast burst) would otherwise be missed.
     openPicker(type, node, at) { const sp = PICKERS[type], p = this[sp.key]; Object.assign(p, { open: true, frag: '', sel: 0, node, at, left: 0, top: 0 }); this._refreshPicker(p, sp, sp.sel); },
@@ -3867,10 +3866,12 @@ document.addEventListener('alpine:init', () => {
       else if (e.key.length === 1) { this._noPillOnce = false; }   // typing fresh content re-enables space→pill (Backspace/Delete → onEditorBeforeInput)
       return false;
     },
+    // Enter pills the word it ends on, as a space would ("call mom tmrw" saves dated; an un-chipped word stays text), then saves.
+    _pillThen(done) { const pilled = !this._noPillOnce && this.pillifyTrailing(); if (pilled instanceof Promise) pilled.then(done); else done(); },
     editorKeydown(e) {
       if (this.sticky && this._stickyKey(e)) return;
       if (this._pillKeydown(e)) return;
-      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this.submitComposer(); return; }
+      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this._pillThen(() => this.submitComposer()); return; }
       // ArrowDown ladder: the title wraps, so down means "next field" only from its last line. A caret that measures 0×0 (empty title, beside a chip) counts as there.
       const caret = e.key === 'ArrowDown' && !e.shiftKey && getSelection().rangeCount && getSelection().getRangeAt(0).getBoundingClientRect();
       if (caret && (!caret.height || caret.bottom > e.target.getBoundingClientRect().bottom - caret.height / 2)) { const d = this.$refs.desc; if (d) { e.preventDefault(); d.focus(); this._setCaret(d, 0); } }
@@ -3941,7 +3942,6 @@ document.addEventListener('alpine:init', () => {
         const nextBase = landed ? { ...JSON.parse(JSON.stringify(draft)), ...!placed && { on: saveBase.on, dueTime: saveBase.dueTime, recurrence: saveBase.recurrence }, reminders: saveBase.reminders,
           subs: subbed ? draft.subs.map(s => ({ id: s.id, done: s.done })) : saveBase.subs, subMoves: {} } : saveBase;
         if (kept) await this._applyDraftLinks(editId, draft, j);
-        if (landed) await this._healNotesOverview();   // a root renamed to Notes joins the roller now; undo leaves it a project
         // a new subtask: an add's Bin row, so a ⌘Z puts it in the Bin (a deleted one has its own, _saveSubs)
         if (j.length) this._pushOps('Saved task', 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added });
         else if (kept) this.notify('Saved task');   // nothing the task row changed (signed in, an empty write stamps nothing): still said
@@ -3954,7 +3954,7 @@ document.addEventListener('alpine:init', () => {
           if (landed) Object.assign(draft, { wasDone, savedAt: updated.updated_at });
           // the open draft continues this one (restored from it mid-save) and holds its typing: nothing to keep apart
           const binned = this.composer.open && !this._closingComposer && _draftFrom !== sid;
-          this.toast(binned ? `${!saved ? landed ? 'Couldn’t complete' : 'Couldn’t save' : !subbed ? 'Couldn’t save the subtasks of' : placed ? 'Couldn’t save the reminders of' : 'Couldn’t schedule'} “${before.content}” — kept in the Bin` : !saved ? 'Save failed — try again' : !subbed ? 'Subtasks didn’t save — try again' : placed ? 'A reminder didn’t save — try again' : 'Could not schedule — try again');
+          this.toast(binned ? `${!saved ? landed ? 'Failed completing' : 'Failed saving' : !subbed ? 'Failed saving the subtasks of' : placed ? 'Failed saving the reminders of' : 'Failed scheduling'} “${before.content}”. Kept in the Bin` : !saved ? 'Failed saving. Try again?' : !subbed ? 'Failed saving subtasks. Try again?' : placed ? 'Failed saving a reminder. Try again?' : 'Failed scheduling. Try again?');
           if (binned) this._pushDraftBin(editId, { editing: editId, ...this._draftState({ draft }), base: nextBase, sid, ts: Date.now() });
           if (this.composer.open && !this._closingComposer) return false;
           this.subGhost = this.chkGhost = ''; this._clearEditor(this._ghostEl('sub'));   // its ghosts were committed before the save
@@ -4087,9 +4087,9 @@ document.addEventListener('alpine:init', () => {
       const take = () => { e.preventDefault(); e.stopPropagation(); return true; };
       // Esc's clear is one ⌘Z step in the line: the pre-clear snapshot goes onto the fresh editor's history
       if (inTitle && e.key === 'Escape') { if (this.titleEmpty) desktopWindow('back'); else { const was = this._nlpSnap(title); this.resetDraft(); this.setEditorText(''); title._hist.undo.push(was); } return take(); }
-      if (inTitle && e.key === 'ArrowDown' && this.visibleRows().length) { title.blur(); this.moveFocus(1); return take(); }
+      if (inTitle && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.visibleRows().length) { title.blur(); this.moveFocus(e.key === 'ArrowDown' ? 1 : -1); return take(); }   // the line sits under the rows: ↑ takes the one above it, ↓ the first
       if (inTitle) return false;
-      if (e.key === 'Escape' || this.focusId && e.key === 'ArrowUp' && this.visibleRows()[0]?.t.id === this.focusId) { this._setKbFocus(null); title.focus(); return take(); }
+      if (e.key === 'Escape' || this.focusId && e.key === 'ArrowDown' && this.visibleRows().at(-1)?.t.id === this.focusId) { this._setKbFocus(null); title.focus(); return take(); }
       if (this.focusId && e.key === ' ') { this.toggleFocused(); return take(); }
       if (this.focusId && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { this.moveFocus(e.key === 'ArrowDown' ? 1 : -1); return take(); }
       if (this.focusId && e.key === 'Enter') { this.openFocused(); return take(); }
@@ -4182,7 +4182,7 @@ document.addEventListener('alpine:init', () => {
     // store sends when realtime dropped and came back, i.e. the one moment we know there may be a hole.
     // A failed re-read keeps its list's last good rows, never throws past the caller (realtime, a save's journal write or
     // toast), and is said + retried by the minute tick, as reloadAll's.
-    _reloadFor(kind) { return (this._loaders()[kind] || (() => this.reloadAll()))().catch(() => { if (!this._loadFailed) this.toast('Couldn’t load — retrying'); this._loadFailed = true; }); },
+    _reloadFor(kind) { return (this._loaders()[kind] || (() => this.reloadAll()))().catch(() => { if (!this._loadFailed) this.toast('Couldn’t load, retrying'); this._loadFailed = true; }); },
     // After _apply: each list its ops touched, once — never the whole account. An op carrying rows (a reinsert, or the remove
     // taking one back) moved rows out or in, and with them what points at them: a delete's cascade or scrub (Postgres FKs and
     // delete_area/delete_location, LocalStore's prune), a reinsert's `also`.
@@ -4213,7 +4213,7 @@ document.addEventListener('alpine:init', () => {
         {l:'Filter syntax',r:[
           ['<b>#work</b> · <b>##work</b>','Project / descendants'],['<b>@errands</b>','Area'],['<b>importance:must,focus</b>','Importance'],
           ['<b>due:overdue</b> · <b>due:today..eow</b>','Due date'],['<b>deadline:any</b> · <b>deadline:eow</b>','Deadline'],
-          ['<b>is:open</b> · <b>is:recurring</b> · <b>is:blocked</b>','State'],['<b>in:title</b> · <b>in:description</b>','Search field'],
+          ['<b>is:open</b> · <b>is:recurring</b> · <b>is:blocked</b> · <b>is:note</b>','State'],['<b>in:title</b> · <b>in:description</b>','Search field'],
           ['<b>AND</b> · <b>OR</b> · <b>NOT</b> · <b>( )</b> · <b>-@home</b>','Combine / negate'],
           ['<b>#work importance:must due:overdue</b>','Example: urgent overdue work'],
           ['<b>(is:blocked OR deadline:today) is:open</b>','Example: blocked or due today'],
@@ -4276,7 +4276,7 @@ document.addEventListener('alpine:init', () => {
     _pendingMap() { try { return JSON.parse(localStorage.getItem('adherod.draftPending')) || {}; } catch { return {}; } },
     _writePending(map) {
       try { localStorage.setItem('adherod.draftPending', JSON.stringify(map)); this._pSaveFailed = false; return true; }
-      catch { if (!this._pSaveFailed) this.toast('Storage is full — this draft won’t survive a reload'); this._pSaveFailed = true; return false; }
+      catch { if (!this._pSaveFailed) this.toast('Storage is full. This draft won’t survive a reload'); this._pSaveFailed = true; return false; }
     },
     // Clearing a pending draft with its `sid` means THAT draft LANDED (saved, or reverted to the saved state) → its pending
     // slot and bin rows are stale: a "Restore" that re-applies text already on the task is worse than no row at all. Another
@@ -4527,7 +4527,7 @@ document.addEventListener('alpine:init', () => {
     // so ⌘Z or "Restore" reopens the composer with the draft. The pending autosave stays as the same-composer restore.
     // detached: another tab's draft — in the Bin only, never this tab's ⌘Z.
     _pushDraftBin(key, p = this._draftEntry(), detached = false) {   // p: an explicit draft to bin instead of the open one (live: a failed autosave leaves storage stale)
-      const label = 'Draft — ' + ((p.draft.content || '').trim() || (p.chkGhost || p.subGhost || '').trim() || 'Untitled draft');
+      const label = 'Draft: ' + ((p.draft.content || '').trim() || (p.chkGhost || p.subGhost || '').trim() || 'Untitled draft');
       this._journalPush({ label, target: 'draft', kind: 'draft', op: null, payload: { key, ...p }, bin: true, detached, acct: p.acct ?? this._acct() });   // a swept save slot's row is its account's
     },
     // Through the pending slot, so the open restores the draft with its own sid. The pending draft it displaces is
@@ -4561,11 +4561,11 @@ document.addEventListener('alpine:init', () => {
       const copy = item || redated ? () => {} : await this._binAhead('Deleted subtask', { ...fwd }); if (!copy) return;
       try { op = redated ? { newer: 'all' } : await (e.kind === 'held-sub' ? this._restoreHeld(e.payload) : item ? this._restoreChecklistItem(e.payload) : this._apply(fwd)); } catch {}
       copy(!!op);
-      if (!op) { if (!item) await this._reloadAfter(e.op); this.toast('Restore failed — try again'); return; }   // the bin row stays; one toast
+      if (!op) { if (!item) await this._reloadAfter(e.op); this.toast('Failed restoring. Try again?'); return; }   // the bin row stays; one toast
       const ops = item ? [] : [op, ...op.ops || []];
-      if (ops.some(o => o.dropped)) { await this._reloadAfter({ kind: 'composite', ops: [e.op, { target: 'task' }] }); const blocked = this.trashBlocked(e); return this.toast(blocked ? 'Couldn’t put it back — ' + blocked : ops.find(o => o.dropped).dropped); }   // the row stays in the Bin; the tasks reload, so it names a task gone unseen
-      if (this._kept(op)) { await this._reloadAfter(item ? { target: 'task' } : e.op); this._rebaseDraft(was); this.syncSubRows(); return this.notify('Already back — this copy stays in the Bin'); }
-      if (op.newer === 'all') { await this._reloadAfter(e.op); this._rebaseDraft(was); return this.notify(`“${e.label}” not undone — it changed since`); }   // as _journalStep: the row stays until the reload hides it
+      if (ops.some(o => o.dropped)) { await this._reloadAfter({ kind: 'composite', ops: [e.op, { target: 'task' }] }); const blocked = this.trashBlocked(e); return this.toast(blocked ? 'Failed putting it back. ' + blocked : ops.find(o => o.dropped).dropped); }   // the row stays in the Bin; the tasks reload, so it names a task gone unseen
+      if (this._kept(op)) { await this._reloadAfter(item ? { target: 'task' } : e.op); this._rebaseDraft(was); this.syncSubRows(); return this.notify('Already back. This copy stays in the Bin'); }
+      if (op.newer === 'all') { await this._reloadAfter(e.op); this._rebaseDraft(was); return this.notify(`“${e.label}” not undone, it changed since`); }   // as _journalStep: the row stays until the reload hides it
       if (!item) [applied, e.op] = [fwd, op];
       e.restored = true; e.detached = true;
       this._journalSave(); await this._reloadAfter(item ? { target: 'task' } : e.op); this._rebaseDraft(was); this._finalizeFx(e.op);
@@ -4588,11 +4588,11 @@ document.addEventListener('alpine:init', () => {
         if (o.target === 'task') for (const r of o.rows) if (r.parent_id && !has('task', r.parent_id) && has('task', r.id)) { moved++; home = raw(this.byId).get(raw(this.byId).get(r.id).parent_id)?.content; }
       }
       const link = [...edges.values()].filter(([a, b]) => !has('task', a) || !has('task', b)).length;
-      return [moved && `${moved} ${s(moved, 'task', 'tasks')} came back ${home ? `in ${home}` : 'as a project'} — ${s(moved, 'its parent was', 'their parents were')} deleted`,
-        n.scheduleItem && `${n.scheduleItem} ${s(n.scheduleItem, 'attachment', 'attachments')} couldn’t come back — ${s(n.scheduleItem, 'its block was', 'their blocks were')} deleted`,
-        n.noTask && `${n.noTask} ${s(n.noTask, 'attachment', 'attachments')} couldn’t come back — ${s(n.noTask, 'its task was', 'their tasks were')} deleted`,
-        link && `${link} ${s(link, 'link', 'links')} couldn’t come back — the other ${s(link, 'task was', 'tasks were')} deleted`,
-        n.reminder && `${n.reminder} ${s(n.reminder, 'reminder', 'reminders')} couldn’t come back — ${s(n.reminder, 'its time', 'their times')} passed`].filter(Boolean).map(t => ' · ' + t).join('');
+      return [moved && `${moved} ${s(moved, 'task', 'tasks')} came back ${home ? `in ${home}` : 'as a project'} (${s(moved, 'its parent was', 'their parents were')} deleted)`,
+        n.scheduleItem && `${n.scheduleItem} ${s(n.scheduleItem, 'attachment', 'attachments')} couldn’t come back (${s(n.scheduleItem, 'its block was', 'their blocks were')} deleted)`,
+        n.noTask && `${n.noTask} ${s(n.noTask, 'attachment', 'attachments')} couldn’t come back (${s(n.noTask, 'its task was', 'their tasks were')} deleted)`,
+        link && `${link} ${s(link, 'link', 'links')} couldn’t come back (the other ${s(link, 'task was', 'tasks were')} deleted)`,
+        n.reminder && `${n.reminder} ${s(n.reminder, 'reminder', 'reminders')} couldn’t come back (${s(n.reminder, 'its time', 'their times')} passed)`].filter(Boolean).map(t => ' · ' + t).join('');
     },
     // A deleted checklist item goes back onto its (still-existing) task's stored checklist at its old index.
     async _restoreChecklistItem(payload) {
@@ -4670,7 +4670,7 @@ document.addEventListener('alpine:init', () => {
     _jCursor() { const i = this.journal.findIndex(e => e.undone && !e.detached && this._ownTab(e)); return i < 0 ? this.journal.length : i; },
     _jFail(err) {   // a delete is refused, the draft kept, the next write retries
       this._jFull = err?.name === 'QuotaExceededError';   // else hung, blocked or broken: not the user's storage to clear
-      if (!this._jSaveFailed) this.toast(`${this._jFull ? 'Storage is full' : 'Couldn’t reach saved history'} — the Bin and undo won’t survive a reload`);
+      if (!this._jSaveFailed) this.toast(`${this._jFull ? 'Storage is full' : 'Couldn’t reach saved history'}. The Bin and undo won’t survive a reload`);
       this._jSaveFailed = true;
     },
     _journalFlush() {   // resolves once this tab's changes are stored or have failed
@@ -4891,7 +4891,7 @@ document.addEventListener('alpine:init', () => {
         // an edge dropped with the row that came back first (the store keeps none to a missing row) is linked here, by its other end
         for (let i = 0; i < links.length; i++) if (has(links[i][0]) && has(links[i][1]) && !await this.store.tasks.link(...links[i])) return keep(links.slice(i));
         // rows: all but what was live before — a rollback never removes one of those; a dropped row stays, so the entry keeps its data
-        return { kind: 'remove', target: op.target, id: op.id ?? op.rows[0]?.id, rows: op.rows.filter(r => landed.has(r.id)), ...kept.size && { kept: [...kept] }, ...dropped.size && { dropped: unread ? 'Couldn’t check that it came back' : 'Couldn’t put it back — its time passed' } };   // dropped: what the toast says
+        return { kind: 'remove', target: op.target, id: op.id ?? op.rows[0]?.id, rows: op.rows.filter(r => landed.has(r.id)), ...kept.size && { kept: [...kept] }, ...dropped.size && { dropped: unread ? 'Failed checking that it came back' : 'Failed putting it back. Its time passed' } };   // dropped: what the toast says
       }
       if (op.kind === 'update') {
         const res = this._res(op.target), guard = row => op.was ? guardedFields(op.after, row, op.was) : op.after;   // guard on reversal, full-apply on forward
@@ -4997,7 +4997,7 @@ document.addEventListener('alpine:init', () => {
     // a failed one too: a write that partly landed (signed in, one of several) stays undoable.
     // Use for edits/archive/complete/etc. A mutate returning the task fields it wrote is patched in place if the list's shape allows.
     // ops: collect [label, entryOp] instead of pushing, so a caller can land several writes as ONE entry
-    async _journalRowChange(label, target, id, mutate, { bin = false, silent = false, ops, fail = `“${label}” didn’t save — try again` } = {}) {
+    async _journalRowChange(label, target, id, mutate, { bin = false, silent = false, ops, fail = `Failed saving “${label}”. Try again?` } = {}) {
       const before = JSON.parse(JSON.stringify(this._rowById(target, id) || {}));
       const row = await mutate(); if (!(target === 'task' && this._patchTask([row]))) await this._reloadFor(target);
       const failed = row === false || row === null;
@@ -5011,7 +5011,7 @@ document.addEventListener('alpine:init', () => {
       // only data that landed: the store's own stamp bump (an unchanged save, a failed write's undone part) is nothing to undo
       const kept = Object.keys(rollback).some(k => k !== 'updated_at');
       if (kept) ops ? ops.push([label, op]) : this._pushEntry(label, op, { bin, silent: silent || failed });
-      if (failed && fail) this.toast(kept ? `“${label}” didn’t fully save — the list shows what’s saved` : fail);
+      if (failed && fail) this.toast(kept ? `“${label}” didn’t fully save. The list shows what’s saved` : fail);
       return !failed;
     },
     // Saved rows merged into their live tasks IN PLACE — instead of re-reading the whole table and rebuilding
@@ -5031,20 +5031,20 @@ document.addEventListener('alpine:init', () => {
       const flat = !_secMemo.length && this.navSel.type !== 'area', drop = new Set(_rowPatch?.drop), sort = new Set(_rowPatch?.sort), edits = [];
       for (const row of rows) {
         const t = row && this.byId.get(row.id); if (!t || t.overview) return false;
-        const changed = Object.keys(row).filter(k => JSON.stringify(row[k]) !== JSON.stringify(t[k])), folds = changed.some(k => fold.includes(k));
+        const changed = Object.keys(row).filter(k => JSON.stringify(row[k]) !== JSON.stringify(t[k])), folds = changed.some(k => fold.includes(k)), counts = folds || changed.includes('task_type');   // counts: a note leaves its parent's ring
         if (changed.some(k => shape.includes(k) && !fold.includes(k) && k !== 'position')) return false;
         if (changed.includes('position') && !(flat && _rowMap.has(t.parent_id) && sort.add(t.parent_id))) return false;
         if (folds && (_visRoots.has(t.id) || this.byId.get(t.parent_id)?.overview)) {   // a root or a project's child (walk's `top`): only an open one leaving for a hidden Done list
           if (!this._dropsRoot(t.id, at(t, 'archived_at'), at(t, 'completed_at'))) return false;
           if (!_cele.has(t.id)) drop.add(t.id);   // a celebrating root stays, patched done, until _celebrate ends
-        } else if (folds && _secMemo.some(s => 'pct' in s)) return false;
+        } else if (counts && _secMemo.some(s => 'pct' in s)) return false;
         for (let a = this.byId.get(t.parent_id), n = 0; a && n < 200; a = this.byId.get(a.parent_id), n++) if (at(a, 'completed_at') && !at(t, 'completed_at')) return false;
-        edits.push([t, row, changed, folds]);
+        edits.push([t, row, changed, folds, counts]);
       }
       const ids = this._rowsReading(edits.filter(([, , changed]) => changed.some(k => k !== 'position')).map(([t]) => t.id));   // a move alone renders nothing new
       let cal = false;
-      for (const [t, row, changed, folds] of edits) {
-        if (folds) ids.add(t.parent_id);
+      for (const [t, row, changed, , counts] of edits) {
+        if (counts) ids.add(t.parent_id);
         cal ||= onCalendar(t, this._placedMap());   // on the calendar before the edit…
         for (const k of changed) t[k] = row[k];   // changed fields only: an equal-but-new object still wakes every effect that read it
         cal ||= onCalendar(t, this._placedMap());   // …or after it
@@ -5067,19 +5067,19 @@ document.addEventListener('alpine:init', () => {
       if (sideOk) { for (const side of Object.values(_clSideOut)) for (const id of ids) side.html.delete(id); _clSideV = this._rowV; }
     },
     // Perform a user mutation and record how to reverse it. op.kind ∈ {delete, create, update, move, composite}.
-    async perform(label, op, { bin = [op, ...op.ops || []].some(o => o.kind === 'delete'), silent = false, restored = false, ops, fail = `“${label}” didn’t save — try again` } = {}) {   // a composite that deletes is Bin-backed too
+    async perform(label, op, { bin = [op, ...op.ops || []].some(o => o.kind === 'delete'), silent = false, restored = false, ops, fail = `Failed saving “${label}”. Try again?` } = {}) {   // a composite that deletes is Bin-backed too
       const settled = bin ? await this._binAhead(label, op) : () => {};
       if (!settled) return false;
       let entryOp, partial;
       try { entryOp = await this._apply(op); } catch (e) { entryOp = e.landed; partial = e.partly; }   // a rollback that failed leaves what landed for the Bin
       // no entry to undo: nothing happened — or, partly applied with no rows left out, part may stand (a created row), so no "try again" (a retry could duplicate it)
-      if (!entryOp) { settled(); await this._reloadFor(op.target); if (partial || fail) this.toast(partial ? `“${label}” didn’t fully save — the list shows what’s saved` : fail); return false; }
+      if (!entryOp) { settled(); await this._reloadFor(op.target); if (partial || fail) this.toast(partial ? `“${label}” didn’t fully save. The list shows what’s saved` : fail); return false; }
       partial ||= [entryOp, ...entryOp.ops || []].some(o => o.unsure);
       await this._reloadAfter(entryOp);
       this._finalizeFx(entryOp);
       settled();   // the entry below holds what landed
       ops ? ops.push([label, entryOp]) : this._pushEntry(label, entryOp, { bin: !!bin, silent: silent || partial, restored });   // ops: as _journalRowChange's
-      if (partial) this.toast(`“${label}” didn’t fully save — what went is in the Bin`);
+      if (partial) this.toast(`“${label}” didn’t fully save. What went is in the Bin`);
       return !partial;
     },
     // Write-ahead: the rows a delete takes are stored as a Bin row before it runs, so a page that dies mid-delete or during its
@@ -5102,7 +5102,7 @@ document.addEventListener('alpine:init', () => {
         _ahead.delete(e.id); this._journalSave();
       };
       if (_jSnap.has(e.id)) return drop;   // committed
-      drop(); this.toast(this._jFull ? `Storage is full — “${label}” didn’t run: the Bin couldn’t keep a copy` : `Couldn’t reach saved history — “${label}” didn’t run, try again`);
+      drop(); this.toast(this._jFull ? `Storage is full. “${label}” didn’t run: the Bin couldn’t keep a copy` : `Failed reaching saved history. “${label}” didn’t run. Try again?`);
       return null;
     },
     // Deferred fx: captured before the write, diffed once the caller has reloaded — one reload per action, not per op.
@@ -5142,10 +5142,10 @@ document.addEventListener('alpine:init', () => {
         const settled = (keep) => { all(); rem(keep); };
         try { inverse = await this._apply(e.op); }
         catch (x) {   // a rollback that failed: the entry keeps its op for a retry — unless rows went, which then exist only in what landed
-          if (!x.landed) { settled(); return this.toast(`Could not fully ${verb} “${e.label}” — the list shows what’s saved`); }
+          if (!x.landed) { settled(); return this.toast(`Failed fully ${verb}ing “${e.label}”. The list shows what’s saved`); }
           inverse = x.landed; partial = true;
         }
-        if (!inverse) { settled(); return this.toast(`Could not ${verb} “${e.label}”`); }
+        if (!inverse) { settled(); return this.toast(`Failed ${verb}ing “${e.label}”`); }
         const kept = !partial && this._kept(inverse);   // a row live in another version: this entry stays its copy's only home, as a partial's
         if (!kept) e.op = inverse;
         if (partial || kept) e.bin = e.detached = true;   // what went lives only in this entry: the Bin shows it, truncation keeps it, redo steps over it
@@ -5154,10 +5154,10 @@ document.addEventListener('alpine:init', () => {
         this._journalSave(); settled(true); await this._reloadAfter(inverse); this._finalizeFx(inverse); this._journalSave();
         this._rebaseDraft(was);
         this.syncSubRows();   // an open composer's idle subtask rows show what the step wrote (their editors hydrate once)
-        if (partial) return this.toast(`Could not fully ${verb} “${e.label}” — what went is in the Bin`);
+        if (partial) return this.toast(`Failed fully ${verb}ing “${e.label}”. What went is in the Bin`);
         if (e.target === 'task') this._landOn(e.op?.id ?? e.op?.fwd?.id ?? e.op?.ops?.map(o => o.target === 'task' ? o.id : o.rows?.[0]?.task_id).find(Boolean));   // a save's date-items name its task
-        if (inverse.newer === 'all') return this.notify(`“${e.label}” not ${verb}ne — it changed since`, { actions: [this._cardStep(-dir, e.id)] });
-        note = kept ? ' · already back — this copy stays in the Bin' : [inverse, ...inverse.ops || []].some(o => o.newer) ? ' · what changed since stays' : this._skipNote(applied);
+        if (inverse.newer === 'all') return this.notify(`“${e.label}” not ${verb}ne, it changed since`, { actions: [this._cardStep(-dir, e.id)] });
+        note = kept ? ' · already back, this copy stays in the Bin' : [inverse, ...inverse.ops || []].some(o => o.newer) ? ' · what changed since stays' : this._skipNote(applied);
       }
       this.notify(e.label + (dir < 0 ? ' undone' : '') + note, { actions: [this._cardStep(-dir, e.id)] });
     },
@@ -5182,7 +5182,7 @@ document.addEventListener('alpine:init', () => {
     },
     async loadLocations() { await this._reloadFor('location'); },
     isHomeLocation(id) { return this.homeLocationId === id; },
-    async setHomeLocation(id) { if (!await this.store.setHomeLocation(id)) this.toast('Could not set home — try again'); await this.loadLocations(); },   // toggles home in the store; loadLocations refreshes the reactive mirror
+    async setHomeLocation(id) { if (!await this.store.setHomeLocation(id)) this.toast('Failed setting home. Try again?'); await this.loadLocations(); },   // toggles home in the store; loadLocations refreshes the reactive mirror
     // NLP name list: real place names + a synthetic "home" alias (unless a place is literally named "home") so "at home" resolves.
     locNames() { const n = this.locations.map(l => l.name); if (this.homeLocationId && this.locations.some(l => l.id === this.homeLocationId) && !n.some(x => x.toLowerCase() === 'home')) n.push('home'); return n; },
     locByName(nm) { const low = String(nm).toLowerCase(); return this.locations.find(x => x.name.toLowerCase() === low) || (low === 'home' && this.homeLocationId ? this.locations.find(x => x.id === this.homeLocationId) : null) || null; },
@@ -5190,7 +5190,7 @@ document.addEventListener('alpine:init', () => {
       if (!name?.trim()) return;
       const l = await this.store.locations.add({ name: name.trim(), region: region || this.currentRegion }); await this.loadLocations();
       // its undo is a top-level remove: _apply scrubs and captures its references as Delete does, so a redo puts them back
-      l ? this._pushEntry('Added location', { kind: 'remove', target: 'location', id: l.id, rows: [l] }) : this.toast('Could not add the place — try again');
+      l ? this._pushEntry('Added location', { kind: 'remove', target: 'location', id: l.id, rows: [l] }) : this.toast('Failed adding the place. Try again?');
     },
     patchLocation(id, fields) { return this._journalRowChange('Edited location', 'location', id, () => this.store.locations.update(id, fields)); },
     async deleteLocation(id) { if (this.locations.some(l => l.id === id)) return this.perform('Deleted location', { kind: 'delete', target: 'location', id }); },
@@ -5301,7 +5301,7 @@ document.addEventListener('alpine:init', () => {
       if (f.id) { if (!await this._journalRowChange('Edited filter', 'filter', f.id, () => this.store.filters.update(f.id, fields))) return; }   // the editor keeps its edits
       else {
         const created = await this.store.filters.add(fields); await this._reloadFor('filter');
-        if (!created) return this.toast('“Added filter” didn’t save — try again');
+        if (!created) return this.toast('Failed saving “Added filter”. Try again?');
         this._pushEntry('Added filter', { kind: 'remove', target: 'filter', id: created.id, rows: [created] });
         this.setNav('filter', created.id);   // a brand-new filter navigates to itself
       }
@@ -5350,7 +5350,7 @@ document.addEventListener('alpine:init', () => {
       let ok = true; for (const w of writes) if (!(ok = !!await w())) break;
       const reload = () => Promise.all(['task', 'area', d.on && 'scheduleItem', d.reminders?.length && 'reminder'].filter(Boolean).map(k => this._reloadFor(k)));
       if (!ok && await this.store.tasks.remove(id)) { for (const o of reopen) await this._apply(o); await reload(); return this._addFailed(slot); }   // whole or not at all: the reopened ancestors too
-      if (!ok) this.toast(`Added “${row.content}”, but couldn’t attach everything — check it`);   // the take-back failed: it's added, and ⌘Z removes it
+      if (!ok) this.toast(`Added “${row.content}”, but couldn’t attach everything. Check it`);   // the take-back failed: it's added, and ⌘Z removes it
       // Checklist items deleted while this draft was still unsaved left bin rows with no task to restore into
       // (this.editing was null). The task exists now — bind them, or the bin holds a Restore that can never work.
       let bound = false;
@@ -5366,14 +5366,18 @@ document.addEventListener('alpine:init', () => {
       this._finalizeFx(entry); this._pushEntry('Added task', entry, { bin: true, restored: true, silent: true });
       this._clearPending(key, sid);   // landed: its slot and Bin rows are spent; the composer is the next draft's
       _lastAdded = id;
+      if (this.sticky) {   // the note marks where the row landed, or toasts its Undo when it's out of view (Mac contract)
+        const jid = this.journal.at(-1).id;
+        this.$nextTick(() => this._rowEl(id) && !this._rowAway(id) ? this._flashSaved(id) : this.notify('Added task', { actions: [this._cardStep(-1, jid)] }));
+      }
       return row;
     },
     // A failed add comes back whole, once: into the composer when none is open or the open one is a blank add (nothing
     // typed since the press), else into the Bin — taking over would steal what's being typed. Its slot goes once it's home.
     _addFailed(entry) {
       const key = 'save:' + entry.sid, open = this.composer.open && !this._closingComposer;
-      if (open && (this.editing || this._draftSig() !== this._draftBase)) { this.toast(`Couldn’t add “${entry.draft.content.trim()}” — kept in the Bin`); return this._binSave(key, entry); }
-      this.toast('Could not add task — try again');
+      if (open && (this.editing || this._draftSig() !== this._draftBase)) { this.toast(`Failed adding “${entry.draft.content.trim()}”. Kept in the Bin`); return this._binSave(key, entry); }
+      this.toast('Failed adding task. Try again?');
       this._reopenDraft(entry);
       if (!this._pSaveFailed) this._clearPending(key);   // its autosave holds it now; refused, only the screen does: the slot stays
     },
@@ -5448,7 +5452,8 @@ document.addEventListener('alpine:init', () => {
     },
     // A stored row with open subtasks of its own asks first, as the list's tick does; Save's complete op sweeps them.
     tickSub(s, c) {
-      if (c?.archived_at) return this.toast('Archived — unarchive from the task menu');   // as the list's tick
+      if (inNotes(c ?? s.fields)) return;   // its tack is inert: a note never completes
+      if (c?.archived_at) return this.toast('Archived. Unarchive from the task menu');   // as the list's tick
       const before = this._subsSnap(), tick = () => { s.done = !s.done; this._pushSubs('Ticked subtask', before); }; return !s.done && c ? this.confirmSweep(c.id, tick).then(asked => asked || tick()) : tick(); },
     _chkItem(el) { return el.closest?.('.entry.chk')?._item ?? null; },
     // The painted rows' events, delegated from the list (the ghost row has no data-id and keeps its own handlers).
@@ -5472,11 +5477,17 @@ document.addEventListener('alpine:init', () => {
     // Steps is picked by typing into the empty composer's "First step" ghost; it and the plain toggle are draft, like every field: nothing lands before Save. Plain and Steps exclude each other.
     toggleChecklistPlain(asked) {
       if (!asked && this.chkSteps()) return this.askConfirm({ message: 'Turn these steps into an uncheckable list?', confirmLabel: 'Make list uncheckable', onConfirm: () => this.toggleChecklistPlain(true) });   // Steps leave only through a confirm (msg 15)
-      const d = this.draft, before = this._shapeSnap(); d.checklist_plain = !d.checklist_plain; if (d.checklist_plain) d.task_type = null;
+      const d = this.draft, before = this._shapeSnap(); d.checklist_plain = !d.checklist_plain; if (d.checklist_plain) this.setTaskType(null);
       this._pushDraftEdit(d.checklist_plain ? 'Made list uncheckable' : 'Made list checkable', 'convert', { before, after: this._shapeSnap() });
     },
     _shapeSnap() { const d = this.draft; return JSON.parse(JSON.stringify({ checklist: d.checklist, subs: d.subs, task_type: d.task_type, checklist_plain: d.checklist_plain })); },
-    setTaskType(type) { const d = this.draft; d.task_type = type; if (type) d.checklist_plain = false; },
+    setTaskType(type) {   // a note stays one: the checklist's mode is what it turns back into as a task (typeTap)
+      const d = this.draft;
+      if (d.task_type !== 'note') d.task_type = type;
+      else if (type) d.typeBeforeNote = type;
+      else delete d.typeBeforeNote;   // absent = null on the way back, and keeps the draft equal to its base
+      if (type) d.checklist_plain = false;
+    },
     toggleChecklistItem(item) { item.done = !item.done; },
     removeChecklistItem(item) { const i = this.draft.checklist.indexOf(item); if (i >= 0) this.draft.checklist.splice(i, 1); if ((item.text || '').trim()) this._pushChkItem(item, i, item.text, null); },
     // Backspace on an empty entry row (checklist item or subtask) deletes it and lands the caret on the neighboring entry.
@@ -5606,7 +5617,7 @@ document.addEventListener('alpine:init', () => {
     },
     subEditorKeydown(e, c) {
       if (this._pillKeydown(e)) return;
-      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); c ? this.focusEntryGhost(e.target) : this.commitSubGhost(); }
+      if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this._pillThen(() => c ? this.focusEntryGhost(e.target) : this.commitSubGhost()); }
     },
     // A sub-draft → child task fields. A subtask's parent is the editing task (not a project); it has no checklist of its own.
     _subFields(d) { const f = this.draftFields(d); delete f.project; delete f.project_id; delete f.checklist; f.parent_id = this.editing; return f; },
@@ -5999,13 +6010,15 @@ document.addEventListener('alpine:init', () => {
     // "the release resolved to a row" threw those away, which is why some drags silently did nothing. The last
     // dragOver already recorded the intent in taskDropHint, and drop() reads only that.
     listDrop() { this.drop(); },
-    hasProgress(t) { return this.hasChildren(t.id) || (t.checklist || []).length > 0; },   // parentIds Set — never an O(n) childTasks scan per row
+    hasProgress(t) { return this.hasChildren(t.id) && this._taskIdx().kids.get(t.id)?.some(c => c.id !== t.id && !inNotes(c)) || (t.checklist || []).length > 0; },   // a note child never fills the ring
     rowProgress(t, kids = this.childTasks(t.id)) {
-      if (kids.length) {
-        const timed = kids.every(c => c.est_minutes > 0); let total = 0, done = 0;
-        for (const c of kids) { const n = timed ? c.est_minutes : 1; total += n; if (c.completed_at || c.archived_at) done += n; }
-        return Math.round(done / total * 100);
+      let count = 0, closed = 0, mins = 0, minsClosed = 0, timed = true;
+      for (const c of kids) {
+        if (inNotes(c)) continue;
+        const shut = c.completed_at || c.archived_at; count++; if (shut) closed++;
+        if (c.est_minutes > 0) { mins += c.est_minutes; if (shut) minsClosed += c.est_minutes; } else timed = false;
       }
+      if (count) return Math.round(timed ? minsClosed / mins * 100 : closed / count * 100);
       const cl = t.checklist || [];
       return cl.length ? Math.round(cl.filter(c => c.done).length / cl.length * 100) : 0;
     },
@@ -6102,7 +6115,7 @@ document.addEventListener('alpine:init', () => {
     async _convertToSubtasks(id, d) {   // held: the composer may close or move on mid-convert
       const items = d.checklist.filter(i => i.text.trim());
       if (!items.length) return;
-      const beforeChecklist = JSON.parse(JSON.stringify(d.checklist)), beforeType = d.task_type ?? null;
+      const beforeChecklist = JSON.parse(JSON.stringify(d.checklist)), beforeType = d.task_type ?? null, type = inNotes(d) ? 'note' : null;   // a note stays one
       // a new subtask reopens this task and its completed ancestors: a failed convert puts each one's completed_at back, and so
       // does one that leaves this task completed (an open task rightly keeps its ancestors open)
       const was = new Map();
@@ -6124,14 +6137,14 @@ document.addEventListener('alpine:init', () => {
         // every subtask exists — only NOW is the destructive step safe. completed_at pins the task's own state (the last done
         // child auto-completed it): converting never completes it — complete only if it was AND every item was done.
         // ceiling: [] also drops an item another tab or device added since this composer opened, unbinned; revisit if a cross-device checklist loss is reported
-        if (!await this.store.tasks.update(id, { checklist: [], task_type: null, completed_at: items.every(i => i.done) ? wasCompletedAt : null })) throw 0;
+        if (!await this.store.tasks.update(id, { checklist: [], task_type: type, completed_at: items.every(i => i.done) ? wasCompletedAt : null })) throw 0;
         // only the draft that asked: a reopened one is the user's newer typing, never cleared. Items typed meanwhile stay, shown.
         if (this._live(d)) d.checklist = d.checklist.filter(c => c.text.trim() && !items.some(i => i.id === c.id));
         ok = true;
       } catch {
         // undo partial creates; checklist intact. A take-back that fails leaves its subtask: said, never a clean rollback.
         const left = (await Promise.allSettled(made.map(k => this.store.tasks.remove(k)))).flatMap((r, i) => r.value ? [] : [`“${items[i].text.split('::')[0].trim()}”`]);
-        this.toast('Could not convert to subtasks — checklist kept' + (left.length ? `, and ${left.join(', ')} stayed as ${left.length > 1 ? 'subtasks' : 'a subtask'}` : ''));
+        this.toast('Failed converting to subtasks. Checklist kept' + (left.length ? `, and ${left.join(', ')} stayed as ${left.length > 1 ? 'subtasks' : 'a subtask'}` : ''));
       }
       await this.loadTasks();
       // ceiling: compares against pre-convert state, so a completion made elsewhere during the convert is reset; window = one convert; revisit with a busy lock or realtime conflict reports
@@ -6146,8 +6159,8 @@ document.addEventListener('alpine:init', () => {
       if (ok && this._live(d)) {   // a failed convert saved nothing: the checklist stays a draft
         // only the new rows land: a subtask the draft deleted (or converted) stays an unsaved delete, else it's back beside its copy
         const rows = made.map((k, i) => ({ id: k, done: !!items[i].done })), base = JSON.parse(this._draftBase).draft.subs;
-        d.subs = [...d.subs.filter(s => s.add), ...rows, ...d.subs.filter(s => !s.add)]; d.task_type = null;
-        this._landDraft({ checklist: [], subs: [...rows, ...base], task_type: null });
+        d.subs = [...d.subs.filter(s => s.add), ...rows, ...d.subs.filter(s => !s.add)]; this.setTaskType(null);
+        this._landDraft({ checklist: [], subs: [...rows, ...base], task_type: type });
       }
       return ok;
     },
@@ -6181,7 +6194,7 @@ document.addEventListener('alpine:init', () => {
       const sel = getSelection(); const range = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
       if (!segs.some(s => s.kind)) return this.insertAtRange(range, document.createTextNode(line));
       this.askConfirm({
-        message: 'This text has tokens — turn them into chips?',
+        message: 'This text has tokens. Turn them into chips?',
         confirmLabel: 'Make chips',
         cancelLabel: 'Keep as text',
         onConfirm: () => this.insertSegments(segs, range),
@@ -6212,7 +6225,7 @@ document.addEventListener('alpine:init', () => {
         // A declared-but-not-yet-created area has no row to read a colour off — fall back to the default
         // rather than dropping the chip, so the preview shows what you are agreeing to either way.
         areas: (it.areaNames || []).map(n => { const a = known.get(n.trim().toLowerCase()); return { name: n, icon: a?.icon, color: a?.color || this.areaDefault }; }),
-        projName: it.listName || '', isDefaultProj: false, note: false, rels: [], chk: f.checklist || [],
+        projName: it.listName || '', isDefaultProj: false, note: inNotes(f), rels: [], chk: f.checklist || [],
       }, { minimal: true });
     },
     // Only what the row itself does NOT already say: the check carries importance, the chip carries the
@@ -6226,7 +6239,7 @@ document.addEventListener('alpine:init', () => {
         it.needs?.length ? 'needs ' + it.needs.length : '', it.reminders?.length ? 'reminder' : ''].filter(Boolean).join(' · ');
     },
     guideExample() { return JSON.stringify(PROMPT_EXAMPLE, null, 2); },
-    copyPrompt() { return this._copyText(importPrompt(this._importCtx()), 'Prompt copied — paste it to your assistant'); },
+    copyPrompt() { return this._copyText(importPrompt(this._importCtx()), 'Prompt copied. Paste it to your assistant'); },
     importTitle() {
       const p = this.importPreview; if (!p) return '';
       return p.kind === 'ics' ? (p.name || 'Calendar') : 'Add tasks';
@@ -6251,7 +6264,7 @@ document.addEventListener('alpine:init', () => {
     // Naming every problem only pays off if you can hand the list back to whatever wrote the payload.
     copyProblems() {
       const p = this.importPreview; if (!p?.problems.length) return;
-      const head = `${p.problems.length} problem${p.problems.length === 1 ? '' : 's'} with this import — fix them and resend the whole payload:`;
+      const head = `${p.problems.length} problem${p.problems.length === 1 ? '' : 's'} with this import. Fix them and resend the whole payload:`;
       return this._copyText([head, ...p.problems.map(x => `- ${x.path}: ${x.message}`)].join('\n'), 'Problems copied');
     },
 
@@ -6269,7 +6282,7 @@ document.addEventListener('alpine:init', () => {
       const files = [...(e.dataTransfer.files || [])].filter(f => f.name.toLowerCase().endsWith('.ics'));
       if (!files.length) return;   // not ours — stay silent, same as a non-.ics drop on macOS
       try { this.openImport('ics', (await Promise.all(files.map(f => f.text()))).join('\n'), files.map(f => f.name).join(', ')); }
-      catch { this.toast("Couldn't read that calendar"); }   // unreadable file, or a time parseICS can't place
+      catch { this.toast('Failed reading that calendar'); }   // unreadable file, or a time parseICS can't place
     },
 
     async applyImport() {
@@ -6294,7 +6307,7 @@ document.addEventListener('alpine:init', () => {
         if (!prev) ops.push({ kind: 'create', target: 'event', fields });
         else if (icsReplaces(prev.ics_seq, it.seq)) refresh.push([prev.id, fields]);
       }
-      if (!ops.length && !refresh.length) return this.toast('Already imported — nothing changed');
+      if (!ops.length && !refresh.length) return this.toast('Already imported, nothing changed');
       const steps = [], updated = `Updated ${this._nEvents(refresh.length)}`;
       for (const [id, fields] of refresh) await this._journalRowChange(updated, 'event', id, () => this.store.events.update(id, fields), { ops: steps });
       this._pushOps(updated, 'event', steps, { bin: true });   // one Bin row holding the old versions, one ⌘Z
@@ -6332,7 +6345,7 @@ document.addEventListener('alpine:init', () => {
         const left = [];
         for (const row of [...created].reverse()) if (!await this.store.tasks.remove(row.id).catch(() => false)) left.push(row.content);
         await Promise.all([this._reloadFor('task'), this._reloadFor('area')]);
-        return this.toast(`Import failed — ${left.length ? `couldn’t take back ${left.map(n => `“${n}”`).join(', ')}` : 'no tasks were added'} (${err.message})`);
+        return this.toast(`Import failed: ${left.length ? `couldn’t take back ${left.map(n => `“${n}”`).join(', ')}` : 'no tasks were added'} (${err.message})`);
       }
       await Promise.all([this._reloadFor('task'), this._reloadFor('area')]);
       // One entry for the whole paste. Only the ROOTS are listed: removing a task takes its subtree with it.
@@ -6401,7 +6414,8 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
     async toggle(t, row = null) {
-      if (t.archived_at) { this.toast('Archived — unarchive from the task menu'); return; }   // dash checkbox is inert
+      if (inNotes(t) && !t.completed_at) return;   // a note never completes (x, the row, the composer); one that came in done reopens
+      if (t.archived_at) { this.toast('Archived. Unarchive from the task menu'); return; }   // dash checkbox is inert
       if (!t.completed_at && await this.confirmSweep(t.id)) return;
       const finish = !t.completed_at, id = t.id;
       const start = finish && row && this.celebrations !== 'off' ? this._celebrate(row) : null;   // before the write: its render holds the row
@@ -6549,7 +6563,7 @@ document.addEventListener('alpine:init', () => {
     // Skips recurring leaf tasks: setCompleted advances their occurrence instead of closing them; leave checklist alone.
     async _checkAllItems(id) {
       const t = this.byId.get(id); const cl = t?.checklist;
-      if (!cl?.length || cl.every(c => c.done)) return true;
+      if (!cl?.length || inNotes(t) || cl.every(c => c.done)) return true;   // a note never completes (an old entry can name a row made a note since)
       if (recActive(t.recurrence) && !t.completed_at && !this.tasks.some(r => r.parent_id === id)) return true;
       return !!await this.store.tasks.update(id, { checklist: cl.map(c => ({ ...c, done: true })) });
     },
@@ -7711,12 +7725,22 @@ document.addEventListener('alpine:init', () => {
     // imp: the composer's check shows the DRAFT's importance, not the stored one.
     _chkArgs(t, imp = t.importance) {
       const hp = this.hasProgress(t);
-      return { t, pc: this.pc(imp), blocked: (t.blocked_by ?? []).some(id => { const b = this.byId.get(id); return b && !b.completed_at && !b.archived_at; }), hasProgress: hp, progress: hp ? this.rowProgress(t) : 0 };
+      return { t, pc: this.pc(imp), note: inNotes(t), blocked: (t.blocked_by ?? []).some(id => { const b = this.byId.get(id); return b && !b.completed_at && !b.archived_at; }), hasProgress: hp, progress: hp ? this.rowProgress(t) : 0 };
     },
     clCheckHtml(it, cls = 'cl-chip-check') { const t = this.byId.get(it.id); return t ? checkHtml(this._chkArgs(t), 'button', cls) : ''; },   // calendar task checkboxes
     entryCheckHtml(c) { return checkHtml(this._chkArgs(c), 'button', 'sm'); },   // composer subtask rows — adds archived/blocked/paused not covered by inline :class
-    // The composer's own check (6th site); only it can be a note. toggleEditing is a save-draft-then-complete wrapper.
-    compCheckHtml() { const t = this.editingTask(); return t ? checkHtml({ ...this._chkArgs(t, this.draft.importance), note: inNotes(t, this.byId) }, 'button') : ''; },
+    // The composer's type toggle (6th check site): tack = which layer. A new task has no row state, so only the draft's importance colours it.
+    compCheckHtml(tack) { const t = this.editingTask(), imp = this.draft.importance; return checkHtml({ ...(t ? this._chkArgs(t, imp) : { t: {}, pc: this.pc(imp) }), note: tack }, 'span'); },
+    typeFront(tack) { return tack === inNotes(this.draft); },
+    typeLabel(tack) { return !this.typeFront(tack) ? (tack ? 'Make it a note' : 'Make it a task') : tack ? 'Note' : !this.editing ? 'Task' : this.editingTask()?.content; },   // editing: a checkbox named by its task, as the row's
+    // Front check = complete (toggleEditing saves the draft first); the peek swaps the draft's type. Note → Task restores the
+    // type it had (steps), and deleting the memo keeps a round trip's draft equal to its base (no phantom unsaved edit).
+    typeTap(tack) {
+      const d = this.draft;
+      if (this.typeFront(tack)) return this.toggleEditing();
+      if (tack) { d.typeBeforeNote = d.task_type; d.task_type = 'note'; }
+      else { d.task_type = d.typeBeforeNote ?? null; delete d.typeBeforeNote; }
+    },
     clChipCls(it) {
       const st = this.clTaskState(it);
       if (it.spanStart === undefined || this.clView === 'day') return it.kind + st;   // one column ⇒ nothing to join across, so no span caps
@@ -7745,7 +7769,7 @@ document.addEventListener('alpine:init', () => {
       } else {
         const ev = await this.store.events.add(fields);
         await this._reloadFor('event');
-        if (!ev) return this.toast('“Added event” didn’t save — try again');
+        if (!ev) return this.toast('Failed saving “Added event”. Try again?');
         this._pushEntry('Added event', { kind: 'remove', target: 'event', id: ev.id, rows: this._rowsForDelete('event', ev.id, ev) });   // ev: the re-read may have failed
         id = ev.id;
       }
@@ -7864,7 +7888,7 @@ document.addEventListener('alpine:init', () => {
       const stamp = dm == null ? iso : iso + 'T' + this._fmtMin(dm);
       if (d.kind === 'task' || d.kind === 'due' || d.kind === 'deadline') {
         const { blk, timed } = this._dropBlock(e, d) || {}, attached = 'Attached to ' + (blk?.title || 'block'), has = blk && this.scheduleItems.some(x => x.block_id === blk.id && x.task_id === d.id);
-        if (blk && !timed) return has || this.perform(attached, { kind: 'create', target: 'scheduleItem', fields: { task_id: d.id, block_id: blk.id } }, { fail: 'Could not attach — try again' });   // attached once
+        if (blk && !timed) return has || this.perform(attached, { kind: 'create', target: 'scheduleItem', fields: { task_id: d.id, block_id: blk.id } }, { fail: 'Failed attaching. Try again?' });   // attached once
         if (blk) return this._saveSched(d.id, { on: iso, dueTime: this._fmtMin(dm), block: has ? null : blk.id }, has ? 'Rescheduled task' : attached + ' at ' + this._clHMA(dm));   // a drop on a block is always in a column: dm is set
         if (d.kind === 'deadline' || d.kind === 'due') {
           const field = d.kind === 'deadline' ? 'deadline_at' : 'recur_from';
@@ -7893,7 +7917,7 @@ document.addEventListener('alpine:init', () => {
           // standalone copy lands on the drop. Copy FIRST and verify; a failed series write deletes the copy again.
           if (!d.date) { this.notify('Drag this occurrence from the week or day view to move it'); return; }
           if (fields.starts_at === (it.all_day ? d.date : d.date + 'T' + this._fmtMin(this._clMin(it.starts_at)))) return;   // dropped where it already is
-          const fail = async (msg = 'Could not move this occurrence — try again') => { await this._reloadFor('event'); this.notify(msg); };
+          const fail = async (msg = 'Failed moving this occurrence. Try again?') => { await this._reloadFor('event'); this.notify(msg); };
           const copy = await this.store.events.add({ title: it.title, notes: it.notes, color: it.color, location: it.location, countdown: it.countdown, all_day: false, ...fields }).catch(() => null);
           if (!copy) return fail();
           const was = { recurrence: it.recurrence }, after = { recurrence: { ...it.recurrence, exdates: [...(it.recurrence.exdates || []), d.date] } };
@@ -7901,7 +7925,7 @@ document.addEventListener('alpine:init', () => {
           // copy goes while the series already skips the day — and the occurrence is gone.
           const landed = await this.store.events.update(it.id, after).catch(() => null)
             || (await this.store.events.get(it.id).catch(() => null))?.recurrence?.exdates?.includes(d.date);
-          if (!landed) return fail(await this.store.events.remove(copy.id).catch(() => false) ? undefined : 'Could not move this occurrence — it may show twice; delete the extra');
+          if (!landed) return fail(await this.store.events.remove(copy.id).catch(() => false) ? undefined : 'Failed moving this occurrence. It may show twice, delete the extra');
           await this._reloadFor('event');
           this._pushEntry('Moved event occurrence', { kind: 'composite', target: 'event', ops: [   // ⌘Z: series back FIRST, then the copy goes
             { kind: 'update', target: 'event', id: it.id, after: was, was: after }, { kind: 'remove', target: 'event', id: copy.id, rows: this._rowsForDelete('event', copy.id) }] });
@@ -7945,7 +7969,7 @@ document.addEventListener('alpine:init', () => {
       return [...want && !same ? [{ kind: 'create', target: 'scheduleItem', fields: want }] : [], ...attach ? [{ kind: 'create', target: 'scheduleItem', fields: { task_id: id, block_id: d.block } }] : [],
         ...have && !same ? [{ kind: 'remove', target: 'scheduleItem', id: have.id }] : []];
     },
-    async _saveSched(id, d, label, ops, fail = 'Could not schedule — try again') {
+    async _saveSched(id, d, label, ops, fail = 'Failed scheduling. Try again?') {
       const parts = this._schedParts(id, d); if (!parts.length) return;
       return this.perform(label || (d.on ? 'Scheduled task' : 'Unscheduled task'), { kind: 'composite', target: 'scheduleItem', ops: parts }, { silent: !label, ops, fail });
     },
@@ -8002,7 +8026,7 @@ document.addEventListener('alpine:init', () => {
     // ONE day of a repeating block moves by an override keyed on its own day (src) — drag and editor alike, never the series.
     async _clMoveBlockDay(id, src, { starts_at, ends_at }, ops) {
       // A started occurrence stays where it happened.
-      if (this.clStarted(id, src)) return this.notify('Already started this occurrence — undo it to move it');
+      if (this.clStarted(id, src)) return this.notify('Already started this occurrence. Undo it to move it');
       // A skip answers the DAY it was given: carried to another day it would arrive pre-answered on a day the
       // user never answered. Cleared in the SAME write, so one ⌘Z restores both the day and the answer.
       await this.clSetBlockDay(id, { planned_start: starts_at, planned_end: ends_at, ...(src !== starts_at.slice(0, 10) && { status: 'pending' }) }, src, 'Moved block occurrence', ops);
@@ -8024,13 +8048,13 @@ document.addEventListener('alpine:init', () => {
       if (e.id) {
         const j = [];   // journaled by hand: the series and the day land as ONE entry, one ⌘Z takes back both
         if (Object.keys(core).some(k => JSON.stringify(core[k]) !== JSON.stringify(b?.[k] ?? null))
-          && !await this._journalRowChange('Edited block', 'block', e.id, () => this.store.blocks.update(e.id, core).catch(() => null), { ops: j, fail: 'Could not save block — try again' })) return;   // the editor stays open, edits intact
+          && !await this._journalRowChange('Edited block', 'block', e.id, () => this.store.blocks.update(e.id, core).catch(() => null), { ops: j, fail: 'Failed saving block. Try again?' })) return;   // the editor stays open, edits intact
         if (moved) await this._clMoveBlockDay(e.id, e.viewIso, this._evRange(e), j);
         if (j.length) this._pushEntry(j.length > 1 ? 'Edited block' : j[0][0], j.length > 1 ? { kind: 'composite', target: 'block', ops: j.map(x => x[1]).reverse() } : j[0][1]);
       } else {
         const b = await this.store.blocks.add(core);
         await this._reloadFor('block');
-        if (!b) return this.toast('“Added block” didn’t save — try again');   // the editor stays open, edits intact
+        if (!b) return this.toast('Failed saving “Added block”. Try again?');   // the editor stays open, edits intact
         this._pushEntry('Added block', { kind: 'remove', target: 'block', id: b.id, rows: this._rowsForDelete('block', b.id, b) });   // b: the re-read may have failed
       }
       this.blockEdit = null;
@@ -8062,7 +8086,7 @@ document.addEventListener('alpine:init', () => {
       await this._reloadFor('blockDay');   // reloads blockDays + bumps _calDataV so clBlocks() memo busts and DOM repaints
       const cur = this.clBlockDay(blockId, iso);
       // a lost response (cloud upsert → null) can hide a write that landed: the re-read says which
-      if (!row && !(cur && Object.keys(fields).every(k => (cur[k] ?? null) === (fields[k] ?? null)))) return this.toast('Could not update this day — try again');
+      if (!row && !(cur && Object.keys(fields).every(k => (cur[k] ?? null) === (fields[k] ?? null)))) return this.toast('Failed updating this day. Try again?');
       if (!cur?.id) return;
       const lbl = label ?? ({ running: 'Started block', skipped: 'Skipped block', done: 'Stopped block', missed: "Marked didn't happen" }[fields.status] || 'Undid block day');
       const rollback = Object.fromEntries(Object.keys(fields).map(k => [k, prev?.[k] ?? (k === 'status' ? 'pending' : null)]));
@@ -8136,11 +8160,21 @@ document.addEventListener('alpine:init', () => {
       }
       if (migrated) await this.loadTasks();
     },
-    async _healNotesOverview() {
-      // A root 'Notes' predating the seeder (overview falsy) shows in every hasChildren-based picker but
-      // vanishes from the roller, whose overviewProjectRows() requires `overview`. Heal the fact, not the readers.
-      const n = this.tasks.find(t => !t.parent_id && isNotesName(t.content) && !t.overview);
-      if (n && await this.store.tasks.update(n.id, { overview: true })) await this.loadTasks();
+    async _migrateNotes() {
+      // One-shot: things under a root 'Notes' project become task_type 'note' (the root stays a project; 'steps' there was a note too; another type is kept).
+      // ceiling: a done-key read every boot and a fixed cutoff; delete both once every device has booted past 2026-10-06
+      const key = 'adherod.notesMigrated.' + (this._acct() ?? 'local');
+      if (localStorage.getItem(key) || this._loadFailed) return;   // a failed load holds no rows to judge by: retry next boot
+      const underNotes = t => { let r = t; for (let d = 0; r?.parent_id && d < 200; d++) r = this.byId.get(r.parent_id); return !!r && !r.parent_id && r.content?.trim().toLowerCase() === 'notes'; };
+      // The done-key is per device: a row touched since the release (another device migrated it, then the user chose otherwise) is the user's.
+      const cutoff = Date.parse('2026-10-06T00:00:00Z');
+      const due = t => !!t?.parent_id && (t.task_type == null || t.task_type === 'steps') && Date.parse(t.updated_at) < cutoff && underNotes(t);
+      const todo = this.tasks.filter(due);
+      // ceiling: one store update (~2 cloud round trips) per row, off the boot path; add a bulk tasks write if a Notes tree past ~200 rows is reported slow
+      let ok = true;
+      for (const t of todo) if (due(this.byId.get(t.id)) && !await this.store.tasks.update(t.id, { task_type: 'note' })) ok = false;   // live sync can move or retype it mid-run
+      if (ok) localStorage.setItem(key, '1');   // a failed write retries next boot
+      if (todo.length) await this.loadTasks();
     },
 
     async reloadAll(quiet) {
@@ -8150,7 +8184,7 @@ document.addEventListener('alpine:init', () => {
       if (gen !== this._loadGen) return;   // superseded — by the minute retry or a reconnect's 'all'
       // What landed is applied; a failed part keeps its last good state and stays unloaded in the store, so it's re-pulled.
       const failed = !b.value || !si.value || !bd.value || !rem.value;
-      if (failed && !this._loadFailed && !quiet) this.toast('Couldn’t load — retrying');
+      if (failed && !this._loadFailed && !quiet) this.toast('Couldn’t load, retrying');
       this._loadFailed = failed;
       // ALL awaits above, ONE synchronous block below: Alpine flushes effects during an await, so a reactive
       // write followed by an awaited gap ran renders against the OLD memo keys — and the version bumps after
@@ -8226,7 +8260,7 @@ document.addEventListener('alpine:init', () => {
     // demo won't overwrite existing data). Signed-in accounts re-sync from the cloud; local-only data is gone.
     resetLocalData() {
       let local = 0;   // signed in, the wipe also takes what the cloud never had: signed-out tasks, the Bin, unsaved drafts
-      try { const def = JSON.parse(localStorage.getItem('adherod.meta'))?.default_project_id; local = JSON.parse(localStorage.getItem('adherod.tasks') || '[]').filter(t => t.id !== def && (t.parent_id || !isNotesName(t.content))).length; } catch {}   // not the seeded Backlog/Notes; catch: a broken store's escape hatch still opens
+      try { const def = JSON.parse(localStorage.getItem('adherod.meta'))?.default_project_id; local = JSON.parse(localStorage.getItem('adherod.tasks') || '[]').filter(t => t.id !== def).length; } catch {}   // not the seeded Backlog; catch: a broken store's escape hatch still opens
       const all = trashView(this.journal, Date.now()), smallDays = new Set(all.filter(e => e.kind === 'small').map(e => new Date(e.ts).setHours(0, 0, 0, 0)));   // every account's: jWipe clears the whole journal
       const bin = all.filter(e => e.kind !== 'small').length + smallDays.size, drafts = Object.keys(this._pendingMap()).length;   // a day's small changes are one row, as trashDays shows them
       const also = [local && `${this._nTasks(local)} saved on this device while signed out`, bin && `${bin} item${bin === 1 ? '' : 's'} in the Bin`, drafts && `${drafts} unsaved draft${drafts === 1 ? '' : 's'}`].filter(Boolean);
@@ -8238,7 +8272,7 @@ document.addEventListener('alpine:init', () => {
         onConfirm: async () => {
           _wiping = true;
           clearTimeout(_draftT);   // a slow reload would let the draft autosave write back what was just wiped
-          try { await jWipe(); } catch { _wiping = false; return this.toast('Couldn’t delete the Bin and undo history — nothing was deleted, try again'); }
+          try { await jWipe(); } catch { _wiping = false; return this.toast('Failed deleting the Bin and undo history. Nothing was deleted. Try again?'); }
           _jBus.postMessage(0);   // every tab drops what it held from before
           for (const k of Object.keys(localStorage)) if (k.startsWith('adherod.')) localStorage.removeItem(k);
           location.reload();
