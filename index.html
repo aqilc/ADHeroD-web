@@ -319,7 +319,7 @@
       </div>
     </div>
 
-    <div class="empty" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : 'No tasks yet.'"></div>
+    <div class="empty" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></div>
     <!-- rows: one innerHTML parse (not x-for) — ~1s→~50ms; events delegated to <ul>; hover/drag/kbfocus imperative -->
     <ul class="list flex-col" x-effect="paintSel()" x-init="initListSort($el)"
         @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)"
@@ -1275,6 +1275,22 @@
             <button type="button" :class="{ on: celebrations === 'off' }" :aria-pressed="celebrations === 'off'" @click="setCelebrations('off')">Off</button>
           </div>
         </div>
+        <template x-if="desk">   <!-- the Windows app's desktop surfaces (desktop/main.ts); labels as the Mac app's -->
+          <div>
+            <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-tack"/></svg>Sticky
+              <div class="seg">
+                <button type="button" :class="{ on: desk.on }" :aria-pressed="desk.on" @click="setDesk('on', true)">On</button>
+                <button type="button" :class="{ on: !desk.on }" :aria-pressed="!desk.on" @click="setDesk('on', false)">Off</button>
+              </div>
+            </div>
+            <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-lock"/></svg>Hide from screenshots and sharing
+              <div class="seg">
+                <button type="button" :class="{ on: !desk.share }" :aria-pressed="!desk.share" @click="setDesk('share', false)">On</button>
+                <button type="button" :class="{ on: desk.share }" :aria-pressed="desk.share" @click="setDesk('share', true)">Off</button>
+              </div>
+            </div>
+          </div>
+        </template>
       </div>
       <!-- starter shortcuts: teach the power path by keeping it visible (full sheet stays on ?) -->
       <div class="set-sec set-sec-keys"><span class="section-label">Keyboard</span>

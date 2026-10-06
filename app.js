@@ -450,6 +450,7 @@ document.addEventListener('alpine:init', () => {
     palette: { open: false, q: '', sel: 0 },
     mod: MAC ? '⌘' : 'Ctrl',   // the platform's command key, for keycaps (shortcuts sheet, finder footer)
     listQ: '',          // the list search's in-place filter
+    sticky: !!window.desktopSticky,   // the Windows sticky note's window (desktop/sticky.js): this page, skinned
     showCompleted: false,   // view-controls toggle; completed tasks hidden by default, persisted to localStorage
     sortBy: 'manual',   // Lists sort: manual|due|importance|alpha|created|deadline (manual = drag/position order); persisted
     sortDir: 'asc',     // asc|desc — ignored for manual
@@ -564,6 +565,7 @@ document.addEventListener('alpine:init', () => {
       try { this.collapsed = JSON.parse(localStorage.getItem('adherod.nav.collapsed') || '{}'); } catch { this.collapsed = {}; }
       this.showCompleted = localStorage.getItem('adherod.list.showCompleted') === '1';   // persists the view setting across sessions
       try { Object.assign(this, JSON.parse(localStorage.getItem('adherod.list.view') || '{}')); } catch {}   // restore sort + quick-filters
+      if (this.sticky) Object.assign(this, { sortBy: 'due', sortDir: 'asc', groupBy: 'none', qfImp: [], qfAreas: [], qfDue: null, qfArchived: false, showCompleted: false });   // its own view, never saved
       try { _tipsSeen = new Set(JSON.parse(localStorage.getItem('adherod.tipsSeen') || '[]')); } catch {}
       // Shortcut coach: a MOUSE click on a control a key also does (data-sk = its ? sheet label). Capture, so a
       // @click.stop can't hide it; a keyboard-activated click has pointerType '' and a tap 'touch' — neither counts.
@@ -595,9 +597,11 @@ document.addEventListener('alpine:init', () => {
       await this.reloadAll();
       await this._migratePlaceStrings();
       await this._healNotesOverview();
+      if (this.sticky) { this.startAdd(); this.$watch('draft.content', q => this.listQ = q || ''); }   // the title adds AND filters: its text, never its pills
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
       setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
       if (window.desktopWindow) {   // the Windows app (desktop/main.ts) downloads updates in the background
+        if (!this.sticky) this.desk = await desktopWindow('desk');
         const pollUpdate = async () => { this.updateReady = await desktopWindow('updateReady'); };
         pollUpdate();
         setInterval(pollUpdate, 60000);
@@ -1149,7 +1153,7 @@ document.addEventListener('alpine:init', () => {
       void this._celeV;   // _celeExit patches the memo or clears _visKey: either way a pending change
       if (_visKey === key && !_rowPatch) return _visMemo;
       if (this !== _appRaw) return _appRaw.visibleRows();   // rebuild untracked: the key holds every dep the memo needs. Callers' `this` is Alpine's merged scope, which Alpine.raw() returns as is
-      if (_rowPatch && _rowPatch.key === _visKey && key === _rowPatch.v + _visKey.slice(_visKey.indexOf('|'))) {
+      if (_rowPatch && !this.sticky && _rowPatch.key === _visKey && key === _rowPatch.v + _visKey.slice(_visKey.indexOf('|'))) {   // future-guard: the patch re-lays a tree's runs, never the note's flat order
         // Same row OBJECTS, reassigned in place: _rowMap, _parentMap and the list model's entries all stay valid.
         const def = this.store.defaultProject(), now = new Date(), pm = this._placedMap(), ed = new Map();
         for (const id of _rowPatch.ids) {
@@ -1159,6 +1163,7 @@ document.addEventListener('alpine:init', () => {
         }
         _rowCacheKey = this._rowV + _rowCacheKey.slice(_rowCacheKey.indexOf('|'));   // the shown rows ARE the cached objects, patched above
         const { drop, sort } = _rowPatch; _rowPatch = null; _visKey = key;
+        if (drop.size) _doneMemo.hidden = true;   // a dropped root went to the hidden Done list
         if (!drop.size && !sort.size) return _visMemo;
         // a root gone out of sight takes its subtree: its run ends at the next root (DFS order)
         let gone = false; const out = _visMemo.filter(r => !(gone = r.depth ? gone : drop.has(r.t.id)));
@@ -1188,7 +1193,7 @@ document.addEventListener('alpine:init', () => {
       _rowStale = null;
       _qfToday = this._nowDay; const _t0 = new Date(_qfToday + 'T00:00'); _qfTmr = isoDate(new Date(_t0.getTime() + 864e5)); _qfWk = isoDate(new Date(_t0.getTime() + 6 * 864e5));   // once per recompute; relative to _nowDay for DST safety
       const filtering = this.filtering(), cmp = this.sibCmp();
-      const fold = !filtering && this.navSel.type !== 'filter';   // search, quick filters and saved filters show every match: no fold, no chevron
+      const fold = !this.sticky && !filtering && this.navSel.type !== 'filter';   // search, quick filters and saved filters show every match: no fold, no chevron
       // Subproject sections: only INSIDE a container view. All/area scope by something other than containment,
       // where a project is a legitimate row rather than the thing the list is about. Inside a project, grouping by
       // project IS its subproject sections — the same view as grouping off.
@@ -1261,7 +1266,7 @@ document.addEventListener('alpine:init', () => {
           // hidden. A completed/archived SUBTASK under an ACTIVE task stays inline (struck / dashed) so it keeps its place in the tree.
           const top = !depth || this.isOverviewProject(byId.get(t.parent_id));
           if (t.archived_at && top) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
-          if (t.completed_at && top && !_cele.has(t.id)) { if (this.showCompleted) visitDone(t, 0); return; }   // a celebrating root holds its slot
+          if (t.completed_at && top && !_cele.has(t.id)) { if (this.showCompleted) visitDone(t, 0); else done.hidden = true; return; }   // a celebrating root holds its slot; .hidden: done tasks the lens hides (the empty copy reads "All clear")
           if (seen.has(t.id)) return; seen.add(t.id);
           out.push(mkRow(t, depth));
           if (this.isOverviewProject(t) && depth > 0) return;
@@ -1299,6 +1304,13 @@ document.addEventListener('alpine:init', () => {
         roots = roots.slice().sort((a, b) => { const x = ks.get(a.id), y = ks.get(b.id); let i = 0; while (i < x.length - 1 && x[i] === y[i]) i++; return x[i] - y[i]; });
       }
       for (const r of roots) walk(r, 0);
+      if (this.sticky) {   // the sticky note: every open task, flat, as the Mac note (wOrder, N11 user 08-17) — today, overdue, later, undated; then when, importance
+        const pm = this._placedMap(), today = this._nowDay, k = new Map();
+        out = out.filter(r => placeable(r.t) && (!filtering || this.rowPass(r.t)));
+        for (const r of out) { const w = this.whenOf(r.t, pm) || '', d = w.slice(0, 10); r.depth = 0; k.set(r, [!w ? 3 : d === today ? 0 : d < today ? 1 : 2, w, impRank(r.t.importance)]); }
+        out.sort((a, b) => { const x = k.get(a), y = k.get(b); return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || x[2] - y[2]; });
+        _secMemo = []; _visKey = key; return this._linkRows(out, done);
+      }
       if (group !== 'none') { const [secs, kept] = this._sectionize(out); _secMemo = secs; out = kept; }
       else if (this.navSel.type === 'filter') { const [secs, kept] = this._promoteSections(out, r => !!r.ctx); _secMemo = secs; out = kept; }
       // Inside a project, its overview subprojects become section heads even with grouping OFF — a subproject is
@@ -2699,6 +2711,7 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
     closeComposer(saved = false) {   // → a promise of the collapse's end (a save times its reveal off it)
+      if (this.sticky) return Promise.resolve();   // the sticky note's add line never closes (Esc, an outside click)
       if (this.composer.open && this._closingComposer) return;   // already closing (⌘Enter's save closes itself): a 2nd close would file the edit as a Draft
       this.pop = null;
       this._endDraft(saved);
@@ -2764,6 +2777,7 @@ document.addEventListener('alpine:init', () => {
     // `routed` bounds the hop to ONE: a task with no row anywhere in Lists (a completed one while the done lens
     // is off) would otherwise re-navigate forever and hang the page.
     editTask(t, ev, routed) {
+      if (this.sticky) return desktopWindow('openTask', t.id);   // the note is too small for the composer: the app window opens it
       if (!routed && this.goToTask(t)) return queueMicrotask(() => this.editTask(t, null, true));   // the row has to exist before it can be measured and covered: after Alpine's flush, not a $nextTick — the palette's closing transition holds that a frame, and keys typed in it reached the page
       _jumped = !ev;   // the in-place rule is for a row the reader TAPPED; a palette/keyboard open lifts the whole composer in (B3)
       // ev.currentTarget is the list (<ul>); resolve the actual row by id
@@ -3854,6 +3868,7 @@ document.addEventListener('alpine:init', () => {
       return false;
     },
     editorKeydown(e) {
+      if (this.sticky && this._stickyKey(e)) return;
       if (this._pillKeydown(e)) return;
       if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this.submitComposer(); return; }
       // ArrowDown ladder: the title wraps, so down means "next field" only from its last line. A caret that measures 0×0 (empty title, beside a chip) counts as there.
@@ -3967,6 +3982,7 @@ document.addEventListener('alpine:init', () => {
     async submitAndClose() { const d = this.draft; if (await this.submitComposer(undefined, true) === true && this._live(d)) this.closeComposer(); },
     onKey(e) {
       this.kbd = true;
+      if (this.sticky && this._stickyKey(e)) return;
       // A real scrolling key we leave to the browser (PageUp/Down, Home/End, ⌥↓, Space, Tab's focus scroll) drops our step's
       // target, so the settle never pulls that scroll back. Read after this handler, so our own keys keep a pending step. Any
       // other key (Escape, z, a bare Shift) scrolls nothing: the glide runs on, and a settle due mid-glide still lands its target.
@@ -4060,6 +4076,26 @@ document.addEventListener('alpine:init', () => {
       const open = OVERLAYS.some(([o]) => o(this));
       if (open && !history.state?.overlay) history.pushState({ overlay: 1 }, '');
       else if (!open && history.state?.overlay && !_histPop) { _histPop = true; history.back(); }   // hand the entry back without navigating
+    },
+    // The sticky note's keys (contract: ~/ws/multi/relay/sticky-typing-contract.md): from the title ↓ walks the matches; on a
+    // match Space completes, Enter opens, ↑ off the first returns, any other key types into the title again. Esc clears the
+    // title; on an empty one it hands the foreground back. Its composer is always open, so onKey's list keys never run.
+    // IME: composing keydowns never get here (init's capture listener stops them).
+    _stickyKey(e) {
+      const title = this.$refs.content, inTitle = e.target === title;
+      if (e.metaKey || e.ctrlKey || e.altKey || (inTitle && Object.values(PICKERS).some(p => this[p.key].open))) return false;   // an open # / @ picker keeps its keys
+      const take = () => { e.preventDefault(); e.stopPropagation(); return true; };
+      // Esc's clear is one ⌘Z step in the line: the pre-clear snapshot goes onto the fresh editor's history
+      if (inTitle && e.key === 'Escape') { if (this.titleEmpty) desktopWindow('back'); else { const was = this._nlpSnap(title); this.resetDraft(); this.setEditorText(''); title._hist.undo.push(was); } return take(); }
+      if (inTitle && e.key === 'ArrowDown' && this.visibleRows().length) { title.blur(); this.moveFocus(1); return take(); }
+      if (inTitle) return false;
+      if (e.key === 'Escape' || this.focusId && e.key === 'ArrowUp' && this.visibleRows()[0]?.t.id === this.focusId) { this._setKbFocus(null); title.focus(); return take(); }
+      if (this.focusId && e.key === ' ') { this.toggleFocused(); return take(); }
+      if (this.focusId && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { this.moveFocus(e.key === 'ArrowDown' ? 1 : -1); return take(); }
+      if (this.focusId && e.key === 'Enter') { this.openFocused(); return take(); }
+      // any other key types into the line — never an app shortcut: the line is the note's only keyboard target
+      if (e.key.length === 1) { this._setKbFocus(null); title.focus(); getSelection().selectAllChildren(title); getSelection().collapseToEnd(); }   // the key lands there
+      return false;
     },
     escape() {
       // Escape from inside a menu hands focus back to its trigger — the control that says it is expanded.
@@ -8181,6 +8217,8 @@ document.addEventListener('alpine:init', () => {
     settingsOpen: false,
     online: navigator.onLine,         // gear status dot + account-row sub (listeners live on the popup markup)
     updateReady: false,               // Windows app only: gear update arrow + "Restart to update" row
+    desk: null,                       // Windows app only: the sticky note's Settings switches, { on, share } (desktop/main.ts)
+    setDesk(key, v) { this.desk[key] = v; desktopWindow('desk', key, v); },
     theme: savedAppearance(),
     colorTheme: savedColorTheme(),
     themeColors: THEME_COLORS,
