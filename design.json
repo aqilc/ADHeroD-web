@@ -55,6 +55,9 @@
     "lg": "14px",
     "pill": "999px"
   },
+  "layout": {
+    "list-w": 800
+  },
   "font": {
     "ui": "\"Instrument Sans\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", system-ui, sans-serif",
     "display": "\"LT Remark\", \"Instrument Sans\", Georgia, serif"
@@ -94,6 +97,7 @@
     "on-accent": "var(--bg)",
     "today-fill": "var(--warm-ink)",
     "today-ink": "var(--bg)",
+    "soon-ink": "var(--accent)",
     "cal-m-l": ".58",
     "cal-m-c": ".15",
     "cal-t-l": ".945",
@@ -153,7 +157,8 @@
     "hearth-light": {
       "label": "Hearth Light",
       "family": "Hearth",
-      "base": "light"
+      "base": "light",
+      "over": { "soon-ink": "#c85000" }
     },
     "graphite-light": {
       "label": "Graphite Light", "family": "Graphite", "base": "light",

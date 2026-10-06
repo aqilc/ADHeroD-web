@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+<!-- ── Head + SVG icon sprite ── -->
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,10 +13,15 @@
   <symbol id="i-prio" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6"/><path d="m6 18 6-6 6 6"/></symbol>
   <symbol id="i-cal" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-sofa" viewBox="0 0 24 24"><path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3"/><path d="M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z"/><path d="M4 18v2"/><path d="M20 18v2"/><path d="M12 4v9"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
   <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
   <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></symbol>
+  <!-- ring = the task check's (18px at stroke 3 = its 2.25px border) -->
+  <symbol id="i-steps" viewBox="0 0 24 24"><circle cx="5.5" cy="6.5" r="2.5"/><circle cx="5.5" cy="17.5" r="2.5"/><path d="M5.5 9v6M12 7h9M12 18h9"/></symbol>   <!-- the Steps rail: two nodes joined, i-list-check's lines -->
+  <symbol id="i-ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" stroke-width="3"/></symbol>
   <!-- size = how much of a drink it takes: a sip · a mug · a full cup · two cups. Tabler art; the mug is scaled to
        its width ceiling and multi is two session cups at .75 offset right+up, so the pair stands a full cup tall. -->
   <symbol id="i-size-tiny" viewBox="0 0 24 24"><g transform="translate(12,12) scale(1.1444) translate(-12,-12)" stroke-width="1.7476"><path d="M3 14c.83 .642 2.077 1.017 3.5 1c1.423 .017 2.67 -.358 3.5 -1c.83 -.642 2.077 -1.017 3.5 -1c1.423 -.017 2.67 .358 3.5 1 M8 3a2.4 2.4 0 0 0 -1 2a2.4 2.4 0 0 0 1 2 M12 3a2.4 2.4 0 0 0 -1 2a2.4 2.4 0 0 0 1 2 M3 10h14v5a6 6 0 0 1 -6 6h-2a6 6 0 0 1 -6 -6v-5 M16.746 16.726a3 3 0 1 0 .252 -5.555"/></g></symbol>
@@ -74,7 +80,7 @@
   <!-- thumbtack tilted ~40° (not the map-pin i-pin; that stays for locations) -->
   <symbol id="i-tack" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(40 12 12)"><path d="M9 4v6l-2 4h10l-2-4V4"/><path d="M12 14v6"/><path d="M8 4h8"/></g></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="10" height="7" x="7" y="13" rx="2" ry="2" fill="currentColor"/><path d="M7 15V9a5 5 0 0 1 10 0v6"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
   <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 13h6M9 17h4"/></symbol>
@@ -84,10 +90,12 @@
   <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01"/><line x1="9" y1="14" x2="15" y2="14"/></symbol>
   <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1-.24-.27-.39-.62-.39-1 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8.5" r="1"/></symbol>
 </defs></svg>
-<div x-data="adherod" x-cloak
+<!-- ── Root Alpine wrapper + shell + topbar ── -->
+<div x-data="adherod" x-cloak :class="{ 'no-breathe': !nowBreathe, kbd }"
      @click.capture="copyCode($event)"
      @keydown.capture="codeKey($event)"
-     @pointerdown.capture="if ($event.target.closest('.code-copy')) { $event.preventDefault(); $event.stopPropagation(); }"
+     @wheel.capture.passive="kbd = false"
+     @pointerdown.capture="kbd = false; if ($event.target.closest('.code-copy')) { $event.preventDefault(); $event.stopPropagation(); }"
      @pointerup.capture="if ($event.target.closest('.code-copy')) $event.stopPropagation()"
      @keydown.window="onKey($event)"
      @keydown.escape.window="escape()"
@@ -97,7 +105,7 @@
 
 
   <!-- App -->
-  <div id="shell" x-show="!store.requiresAuth || session">
+  <div id="shell" :inert="modalOpen()">
 
 
     <div class="canvas" x-ref="canvas"
@@ -108,26 +116,31 @@
       <!-- Lists surface: task-list views (All/Backlog/projects/areas/filters); project-picker lives in the overview roller -->
       <section class="surface surface-lists" data-surface="lists" :style="surfaceStyle('lists')" :inert="surface !== 'lists'" @wheel.passive="onOverscroll($event)">
 
-    <main class="app" :class="{ tinted: !!listTintCol() }" :style="listTintStyle()">
+    <main class="app" :class="{ tinted: !!listTintCol() }" @dragenter="listDragLeft($event)" @dragover="listDragLeft($event)" @drop.self.prevent="listDrop()" :style="listTintStyle()">
     <div class="topbar flex justify-between">
       <div class="topbar-title min-w-0">
         <h1 x-text="navHeading()"></h1>
       </div>
     </div>
 
-    <!-- Lists view controls: search + sort + quick-filters, above the task list. Hidden off the Lists surface via listView().
-         Sort/filter state is global + persisted; completed tasks are hidden by default and shown in a section below the add button. -->
-    <!-- .crowded = tokens present: chrome yields space, in order, so the row NEVER wraps
-         (default-sort text hides, +and…→+, lens pills go icon-only, long token labels truncate) -->
-    <div class="list-controls flex items-center gap-8" :class="{ crowded: qfFacets() >= 2 }" x-show="listView() && !sel.length">
-      <!-- search rests as a bare icon; the input unfolds on click or `/` and collapses when empty on blur -->
+    <!-- ── List controls: search, sentence, menus ── -->
+    <!-- Lists view controls: search + sort + quick-filters, above the task list.
+         Sort/filter state is global + persisted; completed tasks are hidden by default and shown in a section below the add button.
+         gap-6: the outdented search glyph sits over the checks, so the sentence starts on the row titles' column. -->
+    <!-- .crowded (2+ tokens) / phone: the row NEVER wraps — search yields, then the measured shed ladder
+         (_fitControls; re-run by x-effect when what the line holds changes, @transitionend when the search width does).
+         A microtask, not $nextTick: Alpine holds nextTicks while any x-transition starts, so a stale shed painted for frames and the word moved under a tap -->
+    <div class="list-controls flex items-center gap-6" x-ref="lc" :class="{ crowded: qfFacets() >= 2 }" x-show="!sel.length"
+         x-effect="qfFragments(); listSearchOpen; listQ; sortBy; groupBy; sel.length; queueMicrotask(() => _fitControls())" @transitionend="$event.propertyName === 'width' && _fitControls()">
+      <!-- search rests as a bare icon; the input unfolds on click, `/` or ⌘F and collapses when empty on blur -->
       <div class="list-search flex items-center flex-none min-w-0" :class="{ open: listSearchOpen || listQ }">
-        <button type="button" class="ls-searchbtn inline-flex items-center justify-center" title="Search — /" aria-label="Search tasks"
+        <button type="button" class="ls-searchbtn inline-flex items-center justify-center" :title="'Search — / or ' + keyTip('<kbd>⌘</kbd><kbd>f</kbd>', mod)" aria-label="Search tasks" data-sk="Search tasks"
                 @click="listSearchOpen = true; $nextTick(() => $refs.listSearch.focus())">
           <svg class="ico"><use href="#i-search"/></svg>
         </button>
-        <input type="search" placeholder="Search tasks" x-ref="listSearch" x-model="listQ"
+        <input type="search" placeholder="Search tasks" x-ref="listSearch" x-model="listQ" :tabindex="listSearchOpen || listQ ? 0 : -1"
                @keydown.escape.stop="listQ = ''; listSearchOpen = false; $event.target.blur()"
+               @keydown="const r = /^Arrow(Up|Down)$/.test($event.key) && !($event.shiftKey || $event.altKey || $event.metaKey || $event.ctrlKey) && visibleRows(); if (r?.length) { $event.preventDefault(); $event.target.blur(); _setKbFocus(r.at($event.key === 'ArrowUp' ? -1 : 0).t.id) }"
                @blur="if (!listQ) listSearchOpen = false">
       </div>
 
@@ -137,8 +150,8 @@
         <span class="ls-verb">showing</span>
         <!-- subject/+and… toggle via x-if, not x-show — x-show effects go stale in the e2e webview (see ui-conventions) -->
         <template x-if="!qfFacets()">
-          <button type="button" class="ls-word ls-subj"
-                  @click.stop="listMenu = listMenu === 'add' ? null : 'add'" x-text="'everything'" aria-label="Filter tasks"></button>
+          <button type="button" class="ls-word ls-subj" data-sk="Filter tasks"
+                  @click.stop="listMenu = listMenu === 'add' ? null : 'add'" x-text="'everything'" aria-label="Filter tasks" aria-haspopup="menu" :aria-expanded="listMenu === 'add'"></button>
         </template>
         <!-- One token per facet, from qfFragments(). Connectives ("in", "due") live OUTSIDE the token so the
              line reads as honest prose; .ls-frag is display:contents so both stay flex children of the bar. -->
@@ -146,7 +159,7 @@
           <span class="ls-frag">
             <template x-if="'verb' in f"><span class="ls-verb" x-text="f.verb"></span></template>
             <span class="ls-tok inline-flex items-center rounded-pill" :class="f.cls || ''" :style="'--tc:' + f.col">
-              <button type="button" @click.stop="listMenu = listMenu === 'add' ? null : 'add'">
+              <button type="button" data-sk="Filter tasks" aria-haspopup="menu" :aria-expanded="listMenu === 'add'" :aria-label="f.aria + ': ' + f.label" :title="f.aria + ': ' + f.label" @click.stop="listMenu = listMenu === 'add' ? null : 'add'">
                 <template x-if="f.flag"><span class="ls-flag"></span></template>
                 <template x-if="f.dot"><span class="lc-dot rounded-full flex-none" :style="'background:' + f.col"></span></template>
                 <span x-text="f.label"></span>
@@ -156,8 +169,8 @@
           </span>
         </template>
         <template x-if="qfFacets()">
-          <button type="button" class="ls-word ls-more" title="Add another filter"
-                  @click.stop="listMenu = listMenu === 'add' ? null : 'add'" aria-label="Add another filter"
+          <button type="button" class="ls-word ls-more" data-sk="Filter tasks" title="Add another filter"
+                  @click.stop="listMenu = listMenu === 'add' ? null : 'add'" aria-label="Add another filter" aria-haspopup="menu" :aria-expanded="listMenu === 'add'"
                   x-text="qfFacets() > 1 ? '+' : '+ and…'"></button>
         </template>
 
@@ -184,13 +197,12 @@
           <template x-if="areas.length">
             <div>
               <div class="pop-sub-head">Area</div>
-              <template x-for="a in areas" :key="a.id">
-                <button type="button" class="pop-item" @click="toggleQfArea(a.id)">
-                  <span class="lc-dot rounded-full flex-none" :style="'background:' + (a.color || areaDefault)"></span>
-                  <span x-text="a.name"></span>
-                  <template x-if="qfAreas.includes(a.id)"><svg class="tick ico"><use href="#i-check"/></svg></template>
-                </button>
-              </template>
+              <!-- the composer's area pop-up chips, verbatim (areaOptHtml + tier): one look for "areas" everywhere -->
+              <div class="area-grid area-cluster items-center">
+                <template x-for="a in areas" :key="a.id">
+                  <button type="button" class="area-opt" :class="areaTier(a.id) + (qfAreas.includes(a.id) ? ' on' : '')" :style="'--tc:' + (a.color || areaDefault)" @click="toggleQfArea(a.id)" x-html="areaOptHtml(a, qfAreas.includes(a.id))"></button>
+                </template>
+              </div>
             </div>
           </template>
           <div class="pop-sub-head">Due</div>
@@ -208,7 +220,7 @@
         <span class="ls-verb ls-comma" x-text="(qfFacets() >= 2 || (narrow && listSearchOpen)) ? '' : ', sorted by'"></span>
         <div class="lc-field flex-none">
           <button type="button" class="ls-word ls-sortw" :class="{ on: sortBy !== 'manual' }" title="Sort order"
-                  @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" aria-label="Sort order"
+                  @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" aria-label="Sort order" aria-haspopup="menu" :aria-expanded="listMenu === 'sort'"
                   x-text="(qfFacets() >= 2 || (narrow && listSearchOpen)) ? (sortBy === 'manual' ? '⇅' : 'by ' + sortWord()) : sortWord()"></button>
           <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
             <div class="pop-sub-head">Sort by</div>
@@ -234,7 +246,7 @@
           <span class="ls-frag">
             <span class="ls-verb ls-comma" x-text="qfFacets() >= 2 ? '' : ', in'"></span>
             <button type="button" class="ls-word ls-grp" title="Sectioning"
-                    @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" x-text="groupWord()"></button>
+                    @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" aria-haspopup="menu" :aria-expanded="listMenu === 'sort'" x-text="groupWord()"></button>
           </span>
         </template>
 
@@ -248,9 +260,10 @@
 
     </div>
 
+    <!-- ── Multi-task edit bar + task list ── -->
     <!-- Multi-task edit bar: REPLACES the filter bar while a selection is active (swap, not stack). Calm idiom:
          faint fills + radius, one accent, no hard boxes. Each action applies to ALL selected as ONE undoable composite. -->
-    <div class="sel-bar flex items-center gap-4" x-show="listView() && sel.length" x-cloak
+    <div class="sel-bar flex items-center gap-4" x-show="sel.length > 0" x-cloak
          x-transition:enter="sel-anim" x-transition:enter-start="sel-hide" x-transition:enter-end="sel-show"
          x-transition:leave="sel-anim" x-transition:leave-start="sel-show" x-transition:leave-end="sel-hide">
       <span class="sel-count"><b x-text="sel.length"></b> selected</span>
@@ -260,7 +273,7 @@
 
         <!-- Set priority — reuses the composer's importance chips -->
         <div class="sel-field" @click.outside="selMenu === 'prio' && (selMenu = null)">
-          <button type="button" class="sel-act sel-prio-btn inline-flex items-center gap-6" @click.stop="selMenu = selMenu === 'prio' ? null : 'prio'"><svg class="ico"><use href="#i-prio"/></svg><span>Priority</span></button>
+          <button type="button" class="sel-act sel-prio-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'prio'" @click.stop="selMenu = selMenu === 'prio' ? null : 'prio'"><svg class="ico"><use href="#i-prio"/></svg><span>Priority</span></button>
           <div class="pop lc-pop sel-prio-pop" x-show="selMenu === 'prio'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
             <template x-for="o in [['must','Must'],['focus','Focus'],['someday','Someday'],['none','None']]" :key="o[0]">
               <button type="button" class="pri-chip" :style="'--pc:' + pc(o[0])" @click="selSetPrio(o[0])"><svg class="ico"><use href="#i-prio"/></svg><span x-text="o[1]"></span></button>
@@ -270,7 +283,7 @@
 
         <!-- Shift relative due dates — the headline: moves every dated task together, keeping their spacing -->
         <div class="sel-field" @click.outside="selMenu === 'due' && (selMenu = null)">
-          <button type="button" class="sel-act sel-due-btn inline-flex items-center gap-6" @click.stop="selMenu = selMenu === 'due' ? null : 'due'"><svg class="ico"><use href="#i-cal"/></svg><span>Shift date</span></button>
+          <button type="button" class="sel-act sel-due-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'due'" @click.stop="selMenu = selMenu === 'due' ? null : 'due'"><svg class="ico"><use href="#i-cal"/></svg><span>Shift date</span></button>
           <div class="pop lc-pop sel-due-pop" x-show="selMenu === 'due'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
             <div class="pop-sub-head">Shift due dates by</div>
             <template x-for="o in [[-7,'− 1 week'],[-1,'− 1 day'],[1,'+ 1 day'],[7,'+ 1 week']]" :key="o[0]">
@@ -281,9 +294,9 @@
 
         <!-- Move to list / area — reuses the composer's project picker + the area list -->
         <div class="sel-field" @click.outside="selMenu === 'move' && (selMenu = null)">
-          <button type="button" class="sel-act sel-move-btn inline-flex items-center gap-6" @click.stop="selMenu = (selMenu === 'move' ? null : 'move'); pickerQ = ''"><svg class="ico"><use href="#i-arrow"/></svg><span>Move</span></button>
-          <div class="pop lc-pop sel-move-pop" x-show="selMenu === 'move'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
-            <input type="text" class="pop-input" placeholder="Move to a project…" x-model="pickerQ" @keydown.stop>
+          <button type="button" class="sel-act sel-move-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'move'" @click.stop="selMenu = (selMenu === 'move' ? null : 'move'); pickerQ = ''"><svg class="ico"><use href="#i-arrow"/></svg><span>Move</span></button>
+          <template x-if="selMenu === 'move'"><div class="pop lc-pop lc-anim sel-move-pop">
+            <input type="text" class="pop-input" placeholder="Move to a project…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
             <div class="pop-sub-head">Project</div>
             <template x-for="p in filteredProjects()" :key="p.id">
               <button type="button" class="pop-item proj-row" @click="selMoveToProject(p)">
@@ -299,38 +312,48 @@
                 </template>
               </div>
             </template>
-          </div>
+          </div></template>
         </div>
 
         <button type="button" class="sel-act sel-del sel-delete inline-flex items-center gap-6" @click="selDelete()"><svg class="ico"><use href="#i-trash"/></svg><span>Delete</span></button>
       </div>
     </div>
 
-    <div class="empty" x-show="listView() && visibleRows().length === 0 && !composer.open && !((showCompleted || qfArchived) && completedRows().length)" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : 'No tasks yet.'"></div>
+    <div class="empty" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : 'No tasks yet.'"></div>
     <!-- rows: one innerHTML parse (not x-for) — ~1s→~50ms; events delegated to <ul>; hover/drag/kbfocus imperative -->
-    <ul class="list flex-col" x-show="listView()" x-effect="tasks; navSel; collapsed; sel; fitRows(); paintSel()" x-init="initListChkSort($el)"
+    <ul class="list flex-col" x-effect="paintSel()" x-init="initListSort($el)"
         @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)"
-        @dragstart="listDragStart($event)" @dragover.prevent="listDragOver($event)" @dragleave="listDragLeave($event)" @drop.prevent="listDrop($event)" @dragend="dragEnd()">
+        @dragstart="listDragStart($event)" @dragenter.prevent="listDragOver($event)" @dragover.prevent="listDragOver($event)" @dragleave="listDragLeave($event)" @drop.prevent="listDrop($event)" @dragend="dragEnd()">
       <!-- direct innerHTML (not x-html): x-html walks ~9000 nodes for Alpine directives — rows carry none -->
       <!-- preserve the scroller position across rebuilds: replacing every row (esp. while the composer's edit-row is mid-list) otherwise clamps scrollTop to 0 -->
       <div class="rows" x-effect="renderRows($el, listHtml())"></div>
 
-      <!-- drop ghost: flex order (rows i*2); left indent = depth (shallower = outdent vs reorder) -->
-      <template x-if="ghostPos()">
-        <li class="item drop-ghost" :style="'order:' + ghostPos().order + ';padding-left:calc(18px + ' + (ghostPos().depth*22) + 'px)'"></li>
+      <!-- drop ghost: flex order (rows i*2); left edge = landing depth (shallower = outdent vs reorder) -->
+      <template x-if="ghostStyle()">
+        <li class="item drop-ghost" :style="ghostStyle()"></li>
       </template>
 
+      <!-- ── Composer: title, pills, relations, entries ── -->
       <!-- composer: bottom for new; overlaps edited row (pulled up) for check+title crossfade -->
-      <li class="composer" x-ref="composer" x-effect="persistDraft()" :style="'order:' + (editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
+      <li class="composer" x-ref="composer" x-effect="persistDraft()" @focus.capture="markFocus($event)" :style="'order:' + (editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
           @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); submitAndClose(); }">
-        <div class="composer-grow" x-ref="grow" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
+        <div class="composer-grow" x-ref="grow" x-effect="persistDraft(true)" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
         <form class="composer-card" @submit.prevent="submitComposer()">
         <span x-show="editing" x-html="compCheckHtml()" @click="toggleEditing()"></span>
         <div class="composer-body grow min-w-0 flex-col gap-8">
         <!-- title + a compact recovered-draft badge sharing the same line (never a full-width banner) -->
         <div class="composer-titlerow">
-        <div class="content" x-ref="content" contenteditable="true" role="textbox" aria-label="Task name"
-             @focus="focusTitle()" @input="syncTitle(); refreshPickers()" @beforeinput="onEditorBeforeInput($event)" @keydown="editorKeydown($event)" @paste="onPaste($event)"></div>
+        <div class="composer-title">
+        <div class="content" x-ref="content" contenteditable="true" role="textbox" aria-label="Task name" x-effect="mirrorPills()"
+             @focus="focusTitle()" @input="pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="editorKeydown($event)" @paste="onPaste($event)"></div>
+        <div class="content-hint overlay flex items-center gap-4" x-show="titleEmpty" aria-hidden="true">Buy milk
+          <span class="nlp-pill inline-flex items-center" data-kind="date">tomorrow</span>
+          <span class="nlp-pill inline-flex items-center" data-kind="date">5pm</span>
+          <span class="nlp-pill inline-flex items-center" data-kind="proj">#errands</span>
+          <span class="nlp-pill inline-flex items-center" data-kind="area">@home</span>
+          <span class="nlp-pill inline-flex items-center" data-kind="rec">every week</span>
+        </div>
+        </div>
         <!-- an unsaved draft was recovered on open — one deliberate tap on Discard drops it back to the saved state -->
         <div class="draft-badge" x-show="draftRestored" x-cloak role="status" title="Unsaved draft restored">
           <svg class="ico"><use href="#i-clock"/></svg>
@@ -339,17 +362,10 @@
           <button type="button" class="sheet-x db-x flex-none inline-flex items-center justify-center" @click="draftRestored=false" aria-label="Dismiss notice (keep draft)" title="Dismiss (keep draft)"><svg class="ico"><use href="#i-x"/></svg></button>
         </div>
         </div>
-        <div class="content-hint overlay flex items-center gap-4" x-show="titleEmpty" aria-hidden="true">Buy milk
-          <span class="nlp-pill inline-flex items-center" data-kind="date">tomorrow</span>
-          <span class="nlp-pill inline-flex items-center" data-kind="date">5pm</span>
-          <span class="nlp-pill inline-flex items-center" data-kind="proj">#errands</span>
-          <span class="nlp-pill inline-flex items-center" data-kind="area">@home</span>
-          <span class="nlp-pill inline-flex items-center" data-kind="rec">every week</span>
-        </div>
         <div class="area-autocomplete" x-cloak :style="'display:' + (areaPicker.open ? 'flex' : 'none') + '; left:' + areaPicker.left + 'px; top:' + areaPicker.top + 'px'" @click.outside="areaPicker.open = false">
           <template x-for="(t, i) in areaMatches()" :key="t.id">
             <button type="button" class="ac-row inline-flex items-center" :class="{ sel: i === areaPicker.sel }"
-                    @click="pickArea(t.id)" @mouseenter="areaPicker.sel = i">
+                    @click="pickPill('area', t.id)" @mouseenter="areaPicker.sel = i">
               <span class="area" :style="'--tc:' + (t.color || areaDefault)">
                 <template x-if="t.icon"><svg class="ico" style="width:11px;height:11px;vertical-align:-1px"><use :href="'#' + t.icon"/></svg></template>
                 <span class="dot"></span><span class="nm" x-text="t.name"></span>
@@ -378,7 +394,7 @@
                  linkPicker() is already null (Alpine Expression Error, harmless but printed) -->
             <button type="button" class="ac-row flex items-center" :class="{ sel: i === linkPicker()?.sel }"
                     @click="pickLink(r.t.id)" @mouseenter="linkPicker() && (linkPicker().sel = i)">
-              <!-- the task's OWN checkbox (shared builder), not relIcon's stop sign — that read as archived -->
+              <!-- the task's OWN checkbox (shared builder), not the relation stop sign — that read as archived -->
               <span class="ac-ck inline-flex flex-none" x-html="rowCheckHtml(r)"></span><span class="nm" x-text="r.t.content"></span>
               <span class="rt" x-text="r.projName"></span>
             </button>
@@ -389,8 +405,8 @@
             <button type="button" class="ac-row flex items-center" :class="{ sel: i === locPicker.sel }"
                     @click="pickPill('loc', l.name)" @mouseenter="locPicker.sel = i">
               <svg class="ico"><use href="#i-pin"/></svg><span class="nm" x-text="l.name"></span>
-              <!-- how many open tasks already wait there: places are for batching, not just labelling -->
-              <span class="rt" x-text="locOpenCount(l.id) || ''"></span>
+              <!-- how many open tasks already wait there: places are for batching, not just labelling; closed, it counts nothing (a tick would re-scan every task) -->
+              <span class="rt" x-text="locPicker.open && locOpenCount(l.id) || ''"></span>
             </button>
           </template>
           <template x-if="locPicker.frag.trim()">
@@ -405,7 +421,7 @@
         <div class="composer-rels" x-show="relChips().length > 0">
           <template x-for="r in relChips()" :key="r.type + r.id">
             <span class="rel-chip" :class="r.type">
-              <svg class="ico rel-ico" :class="r.type" :title="relTypeLabel(r.type)"><use :href="'#' + relIcon(r.type)"/></svg>
+              <svg class="ico rel-ico" :class="r.type" :title="relTypeLabel(r.type)"><use href="#i-stop"/></svg>
               <span class="rel-chip-name" x-text="projName(r.id)"></span>
               <button type="button" class="rel-chip-remove" @click="removeRelation(r.id, r.type)" title="Remove">×</button>
             </span>
@@ -413,65 +429,61 @@
         </div>
         <!-- Inline subtasks / checklist entries (Things-style), directly below the description -->
         <div class="composer-entries flex-col" @copy="chkCopy($event)" @pointermove="chkDragOut($event)">
-          <template x-if="editing && childTasks(editing).length">
-            <div class="entry-list flex-col" x-init="initEntrySort($el, 'sub')">
-              <!-- ghost first (mirrors the checklist ghost): Tab from the description lands on "New subtask" before the rows, and new subtasks land right below it -->
-              <div class="entry ghost" :class="{ active: subGhost.length }" x-html="subGhostHtml()"></div>
-              <template x-for="c in childTasks(editing)" :key="c.id">
-                <div class="entry" :class="{ done: c.completed_at }" :data-id="c.id">
-                  <span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>
-                  <span x-html="entryCheckHtml(c)" @click="toggle(c)"></span>
-                  <div class="entry-txt sub-ce" role="textbox" tabindex="0" contenteditable="true" x-init="hydrateSubEditor($el, c)" @focus="focusSubEditor($el, c)" @input="subInput()" @beforeinput="onEditorBeforeInput($event)" @keydown="entryKey($event); subEditorKeydown($event, c)" @keydown.escape="entryEscape($event, () => hydrateSubEditor($el, c))" @blur="areaPicker.open || commitChildEdit(c)" @paste="onPaste($event)" @keydown.stop></div>
-                  <button type="button" class="entry-kids" x-show="childTasks(c.id).length" @click.stop="editTask(c)" title="Open this task"><svg class="ico"><use href="#i-chev-r"/></svg></button>
-                  <button type="button" class="entry-del" @click="removeChild(c)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
+          <!-- The subtask ghost's ONE element — never re-created, so a subtask landing mid-typing can't tear it from under the caret: the
+               empty state's "ghost OR ghost" row, else the head of the subtask list (Tab from the description lands on it first; new
+               subtasks land right below it). Rows are plain DOM painted by paintSubs from draft.subs (keyed by task id), their events delegated here. -->
+          <div :class="shownSubs().length ? 'entry-list flex-col' : 'entry-empty'" x-show="shownSubs().length || !draft.checklist.length"
+               x-init="initEntrySort($el, 'sub')" x-effect="paintSubs($el)"
+               @click="subRowEv($event)" @focus.capture="subRowEv($event)" @blur.capture="subRowEv($event)" @input="subRowEv($event)" @beforeinput="subRowEv($event)" @keydown="subRowEv($event)" @paste="subRowEv($event)">
+            <template x-if="editing">
+              <div class="entry ghost" :class="{ active: subGhost.length }" x-show="shownSubs().length > 0 || !chkGhost.length" x-transition.opacity.duration.150ms><span class="check sm ghost-check"></span><div class="entry-txt sub-ce" role="textbox" tabindex="0" contenteditable="true" data-placeholder="New subtask" x-effect="subGhostSync($el)" @focus="focusSubEditor($el, null)" @input="pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="entryKey($event); subEditorKeydown($event, null)" @keydown.escape="entryEscape($event)" @paste="onPaste($event)" @keydown.stop></div></div>
+            </template>
+            <!-- the checklist ghost holding typing stays (below the subtasks) when one lands: re-created, it would drop the caret -->
+            <template x-if="!draft.checklist.length && (!shownSubs().length || chkGhost)">
+              <div class="contents">   <!-- empty state: subtask (edit-only) OR checklist OR steps. Picking Steps is typing its first step: no switch anywhere -->
+                <span class="entry-or" x-show="!!editing && !subGhost.length && !chkGhost.length" x-transition.opacity.duration.150ms>OR</span>
+                <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && chkSteps())" x-transition.opacity.duration.150ms>
+                  <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
+                  <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" @input="setTaskType(null)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="setTaskType(null); chkPaste($event)" @keydown.stop></textarea>
                 </div>
-              </template>
-            </div>
-          </template>
+                <span class="entry-or" x-show="!subGhost.length && !chkGhost.length" x-transition.opacity.duration.150ms>OR</span>
+                <div class="entry chk ghost step-ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && !chkSteps())" x-transition.opacity.duration.150ms>
+                  <span class="ghost-check"></span>
+                  <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="First step" x-model="chkGhost" @input="setTaskType('steps')" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="setTaskType('steps'); chkPaste($event)" @keydown.stop></textarea>
+                </div>
+              </div>
+            </template>
+          </div>
           <!-- ghost first (in DOM AND on screen) → open items → done items (done sink via CSS order). Ghost-first DOM = Tab from the description lands on the "new item" box before the existing rows. -->
-          <template x-if="draft.checklist.length && !(editing && childTasks(editing).length)">
+          <!-- shown whenever it holds anything, subtasks or not: a checklist beside subtasks (a drag in, a sync, a convert landing under a reopened draft) is never hidden -->
+          <template x-if="draft.checklist.length">
             <!-- grip only while editing a SAVED task: a not-yet-created task has no order worth preserving -->
-            <div class="entry-list flex-col" x-init="editing && initEntrySort($el, 'chk')">
+            <!-- Rows are plain DOM painted by paintChk (keyed by item id), their events delegated here — see paintChk. -->
+            <div class="entry-list flex-col" :class="{ steps: chkSteps() }" x-init="editing && initEntrySort($el, 'chk')" x-effect="paintChk($el)"
+                 @pointerdown="chkRowEv($event)" @pointerup="chkRowEv($event)" @input="chkRowEv($event)" @compositionend="chkRowEv($event)" @keydown="chkRowEv($event)" @paste="chkRowEv($event)" @click="chkRowEv($event)">
               <div class="entry chk ghost" :class="{ active: chkGhost.length }">
                 <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
-                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event, 'chk')" @keydown.escape="entryEscape($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
+                <textarea class="entry-txt chk-ghost-ta" rows="1" :placeholder="chkSteps() ? 'Add step' : 'New checklist item'" x-model="chkGhost" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
               </div>
               <!-- The ghost doubles as find: matches float to the top + highlight (display only — stored order
                    untouched, nothing hidden); grips drop while the order is temporary. Enter still adds. -->
-              <template x-for="item in checklistRows()" :key="item.id">
-                <div class="entry chk" :class="{ done: item.done && !chkPlain(), 'chk-alt': chkAlt(item), 'chk-hit': chkHit(item) }" :data-id="item.id">
-                  <template x-if="editing && !chkGhost.trim() && (!item.done || chkPlain())"><span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span></template>
-                  <button type="button" class="chk-rect" :class="{ done: item.done && !chkPlain(), plain: chkPlain() }" @click="chkPlain() || toggleChecklistItem(item)"></button>
-                  <div class="entry-txt" role="textbox" tabindex="0" x-effect="if (!$el.contains(document.activeElement)) $el.innerHTML = chkHl(item)" @pointerdown="chkRowDown($event)" @pointerup="chkRowUp($el, $event)" @focus="chkFocus($el)" @input="chkInput(item, $event)" @compositionend="chkInput(item, $event)" @keydown="entryKey($event)" @keydown.backspace="chkBackspace(item, $event)" @keydown.delete="chkBackspace(item, $event)" @keydown.enter="chkEnter($event, item)" @keydown.escape="entryEscape($event, () => $el.innerHTML = chkLive(item.text))" @blur="$el.contentEditable = 'false'; renameChecklistItem(item, $event.target.textContent)" @paste="chkPaste($event, item)" @keydown.stop></div>
-                  <button type="button" class="entry-del" @click="removeChecklistItem(item)" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button>
-                </div>
-              </template>
-            </div>
-          </template>
-          <!-- Empty state: ghost subtask OR ghost checklist (subtask is edit-only) -->
-          <template x-if="!(editing && childTasks(editing).length) && !draft.checklist.length">
-            <div class="entry-empty">
-              <div class="entry ghost" :class="{ active: subGhost.length }" x-show="editing && !chkGhost.length" x-transition.opacity.duration.150ms x-html="subGhostHtml()"></div>
-              <span class="entry-or" x-show="editing && !subGhost.length && !chkGhost.length" x-transition.opacity.duration.150ms>OR</span>
-              <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length" x-transition.opacity.duration.150ms>
-                <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
-                <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" x-effect="chkGhost, taGrow($el)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event, 'chk')" @keydown.escape="entryEscape($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
-              </div>
             </div>
           </template>
         </div>
+        <!-- ── Composer opts: teleported pickers ── -->
         <!-- pickers gated in x-if so Alpine doesn't init the whole block at boot; each teleported pop is gated
              AGAIN on its own open flag, so a composer open builds the visible card only (~950 fewer nodes,
              ~200 fewer listeners) and each picker pays its own mount the first time it is opened -->
+        <div class="composer-dock">   <!-- chips + actions: one block, so a phone can dock them above the keyboard (styles .composer-dock) -->
         <template x-if="composer.open">
         <div class="composer-opts flex items-center gap-6">
           <!-- Importance (app-behavior flag, not a rank) -->
-          <div class="field" @click.outside="popAway('imp', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.importance !== 'none' }" @click="togglePop('imp', $el)">
+          <div class="field" @click.outside.capture="popAway('imp', $event)">
+            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.importance !== 'none' }" aria-haspopup="menu" :aria-expanded="pop === 'imp'" @click="togglePop('imp', $el)">
               <svg class="ico"><use href="#i-prio"/></svg>
               <span x-text="impName(draft.importance, 'Importance')"></span>
             </button>
-            <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" x-cloak :style="popStyle('imp')">
+            <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" x-cloak :style="popStyle()">
               <template x-for="o in [['none','None','Default — no special handling'],['focus','Focus','Keep it in front of me'],['must','Must','The app fights for it'],['someday','Someday','Park it for later']]" :key="o[0]">
                 <button type="button" class="pri-chip" :class="{ sel: draft.importance === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="draft.importance = o[0]; pop = null">
                   <svg class="ico"><use href="#i-prio"/></svg>
@@ -481,19 +493,17 @@
             </div></template></template>
           </div>
           <!-- Due date -->
-          <div class="field" @click.outside="popAway('due', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.on || draft.recurrence || draft.deadline_at || draft.available_from }" @click="openDate('due', $el)">
+          <div class="field" @click.outside.capture="popAway('due', $event)">
+            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.on || draft.recurrence || draft.deadline_at || draft.available_from, open: pop === 'due' }" aria-haspopup="dialog" :aria-expanded="pop === 'due'" @click="openDate('due', $el)">
               <svg class="ico"><use href="#i-cal"/></svg>
               <span x-text="dueLabel()"></span>
               <svg class="ico rep-on" x-show="draft.recurrence" title="Repeats"><use :href="repRules().some(r => r.from_completion) ? '#i-repeat-done' : '#i-repeat'"/></svg>
             </button>
             <!-- unified calendar pop lives below (one instance, mode driven via `pop`) -->
           </div>
-          <!-- unified calendar pop: teleported to body outside x-if so clnav works when composer is closed -->
-          <!-- ONE time popover for every anchor (due row, repeat sentence, deadline strip) — fixed to the viewport
-               so it can sit over whichever teleported .pop opened it. -->
-          <template x-if="tpop"><template x-teleport="body"><div class="tpop" x-cloak :style="tpop ? tpopStyle : 'display:none'" @click.stop @click.outside="tpop && (tpop = false)">
-            <div class="tin"><input type="text" :placeholder="timeGet() ? fmtTime(timeGet()) : 'type a time — 4:07pm'" x-ref="tpopIn" @keydown.enter.prevent="applyTimeText($event)" @keydown.stop></div>
+          <!-- the time popover, opened by a repeat statement's [at …] chip — fixed to the viewport so it can sit over the teleported .pop -->
+          <template x-if="tpop"><template x-teleport="body"><div class="tpop" x-cloak :style="tpopStyle" @click.stop @click.outside="tpop = false">
+            <div class="tin"><input type="text" :placeholder="timeGet() ? fmtTime(timeGet()) : 'type a time — 4:07pm'" x-ref="tpopIn" @keydown.enter.prevent="applyTimeText($event)" @keydown.stop="$event.key === 'Escape' && escape()"></div>
             <div class="thg">
               <template x-for="h in tpopHours()" :key="h.h">
                 <button type="button" class="th" :class="{ on: h.on }" @click="setTimeHour(h.h)"><span x-text="h.lbl"></span><em x-show="h.ap" x-text="h.ap"></em></button>
@@ -507,12 +517,12 @@
             <div class="tx"><button type="button" @click="timeSet(''); tpop = false">no time</button></div>
           </div></template></template>
           <!-- Duration -->
-          <div class="field" @click.outside="popAway('dur', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: durMinNow() }" @click="togglePop('dur', $el)">
+          <div class="field" @click.outside.capture="popAway('dur', $event)">
+            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: durMinNow() }" aria-haspopup="dialog" :aria-expanded="pop === 'dur'" @click="togglePop('dur', $el)">
               <svg class="ico"><use href="#i-clock"/></svg>
               <span x-text="durLabel()"></span>
             </button>
-            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :style="popStyle('dur')">
+            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :style="popStyle()">
               <div class="lad">
                 <button type="button" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><b>~5 m</b></button>
                 <button type="button" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><b>&lt;15 m</b></button>
@@ -529,12 +539,12 @@
           </div>
           <!-- Reminders: the user's own voice. Severity is the lead icon's SHAPE; a self-repeating
                reminder shows the repeat switch instead, and tapping it pauses. -->
-          <div class="field" @click.outside="popAway('rem', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.reminders.length }" @click="togglePop('rem', $el)">
+          <div class="field" @click.outside.capture="popAway('rem', $event)">
+            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.reminders.length, open: pop === 'rem' }" aria-haspopup="dialog" :aria-expanded="pop === 'rem'" @click="togglePop('rem', $el)">
               <svg class="ico"><use href="#i-bell"/></svg>
               <span x-text="remLabel()"></span>
             </button>
-            <template x-if="pop === 'rem'"><template x-teleport="body"><div class="pop rem-pop" x-cloak :style="popStyle('rem')">
+            <template x-if="pop === 'rem'"><template x-teleport="body"><div class="pop rem-pop" x-cloak :style="popStyle()">
               <div class="pop-sub-head" x-show="draft.reminders.length">Reminders</div>
               <template x-for="r in draft.reminders" :key="r.id">
                 <div class="rem-row" :class="{ paused: r.paused }">
@@ -542,7 +552,7 @@
                     <svg class="ico"><use :href="'#' + remLead(r).icon"/></svg>
                   </button>
                   <span class="rem-seg" x-text="remWhen(r)"></span>
-                  <span class="rem-tag" x-show="r.paused">paused</span>
+                  <span class="rem-tag" x-show="r.paused" x-text="remTag(r)"></span>
                   <button type="button" class="rem-sev" :class="'s' + (['gentle','ping','alarm'].indexOf(r.severity || 'ping') + 1)" @click="remCycleSev(r)">
                     <span class="dots"><i></i><i></i><i></i></span><span x-text="(r.severity || 'ping').replace(/^./, c => c.toUpperCase())"></span>
                   </button>
@@ -558,32 +568,28 @@
             </div></template></template>
           </div>
           <!-- Area multi-select -->
-          <div class="field" @click.outside="popAway('area', $event)">
+          <div class="field" @click.outside.capture="popAway('area', $event)">
             <button type="button" class="chip chip-area inline-flex items-center gap-6" :class="{ set: draft.areas.length }" @click="togglePop('area', $el)">
               <svg class="ico"><use href="#i-tag-tag"/></svg>
               <span x-text="areaLabel()"></span>
             </button>
-            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :style="popStyle('area')">
+            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :style="popStyle()">
               <div class="area-grid area-cluster items-center">
                 <template x-for="l in areas" :key="l.id">
-                  <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="clusterPick($el, l.id)">
-                    <template x-if="draft.areas.includes(l.id)"><svg class="tick ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></template>
-                    <template x-if="l.icon"><svg class="ico" style="width:12px;height:12px"><use :href="'#' + l.icon"/></svg></template>
-                    <span x-text="l.name"></span>
-                  </button>
+                  <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="clusterPick($el, l.id)" x-html="areaOptHtml(l, draft.areas.includes(l.id))"></button>
                 </template>
                 <label class="area-ghost inline-flex items-center rounded-pill"><input type="text" placeholder="new area…" x-model="newAreaName" @keydown.enter.prevent="createAndToggleArea()" @keydown.stop></label>
               </div>
             </div></template></template>
           </div>
           <!-- Location constraint -->
-          <div class="field" x-show="locations.length" @click.outside="popAway('loc', $event)">
+          <div class="field" x-show="locations.length" @click.outside.capture="popAway('loc', $event)">
             <button type="button" class="chip chip-loc inline-flex items-center gap-6" :class="{ set: locPolarity() !== 'any' }" @click="openLoc($el)">
               <svg class="ico"><use :href="locPolarity() === 'except' ? '#i-pin-off' : '#i-pin'"/></svg>
               <span x-text="locChipLabel()"></span>
             </button>
             <!-- Hybrid picker: sentence polarity ("do this [at]:") + block-driven here-row + region chip rows -->
-            <template x-if="pop === 'loc'"><template x-teleport="body"><div class="pop loc-pop" x-cloak :style="popStyle('loc')">
+            <template x-if="pop === 'loc'"><template x-teleport="body"><div class="pop loc-pop" x-cloak :style="popStyle()">
               <p class="lp-line">do this <button type="button" class="c inline-flex items-center" :class="locPolarity() === 'any' ? 'g' : (locPolarity() === 'except' ? 'x' : '')" @click="toggleLocPolarity()" x-text="locPolarity() === 'any' ? 'anywhere' : (locPolarity() === 'except' ? 'away from' : 'at')"></button><span class="lp-colon" x-show="locPolarity() !== 'any'">:</span>
               <!-- teach by doing: the sentence's verb IS the phrase you can type into the title -->
               <template x-if="locPolarity() !== 'any'"><span class="lp-kbd" x-text="'or type “' + (locPolarity() === 'except' ? 'away from' : 'at') + ' …”'"></span></template></p>
@@ -622,15 +628,15 @@
             </div></template></template>
           </div>
           <!-- Relations (edit only) -->
-          <div class="field" x-show="editing" @click.outside="popAway('rel', $event)">
+          <div class="field" x-show="editing" @click.outside.capture="popAway('rel', $event)">
             <button type="button" class="chip chip-rel inline-flex items-center gap-6" :class="{ set: editingTask()?.blocked_by?.length }" @click="togglePop('rel', $el); pickerQ = ''" :disabled="!editing">
               <svg class="ico"><use href="#i-link"/></svg>
               <span>Relations</span>
             </button>
-            <!-- Picker rows: draggable → drop on a well; ← / ↔ / → buttons are the discoverable path -->
-            <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" x-cloak :style="popStyle('rel')">
+            <!-- Picker rows: a click adds as Relates; a drag onto a well picks the kind -->
+            <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" x-cloak :style="popStyle()">
               <div class="relations-section">
-                <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop>
+                <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
                 <div class="rel-picker">
                   <template x-for="t in relationCandidates()" :key="t.id">
                     <div class="pop-item rel-row flex items-center gap-4" draggable="true" @click="addRelation(t.id, 'relates')" @dragstart="relDragId = t.id; $event.dataTransfer.setData('text/plain', t.id)" @dragend="relDragId = null" title="Drag to a well · click to add as Relates">
@@ -639,49 +645,42 @@
                   </template>
                 </div>
                 <div class="rel-wells">
-                  <div class="rel-well" data-well="blocked_by" @dragover="(relDragId || dragId) && $event.preventDefault()" @dragenter="if(relDragId || dragId) $el.classList.add('drag-over')" @dragleave="$el.classList.remove('drag-over')" @drop.prevent="dropRel($event, 'blocked_by')">
-                    <span class="rel-well-h">← Waiting on</span>
-                    <template x-for="r in taskRels(editingTask()).filter(r => r.type === 'blocked_by')" :key="r.id">
-                      <span class="rel-card"><span class="task-line" x-html="relLine(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
-                    </template>
-                  </div>
-                  <div class="rel-well" data-well="relates" @dragover="(relDragId || dragId) && $event.preventDefault()" @dragenter="if(relDragId || dragId) $el.classList.add('drag-over')" @dragleave="$el.classList.remove('drag-over')" @drop.prevent="dropRel($event, 'relates')">
-                    <span class="rel-well-h">↔ Relates</span>
-                    <template x-for="r in taskRels(editingTask()).filter(r => r.type === 'relates')" :key="r.id">
-                      <span class="rel-card"><span class="task-line" x-html="relLine(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
-                    </template>
-                  </div>
-                  <div class="rel-well" data-well="blocks" @dragover="(relDragId || dragId) && $event.preventDefault()" @dragenter="if(relDragId || dragId) $el.classList.add('drag-over')" @dragleave="$el.classList.remove('drag-over')" @drop.prevent="dropRel($event, 'blocks')">
-                    <span class="rel-well-h">Holding up →</span>
-                    <template x-for="r in taskRels(editingTask()).filter(r => r.type === 'blocks')" :key="r.id">
-                      <span class="rel-card"><span class="task-line" x-html="relLine(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
-                    </template>
-                  </div>
+                  <template x-for="[well, head] in [['blocked_by', '← Waiting on'], ['relates', '↔ Relates'], ['blocks', 'Holding up →']]" :key="well">
+                    <div class="rel-well" :data-well="well" @dragover="(relDragId || dragId) && $event.preventDefault()" @dragenter="if(relDragId || dragId) $el.classList.add('drag-over')" @dragleave="$el.classList.remove('drag-over')" @drop.prevent="dropRel($event, well)">
+                      <span class="rel-well-h" x-text="head"></span>
+                      <template x-for="r in relChips().filter(r => r.type === well)" :key="r.id">
+                        <span class="rel-card"><span class="task-line" x-html="relLine(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
+                      </template>
+                    </div>
+                  </template>
                 </div>
               </div>
             </div></template></template>
           </div>
         </div>
         </template>
-        <!-- unified calendar pop: due date / deadline / plan-nav — ONE scaffold, always in DOM so clnav works when composer is closed -->
-        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" x-cloak :class="{ 'cal-wk': pop === 'clnav' && clView === 'week' }" :style="calPopStyle()">
+        <!-- a phone's pop covers most of the screen: the scrim takes the tap that dismisses it (popAway closes), like a sheet's backdrop -->
+        <template x-if="pop && narrow"><div class="pop-scrim"></div></template>
+        <!-- ── Unified calendar pop (.pop.cal): due, plan-nav — outside the composer's x-if so clnav works while it's closed ── -->
+        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" x-cloak :class="{ 'cal-wk': pop === 'clnav' && clView === 'week' }" :style="popStyle()">
           <!-- date-text input (not shown for clnav) -->
-          <input type="text" class="cal-type" x-show="pop === 'due'" placeholder="Type a date or repeat (e.g. every 2 weeks)" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop>
+          <input type="text" class="cal-type" x-show="pop === 'due'" placeholder="Date or repeat (e.g. every 2 weeks)" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
           <!-- due: scheduling suggestions + clear chip -->
           <div class="cal-quick" x-show="pop === 'due'">
             <!-- Suggestions are safe in BOTH registers: calSugApply writes On and flips dreg — it can never mint a deadline (when-foot T4) -->
-            <template x-for="s in calSuggestions()" :key="s.iso">
-              <button type="button" class="q sug" @click="calSugApply(s.iso)"><svg class="ico"><use href="#i-cal"/></svg><span x-text="s.label"></span></button>
+            <!-- the rows are ONE Tab stop (the first); ↑/↓ walk them, Enter is the button's own click -->
+            <template x-for="(s, si) in calSuggestions()" :key="s.iso">
+              <button type="button" class="q sug" :tabindex="si ? -1 : 0" :style="`--sug: var(--q-${s.key})`" @click="calSugApply(s.iso)" @keydown.down.prevent="$el.nextElementSibling?.closest('.sug')?.focus()" @keydown.up.prevent="$el.previousElementSibling?.closest('.sug')?.focus()"><svg class="ico"><use :href="'#i-' + s.icon"/></svg><span x-text="s.label"></span><b x-text="s.hint"></b></button>
             </template>
             <button type="button" class="q clear" x-show="draft.on || draft.recurrence || draft.deadline_at || draft.available_from" @click="draft.on = ''; draft.dueTime = ''; draft.recurrence = null; draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
           </div>
           <!-- shared: calendar head + grid (in due mode the head carries the On|By register toggle) -->
-          <div class="cal-head flex items-center justify-between" x-html="calHeadHtml()"></div>
+          <div class="cal-head flex items-center justify-between"><span class="flex items-center gap-8"><span x-text="calLabel()"></span><span class="dreg swt" :class="{ by: dreg === 'by' }" x-show="pop === 'due' && !repRules().length"><button type="button" data-reg="on" :class="{ on: dreg === 'on' }" :aria-pressed="dreg === 'on'" title="Tap a day to schedule it there — an intention, never red" @click="setDreg('on')">On</button><button type="button" data-reg="by" :class="{ on: dreg === 'by' }" :aria-pressed="dreg === 'by'" title="Tap a day = the deadline; right-click does this from either mode" @click="setDreg('by')">By</button></span></span><span class="cal-navs flex items-center"><button type="button" class="cal-nav inline-flex items-center justify-center" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="cal-nav dot inline-flex items-center justify-center" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="cal-nav inline-flex items-center justify-center" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
           <div class="cal-grid" :class="{ hint: calPulse }" @mouseleave="pop === 'clnav' && (clPopHoverWk = '')" @pointerdown="calDown($event)" @pointermove="calMove($event)" @pointerup="calUp($event)" @pointercancel="_calDn = null; calH = null" @click.capture="_calDragged && ($event.stopPropagation(), _calDragged = false)">
-            <!-- due: interactive weekday-toggle buttons; dl/clnav: plain non-functional buttons -->
-            <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" :class="pop === 'due' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused, pulse: hdrPulse }" @click="pop === 'due' && toggleRepeatWeekday(i)" x-text="w"></button></template>
+            <!-- due: interactive weekday-toggle buttons; clnav: plain non-functional buttons -->
+            <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" tabindex="-1" :class="pop === 'due' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused, pulse: hdrPulse }" @click="pop === 'due' && toggleRepeatWeekday(i)" x-text="w"></button></template>
             <template x-for="(c, ci) in calCells()" :key="c.key + ':' + c.ord">
-              <button type="button" class="cal-day" :class="calDayClassFor(c, ci)" @mouseenter="calDayMouseenterFor(c)" @click="calDayClickFor(c)" @contextmenu.prevent="pop === 'due' && !repRules().length && calDayBy(c)"><span x-text="c.d"></span><i class="bar l"></i><i class="bar r"></i><b class="ordn" x-show="pop === 'due' && c.ord" x-text="pop === 'due' ? c.ord : ''"></b></button>
+              <button type="button" class="cal-day" :class="calDayClassFor(c, ci)" :aria-label="c.label" :tabindex="c.iso === calStop() ? 0 : -1" @focus="calFocus = c.iso" @keydown="calKey($event, c)" @mouseenter="calDayMouseenterFor(c)" @click="calDayClickFor(c)" @contextmenu.prevent="pop === 'due' && !repRules().length && calDayBy(c)"><span x-text="c.d"></span><i class="bar l"></i><i class="bar r"></i><b class="ordn" x-show="pop === 'due' && c.ord" x-text="pop === 'due' ? c.ord : ''"></b></button>
             </template>
           </div>
           <!-- due: V3 phrase-builder repeat zones -->
@@ -708,19 +707,19 @@
             </div>
           </template>
           <div class="zone oneoff flex gap-6" x-show="pop === 'due' && !repRules().length">
-            <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="pulseCal()" title="drag across days on the calendar above">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="pulseCal()" title="drag across days on the calendar above" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''">×</button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !draft.dueTime }" @click.stop="toggleTimePop($event)" x-text="draft.dueTime ? fmtTime(draft.dueTime) : '–'"></button></p><button type="button" class="evrow" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
+            <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="pulseCal()" title="drag across days on the calendar above">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="pulseCal()" title="drag across days on the calendar above" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''">×</button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !timeGet() }" @click.stop="toggleTimePop($event)" x-text="timeGet() ? fmtTime(timeGet()) : '–'"></button></p><button type="button" class="evrow" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
           </div>
           <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" @click="addRepeat()">+ repeat</button></div>
-          <!-- dl: time strip (At: date-only deadline means EOD; pay for precision when you want it) + clear -->
         </div></template></template>
+        <!-- ── Composer actions + completed section + Peek Pane ── -->
         <div class="composer-actions flex gap-6">
           <!-- left: project location picker (Todoist-style, bottom-left); actions stay right -->
-          <div class="field loc" @click.outside="popAway('proj', $event)">
-            <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
+          <div class="field loc" @click.outside.capture="popAway('proj', $event)">
+            <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
               <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><svg class="proj-pick-ico ico" x-show="!pickIsDefault() && pickIsNote()"><use href="#i-tack"/></svg><span class="hash" x-show="!pickIsDefault() && !pickIsNote()">#</span><span x-text="draft.project || defaultProjName() || 'Project'"></span>
             </button>
-            <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :style="popStyle('proj')">
-              <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="createFilteredProj()" @keydown.stop>
+            <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :style="popStyle()">
+              <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="enterProj()" @keydown.stop="$event.key === 'Escape' && escape()">
               <template x-for="p in filteredProjects()" :key="p.id">
                 <div>
                   <!-- task-projects read as the TASKS they are (checkbox + title + areas); overview projects keep the # row -->
@@ -739,22 +738,26 @@
               <button type="button" class="pop-item create" x-show="pickerQ.trim()" @click="createFilteredProj()">Create "<span x-text="pickerQ.trim()"></span>"</button>
             </div></template></template>
           </div>
-          <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
-          <div class="more-wrap inline-flex items-center" x-show="editing" @click.outside="popAway('overflow', $event)">
-            <button type="button" class="more-btn inline-flex items-center" @click="togglePop('overflow', $el)" title="More actions" :aria-expanded="pop === 'overflow'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
-            <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :style="popStyle('overflow')">
-              <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
-              <button type="button" class="pop-item" x-show="editing" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
-              <button type="button" class="pop-item" x-show="childTasks(editing).length > 0" @click="convertToChecklist(); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
-              <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="convertToSubtasks(); pop = null"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
-              <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="toggleChecklistPlain(); pop = null"><svg class="ico"><use :href="chkPlain() ? '#i-list-check' : '#i-all'"/></svg><span x-text="chkPlain() ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
-              <button type="button" class="pop-item" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
-            </div></template></template>
+          <div class="composer-btns flex gap-6">   <!-- one unit: crowded, it wraps under the project picker whole -->
+            <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
+            <div class="more-wrap inline-flex items-center" x-show="editing" @click.outside.capture="popAway('overflow', $event)">
+              <button type="button" class="more-btn inline-flex items-center" @click="togglePop('overflow', $el)" title="More actions" aria-haspopup="menu" :aria-expanded="pop === 'overflow'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
+              <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :style="popStyle()">
+                <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
+                <button type="button" class="pop-item" x-show="editing" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
+                <button type="button" class="pop-item" x-show="shownSubs().length > 0 || chkSteps() && draft.checklist.length > 0" @click="convertTo('checklist'); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
+                <button type="button" class="pop-item" x-show="!chkSteps() && (shownSubs().length > 0 || draft.checklist.length > 0)" @click="convertTo('steps'); pop = null"><svg class="ico"><use href="#i-steps"/></svg>Convert to steps</button>
+                <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="convertToSubtasks(); pop = null"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
+                <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="toggleChecklistPlain(); pop = null"><svg class="ico"><use :href="chkPlain() ? '#i-list-check' : '#i-all'"/></svg><span x-text="chkPlain() ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
+                <button type="button" class="pop-item" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
+              </div></template></template>
+            </div>
+            <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
+            <button type="button" class="del-btn inline-flex items-center" x-show="editing" @click="deleteEditing()" title="Delete task"><svg class="ico"><use href="#i-trash"/></svg></button>
+            <button type="button" class="ghost" @click="closeComposer()">Cancel</button>
+            <button type="submit" class="primary" :disabled="!draft.content.trim()" x-text="editing ? 'Save' : 'Add task'"></button>
           </div>
-          <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
-          <button type="button" class="del-btn inline-flex items-center" x-show="editing" @click="deleteEditing()" title="Delete task"><svg class="ico"><use href="#i-trash"/></svg></button>
-          <button type="button" class="ghost" @click="closeComposer()">Cancel</button>
-          <button type="submit" class="primary" :disabled="!draft.content.trim()" x-text="editing ? 'Save' : 'Add task'"></button>
+        </div>
         </div>
         </div>
       </form>
@@ -763,12 +766,12 @@
     </ul>
 
     <!-- Full ghost task row (keeps the .add-task-btn hook): looks like an empty task row; click opens the composer -->
-    <button class="add-task-btn flex items-center gap-10" x-show="listView() && (!composer.open || editing)" @click="startAdd()"><span class="ghost-check"></span><span class="ghost-title">Add task</span></button>
+    <button class="add-task-btn flex items-center gap-10" x-ref="addRow" data-sk="New task" x-show="!composer.open || editing" @click="startAdd()"><span class="ghost-check"></span><span class="ghost-title">Add task</span></button>
 
     <!-- Completed tasks: a section BELOW the add button so the button stays visible and completed items are clearly separated. -->
     <!-- Done: a real task list (same row components) so subtasks show and the composer can relocate in + open inline. -->
-    <div class="list-done" x-show="listView() && (showCompleted || qfArchived) && completedRows().length" x-cloak>
-      <div class="list-done-head flex items-center gap-6 muted-11"><span x-text="showCompleted && qfArchived ? 'Done &amp; Archived' : qfArchived ? 'Archived' : 'Done'"></span><span class="list-done-n" x-text="completedRows().length"></span><span class="head-rule"></span></div>
+    <div class="list-done" x-show="(showCompleted || qfArchived) && completedRows().length" x-cloak>
+      <div class="list-done-head flex items-center gap-6"><span x-text="showCompleted && qfArchived ? 'Done &amp; Archived' : qfArchived ? 'Archived' : 'Done'"></span><span class="list-done-n" x-text="completedRows().length"></span><span class="head-rule"></span></div>
       <ul class="list flex-col" @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)">
         <div class="rows" x-effect="renderRows($el, doneHtml())"></div>
       </ul>
@@ -780,7 +783,7 @@
       <div class="mr-panel flex-col gap-2">
         <template x-for="it in railList" :key="it.kind + it.id">
           <button type="button" class="mr-target flex items-center gap-8" tabindex="-1" :class="{ hot: railHot === it.kind + it.id }" :style="'--cc:' + (it.color || 'var(--muted)')"
-                  @dragenter.prevent @dragover.prevent="railOver(it.kind, it.id)" @drop.prevent="railDrop(it.kind, it.id)">
+                  @dragenter.prevent="railOver(it.kind, it.id)" @dragover.prevent="railOver(it.kind, it.id)" @dragleave="railHot === it.kind + it.id && !$el.contains($event.relatedTarget) && (railHot = null)" @drop.prevent="railDrop(it.kind, it.id)">
             <svg class="ico flex-none"><use :href="'#' + it.icon"/></svg>
             <span class="mr-name truncate" x-text="it.label"></span>
           </button>
@@ -789,9 +792,9 @@
     </div>
     <!-- Peek Pane (C2): drag a row and today's REAL day column docks in from the right — drop on the grid =
          timed schedule (est as duration), drop on the all-day strip = all-day, drop back in the list = reorder.
-         Fixed overlay (move-rail pattern): never reflows the list mid-drag. Children reuse the cl-* vocabulary;
-         subset of the week .cl-pcol (no pg-dependent all-day bands/marks). -->
-    <aside class="peek" :class="{ on: peekOn() }" aria-label="Schedule" @dragover="peekEdge($event)" @dragleave="_peekCancelEdge()">
+         Fixed overlay (move-rail pattern): never reflows the list mid-drag. Children reuse the cl-* vocabulary and
+         the week column's item look (clEvClass/clBlkClass/clDlClass + styles); inert — no drag, click or check. -->
+    <aside class="peek" :class="{ on: peekOn() }" aria-label="Schedule" @dragover="peekEdge($event)" @dragleave="$el.contains($event.relatedTarget) || _peekCancelEdge()">
       <div class="peek-panel flex-col">
       <!-- edge-dwell paging affordances: glow + rotated target-day label; the charge bar fills over the dwell so the hold is FELT -->
       <div class="peek-eg l" x-show="dragId && peekCanBack()" :class="{ hot: peekEdgeHot === 'prev' }"><span class="peek-eg-lbl" x-text="peekEdgeLabel(-1)"></span></div>
@@ -802,7 +805,7 @@
             <span class="peek-date" x-text="(col.today ? 'Today · ' : '') + fmt(col.iso)"></span>
             <button type="button" class="peek-pin" :class="{ on: peekPin }" @click="peekPin = !peekPin" title="Keep the pane open"><svg class="ico"><use href="#i-pin"/></svg></button>
           </div>
-          <div class="peek-allday" :class="{ hot: clDropHint === 'peek-ad' }" @dragenter.prevent @dragover.prevent="clDropHint = 'peek-ad'; clDropPreview = null" @dragleave="clDropHint = null" @drop.prevent="clDropHint = null; clDropOn($event, col.iso, true)">
+          <div class="peek-allday" :class="{ hot: clDropHint === 'peek-ad' }" @dragenter.prevent @dragover.prevent="clDropHint = 'peek-ad'; clDropPreview = null" @dragleave="clDropHint = null" @drop.prevent="clDropOn($event, col.iso, true)">
             <span class="peek-ad-lbl">all day</span>
             <div class="peek-ad-zone flex items-center flex-wrap">
               <span class="peek-ad-hint" x-show="!col.bands.length">any time that day</span>
@@ -812,19 +815,18 @@
           <div class="peek-body">
             <div class="peek-grid">
               <div class="cl-gutter"><template x-for="h in clHours()" :key="'pkh' + h"><div class="cl-hour"><span x-text="clHourLabel(h)"></span></div></template></div>
-              <div class="cl-pcol peek-col flex-col" :data-iso="col.iso" @dragenter.prevent @dragover.prevent="clDropOver($event, col.iso)" @dragleave="clDropPreview = null" @drop="clDropOn($event, col.iso)">
-                <template x-for="h in clHours()" :key="'pkl' + h"><div class="cl-hour-line"></div></template>
+              <div class="cl-pcol peek-col flex-col" :data-iso="col.iso" @dragenter.prevent="clDropOver($event, col.iso)" @dragover.prevent="clDropOver($event, col.iso)" @dragleave="clDropPreview = null" @drop="clDropOn($event, col.iso)">
                 <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"><span class="cl-drop-time" x-text="clDropPreview.label"></span><span class="cl-drop-t truncate" x-text="clDropPreview.t || ''"></span></div></template>
                 <template x-for="(p, ix) in col.packedBlocks" :key="'pkp' + p.it.id + ix">
-                  <div class="cl-block" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;'+clEvBox(p)+'--cc:'+(p.it.color || 'var(--accent)')" :title="p.it.title"><span class="cl-blk-t" x-text="p.it.title"></span></div>
+                  <div class="cl-block" :class="clBlkClass(p)" :style="clBlkStyle(p)" :title="p.it.title"><span class="cl-blk-t" x-text="p.it.title"></span></div>
                 </template>
                 <template x-for="(m, mi) in col.deadlines" :key="'pkd' + m.id">
-                  <div class="cl-dl" :class="(mi === 0 ? 'lead' : '') + (m.start.length > 10 ? ' at' : '')" :style="'--cc:' + clItemColor(m) + ';height:' + clDlPct(m) + '%'"><span class="peek-dl-t inline-flex items-center truncate"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span></span></div>
+                  <div class="cl-dl" :class="clDlClass(m, mi)" :style="'--cc:' + clItemColor(m) + ';height:' + clDlPct(m) + '%'"><span class="peek-dl-t inline-flex items-center truncate"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span></span></div>
                 </template>
-                <div class="cl-elapsed" :style="'display:' + (col.today || col.past ? 'block' : 'none') + ';height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
-                <div class="cl-now" :style="'display:' + (col.today ? 'block' : 'none') + ';top:' + clNowPct() + '%'"></div>
+                <div class="cl-elapsed" :style="col.past ? 'height:100%' : clNowAt(col, 'height', true)"></div>
+                <div class="cl-now" :style="clNowAt(col, 'top', true)"></div>
                 <template x-for="(p, ix) in col.timed" :key="'pkt' + p.it.kind + p.it.id + ix">
-                  <div class="cl-event" :class="p.it.kind + ' tier-' + p.tier + (clPlaced === p.it.id ? ' cl-placed' : '')" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;'+clEvBox(p)+'z-index:'+(2+p.lane)+';--cc:'+clItemColor(p.it)" :title="p.it.title">
+                  <div class="cl-event" :class="clEvClass(p)" :style="clEvStyle(p, ix)" :title="p.it.title">
                     <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm" x-text="clTimeLabel(p.it)"></span></span>
                   </div>
                 </template>
@@ -850,15 +852,18 @@
     </main>
       </section><!-- /surface-lists -->
 
+    <!-- ── Plan surface: calendar ── -->
     <!-- Plan surface: the calendar. Lazy-mounted (heavy subtree + effects) on first visit; x-init centers it on mount. -->
     <section class="surface surface-plan" data-surface="plan" :style="surfaceStyle('plan')" :inert="surface !== 'plan'">
     <template x-if="mounted('plan')">
-    <section class="calendar" :class="'view-' + clView + (clScrolling ? ' cl-scrolling' : '') + (clFast ? ' cl-fast' : '') + (clSettling ? ' cl-settle' : '') + (clSideVisible() ? ' side' : '') + (clVT ? ' vt' : '')" x-init="clOpenCalendar()">
+    <section class="calendar" :class="'view-' + clView + (clScrolling ? ' cl-scrolling' : '') + (clFast ? ' cl-fast' : '') + (clSettling ? ' cl-settle' : '') + (clSideVisible() && !clSideOver ? ' side' : '') + (clVT ? ' vt' : '')" x-init="clOpenCalendar()" x-effect="_clStale && !_clHidden() && queueMicrotask(() => _clResized())">
       <!-- Overlaid top chrome: month/period label + controls, translucent over the scrolling calendar -->
       <div class="cl-bar flex items-center" @wheel.passive="onCalTitleWheel($event)">
         <!-- in day/week the title IS the date picker; a hover background is the whole affordance -->
-        <h2 class="cl-period grow min-w-0" @click.outside="popAway('clnav', $event)">
+        <h2 class="cl-period grow min-w-0 flex" @click.outside.capture="popAway('clnav', $event)">
           <button type="button" class="cl-period-btn" :class="{ pick: clView === 'day' || clView === 'week' }" @click="clOpenDatePop($el)"><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></button>
+          <!-- A2·B: what's COMING rides the title's line — part of the date you're looking at, not one more control -->
+          <span class="cl-cds flex flex-wrap grow"><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
         </h2>
         <!-- calendar nav pop is the shared unified cal pop (see composer section) -->
       </div>
@@ -866,27 +871,26 @@
       <!-- ONE row of chips on the title's baseline. The ‹ › steppers are gone: scrolling IS how you move
            through time here, and two buttons that duplicate a gesture you already make are just noise.
            Views abbreviate to single letters so the whole cluster fits the line. -->
+      <template x-if="!narrow">   <!-- on a phone the bar is title-only: views + actions live in the dot strip (dotStripHtml seg) -->
       <div class="cl-actions flex gap-8">
         <button class="cl-today" @click="clToday()">Today</button>
-        <!-- x-if, not x-show: an element carrying :style must not also carry x-show (they fight over display) -->
-        <template x-if="!narrow">   <!-- on a phone the views live in the dot strip instead (dotStripHtml seg) -->
-          <div class="cl-switcher inline-flex" :style="'--seg-i:' + clViews().indexOf(clView)">
-            <span class="cl-seg-chip" aria-hidden="true"></span>
-            <template x-for="v in clViews()" :key="v">
-              <button class="cl-seg inline-flex items-center justify-center" :class="{ sel: clView === v }" @click="clSetView(v)" :title="v[0].toUpperCase()+v.slice(1)" :aria-label="v[0].toUpperCase()+v.slice(1)" x-text="v[0].toUpperCase()"></button>
-            </template>
-          </div>
-        </template>
+        <div class="cl-switcher inline-flex" :style="'--seg-i:' + clViews().indexOf(clView)">
+          <span class="cl-seg-chip" aria-hidden="true"></span>
+          <template x-for="v in clViews()" :key="v">
+            <button class="cl-seg inline-flex items-center justify-center" data-sk="Day / week / month" :data-sk-key="v[0]" :class="{ sel: clView === v }" @click="clSetView(v)" :title="v[0].toUpperCase()+v.slice(1)" :aria-label="v[0].toUpperCase()+v.slice(1)" x-text="v[0].toUpperCase()"></button>
+          </template>
+        </div>
         <button class="cl-add inline-flex items-center justify-center" @click="clNewEvent()" title="New event">＋</button>
-        <button class="cl-add cl-tray-btn inline-flex items-center justify-center" :class="{ on: clSideOpen }" @click="clSideOpen = !clSideOpen" title="Task panel — this view's tasks + unscheduled"><svg class="ico" width="16" height="16" viewBox="0 0 24 24" style="flex:none"><use href="#i-panel-r"/></svg></button>
+        <button class="cl-add cl-tray-btn inline-flex items-center justify-center" :class="{ on: clSideOpen }" @click="clSideOpen = !clSideOpen" title="Task panel — this view's tasks + unscheduled"><svg class="ico" viewBox="0 0 24 24"><use href="#i-panel-r"/></svg></button>
       </div>
+      </template>
 
       <!-- over-header zone title overlay; top set IMPERATIVELY on scroll (_clPositionZone) — reactive top lags a frame -->
       <div class="cl-mtitles overlay" x-ref="clMtitlesBox">
         <template x-for="t in (clView === 'month' ? clZoneTitles() : _periodZoneTitles())" :key="t.name">
-          <!-- NO :style top — _clPositionZone is the single writer. Two writers on this property is what made a
+          <!-- NO :style top or :class — _clPositionZone is the single writer of top and .at-bar. Two writers on top made a
                title entering or leaving the list keep a stale y for a frame (the teleport). -->
-          <div class="cl-mtitle" :class="{ 'at-bar': t.atBar }" :data-name="t.name"><span x-text="clSplitTitle(t.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(t.name)[1]"></span></div>
+          <div class="cl-mtitle" :data-name="t.name"><span x-text="clSplitTitle(t.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(t.name)[1]"></span></div>
         </template>
       </div>
 
@@ -894,32 +898,43 @@
       <div class="cl-weekhead" :class="{ 'cl-wh-week': clView === 'week' }" x-show="clView === 'month' || clView === 'week'">
         <div x-show="clView === 'week'"></div>
         <template x-for="w in clHeadCells()" :key="w.key">
-          <div class="cl-wh" :class="{ today: w.today, weekend: w.weekend }"><span x-text="w.name"></span><span class="cl-wh-d" x-show="w.day" x-text="w.day"></span></div>
+          <div class="cl-wh" :class="{ today: w.today, weekend: w.weekend }">
+            <template x-if="!w.day"><span x-text="w.name"></span></template>
+            <!-- B·V3: a week day's slot IS its name field, always an input (no swap to misalign); the weekday is the placeholder.
+                 Value written only while unfocused, so a re-render never eats the caret. A week move or a view switch removes the head;
+                 x-for strips Alpine's listeners first, so _clSetPos and clSetView blur it (_clSaveName) before, and @change still saves. -->
+            <template x-if="w.day"><input class="cl-wh-n" spellcheck="false" autocomplete="off" :placeholder="w.name" :aria-label="'Name ' + w.name + ' ' + w.day"
+              x-effect="document.activeElement !== $el && ($el.value = clDayLabel(w.key))" @keydown.enter.prevent="$el.blur()"
+              @keydown.escape.prevent.stop="$el.value = clDayLabel(w.key); $el.blur()" @change="clSetDayLabel(w.key, $el)"></template>
+            <span class="cl-wh-d" x-show="w.day" x-text="w.day"></span></div>
         </template>
       </div>
 
       <!-- MONTH: virtualized — visible weeks absolutely placed in fixed-height spacer (no scroll reflow) -->
       <div class="cl-month" x-ref="clMonth" x-show="clView === 'month'" @scroll="clMonthScroll($event)" @scrollend="clMonthSnap($event)"
-           @wheel.passive="clMonthTake()" @touchstart.passive="clMonthTake()" @pointerdown="clMonthTake()">
+           @wheel.passive="clMonthTake($event)" @touchstart.passive="clMonthTake($event)" @pointerdown="clMonthTake($event)" @touchend.passive="_clMFinger = $event.touches.length > 0" @touchcancel.passive="_clMFinger = $event.touches.length > 0">
         <div class="cl-month-inner" :style="'height:' + clTotalH() + 'px;--rowh:' + clRowH + 'px'">
           <!-- body bands: top=idx*rowH glues them to the grid; visible on scroll, fade idle; hand off to clZoneTitles -->
           <template x-for="b in clMonthBands()" :key="b.name">
             <div class="cl-mband overlay" :style="{ top: b.top + 'px' }"><span x-text="clSplitTitle(b.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(b.name)[1]"></span></div>
           </template>
           <template x-for="wk in clWeeks()" :key="wk.key">
-            <div class="cl-wk" :style="'top:' + wk.top + 'px;height:' + clRowH + 'px' + ((clVT && clView === 'month' && wk.key === clAnchorIdx()) ? ';view-transition-name:cl-active-week' : '')" @click="clOpenWeekRow(wk.key)">
+            <div class="cl-wk" :style="'top:calc(var(--rowh) * ' + wk.key + ')' + ((clVT && clView === 'month' && wk.key === clAnchorIdx()) ? ';view-transition-name:cl-active-week' : '')" @click="clOpenWeekRow(wk.key)">
               <template x-for="c in wk.days" :key="c.iso">
                 <!-- out-of-month is a data ATTRIBUTE, not a class: clFocusYM flips at every month boundary (~4-7× a
                      fling) and Alpine's :class path clears and re-adds, so all ~190 cells rewrote their class twice
                      per flip even when nothing changed (113 attribute mutations per scroll event). The generic
-                     attribute path is diff-guarded, so only the ~60 cells that really change write anything. -->
-                <div class="cl-cell" :class="{ today: c.today, weekend: c.weekend, 'cl-drop': clDropHint === c.iso }" :data-out="c.ym !== clFocusYM ? 1 : 0" @dragover.prevent @dragenter.prevent="clDropHint = c.iso; clDropPreview = null" @drop="clDropHint = null; clDropOn($event, c.iso)">
-                  <div class="cl-date flex items-center gap-4" role="button" tabindex="0" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)"><span class="cl-mlabel" x-show="c.mlabel" x-text="c.mlabel"></span><span class="cl-dnum" x-text="c.day"></span></div>
+                     attribute path is diff-guarded, so only the ~60 cells that really change write anything.
+                     clDimYM, not clFocusYM: it holds while fast, when .cl-fast lifts the dim and a flip would show nothing. -->
+                <div class="cl-cell" :class="{ today: c.today, weekend: c.weekend }" :data-out="c.ym !== clDimYM ? 1 : 0" @click="narrow && ($event.stopPropagation(), clOpenDay(c.iso))" @dragover.prevent @dragenter.prevent="_clDropCell($el); clDropPreview = null" @drop="clDropOn($event, c.iso)">
+                  <div class="cl-date flex items-center gap-4" role="button" :tabindex="c.iso === (clDayInView || clDayFocus || _nowDay) ? 0 : -1" :aria-label="c.label" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)"><span class="cl-mlabel" x-show="c.mlabel" x-text="c.mlabel"></span><span class="cl-dnum" x-text="c.day"></span></div>
                   <div class="cl-chips flex-col min-w-0 gap-2">
-                    <template x-for="(it, ix) in c.items.slice(0,3)" :key="it.kind+it.id+ix">
-                      <div class="cl-chip flex items-center min-w-0" :class="clChipCls(it)" role="button" tabindex="0" :draggable="!!_dndKind(it.kind)" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(it)" @click.stop="clItemClick(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><span x-html="clCheckHtml(it)" @click.stop="clToggleTask(it.id)" aria-label="Complete task"></span></template><template x-if="it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" x-text="it.spanStart === false ? '' : it.title"></span></div>
+                    <!-- a chip has NO click of its own: it is part of its day, so the click is the day's (the side panel
+                         it used to open covered the very day you were looking at), and no Tab stop either. Drag and the checkbox still work. -->
+                    <template x-for="(it, ix) in c.items.slice(0, c.shown)" :key="it.kind+it.id+ix">
+                      <div class="cl-chip flex items-center min-w-0" :class="it.pad ? 'cl-span cl-pad' : clChipCls(it)" :draggable="!it.pad && !!_dndKind(it.kind)" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id, it.start)" @dragend="clDragEndSchedule()" :style="'--cc:' + clItemColor(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><span x-html="clCheckHtml(it)" @click.stop="clToggleTask(it.id)"></span></template><template x-if="it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" x-text="it.spanStart === false && !c.first ? '' : it.title"></span></div>
                     </template>
-                    <div class="cl-more" x-show="c.items.length > 3" x-text="'+' + (c.items.length - 3)"></div>
+                    <div class="cl-more" x-show="c.more" x-text="'+' + c.more"></div>
                   </div>
                 </div>
               </template>
@@ -937,12 +952,12 @@
            :style="'display:' + (clView === 'week' ? 'block' : 'none')">
         <!-- the departing week recedes: a wash whose floor IS the week boundary (see _clAdPaint) -->
         <div class="cl-adveil"></div>
-        <template x-for="(pg, pi) in clAdPages()" :key="pi"><div class="contents">
+        <template x-for="(pg, pi) in clAdPages()" :key="pg.key === '' ? 'none' + pi : pg.key"><div class="contents">
         <div class="cl-adrail" :class="pi && 'nx'" :style="'display:' + (clAdRailOn(pg) ? 'grid' : 'none')">
           <template x-for="b in pg.bands" :key="'ch'+b.it.kind+b.it.id">
-            <div class="cl-ch" :class="b.it.kind + (b.openL ? ' open-l' : '') + clTaskState(b.it)" role="button" tabindex="0" :draggable="!!_dndKind(b.it.kind)" @dragstart.stop="clDragStart($event, _dndKind(b.it.kind), b.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(b.it) + ';grid-column:' + (b.c0 + 2) + '/span ' + b.len + ';grid-row:' + (b.row + 1)" :title="b.it.title" @click.stop="clItemClick(b.it)">
+            <div class="cl-ch" :class="b.it.kind + (b.openL ? ' open-l' : '') + clTaskState(b.it)" role="button" tabindex="0" :draggable="!!_dndKind(b.it.kind)" @dragstart.stop="clDragStart($event, _dndKind(b.it.kind), b.it.id, b.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'--cc:' + clItemColor(b.it) + ';grid-column:' + (b.c0 + 2) + '/span ' + b.len + ';grid-row:' + (b.row + 1)" :title="b.it.title" @click.stop="clItemClick(b.it)">
               <template x-if="b.openL"><span class="cl-ch-lead open"></span></template>
-              <template x-if="!b.openL && clIsTask(b.it)"><span x-html="clCheckHtml(b.it)" @click.stop="clToggleTask(b.it.id)" aria-label="Complete task"></span></template>
+              <template x-if="!b.openL && clIsTask(b.it)"><span x-html="clCheckHtml(b.it)" @click.stop="clToggleTask(b.it.id)"></span></template>
               <template x-if="!b.openL && !clIsTask(b.it)"><span class="cl-ch-dot"></span></template>
               <span class="cl-ch-t" x-text="b.it.title"></span><span class="cl-ch-lead"></span>
             </div>
@@ -961,7 +976,7 @@
           <template x-for="col in pg.cols" :key="'dr'+col.iso">
             <div class="cl-dlrail-c flex-col min-w-0">
               <template x-for="m in col.deadlines" :key="'dr'+m.id">
-                <button type="button" class="cl-dl-t flex items-center min-w-0" :class="(m.start.length > 10 ? 'at' : '') + clTaskState(m)" :style="'--cc:' + clItemColor(m)" :title="'Deadline: ' + m.title + ' — ' + clDlWhen(m)" @click.stop="clItemClick(m)"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span><span class="cl-dl-w" x-text="clDlWhen(m)"></span></button>
+                <button type="button" class="cl-dl-t flex items-center min-w-0" :class="(m.start.length > 10 ? 'at' : '') + clTaskState(m)" :style="'--cc:' + clItemColor(m)" :title="'Deadline: ' + m.title + ' — ' + clDlWhen(m)" @click.stop="clItemClick(m)"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span><span class="cl-dl-w" x-text="clDlLeft(m)"></span></button>
               </template>
             </div>
           </template>
@@ -970,7 +985,7 @@
       </div>
 
       <!-- WEEK / DAY: one continuous timeline; each block is a 24h day/week whose top border is the 12am rule -->
-      <div class="cl-pages" x-cloak :class="{ single: clView === 'day' }" :style="'display:' + (clView === 'week' || clView === 'day' ? 'block' : 'none') + ';--clhh:' + clHourH + 'px;--ph:' + clPeriodH() + 'px'" x-ref="clPages" @wheel="clPagesWheel($event)"
+      <div class="cl-pages" :class="{ single: clView === 'day' }" :style="'display:' + (clView === 'week' || clView === 'day' ? 'block' : 'none') + ';--clhh:' + clHourH + 'px;--ph:' + clPeriodH() + 'px'" x-ref="clPages" @wheel="clPagesWheel($event)"
            @pointerdown="clPagesTouch($event)" @pointermove="clPagesTouch($event)" @pointerup.window="clPagesTouch($event)" @pointercancel.window="clPagesTouch($event)">
         <!-- No scroller: --pf is the position in PERIODS and the transform is its only rendering. Written
              IMPERATIVELY by _clPaint (never bound) — a binding here put an Alpine flush on every wheel event,
@@ -983,31 +998,28 @@
             <template x-if="clView === 'day'">
               <div class="cl-agbody">
                 <template x-for="col in pg.cols" :key="'ag'+col.iso">
-                  <div class="cl-agwrap" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
+                  <div class="cl-agwrap" :data-iso="col.iso" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
                     <div class="cl-rail">
                       <template x-for="(b, ix) in col.blocks" :key="'rb'+b.id+ix">
-                        <div class="cl-rail-blk" :style="'top:'+b.topPct+'%;height:'+b.hPct+'%;--cc:'+(b.color || 'var(--accent)')" :title="b.title"></div>
+                        <div class="cl-rail-blk" :style="'top:'+b.topPct+'%;height:'+clBandH(b, b.hPct)+'%;--cc:'+(b.color || 'var(--accent)')" :title="b.title"></div>
                       </template>
                       <template x-for="(p, ix) in col.timed" :key="'rs'+p.it.kind+p.it.id+ix">
                         <div class="cl-rail-seg" :class="p.it.kind" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;--cc:'+clItemColor(p.it)"></div>
                       </template>
-                      <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"></div></template>
-                      <div class="cl-elapsed" :style="'display:' + (col.today || col.past ? 'block' : 'none') + ';height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
-                      <div class="cl-now" :style="'display:' + (col.today ? 'block' : 'none') + ';top:' + clNowPct() + '%'"></div>
+                      <div class="cl-elapsed" :style="col.past ? 'height:100%' : clNowAt(col, 'height')"></div>
+                      <div class="cl-now" :style="clNowAt(col, 'top')"></div>
                     </div>
-                    <!-- while placing, the landing time still reads out — the rail is the gutter now -->
-                    <div class="cl-drop-clock" :style="'display:' + (clDropPreview && clDropPreview.iso === col.iso ? 'block' : 'none') + ';top:' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%'" x-text="clDropPreview?.label"></div>
                     <!-- x-if flips a frame before clBlocks() recomputes on a view switch, so never assume agenda -->
-                    <div class="cl-agenda" :class="'tier-' + (col.agenda?.tier || 'full')">
+                    <div class="cl-agenda" :class="'tier-' + (col.agenda?.h > _clDayH() - 20 ? 'compact' : 'full')">
                       <template x-for="(r, ix) in (col.agenda?.rows || [])" :key="r.key">
-                        <div class="cl-ag-row" :class="(r.free ? 'free' : r.it.kind + (r.mark ? ' mark' : '') + clTaskState(r.it)) + (!r.allday && r.min + r.mins <= (col.past ? 1440 : col.today ? clNowMin() : 0) ? ' past' : '')" :tabindex="r.free ? -1 : 0" :draggable="!r.free && !!_dndKind(r.it.kind)" :style="'--i:' + ix + ';--cc:' + (r.free ? 'var(--muted)' : clItemColor(r.it))" @dragstart.stop="r.free || clDragStart($event, _dndKind(r.it.kind), r.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click="r.free || (r.it.kind === 'task-block' ? clOpenTaskSide(r.it.id) : clItemClick(r.it))">
+                        <div class="cl-ag-row" :class="(r.free ? 'free' : r.it.kind + (r.mark ? ' mark' : '') + clTaskState(r.it)) + (!r.allday && r.min + r.mins <= (col.past ? 1440 : col.today ? clNowMin() : 0) ? ' past' : '')" :tabindex="r.free ? -1 : 0" :draggable="!r.free && !!_dndKind(r.it.kind)" :style="'--i:' + ix + ';--cc:' + (r.free ? 'var(--muted)' : clItemColor(r.it))" @dragstart.stop="r.free || clDragStart($event, _dndKind(r.it.kind), r.it.id, r.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click="r.free || (r.it.kind === 'task-block' ? clOpenTaskSide(r.it.id) : clItemClick(r.it))">
                           <span class="cl-ag-t" x-text="r.allday ? 'All day' : clAgTime(r.min)"></span>
                           <span class="cl-ag-m">
-                            <template x-if="!r.free && r.it.kind === 'task-block'"><span x-html="clCheckHtml(r.it,'cl-evt-check')" @click.stop="clToggleTask(r.it.id)" aria-label="Complete task"></span></template>
+                            <template x-if="!r.free && r.it.kind === 'task-block'"><span x-html="clCheckHtml(r.it,'cl-evt-check')" @click.stop="clToggleTask(r.it.id)"></span></template>
                             <template x-if="!r.free && r.it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template>
                             <template x-if="r.free || (r.it.kind !== 'task-block' && r.it.kind !== 'task-deadline')"><span class="cl-ag-dot"></span></template>
                           </span>
-                          <span class="cl-ag-b"><span class="cl-ag-n" x-text="r.free ? _clDur(r.mins) + ' free' : r.it.title"></span><span class="cl-ag-d" x-text="r.free ? '' : clAgSub(r)"></span></span>
+                          <span class="cl-ag-b"><span class="cl-ag-n" x-text="r.free ? durFmt(r.mins) + ' free' : r.it.title"></span><span class="cl-ag-d" x-text="r.free ? '' : clAgSub(r)"></span></span>
                         </div>
                       </template>
                       <div class="cl-ag-none" x-show="!col.agenda?.rows.length">Nothing scheduled</div>
@@ -1020,40 +1032,42 @@
             <template x-if="clView !== 'day'">
             <div class="cl-pbody grow">
               <div class="cl-gutter flex-col">
-                <template x-for="h in clHours()" :key="'g'+h"><div class="cl-hour grow"><span x-text="clHourLabel(h)"></span></div></template>
+                <template x-for="h in clHours()" :key="'g'+h"><div class="cl-hour grow"><span x-text="clHourLabel(h)" x-show="!clNowCuts(h, pg.cols.find(c => c.today))"></span></div></template>
                 <!-- the live clock rides the gutter opposite the now line — time made readable, not just marked -->
-                <div class="cl-now-pill" :style="'display:' + (pg.cols.some(c => c.today) ? 'block' : 'none') + ';top:' + clNowPct() + '%'" x-text="clNowLabel()"></div>
-                <!-- and while placing, the landing time reads out in that same column, so you aim by the clock -->
-                <div class="cl-drop-clock" :style="'display:' + (clDropPreview && pg.cols.some(c => c.iso === clDropPreview.iso) ? 'block' : 'none') + ';top:' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%'" x-text="clDropPreview?.label"></div>
+                <div class="cl-now-pill" :style="clNowAt(pg.cols.find(c => c.today), '--now')" x-text="clNowLabel(pg.cols.find(c => c.today))"></div>
+                <!-- and while placing, the landing time reads out in that same column, so you aim by the clock; max(9px): at 00:00 it
+                     hangs below the day's top rule (as the tail ghost does), not half under the pinned weekday row -->
+                <div class="cl-drop-clock" :style="'display:' + (clDropPreview?.clock && pg.cols.some(c => c.iso === clDropPreview.iso) ? 'block' : 'none') + ';top:max(9px, ' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%)'" x-text="clDropPreview?.clock"></div>
               </div>
               <template x-for="(col, ci) in pg.cols" :key="'c'+col.iso">
-                <div class="cl-pcol flex-col" :class="{ weekend: col.weekend }" :data-iso="col.iso" :style="'grid-column:' + (ci + 2)" @pointerdown="clBlockDragStart($event, col.iso)" @pointermove="clBlockDragMove($event)" @pointerup="clBlockDragEnd()" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
-                  <template x-for="h in clHours()" :key="'l'+h"><div class="cl-hour-line"></div></template>
+                <div class="cl-pcol flex-col" :class="{ weekend: col.weekend }" :data-iso="col.iso" :style="'grid-column:' + (ci + 2)" @pointerdown="clBlockDragStart($event, col.iso)" @pointermove="clBlockDragMove($event)" @pointerup="clBlockDragEnd()" @dragenter.prevent="clDropOver($event, col.iso)" @dragover.prevent="clDropOver($event, col.iso)" @dragleave="!$el.contains($event.relatedTarget) && (clDropPreview?.iso === col.iso && (clDropPreview = null), _clDropEl === $el && _clDropCell(null))" @drop="clDropOn($event, col.iso)">
 
                   <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"><span class="cl-drop-time" x-text="clDropPreview.label"></span><span class="cl-drop-t truncate" x-text="clDropPreview.t || ''"></span></div></template>
-                  <!-- all blocks pack flat with events/tasks (one drawing level) -->
+                  <!-- a block holding nothing packs with events/tasks; a holder (H-presence, p.terrain) sits behind them at z 1 -->
                   <template x-for="(p, ix) in col.packedBlocks" :key="'pb'+p.it.id+p.it.src">
-                    <div class="cl-block" :class="{ 'is-running': clBlockDay(p.it.id, p.it.src)?.status === 'running', 'is-done': clBlockDay(p.it.id, p.it.src)?.status === 'done', 'is-missed': clBlockDay(p.it.id, p.it.src)?.status === 'missed', 'is-skipped': clBlockDay(p.it.id, p.it.src)?.status === 'skipped', 'cl-stk': !!p.stk }" role="button" tabindex="0" draggable="true" :data-id="p.it.id" @dragstart.stop="clDragStart($event, 'block', p.it.id, p.it.src)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;'+clEvBox(p)+'z-index:'+(2+p.lane)+';--cc:'+(p.it.color || 'var(--accent)')" :title="p.it.title" @click.stop="clEditBlock(p.it.id, p.it.src)">
+                    <div class="cl-block" :class="clBlkClass(p)" role="button" tabindex="0" draggable="true" :data-id="p.it.id" @dragstart.stop="clDragStart($event, 'block', p.it.id, p.it.src, p.it.start, p.it.planned)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" :style="clBlkStyle(p)" :title="p.it.title" @click.stop="clEditBlock(p.it.id, p.it.src)">
                       <span class="cl-blk-t" x-text="p.it.title"></span>
-                      <template x-if="clBlockDay(p.it.id, p.it.src)?.status === 'running' && clBlockDay(p.it.id, p.it.src)?.actual_start"><span class="cl-blk-tick" x-text="_clFmtActualStart(clBlockDay(p.it.id, p.it.src)?.actual_start)"></span></template>
+                      <template x-if="p.it.tick"><span class="cl-blk-tick" x-text="p.it.tick"></span></template>
+                      <template x-if="p.it.live"><button type="button" class="cl-blk-stop" @click.stop="clStopBlock(p.it.id, p.it.src)" @keydown.enter.stop @keydown.space.stop>Stop</button></template>
                     </div>
                   </template>
-                  <div class="cl-block cl-block-drag" x-show="clDragBand && clDragBand.iso === col.iso" :style="clDragBand ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : ''"></div>
+                  <template x-if="clStopHint(col) != null"><div class="cl-stop-hint" :style="'top:'+clStopHint(col)+'%'"><kbd x-text="keyTip('<kbd>⌘</kbd><kbd>z</kbd>', mod)"></kbd> undo stop</div></template>
+                  <div class="cl-block cl-block-drag" :style="clDragBand?.iso === col.iso ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : 'display:none'"></div><!-- no x-show: a string :style overwrites its display:none -->
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
                   <!-- DEADLINE: a rule across the day at the hour it bites, the runway above it darkening
                        toward it. The label is STICKY to the bottom of the scroller, so a deadline can never be
                        scrolled out of sight — it rides the bottom edge and lands on its own rule when you
                        reach that hour. Drawn in BOTH all-day modes: this is about WHEN, not about the day. -->
                   <template x-for="(m, mi) in col.deadlines" :key="'dl'+m.id">
-                    <div class="cl-dl" :class="(mi === 0 ? 'lead' : '') + (m.start.length > 10 ? ' at' : '') + clTaskState(m)" :style="'--cc:' + clItemColor(m) + ';height:' + clDlPct(m) + '%'"></div>
+                    <div class="cl-dl" :class="clDlClass(m, mi)" :style="'--cc:' + clItemColor(m) + ';height:' + clDlPct(m) + '%'"></div>
                   </template>
-                  <div class="cl-elapsed" :style="'display:' + (col.today || col.past ? 'block' : 'none') + ';height:' + (col.past ? 100 : clNowPct()) + '%'"></div>
-                  <div class="cl-now" :style="'display:' + (col.today ? 'block' : 'none') + ';top:' + clNowPct() + '%'"></div>
+                  <div class="cl-elapsed" :style="col.past ? 'height:100%' : clNowAt(col, 'height')"></div>
+                  <div class="cl-now" :style="clNowAt(col, 'top')"></div>
                   <!-- F5: everything planned for this day is done — the column warms instead of going blank -->
                   <template x-if="col.cleared"><div class="cl-cleared"><span class="cl-cleared-t" x-text="col.cleared.label"></span></div></template>
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
-                    <div class="cl-event" :class="p.it.kind + ' tier-' + p.tier + (p.stk ? ' cl-stk' : p.lane ? ' cl-casc' : '') + (clPlaced === p.it.id ? ' cl-placed' : '') + clTaskState(p.it) + (p.cov ? ' cl-cov' : '')" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it)" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;'+clEvBox(p)+'z-index:'+(2+p.lane)+';--i:'+ix+';--cc:'+clItemColor(p.it)">
-                      <template x-if="p.it.kind === 'task-block'"><span x-html="clCheckHtml(p.it,'cl-evt-check')" @click.stop="clToggleTask(p.it.id)" aria-label="Complete task"></span></template>
+                    <div class="cl-event" :class="clEvClass(p)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id, p.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it)" :style="clEvStyle(p, ix)">
+                      <template x-if="p.it.kind === 'task-block'"><span x-html="clCheckHtml(p.it,'cl-evt-check')" @click.stop="clToggleTask(p.it.id)"></span></template>
                       <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm" x-text="clTimeLabel(p.it)"></span></span>
                     </div>
                   </template>
@@ -1068,25 +1082,25 @@
 
       <!-- staging tray: what still needs a slot (slipped + unscheduled). What IS scheduled is the timeline's job —
            listing it here twice was pure duplication. Composer relocates in here when editing. -->
-      <aside class="cl-side" :class="{ open: clSideVisible() }">
+      <aside class="cl-side" :class="{ open: clSideVisible() }" :inert="!clSideVisible()">   <!-- closed, it is only slid off: Tab reached it and slid the calendar sideways -->
         <div class="cl-side-top flex items-center justify-between"><span class="cl-side-h">Needs a slot</span><button type="button" class="cl-side-x" @click="clSideOpen = false; if (composer.open) closeComposer()" aria-label="Close panel">×</button></div>
         <!-- the one real composer relocates in here when editing a task on this surface -->
         <ul class="list cl-side-composer"></ul>
         <!-- Reschedule: slipped tasks (past their time/due, not done) — drag them to a new slot -->
-        <template x-if="clReschedule().length">
+        <template x-if="clSideRows('res').length">
           <div>
             <div class="cl-side-sec resched">Reschedule <span class="cl-side-hint">slipped — drag to a new slot</span></div>
             <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
-              <div class="rows flex-col gap-4" x-effect="tasks; _rowV; _nowTickV; renderRows($el, clReschedListHtml())"></div>
+              <div class="rows flex-col gap-4" x-effect="renderRows($el, clSideRows('res'))"></div>
             </ul>
           </div>
         </template>
         <div class="cl-side-sec">Unscheduled <span class="cl-side-hint">drag onto a day</span></div>
         <!-- same REAL task rows; draggable onto a day/time to schedule -->
         <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
-          <div class="rows flex-col gap-4" x-effect="tasks; _rowV; renderRows($el, clUnschedListHtml())"></div>
+          <div class="rows flex-col gap-4" x-effect="renderRows($el, clSideRows('un'))"></div>
         </ul>
-        <div class="cl-side-empty" x-show="!clUnscheduled().length">Nothing unscheduled — nice.</div>
+        <div class="cl-side-empty" x-show="!clSideRows('un').length">Nothing unscheduled — nice.</div>
       </aside>
 
     </section>
@@ -1094,13 +1108,15 @@
       </section><!-- /surface-plan -->
 
      </div><!-- /canvas-track -->
-     <div class="canvas-dots" @click="dotStripClick($event)"
-          x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView } : null })), surfaceIndex())"></div>
+    <!-- ── Canvas dots + settings + overview deck + nav popovers ── -->
+     <div class="canvas-dots" @click="dotStripClick($event)" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }"
+          x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView, today: clShowToday(), side: clSideOpen } : null })), surfaceIndex())"></div>
      <!-- Account & settings: a gear in the corner, apart from the dots (a door over the app, not a place in it).
-          Status dot only when signed in — accent = syncing fine, gray = offline. -->
+          Status dot only when signed in — accent = syncing fine, gray = offline. Top-right up-arrow: a Windows-app update is ready. -->
      <button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">
        <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
        <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online }"></span></template>
+       <template x-if="updateReady"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
      </button>
     </div><!-- /canvas -->
 
@@ -1108,7 +1124,7 @@
 
   <!-- Overview deck: zoom-out to the Lists roller + Plan card as skeleton mockups w/ real titles. Open via the dots, `o`, or pinch. -->
   <template x-if="overview">
-  <div class="overview" @click="if (!$event.target.closest('[data-ridx], [data-more], [data-add], .ov-card')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
+  <div class="overview" :inert="modalOpen()" @click="if (!$event.target.closest('[data-ridx], [data-more], [data-add], .ov-card')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
     <div id="ov-stage">
     <!-- Lists picker: a center-focused roller on the left of the deck; the cards keep their size (not cramped) -->
     <div class="ov-roller" :class="{ sel: ovSel === 0 }" @mouseenter="ovSel = 0">
@@ -1137,7 +1153,7 @@
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
         <button class="nav-pop-item" @click.stop="startRename(navPopProj().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })" x-text="navPopProj().favorite ? '&#9733; Unfavorite' : '&#9734; Favorite'"></button>
-        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { overview: !navPopProj().overview })" x-text="navPopProj().overview ? 'Hide from Overview' : 'Show in Overview'"></button>
+        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { overview: false }, 'Hidden from Overview')">Hide from Overview</button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
         <div class="nav-pop-sep"></div>
@@ -1162,7 +1178,7 @@
     </template>
     <template x-if="overview && navRename">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
-        <input class="pop-input" type="text" x-ref="renameInput"
+        <input class="pop-input" type="text"
           :value="(byId.get(navRename)?.content) || (areas.find(a => a.id === navRename)?.name) || ''"
           @keydown.enter.prevent="saveRename(byId.get(navRename) || areas.find(a => a.id === navRename), $el.value)">
       </div>
@@ -1173,15 +1189,18 @@
   <!-- Account & settings popup: the card rises from the corner gear (transform-origin bottom-left), the app dims a
        step behind. Escape via the central escape() chain; backdrop click closes. Sign-in: email → OTP (magic link
        + 6-digit code from one email). No Automations section: none exist yet. -->
-  <div class="settings" x-show="settingsOpen" x-cloak @click.self="settingsOpen = false"
+  <div class="settings" x-show="settingsOpen" x-cloak :inert="anyDialog()" @click.self="settingsOpen = false"
        @online.window="online = true" @offline.window="online = false">
-    <div class="card settings-card" @click.stop>
+    <div class="settings-card" role="dialog" aria-modal="true" aria-label="Account &amp; settings" @click.stop><div class="set-scroll" x-effect="settingsOpen && ($el.scrollTop = 0)">
       <h1>Account &amp; settings</h1>
+      <template x-if="updateReady">
+        <button type="button" class="set-row set-rowbtn set-update flex items-center gap-10" @click="desktopWindow('update')"><svg class="ico set-ico"><use href="#i-repeat"/></svg>Update ready<span class="set-sub muted-12">Restart to update</span></button>
+      </template>
       <template x-if="session">
         <div>
           <div class="set-acct flex items-center">
             <span class="set-ember rounded-full flex-none" aria-hidden="true"></span>
-            <span class="set-who min-w-0"><b x-text="(session.user.email || '').split('@')[0]"></b><span x-text="(session.user.email || '') + (online ? ' &#183; synced' : ' &#183; offline')"></span></span>
+            <span class="set-who min-w-0"><b class="truncate" x-text="(session.user.email || '').split('@')[0]"></b><span class="truncate" x-text="(session.user.email || '') + (online ? ' &#183; synced' : ' &#183; offline')"></span></span>
             <button type="button" class="set-out flex-none muted-12" @click="signOut()">Sign out</button>
           </div>
           <div class="set-form">
@@ -1228,9 +1247,9 @@
       <div class="set-sec"><span class="section-label">Appearance</span>
         <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-palette"/></svg>Mode
           <div class="seg">
-            <button type="button" :class="{ on: theme === 'light' }" @click="setTheme('light')">Light</button>
-            <button type="button" :class="{ on: theme === 'system' }" @click="setTheme('system')">System</button>
-            <button type="button" :class="{ on: theme === 'dark' }" @click="setTheme('dark')">Dark</button>
+            <button type="button" :class="{ on: theme === 'light' }" :aria-pressed="theme === 'light'" @click="setTheme('light')">Light</button>
+            <button type="button" :class="{ on: theme === 'system' }" :aria-pressed="theme === 'system'" @click="setTheme('system')">System</button>
+            <button type="button" :class="{ on: theme === 'dark' }" :aria-pressed="theme === 'dark'" @click="setTheme('dark')">Dark</button>
           </div>
         </div>
         <div class="set-themes" role="group" aria-label="Color theme">
@@ -1243,6 +1262,19 @@
             </button>
           </template>
         </div>
+        <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-clock"/></svg>Breathing now line
+          <div class="seg">
+            <button type="button" :class="{ on: nowBreathe }" :aria-pressed="nowBreathe" @click="setFlag('nowBreathe', true)">On</button>
+            <button type="button" :class="{ on: !nowBreathe }" :aria-pressed="!nowBreathe" @click="setFlag('nowBreathe', false)">Off</button>
+          </div>
+        </div>
+        <div class="set-row set-celebrate flex items-center gap-10"><svg class="ico set-ico"><use href="#i-tag-flame"/></svg>Celebrations
+          <div class="seg">
+            <button type="button" :class="{ on: celebrations === 'full' }" :aria-pressed="celebrations === 'full'" @click="setCelebrations('full')">Full</button>
+            <button type="button" :class="{ on: celebrations === 'calm' }" :aria-pressed="celebrations === 'calm'" @click="setCelebrations('calm')">Calm</button>
+            <button type="button" :class="{ on: celebrations === 'off' }" :aria-pressed="celebrations === 'off'" @click="setCelebrations('off')">Off</button>
+          </div>
+        </div>
       </div>
       <!-- starter shortcuts: teach the power path by keeping it visible (full sheet stays on ?) -->
       <div class="set-sec set-sec-keys"><span class="section-label">Keyboard</span>
@@ -1250,16 +1282,22 @@
           <div class="set-key flex items-center justify-between muted-12"><span>Add a task</span><kbd>q</kbd></div>
           <div class="set-key flex items-center justify-between muted-12"><span>Search</span><kbd>/</kbd></div>
           <div class="set-key flex items-center justify-between muted-12"><span>Filter</span><kbd>f</kbd></div>
-          <div class="set-key flex items-center justify-between muted-12"><span>Jump anywhere</span><kbd>Space</kbd><kbd>⌘K</kbd></div>
+          <div class="set-key flex items-center justify-between muted-12"><span>Jump anywhere</span><kbd>Space</kbd><kbd x-text="keyTip('<kbd>⌘</kbd><kbd>k</kbd>', mod)"></kbd></div>
         </div>
         <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="shortcutsOpen = true"><svg class="ico set-ico"><use href="#i-keyboard"/></svg>Every shortcut<span class="set-sub muted-12"><kbd>?</kbd></span></button>
+        <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-bell"/></svg>Shortcut tips
+          <div class="seg">
+            <button type="button" :class="{ on: shortcutTips }" :aria-pressed="shortcutTips" @click="setFlag('shortcutTips', true)">On</button>
+            <button type="button" :class="{ on: !shortcutTips }" :aria-pressed="!shortcutTips" @click="setFlag('shortcutTips', false)">Off</button>
+          </div>
+        </div>
         <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="settingsOpen = false; guideOpen = true"><svg class="ico set-ico"><use href="#i-clipboard"/></svg>Bulk-add tasks<span class="set-sub muted-12">format &amp; AI prompt</span></button>
       </div>
       <div class="set-sec"><span class="section-label">Safety</span>
         <button type="button" class="set-row set-rowbtn set-trash flex items-center gap-10" @click="settingsOpen = false; trashOpen = true"><svg class="ico set-ico"><use href="#i-trash"/></svg>Bin<span class="set-sub muted-12"><kbd>b</kbd></span></button>
         <button type="button" class="set-row set-rowbtn set-danger flex items-center gap-10" @click="resetLocalData()"><svg class="ico set-ico"><use href="#i-alert"/></svg>Delete local data<span class="set-sub muted-12">wipe this device &amp; start fresh</span></button>
       </div>
-    </div>
+    </div></div>
   </div>
 
   <!-- The whole window accepts a dropped .ics. Shown only while a FILE is over the page, so ordinary
@@ -1268,22 +1306,13 @@
     <div class="drop-note">Drop a calendar file to import its events</div>
   </div>
 
+  <!-- ── Modal dialogs: confirm, shortcuts, trash, palette, filter editor ── -->
   <!-- All modal dialogs live in one backdrop; clicking it closes every open dialog (closeDialogs). -->
-  <div class="dialog-backdrop flex items-center justify-center" :class="{ 'palette-backdrop': palette.open }" x-show="anyDialog()" x-cloak @click="closeDialogs()">
-
-    <!-- Generic confirm dialog (yes/no prompts: cascade-complete, show-in-overview, …) -->
-    <div class="dialog" @click.stop x-show="confirm">
-      <p x-text="confirm?.message"></p>
-      <template x-if="confirm?.bodyHtml"><div x-html="confirm.bodyHtml"></div></template>
-      <div class="dialog-actions flex items-center gap-8">
-        <button class="ghost" @click="confirmNo()" x-text="confirm?.cancelLabel || 'Cancel'"></button>
-        <button :class="confirm?.danger ? 'danger' : 'primary'" @click="confirmYes()" x-text="confirm?.confirmLabel || 'Confirm'"></button>
-      </div>
-    </div>
+  <div class="dialog-backdrop" :class="{ 'palette-backdrop': palette.open }" x-show="anyDialog()" x-cloak @click="closeDialogs()">
 
     <!-- Import preview — a pasted {"adherod":1} payload and a dropped .ics both land here. NOTHING is
          written until it validates clean: any problem lists itself and the confirm button stays disabled. -->
-    <div class="dialog import-sheet" @click.stop x-show="importPreview">
+    <div class="dialog import-sheet" role="dialog" aria-modal="true" aria-label="Import" @click.stop x-show="importPreview" :inert="stacked && guideOpen">
       <div class="sheet-head flex items-center justify-between"><span x-text="importTitle()"></span><button class="sheet-x flex-none inline-flex items-center justify-center" @click="importPreview = null" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
 
       <template x-if="importPreview?.problems.length">
@@ -1320,7 +1349,7 @@
 
     <!-- Bulk-add guide: the format, and the prompt you hand an assistant. The prompt is GENERATED so it
          carries today's date and the real list/area/place names — a canned one makes the model invent them. -->
-    <div class="dialog guide-sheet" @click.stop x-show="guideOpen">
+    <div class="dialog guide-sheet" role="dialog" aria-modal="true" aria-label="Bulk-add tasks" @click.stop x-show="guideOpen">
       <div class="sheet-head flex items-center justify-between">Bulk-add tasks<button class="sheet-x flex-none inline-flex items-center justify-center" @click="guideOpen = false" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
 
       <div class="sheet-grp">
@@ -1345,50 +1374,19 @@
     </div>
 
     <!-- Keyboard shortcuts cheat-sheet (?) -->
-    <div class="dialog shortcuts-sheet" x-data="{ mod: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl' }" @click.stop x-show="shortcutsOpen">
+    <div class="dialog shortcuts-sheet" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" @click.stop x-show="shortcutsOpen">
       <div class="sheet-head flex items-center justify-between"><span>Keyboard shortcuts</span><button class="sheet-x flex-none inline-flex items-center justify-center" @click="shortcutsOpen = false" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
       <div class="sk-start">
         <template x-for="s in [
-          ['<kbd>␣</kbd> or <kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Find anything','find'], ['<kbd class=sk-letter>q</kbd>','Capture a thought','add'],
+          ['<kbd>␣</kbd> or <span class=nowrap><kbd>⌘</kbd><kbd class=sk-letter>k</kbd></span>','Find anything','find'], ['<kbd class=sk-letter>q</kbd>','Capture a thought','add'],
           ['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd> then <kbd>↵</kbd>','Work through your list'], ['<kbd>⌘</kbd><kbd>↵</kbd>','Save and return'],
           ['<kbd class=sk-letter>x</kbd>','Mark it done'], ['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd>','Take it back']
         ]" :key="s[1]">
-          <div class="sk-tile"><span class="sk-key" x-html="s[0].replaceAll('⌘', mod)"></span><strong x-text="s[1]"></strong><template x-if="s[2]"><button class="sk-launch" :aria-label="s[1]" :title="s[1]" @click="shortcutsOpen = false; if (s[2] === 'find') openPalette(); else { if (surface !== 'lists') setNav('all'); startAdd(); }">↗</button></template></div>
+          <div class="sk-tile"><span class="sk-key" x-html="s[0].replaceAll('⌘', mod)"></span><strong x-text="s[1]"></strong><template x-if="s[2]"><button class="sk-launch" :aria-label="s[1]" :title="s[1]" @click="shortcutsOpen = false; s[2] === 'find' ? openPalette() : quickAdd()">↗</button></template></div>
         </template>
       </div>
       <div class="sk-reference">
-      <template x-for="g in [
-        {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],['<kbd>1</kbd>–<kbd>4</kbd> · <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Jump / step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> · <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
-        {l:'Overview',r:[['<kbd class=sk-letter>h</kbd>/<kbd class=sk-letter>l</kbd> · <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Move across surfaces'],['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move through Lists destinations'],['<kbd>↵</kbd>','Open overview selection'],['<kbd>1</kbd>–<kbd>4</kbd>','Open surface directly'],['<kbd class=sk-letter>o</kbd>','Close overview']]},
-        {l:'Finder',r:[['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move finder selection'],['<kbd>↵</kbd>','Open finder selection'],['<kbd>⌘</kbd><kbd class=sk-letter>s</kbd>','Save query as filter']]},
-        {l:'Task list',r:[['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd class=sk-letter>e</kbd>','Open focused'],['<kbd class=sk-letter>x</kbd>','Complete focused'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Extend selection'],['<kbd>/</kbd>','Search tasks'],['<kbd class=sk-letter>f</kbd>','Filter tasks']]},
-        {l:'Plan',r:[['<kbd class=sk-letter>d</kbd>/<kbd class=sk-letter>w</kbd>/<kbd class=sk-letter>m</kbd>','Day / week / month'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Scroll an hour · hold 3s to travel'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⌘</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Travel a day / week / month']]},
-        {l:'Composer',r:[['<kbd>↵</kbd>','Save / add another'],['<kbd>⌘</kbd><kbd>↵</kbd>','Save & close'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⇥</kbd>','Move between fields'],['<kbd>esc</kbd>','Close']]},
-        {l:'Composer entries',r:[['<kbd>↵</kbd>','Add next entry'],['<kbd class=sk-mod>⇧</kbd><kbd>↵</kbd>','New line in entry'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Navigate open picker'],['<kbd>↵</kbd>','Choose picker option']]},
-        {l:'Syntaxes'},
-        {l:'Composer syntax',r:[
-          ['<b>!</b> · <b>!!</b> · <b>~</b>','Importance symbols'],['<b>focus on</b> · <b>must</b> · <b>someday</b>','Importance words'],
-          ['<b>tomorrow</b> · <b>fri</b> · <b>next week</b>','Schedule a day or window'],['<b>in 3 days</b> · <b>aug 10</b> · <b>2026-12-25</b>','Schedule relative to now'],
-          ['<b>5pm</b> · <b>noon</b>','Set a time'],['<b>30m</b> · <b>1h30m</b>','Set duration'],
-          ['<b>by fri</b> · <b>due tomorrow</b> · <b>^ aug 10</b>','Set deadline'],['<b>only tue</b>','Restrict to one day'],
-          ['<b>#project</b>','Choose project'],['<b>@area</b>','Add area'],['<b>at Office</b>','Require a location'],['<b>away from Home</b>','Exclude a location'],
-          ['<b>needs Report</b> · <b>needed by Launch</b>','Add dependency'],['<b>Item :: detail</b>','Checklist description only']]},
-        {l:'Filter syntax',r:[
-          ['<b>#work</b> · <b>##work</b>','Project / descendants'],['<b>@errands</b>','Area'],['<b>importance:must,focus</b>','Importance'],
-          ['<b>due:overdue</b> · <b>due:today..eow</b>','Due date'],['<b>deadline:any</b> · <b>deadline:eow</b>','Deadline'],
-          ['<b>is:open</b> · <b>is:recurring</b> · <b>is:blocked</b>','State'],['<b>in:title</b> · <b>in:notes</b>','Search field'],
-          ['<b>AND</b> · <b>OR</b> · <b>NOT</b> · <b>( )</b> · <b>-@home</b>','Combine / negate'],
-          ['<b>#work importance:must due:overdue</b>','Example: urgent overdue work'],
-          ['<b>(is:blocked OR deadline:today) is:open</b>','Example: blocked or due today'],
-          ['<b>report in:notes -@home</b>','Example: notes away from home']]},
-        {l:'Recurrence syntax',r:[
-          ['<b>every day</b> · <b>every 2 weeks</b>','Repeat on an interval'],['<b>every! week</b>','Repeat from completion'],
-          ['<b>every 2 weeks on mon wed at 9am</b>','Choose repeat days and time'],['<b>every day, 3 times</b>','End after a count'],
-          ['<b>every week ending sep 1</b>','End on a date']]},
-        {l:'Description Markdown',r:[
-          ['<b>**bold**</b> · <b>*italic*</b> · <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],
-          ['<b>```code```</b>','Code block'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> · <b>- Item</b>','Heading / bullet']]}
-      ]" :key="g.l">
+      <template x-for="g in shortcutGroups()" :key="g.l">
         <div :class="g.r ? 'sheet-grp' : 'sk-section'"><div class="section-label" x-text="g.l"></div>
           <template x-for="[k,d] in g.r || []" :key="d">
             <div class="sk flex items-center gap-6 muted-12"><span x-html="k.replaceAll('⌘', mod).replaceAll(' · ', ' or ')"></span><span x-text="d"></span></div>
@@ -1399,47 +1397,70 @@
     </div>
 
     <!-- Bin, b — recover deletions + revert bulk changes from the last 30 days, across reloads -->
-    <div class="dialog trash-sheet" @click.stop x-show="trashOpen">
+    <div class="dialog trash-sheet" role="dialog" aria-modal="true" aria-label="Bin" @click.stop x-show="trashOpen">
       <div class="sheet-head flex items-center justify-between">Bin<button class="sheet-x flex-none inline-flex items-center justify-center" @click="trashOpen = false" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
-      <div class="trash-empty" x-show="trashItems().length === 0">Nothing recent. Deletions and bulk changes land here for 30 days — restore any of them.</div>
-      <!-- ONE chronological list — the bin answers "what did I just do?", so the order things happened in is
-           the whole point. Losses vs changes is carried per-row (icon, red − vs neutral ·, and the verb). -->
-      <div class="trash-list flex-col" x-show="trashItems().length">
-        <template x-for="e in trashItems()" :key="e.id">
-          <div class="trash-row flex gap-8" :data-ts="e.ts">
-            <svg class="ico trash-kico"><use :href="'#' + trashIcon(e)"/></svg>
-            <template x-for="p in [trashPreview(e)]" :key="e.id">
-              <div class="grow min-w-0 flex-col gap-4">
-                <div class="trash-head flex gap-8">
-                  <span class="trash-title grow min-w-0 truncate" x-text="p.title"></span>
-                  <span class="trash-when flex-none muted-11" x-text="trashRelTime(e.ts)"></span>
-                </div>
-                <div class="trash-diff flex-col">
-                  <template x-for="(l, i) in p.lines" :key="i">
-                    <div class="tdiff-line flex gap-6" :class="l.cls">
-                      <span class="tdiff-sign flex-none" x-text="l.sign"></span><span class="tdiff-text min-w-0 truncate" x-text="l.text"></span>
-                    </div>
-                  </template>
-                </div>
-                <!-- type + Restore live at the bottom: frees the title row and reuses the otherwise-empty type row -->
-                <div class="trash-foot flex items-center gap-8">
-                  <span class="trash-detail muted-11 truncate" x-text="p.detail"></span>
-                  <button type="button" class="trash-restore" :disabled="!!trashBlocked(e)" @click="restoreTrash(e.id)" x-text="trashVerb(e)"></button>
-                </div>
+      <!-- closed, the Bin reads nothing: a task write would otherwise re-check every row -->
+      <template x-for="days in trashOpen ? [trashDays()] : []" :key="0">
+      <div class="contents">
+      <div class="trash-empty" x-show="!days.length">Nothing recent. Deletions and bulk changes land here for 30 days — restore any of them.</div>
+      <!-- ONE chronological list under day heads — the bin answers "what did I just do?", so time order is the whole point.
+           The row says what kind it is: icon, the peek's text colour (red gone, green a dropped draft) and the verb. -->
+      <div class="trash-list flex-col" x-show="days.length">
+        <template x-for="day in days" :key="day.key">
+          <div class="flex-col">
+            <div class="section-label trash-day" x-text="day.label"></div>
+            <template x-for="e in day.items" :key="e.id">
+              <div class="contents">
+                <template x-if="e.kind === 'smalls'">
+                  <div class="flex-col">
+                    <button type="button" class="trash-small flex items-center gap-8" :aria-expanded="!!trashSmallOpen[e.key]" @click="trashSmallOpen[e.key] = !trashSmallOpen[e.key]">
+                      <svg class="ico trash-kico"><use href="#i-edit"/></svg>
+                      <span class="grow min-w-0 truncate"><span class="trash-small-n" x-text="e.items.length + (e.items.length > 1 ? ' small changes' : ' small change')"></span><span class="trash-small-what" x-text="' · ' + trashSmallSum(e.items)"></span></span>
+                      <span class="trash-toggle" x-text="trashSmallOpen[e.key] ? 'Hide' : 'Show'"></span>
+                    </button>
+                    <template x-if="trashSmallOpen[e.key]">
+                      <div class="flex-col">
+                        <template x-for="s in e.items" :key="s.id">
+                          <div class="trash-chg flex items-center gap-8">
+                            <span class="trash-chg-task truncate" x-text="byId.get(s.payload.taskId)?.content"></span>
+                            <span class="trash-chg-what min-w-0 truncate"><template x-for="(w, i) in trashSmallWhat(s)" :key="i"><span :class="w.cls" x-text="w.text"></span></template></span>
+                            <button type="button" class="trash-restore" @click="restoreTrash(s.id)">Undo</button>
+                          </div>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+                <template x-if="e.kind !== 'smalls'">
+                  <div class="trash-row flex gap-8" :data-ts="e.ts">
+                    <svg class="ico trash-kico"><use :href="'#' + trashIcon(e)"/></svg>
+                    <template x-for="p in [trashPreview(e)]" :key="e.id">
+                      <div class="grow min-w-0 flex-col">
+                        <div class="trash-title truncate" x-text="p.title"></div>
+                        <div class="trash-meta muted-11 truncate"><span class="trash-detail" x-text="p.detail"></span><span class="trash-when" x-text="trashRelTime(e.ts)"></span></div>
+                        <div class="trash-peek truncate" x-show="p.peek.length"><template x-for="(s, i) in p.peek" :key="i"><span :class="s.cls" x-text="s.text"></span></template></div>
+                      </div>
+                    </template>
+                    <button type="button" class="trash-restore" :disabled="!!trashBlocked(e)" @click="restoreTrash(e.id)" x-text="trashVerb(e)"></button>
+                  </div>
+                </template>
               </div>
             </template>
           </div>
         </template>
       </div>
+      </div>
+      </template>
+      <div class="trash-foot flex justify-between muted-11"><span>Kept for 30 days</span><span class="trash-kbd"><kbd>b</kbd> opens the Bin</span></div>
     </div>
 
     <!-- ⌘K search palette (the backdrop gets .palette-backdrop while open for top alignment) -->
-    <div class="palette" @click.stop x-show="palette.open">
+    <div class="palette" role="dialog" aria-modal="true" aria-label="Go to anything" @click.stop x-show="palette.open">
       <div class="palette-head flex items-center gap-8">
         <svg class="ico palette-search-ico flex-none"><use href="#i-search"/></svg>
         <input class="palette-input grow min-w-0" x-ref="paletteInput" type="text" placeholder="Go to anything, or run a command…"
           x-model="palette.q" @input="palette.sel = 0"
-          @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)" @keydown.enter.prevent="paletteEnter()"
+          @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)" @keydown.enter.prevent.stop="paletteEnter()"
           @keydown.meta.s.prevent.stop="saveQueryAsFilter()" @keydown.ctrl.s.prevent.stop="saveQueryAsFilter()">
       </div>
       <div class="palette-section" x-show="searchResults().length" x-text="palette.q.trim() ? 'Results' : 'Go anywhere'"></div>
@@ -1452,12 +1473,12 @@
       </div>
       <div class="palette-empty" x-show="palette.q.trim() && !searchResults().length">No matches for “<span x-text="palette.q.trim()"></span>”</div>
       <div class="palette-foot flex muted-11">
-        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span>
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span x-show="isFilterQuery(palette.q)"><kbd x-text="mod"></kbd><kbd>s</kbd> save as filter</span><span><kbd>esc</kbd> close</span>
       </div>
     </div>
 
     <!-- Locations manager dialog -->
-    <div class="dialog loc-manager" @click.stop x-show="locMgr">
+    <div class="dialog loc-manager" role="dialog" aria-modal="true" aria-label="Locations" @click.stop x-show="locMgr">
       <div class="fe-head"><span class="fe-title">Locations</span></div>
       <p class="loc-help">Group places into regions — drag a place to move it between them.</p>
 
@@ -1496,14 +1517,14 @@
     </div>
 
     <!-- Filter editor: name + AQL textarea + live count -->
-    <div class="dialog filter-editor" @click.stop x-show="filterEdit">
+    <div class="dialog filter-editor" role="dialog" aria-modal="true" aria-label="Filter" @click.stop x-show="filterEdit">
       <div class="fe-head">
         <input class="inp grow fe-name" x-ref="filterName" type="text" placeholder="Filter name" :value="filterEdit?.name" @input="filterEdit.name = $event.target.value">
         <span class="fe-count" x-text="filterMatchCount() === 1 ? '1 task' : filterMatchCount() + ' tasks'"></span>
       </div>
       <div class="fe-body">
         <textarea class="fe-query" placeholder="importance:must due:overdue" :value="filterEdit?.query" @input="filterEdit.query = $event.target.value"></textarea>
-        <p class="fe-hint"><code>#project</code> <code>@area</code> <code>importance:must</code> <code>due:overdue</code> <code>deadline:eow</code> <code>is:recurring</code> <code>in:notes</code> — combine with <code>AND</code> <code>OR</code> <code>NOT</code> <code>( )</code></p>
+        <p class="fe-hint"><code>#project</code> <code>@area</code> <code>importance:must</code> <code>due:overdue</code> <code>deadline:eow</code> <code>is:recurring</code> <code>in:description</code> — combine with <code>AND</code> <code>OR</code> <code>NOT</code> <code>( )</code></p>
         <div class="fe-preview" x-show="filterEdit?.query?.trim()" x-cloak>
           <div class="section-label">Matches</div>
           <template x-for="t in filterMatches().slice(0, 50)" :key="t.id">
@@ -1520,16 +1541,18 @@
       </div>
     </div>
 
+    <!-- ── Event + block editors, delete dialog ── -->
     <!-- Event editor (calendar) -->
-    <template x-if="eventEdit"><div class="dialog event-editor" @click.stop>
+    <template x-if="eventEdit"><div class="dialog event-editor" role="dialog" aria-modal="true" aria-label="Event" @click.stop>
       <div x-html="evWhenHtml('eventEdit', 'New event')"></div>
       <div class="section-label ev-color-label">Color</div>
       <div class="ev-row ev-colors flex flex-wrap items-center gap-8" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div>
+      <div class="ev-row flex items-center"><label class="ev-allday ev-countdown inline-flex items-center gap-6"><input type="checkbox" :checked="eventEdit.countdown" @change="eventEdit.countdown = $event.target.checked"> Count down to this</label></div>
       <div x-html="evActionsHtml('eventEdit')"></div>
     </div></template>
 
     <!-- Block editor: a condition-bearing span (drag on week/day to create, click a band to edit) -->
-    <template x-if="blockEdit"><div class="dialog block-editor" @click.stop>
+    <template x-if="blockEdit"><div class="dialog block-editor" role="dialog" aria-modal="true" aria-label="Block" @click.stop>
       <div class="blk-presets flex flex-wrap gap-6" x-show="!blockEdit.id">
         <button type="button" class="blk-preset" @click="clBlockPreset('work')">Work 8:15–4:30 M–F</button>
         <button type="button" class="blk-preset" @click="clBlockPreset('lunch')">Lunch 12–1 M–F</button>
@@ -1547,35 +1570,44 @@
             <span class="blk-today-actions">
               <button type="button" class="ghost blk-start" @click="clStartBlock(blockEdit.id, blockEdit.viewIso)">Start now</button>
               <button type="button" class="ghost blk-skip" @click="clSkipBlock(blockEdit.id, blockEdit.viewIso)">Skip today</button>
+              <template x-if="clBlockEnded(blockEdit.id, blockEdit.viewIso)"><button type="button" class="ghost blk-miss" @click="clSetBlockDay(blockEdit.id, { status: 'missed' }, blockEdit.viewIso)">Didn't happen</button></template>
             </span>
           </template>
           <template x-if="clBlockDay(blockEdit.id, blockEdit.viewIso)?.status === 'running'">
             <span class="blk-today-actions">
-              <span class="blk-today-state" x-text="'Started ' + (clBlockDay(blockEdit.id, blockEdit.viewIso).actual_start || '').slice(11, 16)"></span>
+              <span class="blk-today-state" x-text="'Started ' + fmtTime((clBlockDay(blockEdit.id, blockEdit.viewIso).actual_start || '').slice(11, 16)) + (clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso)) ? ' · didn\'t end' : '')"></span>
               <span class="blk-today-lead" x-text="clBlockLead(blockEdit.id)?.content || ''"></span>
+              <template x-if="!clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso))"><button type="button" class="ghost blk-stop" @click="clStopBlock(blockEdit.id, blockEdit.viewIso)">Stop now</button></template>
               <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
             </span>
           </template>
-          <template x-if="clBlockDay(blockEdit.id, blockEdit.viewIso)?.status === 'skipped'">
+          <template x-if="clBlockDay(blockEdit.id, blockEdit.viewIso)?.status === 'done'">
             <span class="blk-today-actions">
-              <span class="blk-today-state">Skipped today</span>
+              <span class="blk-today-state" x-text="'Done ' + clBlkTick(clBlockDay(blockEdit.id, blockEdit.viewIso)).slice(2)"></span>
+              <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
+            </span>
+          </template>
+          <template x-if="['skipped', 'missed'].includes(clBlockDay(blockEdit.id, blockEdit.viewIso)?.status)">
+            <span class="blk-today-actions">
+              <span class="blk-today-state" x-text="clBlockDay(blockEdit.id, blockEdit.viewIso).status === 'missed' ? 'Didn\'t happen' : 'Skipped today'"></span>
               <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
             </span>
           </template>
         </div>
       </template>
-      <template x-if="blockEdit.id && blockEdit.viewIso && clBlockDay(blockEdit.id, blockEdit.viewIso)?.actual_start">
+      <template x-if="blockEdit.id && blockEdit.viewIso && clOverrideNote(blockEdit.id, blockEdit.viewIso)">
         <div class="blk-override-note">
           <span x-text="clOverrideNote(blockEdit.id, blockEdit.viewIso)"></span>
-          <button type="button" class="ghost" @click="clSetBlockDay(blockEdit.id, { actual_start: null, actual_end: null }, blockEdit.viewIso, 'Reset block occurrence')">Reset this day</button>
+          <button type="button" class="ghost" @click="clSetBlockDay(blockEdit.id, { planned_start: null, planned_end: null, actual_start: null, actual_end: null }, blockEdit.viewIso, 'Reset block occurrence')">Reset this day</button>
         </div>
       </template>
       <div class="blk-field">
         <label class="section-label">Repeat</label>
-        <div class="flex gap-6">
-          <template x-for="w in clBlockWeekdays()" :key="w.d">
+        <div class="flex flex-wrap items-center gap-6">
+          <template x-for="w in clBlockWeekdays" :key="w.d">
             <button type="button" class="blk-wd" :class="{ sel: blockEdit.weekdays.includes(w.d) }" @click="_toggleIn(blockEdit.weekdays, w.d)" x-text="w.l"></button>
           </template>
+          <template x-if="blockEdit.occ"><span x-html="evTimesHtml('blockEdit.rule')"></span></template>
         </div>
       </div>
       <div class="blk-field">
@@ -1609,7 +1641,7 @@
     </div></template>
 
     <!-- Delete-project / delete-task-with-subtasks: one dialog parameterized on kind -->
-    <div class="dialog" :class="{'del-sub-dialog': delAsk?.kind==='task'}" @click.stop x-show="delAsk" x-cloak>
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="Delete" :class="{'del-sub-dialog': delAsk?.kind==='task'}" @click.stop x-show="delAsk" x-cloak>
       <p><b>Delete "<span x-text="delAsk?.name"></span>"?</b></p>
       <p class="dialog-sub">It <span x-text="delAsk?.kind==='project'?'holds':'has'"></span> <b x-text="delAsk?.count"></b> <span x-text="delAsk?.kind==='project'?'task':'subtask'"></span><span x-show="delAsk?.count!==1">s</span>. What should happen to them?</p>
       <div class="seg">
@@ -1630,16 +1662,30 @@
       </div>
     </div>
 
+    <!-- Generic confirm dialog (yes/no prompts: cascade-complete, show-in-overview, …) — last, so a phone stacks it above any dialog -->
+    <div class="dialog" role="dialog" aria-modal="true" :aria-label="confirm?.message" @click.stop x-show="confirm">
+      <p x-text="confirm?.message"></p>
+      <template x-if="confirm?.bodyHtml"><div x-html="confirm.bodyHtml"></div></template>
+      <div class="dialog-actions flex items-center gap-8">
+        <button class="ghost danger" x-show="confirm?.altLabel" @click="confirmYes('onAlt')" x-text="confirm?.altLabel"></button><span class="spacer" x-show="confirm?.altLabel"></span>
+        <button x-ref="confirmNo" class="ghost" @click="confirmNo()" x-text="confirm?.cancelLabel || 'Cancel'"></button>
+        <button x-ref="confirmYes" :class="confirm?.danger ? 'danger' : 'primary'" @click="confirmYes()" x-text="confirm?.confirmLabel || 'Confirm'"></button>
+      </div>
+    </div>
+
   </div>
 
   <!-- Bottom-right notification stack (deletes/edits). Calm + non-blocking: the stack ignores pointer events;
        only the cards themselves are interactive, so the Undo/Redo/Discard buttons stay reachable. -->
-  <div id="notif-stack" aria-live="polite" x-cloak>
+  <!-- ── Notif stack + scripts ── -->
+  <!-- under a dialog only the buttons go inert: an inert live region leaves the tree and announces nothing. Settings is no dialog: Undo stays clickable beside it -->
+  <div id="notif-stack" aria-live="polite" x-cloak :class="{ 'by-settings': settingsOpen }">
     <template x-for="n in notifs" :key="n.id">
-      <div class="notif" :class="n.leaving && 'leaving'">
+      <div class="notif" :class="n.leaving && 'leaving'" @pointerenter="_notifHold(n.id, 'pointer', true)" @pointerleave="_notifHold(n.id, 'pointer', false)"
+        @focusin="_notifHold(n.id, 'focus', true)" @focusout="$el.contains($event.relatedTarget) || _notifHold(n.id, 'focus', false)">
         <span class="notif-msg" x-text="n.msg"></span>
         <template x-for="a in n.actions" :key="a.label">
-          <button type="button" class="notif-act" @click="_runNotifAction(n, a)" x-text="a.label"></button>
+          <button type="button" class="notif-act" :inert="anyDialog()" :data-sk="a.jid && a.dir < 0 && 'Undo / redo'" @click="_runNotifAction(n, a)" x-text="a.label"></button>
         </template>
       </div>
     </template>

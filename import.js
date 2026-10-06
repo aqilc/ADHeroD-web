@@ -1,9 +1,9 @@
 // Import: .ics calendars and pasted `{"adherod":1}` task payloads. Pure — no DOM, no store.
 // Both paths end in the SAME shape: { items, problems }. A payload with ANY problem imports NOTHING;
 // the caller renders `problems` and refuses. Guessing at a malformed import is worse than refusing it.
+import { localStamp, IMPORTANCE } from './nlp.js';
 
 // ─── shared ────────────────────────────────────────────────────────────────────────────────────────
-const p2 = n => String(n).padStart(2, '0');
 // Round-trip, not just Date.parse: "2026-02-31" parses fine and silently rolls over to March 3.
 const isDate = s => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
   && new Date(s + 'T00:00:00Z').toISOString().slice(0, 10) === s;
@@ -35,7 +35,7 @@ function icsWhen(value, params) {
   // Both Z and TZID resolve to an absolute instant, then render in the machine's local zone.
   const utc = Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4]);
   const at = new Date(t.endsWith('Z') ? utc : utc - tzOffsetAt(params.TZID, utc));
-  return { iso: `${at.getFullYear()}-${p2(at.getMonth() + 1)}-${p2(at.getDate())}T${p2(at.getHours())}:${p2(at.getMinutes())}`, allDay: false };
+  return { iso: localStamp(at), allDay: false };
 }
 // Offset (ms) of a named zone at an instant — Intl is the platform's own tz database, no VTIMEZONE parsing.
 function tzOffsetAt(tzid, utcMs) {
@@ -144,6 +144,7 @@ function finishEvent(e, items, problems) {
   // A RECURRENCE-ID event IS the moved occurrence: it imports as a standalone event, and the series it was
   // lifted out of carries the matching EXDATE. Nothing to represent beyond flagging it for the caller.
   if (e.recurrenceId) item.detached_from = e.recurrenceId;
+  if (e.recurrenceId && e.uid) item.external_id = `${e.uid}#${e.recurrenceId}`;   // it shares the series UID: a re-drop must find each row, not one for both
   items.push(item);
 }
 const maxIso = (a, b) => (a >= b ? a : b);
@@ -161,7 +162,6 @@ const shift = (start, mins) => {
 export const icsReplaces = (existingSeq, incomingSeq) => (incomingSeq ?? 0) > (existingSeq ?? 0);
 
 // ─── pasted task payload ───────────────────────────────────────────────────────────────────────────
-export const IMPORTANCE = ['must', 'focus', 'none', 'someday'];
 const SEVERITY = ['gentle', 'ping', 'alarm'];
 const LOC_MODE = ['any', 'only', 'except'];
 const ANCHOR = ['deadline', 'start', 'due'];
@@ -247,7 +247,7 @@ export function parsePayload(text, { lists = [], areas = [], places = [], today 
     for (const key of ['needs', 'relates']) if (raw[key] != null) item[key] = [...enumerate(raw[key], `${path}.${key}`, problems)].map(([, s]) => s);
 
     items.push(item);
-    if (raw.subtasks != null) for (const [i, sub] of (Array.isArray(raw.subtasks) ? raw.subtasks : []).entries()) walk(sub, `${path}.subtasks[${i}]`, depth + 1, raw.id ?? null);
+    if (raw.subtasks != null) for (const [i, sub] of (Array.isArray(raw.subtasks) ? raw.subtasks : []).entries()) walk(sub, `${path}.subtasks[${i}]`, depth + 1, item);
     if (raw.subtasks != null && !Array.isArray(raw.subtasks)) problems.push(problem(`${path}.subtasks`, 'must be an array.'));
   };
   for (const [i, raw] of (Array.isArray(doc.tasks) ? doc.tasks : []).entries()) walk(raw, `tasks[${i}]`, 1, null);

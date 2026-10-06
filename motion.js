@@ -6,15 +6,18 @@ export const EASE_OUT = p => 1 - Math.pow(1 - p, 3);
 
 const tweens = new Map();      // key (any value; e.g. the scroller element) -> step(now) => boolean alive
 const css = new Map();         // Element -> Set<'t:prop' | 'a:name'>
-const scrollers = new Set();   // elements (or document) mid-scroll; cleared by scrollend
+const scrollers = new Map();   // element (or document) mid-scroll -> scroll-event count; cleared by scrollend or a silent frame
 let rafId = 0;
 
 const pump = now => {
-  for (const [k, step] of tweens) if (!step(now)) tweens.delete(k);
-  rafId = tweens.size ? requestAnimationFrame(pump) : 0;
+  let at;
+  try { for (const [k, step] of tweens) { at = k; if (!step(now)) tweens.delete(k); } }
+  catch (err) { tweens.delete(at); throw err; }   // a step that throws ends; the rest step on next frame
+  finally { rafId = tweens.size ? requestAnimationFrame(pump) : 0; }
 };
 const mark = (el, tag) => { let s = css.get(el); if (!s) css.set(el, s = new Set()); s.add(tag); };
 const clear = (el, tag) => { const s = css.get(el); if (s) { s.delete(tag); if (!s.size) css.delete(el); } };
+const running = () => document.getAnimations().filter(a => a.playState === 'running' && a.effect.getComputedTiming().iterations !== Infinity);
 // Ambient loops (spinners, breathing glows) never end — exclude them or idle() wedges forever.
 const ambient = e => {
   // pass the pseudo (::before/::after) through — bare getComputedStyle(e.target) reads the PARENT's styles,
@@ -24,48 +27,93 @@ const ambient = e => {
   return i >= 0 && counts[i % counts.length] === 'infinite';   // CSS repeats short lists cyclically
 };
 
-let forced = null;   // zero-motion override (harness/test mode); null → follow the OS preference
-// scale 0 kills CSS motion at the stylesheet level too — this IS the app's reduced-motion switch
-// (transitions/animations collapse to instant state changes; smooth scrolling goes immediate)
+let forced = null;   // harness override: 0 = zero motion (tests assert end states), a fraction compresses time; null → the OS
+let reduceMQ; const osReduced = () => (reduceMQ ??= matchMedia('(prefers-reduced-motion: reduce)'));   // lazy: bun unit tests import this with no matchMedia
+// Zero motion kills CSS motion at the stylesheet level (transitions/animations collapse to instant state changes).
+// OS reduced motion is gentler, not zero: soften() trims each animation as it starts.
 const zeroStyle = () => {
-  const on = motion.scale === 0, el = document.getElementById('motion-zero');
+  const on = forced === 0, el = document.getElementById('motion-zero');
   if (on && !el) { const st = document.createElement('style'); st.id = 'motion-zero';
-    st.textContent = '*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; scroll-behavior: auto !important; }';
+    st.textContent = '*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; transition-delay: 0s !important; animation-delay: 0s !important; scroll-behavior: auto !important; }';
     document.head.append(st); }
   else if (!on && el) el.remove();
 };
+const META = new Set(['offset', 'computedOffset', 'easing', 'composite']), FADE = /^(opacity|visibility)$|color$/i;   // reduced motion keeps fades (they show what changed); the rest is movement
+// the animation an event is about — a pseudo-element's isn't in its host's bare getAnimations()
+const animOf = (e, match) => e.target.getAnimations({ subtree: !!e.pseudoElement }).find(a => a.effect.target === e.target && (a.effect.pseudoElement || '') === e.pseudoElement && match(a));
+// One animation as it starts, through the dial: a fraction compresses its clock; at 0 an ambient loop holds still and
+// movement jumps to its end — when gentle, the fade part survives, capped at 150ms.
+const soften = a => {
+  if (!a) return;
+  const s = motion.scale, fx = a.effect;
+  if (s > 0) a.playbackRate = 1 / s;
+  else if (fx.getTiming().iterations === Infinity) a.cancel();
+  else {
+    const props = new Set(motion.gentle ? fx.getKeyframes().flatMap(Object.keys) : []);
+    for (const k of META) props.delete(k);
+    const fades = [...props].filter(k => FADE.test(k));   // a transition is one property: all fade or all movement
+    if (!fades.length) return a.finish();
+    if (fades.length < props.size) fx.setKeyframes(fx.getKeyframes().map(f => Object.fromEntries(Object.entries(f).filter(([k]) => k !== 'computedOffset' && (META.has(k) || FADE.test(k))))));
+    fx.updateTiming({ duration: Math.min(fx.getTiming().duration, 150) });
+  }
+};
 
 export const motion = {
-  // THE reduced-motion dial: 0 = jump to end states, 1 = animate. Every JS check routes through
-  // here so zero-motion is one trustworthy switch instead of 27 scattered matchMedia reads.
-  get scale() { return forced ?? (matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1); },
+  // THE reduced-motion dial: 0 = JS movement jumps to its end state, 1 = animate. Every JS check routes through
+  // here so reduced motion is one trustworthy switch instead of 27 scattered matchMedia reads.
+  get scale() { return forced ?? (osReduced().matches ? 0 : 1); },
+  get gentle() { return forced == null && osReduced().matches; },   // the OS preference: drop movement, keep short fades
   force(v) { forced = v; zeroStyle(); },
+  soften,   // for a JS el.animate(), which fires no event for the listeners below
   // Felt-time constants (hold-to-escalate thresholds, land timers, tween durations) route through here,
   // so a time-compressed test (force(0.25)) compresses the THRESHOLDS with the motion — semantics intact.
-  t(ms) { return ms * this.scale; },
+  // Only the forced dial scales time: OS reduced motion drops movement, not the user's thresholds.
+  t(ms) { return ms * (forced ?? 1); },
+  rand: Math.random,   // reward rolls draw here; a test pins it
   // Register a per-frame step under a key. A new run with the same key SUPERSEDES the old one — a
   // second request never queues behind or races the first. step returns true while it stays alive.
   run(key, step) { tweens.set(key, step); if (!rafId) rafId = requestAnimationFrame(pump); },
   stop(key) { tweens.delete(key); },
+  running(key) { return tweens.has(key); },
   active() {
-    for (const el of css.keys()) if (!el.isConnected) css.delete(el);                       // removed mid-flight fires no end event
-    for (const el of scrollers) if (el !== document && !el.isConnected) scrollers.delete(el);
+    // detached mid-flight, its end/cancel fires where document can't hear it — whether it stays out or is re-inserted
+    for (const el of css.keys()) if (!el.getAnimations({ subtree: true }).length) css.delete(el);
+    for (const el of scrollers.keys()) if (el !== document && !el.isConnected) scrollers.delete(el);
     return tweens.size + css.size + scrollers.size;
   },
-  async idle() {   // 2 clean frames: a state write's transitionrun lands a frame later, a single-frame check races it
-    for (let clean = 0; clean < 2;) { await new Promise(requestAnimationFrame); clean = this.active() ? 0 : clean + 1; }
+  // 2 clean frames: a state write's transitionrun lands a frame later, a single-frame check races it — and on a loaded
+  // CPU a transition can still be pending (no event yet) past both, so the page's own finite animations count too.
+  // Bounded, frames or none: a wedge rejects naming what still moves instead of hanging its caller to a test timeout.
+  async idle(ms = 9000) {
+    let frames = 0, clean = 0, timer;
+    const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`motion.idle: not idle after ${ms}ms, ${frames} frames — ${this.moving().join(', ') || 'nothing moving now'}`)), ms); });
+    try {
+      while (clean < 2) {
+        await Promise.race([new Promise(requestAnimationFrame), late]); frames++;
+        clean = this.active() || running().length ? 0 : clean + 1;
+      }
+    } finally { clearTimeout(timer); }
+  },
+  moving() {   // what holds idle(), by name
+    this.active();
+    const name = k => k?.nodeType === 1 ? k.tagName.toLowerCase() + [...k.classList].map(c => '.' + c).join('') : k === document ? 'document' : String(k);
+    return [...[...tweens.keys()].map(k => 'tween ' + name(k)), ...[...css].map(([el, tags]) => name(el) + ' ' + [...tags].join(' ')),
+      ...[...scrollers.keys()].map(k => 'scroll ' + name(k)), ...running().map(a => (a.animationName || a.transitionProperty || 'animate()') + ' on ' + name(a.effect.target))];
   },
   install() {      // called once from app boot — module stays importable without a DOM (unit tests)
-    // fractional scale accelerates CSS motion at the source: every transition/animation IS a WAAPI
-    // Animation — bump its playbackRate as it starts (real motion, real events, compressed clock)
-    const rate = el => { const s = motion.scale; if (s > 0 && s !== 1) for (const a of el.getAnimations()) a.playbackRate = 1 / s; };
-    document.addEventListener('transitionrun', e => { mark(e.target, 't:' + e.propertyName); rate(e.target); }, true);
+    // every transition/animation IS a WAAPI Animation — soften() adjusts it as it starts (real events, adjusted clock)
+    document.addEventListener('transitionrun', e => { mark(e.target, 't:' + e.propertyName); if (motion.scale !== 1) soften(animOf(e, a => a.transitionProperty === e.propertyName)); }, true);
     for (const t of ['transitionend', 'transitioncancel']) document.addEventListener(t, e => clear(e.target, 't:' + e.propertyName), true);
-    document.addEventListener('animationstart', e => { if (!ambient(e)) { mark(e.target, 'a:' + e.animationName); rate(e.target); } }, true);
+    document.addEventListener('animationstart', e => { if (!ambient(e)) mark(e.target, 'a:' + e.animationName); if (motion.scale !== 1) soften(animOf(e, a => a.animationName === e.animationName)); }, true);
     for (const t of ['animationend', 'animationcancel']) document.addEventListener(t, e => clear(e.target, 'a:' + e.animationName), true);
-    document.addEventListener('scroll', e => scrollers.add(e.target), { capture: true, passive: true });
+    // A layout clamp or anchoring jump fires `scroll` and NEVER `scrollend` (that wedged idle() after Lists, parked deep,
+    // lost its height to Plan). A running scroll fires every frame — so one silent frame after the last event = stopped.
+    // (A rAF queued during dispatch runs this same frame; the nested one runs after the NEXT frame's scroll events.)
+    document.addEventListener('scroll', e => {
+      const el = e.target, n = (scrollers.get(el) || 0) + 1; scrollers.set(el, n);
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (scrollers.get(el) === n) scrollers.delete(el); }));
+    }, { capture: true, passive: true });
     document.addEventListener('scrollend', e => scrollers.delete(e.target), true);
     window.__motion = motion;   // the ONE test-facing line (spec: minimal in-app test surface)
-    zeroStyle();                // OS-level reduced-motion users get the kill switch from first paint
   },
 };

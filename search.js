@@ -1,3 +1,4 @@
+// uFuzzy ranking + the AQL query language.
 import uFuzzy from './vendor/uFuzzy.esm.js';
 import { parseDate, isoDate, impRank } from './nlp.js';
 import { esc } from './ui.js';
@@ -6,33 +7,37 @@ const SEP = '';   // field separator: a word boundary uFuzzy won't match across
 
 export const makeFuzzy = () => new uFuzzy({ intraMode: 1 });
 
-// ranked index array or null when no match (used by pickerMatches + resolveArea)
+// ranked index array or null when no match (used by pickerMatches + areaMatches)
 export const fuzzyRank = (uf, hay, q) => {
   const [idxs, info, order] = uf.search(hay, q, 1, 1e4);
   if (!idxs || !idxs.length) return null;
   return (info && order) ? order.map(o => info.idx[o]) : idxs;
 };
 
-// field order = rank order: title · areas · path · notes · checklist
-export function buildSearchDocs(tasks, areas, defaultProjectId) {
+// A task's typed text past its title: description · checklist (a step's `::` description rides in its text) · legacy free-text place.
+export const bodyText = t => [t.notes || '', (t.checklist || []).map(c => c.text).join(' '), t.place || ''].join(SEP);
+
+// field order = rank order: title · areas · places · path · description · checklist · place
+export function buildSearchDocs(tasks, areas, defaultProjectId, locations = []) {
   const byId = new Map(tasks.map(t => [t.id, t]));
   const areaMap = new Map(areas.map(g => [g.id, g.name]));
   const areaName = id => areaMap.get(id) || '';
+  const placeMap = new Map(locations.map(l => [l.id, l.name]));
   const pathOf = t => { const parts = []; let cur = t; const seen = new Set(); while (cur && !seen.has(cur.id)) { seen.add(cur.id); parts.unshift(cur.content); cur = byId.get(cur.parent_id); } return parts.join(' / '); };
   const haystack = [], meta = [];
   for (const t of tasks) {
     if (t.id === defaultProjectId) continue;
     const title = t.content || '';
     if (t.overview) {
-      haystack.push(title + SEP + pathOf(t));
+      haystack.push([title, pathOf(t), t.parent_id ? bodyText(t) : ''].join(SEP));   // a top-level project's body is shown nowhere
       meta.push({ id: t.id, type: 'project', completed: !!t.completed_at, titleLen: title.length, title });
       continue;
     }
     const areaNames = (t.area_ids || []).map(areaName).join(' ');
     const parent = byId.get(t.parent_id);
     const path = parent && parent.id !== defaultProjectId ? pathOf(parent) : '';
-    const checklist = (t.checklist || []).map(c => c.text).join(' ');
-    haystack.push([title, areaNames, path, t.notes || '', checklist].join(SEP));
+    const places = (t.location?.ids || []).map(id => placeMap.get(id) || '').join(' ');
+    haystack.push([title, areaNames, places, path, bodyText(t)].join(SEP));
     meta.push({ id: t.id, type: 'task', completed: !!t.completed_at, titleLen: title.length, title });
   }
   for (const g of areas) {
@@ -102,7 +107,7 @@ const EMPTY_SET = new Set();
 const unq = s => s.replace(/^"(.*)"$/, '$1');
 export function tokenize(str) { return String(str || '').match(TOKEN_RE) || []; }
 
-const KEYS = ['importance', 'due', 'deadline', 'is', 'in'];
+export const KEYS = ['importance', 'due', 'deadline', 'is', 'in'];
 function leaf(t) {
   if ((t[0] === '-' || t[0] === '!') && t.length > 1) return { op: 'not', kid: leaf(t.slice(1)) };
   if (t[0] === '#') { const sub = t[1] === '#'; return { q: 'project', sub, val: unq(t.slice(sub ? 2 : 1)) }; }
@@ -127,6 +132,19 @@ export function parseQuery(str) {
   const atom = () => { const t = at(); if (t === '(') { i++; const n = or(); if (at() === ')') i++; return n; } if (t == null || t === ')') { i++; return { term: '' }; } i++; return leaf(t); };
   return or() || { term: '' };
 }
+// The Lists quick filters + lenses as AQL ("Save as filter"): the rows qfPass + the lenses keep among top-level tasks.
+// areas are names; overdue is is:overdue (open only), like the live filter.
+// ceiling: the live view filters top-level tasks and shows their subtrees, a filter matches at any depth; project/Backlog
+// scope and search text aren't saved — revisit when a saved filter must reproduce those views.
+// scope: the area the view sits in, or null.
+export function qfQuery({ imp, areas, due, done, archived, scope }) {
+  const name = n => '@' + (/[\s()]/.test(n) ? `"${n}"` : n), parts = scope ? [name(scope)] : [], at = areas.map(name);
+  if (imp.length) parts.push('importance:' + imp.join(','));
+  if (at.length) parts.push(at.length > 1 ? `(${at.join(' OR ')})` : at[0]);
+  if (due) parts.push(due === 'overdue' ? 'is:overdue' : 'due:' + (due === 'has' ? 'any' : due));
+  if (done || archived) parts.push(done && archived ? 'is:any' : done ? '(is:open OR is:done)' : 'is:any (is:open OR is:archived)');   // is:any lifts the done gate: a done+archived task is archived first, as in the live view
+  return parts.join(' ');
+}
 
 const todayISO = now => isoDate(new Date(now));
 function resolveDate(word, now) {
@@ -137,7 +155,7 @@ function resolveDate(word, now) {
   if (w === 'som') return isoDate(new Date(d.getFullYear(), d.getMonth(), 1));
   if (w === 'eom') return isoDate(new Date(d.getFullYear(), d.getMonth() + 1, 0));
   const m = w.match(/^([+-]\d+)d$/); if (m) return add(+m[1]);
-  return parseDate(word, now) || null;
+  return parseDate(word, d) || null;   // d, not now: the stores pass now as ISO text
 }
 function cmpDate(iso, spec, now) {
   const has = !!iso, day = has ? iso.slice(0, 10) : null;
@@ -166,29 +184,34 @@ export function matchQuery(query, tasks, ctx) {
   const projCache = {};
   const projIds = name => projCache[name] || (projCache[name] = new Set(tasks.filter(t => t.overview && t.id !== ctx.defaultProjectId && (t.content || '').toLowerCase().includes(name.toLowerCase())).map(t => t.id)));
   const inProject = (t, name, sub) => { const ps = projIds(name); if (!sub) return ps.has(t.parent_id); let c = byId.get(t.parent_id), seen = new Set(); while (c && !seen.has(c.id)) { if (ps.has(c.id)) return true; seen.add(c.id); c = byId.get(c.parent_id); } return false; };
-  const areaMatch = (ids, name) => (ids || []).some(id => { const g = ctx.areas.find(x => x.id === id); return g && g.name.toLowerCase().includes(name.toLowerCase()); });
-  const isFlag = (t, f) => ({
-    done: () => !!t.completed_at, open: () => !t.completed_at && !t.archived_at, archived: () => !!t.archived_at, any: () => true,
-    recurring: () => !!t.recurrence, project: () => !!t.overview, leaf: () => !hasChild.has(t.id),
-    must: () => t.importance === 'must', focus: () => t.importance === 'focus', someday: () => t.importance === 'someday',
-    daily: () => t.recurrence?.freq === 'day', weekly: () => t.recurrence?.freq === 'week',
-    monthly: () => t.recurrence?.freq === 'month', yearly: () => t.recurrence?.freq === 'year',
-    blocked: () => (t.blocked_by || []).some(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; }),
-    overdue: () => !!when(t) && when(t).slice(0, 10) < todayISO(ctx.now) && !t.completed_at && !t.archived_at,
-    today: () => !!when(t) && when(t).slice(0, 10) === todayISO(ctx.now),
-  }[f] || (() => false))();
+  // @: an exact name (any case) wins, else every name it prefixes — never a substring, so @Work never takes Homework
+  const areaIds = name => {
+    const n = name.toLowerCase(), lc = ctx.areas.map(a => [a.id, a.name.toLowerCase()]), exact = lc.filter(([, l]) => l === n);
+    return new Set((exact.length ? exact : lc.filter(([, l]) => l.startsWith(n))).map(([id]) => id));
+  };
+  const today = todayISO(ctx.now), open = t => !t.completed_at && !t.archived_at;
+  const flags = {   // once per query: compile picks one per is: leaf
+    done: t => !!t.completed_at, open, archived: t => !!t.archived_at, any: () => true,
+    recurring: t => !!t.recurrence, project: t => !!t.overview, leaf: t => !hasChild.has(t.id),
+    must: t => t.importance === 'must', focus: t => t.importance === 'focus', someday: t => t.importance === 'someday',
+    daily: t => t.recurrence?.freq === 'day', weekly: t => t.recurrence?.freq === 'week',
+    monthly: t => t.recurrence?.freq === 'month', yearly: t => t.recurrence?.freq === 'year',
+    blocked: t => (t.blocked_by || []).some(id => { const b = byId.get(id); return b && open(b); }),
+    overdue: t => { const day = when(t).slice(0, 10); return !!day && day < today && open(t); },
+    today: t => { const day = when(t).slice(0, 10); return !!day && day === today; },
+  };
   const compile = n => {
     if (n.op === 'or') { const k = n.kids.map(compile); return t => k.some(f => f(t)); }
     if (n.op === 'and') { const k = n.kids.map(compile); return t => k.every(f => f(t)); }
     if (n.op === 'not') { const f = compile(n.kid); return t => !f(t); }
     if (n.term != null) { if (n.term === '') return () => true; const s = termSets[n.term] || EMPTY_SET; return t => s.has(t.id); }
     if (n.q === 'project') return t => inProject(t, n.val, n.sub);
-    if (n.q === 'area') return t => areaMatch(t.area_ids, n.val);
+    if (n.q === 'area') { const ids = areaIds(n.val); return t => (t.area_ids || []).some(id => ids.has(id)); }   // resolved once per leaf
     if (n.q === 'imp') return t => impMatch(t.importance, n.val);
     if (n.q === 'due') return t => cmpDate(when(t), n.val, ctx.now);
     if (n.q === 'deadline') return t => cmpDate(t.deadline_at, n.val, ctx.now);
     if (n.q === 'in') return () => true;
-    if (n.q === 'is') return t => isFlag(t, n.val);
+    if (n.q === 'is') return flags[n.val] || (() => false);
     return () => true;
   };
   let includeDone = false, includeArchived = false, wantProject = false;
@@ -196,6 +219,6 @@ export function matchQuery(query, tasks, ctx) {
   const pred = compile(ast);
   // Archived excluded by default (like completed); surfaced only via is:archived / is:any.
   const res = tasks.filter(t => t.id !== ctx.defaultProjectId && (includeDone || !t.completed_at) && (includeArchived || !t.archived_at) && (wantProject || !t.overview) && pred(t));
-  const key = t => [t.completed_at ? 1 : 0, when(t) ? when(t).slice(0, 10) : '9999', impRank(t.importance)].join('|');
-  return res.sort((a, b) => key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0).map(t => t.id);
+  const keyed = res.map(t => [[t.completed_at ? 1 : 0, when(t).slice(0, 10) || '9999', impRank(t.importance)].join('|'), t.id]);   // key once per task, not per comparison
+  return keyed.sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0).map(k => k[1]);
 }

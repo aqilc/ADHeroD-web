@@ -4,5 +4,5 @@ export const SUPABASE = {
   anonKey: 'sb_publishable_0Le3HpubSIss4JgjiVhd9w_FkijCawb',
 };
 
-// Shipped surfaces; null = every known surface.
+// Shipped surfaces, in order.
 export const SURFACES = ['lists', 'plan'];

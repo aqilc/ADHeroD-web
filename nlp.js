@@ -4,7 +4,16 @@ import DESIGN from './design.json' with { type: 'json' };
 const L = DESIGN.lang.labels;
 const V = DESIGN.lang.nlp;
 
-export const isoDate = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+export const localStamp = d => new Date(d - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);   // floating local 'YYYY-MM-DDTHH:MM'
+export const isoDate = d => localStamp(d).slice(0, 10);
+// "HH:MM" → its next local occurrence, "YYYY-MM-DDTHH:MM": today while still ahead, else tomorrow.
+export function nextTimeAt(hm, now = new Date()) {
+  const d = new Date(now); d.setHours(+hm.slice(0, 2), +hm.slice(3, 5), 0, 0);
+  if (d <= now) d.setDate(d.getDate() + 1);
+  return isoDate(d) + 'T' + hm;
+}
+// n months on, clamped to the month's end: Jan 31 + 1 is Feb 28, never Mar 3 (setMonth rolls over). Mutates d.
+export const addMonths = (d, n) => { const day = d.getDate(); d.setDate(1); d.setMonth(d.getMonth() + n); d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate())); return d; };
 
 // Importance ordering (must > focus > none > someday). impRank: 0 = most important; unset → 'none'.
 export const IMPORTANCE = ['must', 'focus', 'none', 'someday'];
@@ -30,12 +39,12 @@ const relDue = (d, diff, now) => {
   return shortDate(d, now);
 };
 
-export function dueBadge(due, now = new Date()) {
+export function dueBadge(due, now = new Date(), done = false) {
   if (!due) return null;
   const { d, diff } = dayDiff(due, now);
   if (diff === 0) return { label: L.today, kind: 'today' };
   const kind = diff < 0 ? 'overdue' : diff <= 6 ? 'soon' : 'later';   // color band; labels themselves are relative
-  return { label: relDue(d, diff, now), kind };
+  return { label: done && diff < 0 ? shortDate(d, now) : relDue(d, diff, now), kind };   // a done task's passed date reads as the date (user 10-05)
 }
 
 export function deadlineLeft(deadline, now = new Date()) {
@@ -63,7 +72,7 @@ export function windowBadge(task, now = new Date()) {
   const from = task?.available_from ? task.available_from.slice(0, 10) : null;
   const to = task?.recur_from ? task.recur_from.slice(0, 10) : null;
   if (!to && !from) return null;
-  if (!from || !to || from === to) return dueBadge(to || from, now);
+  if (!from || !to || from === to) return dueBadge(to || from, now, !!task.completed_at);
   const b = dueBadge(to, now);
   const fromD = new Date(from + 'T00:00'), toD = new Date(to + 'T00:00');
   const sameMonth = fromD.getMonth() === toD.getMonth() && fromD.getFullYear() === toD.getFullYear();
@@ -77,7 +86,7 @@ export function quickRange(key, now = new Date()) {
   else if (key === 'yesterday') { from.setDate(from.getDate() - 1); to.setDate(to.getDate() - 1); }
   else if (key === 'thisweek') { to.setDate(to.getDate() + ((7 - g) % 7)); }                 // today → this Sunday
   else if (key === 'nextweek') { from.setDate(from.getDate() + ((1 - g + 7) % 7 || 7)); to.setTime(from.getTime()); to.setDate(to.getDate() + 6); }
-  else if (key === 'weekend') { from.setDate(from.getDate() + ((6 - g + 7) % 7 || 7)); to.setTime(from.getTime()); to.setDate(to.getDate() + 1); }
+  else if (key === 'weekend') { from.setDate(from.getDate() + (g ? 6 - g : 0)); to.setDate(to.getDate() + (7 - g) % 7); }   // on a Sunday, what's left of it
   return { from: isoDate(from), to: isoDate(to) };   // 'today' falls through: from===to===today
 }
 // A phrase's single date IS its window's start — one set of offsets, two shapes.
@@ -91,21 +100,34 @@ const nextWeekDate = (targetDay, now) => {
   return d;
 };
 
-const MONTHS = V.months, DAYS = V.weekdays;   // design.json is the single source for both
+const MONTHS = V.months, DAYS = V.weekdays;
 // weekday alternation for the quick-add matchers (long form first so "sunday" doesn't stop at "sun")
 const WD_ALT = 'sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|wed|thu|fri|sat';
 const MONTH_RE = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
 const monthIdx = w => MONTHS.indexOf(w.slice(0, 3).toLowerCase());
-// no year: rolls to next year if already past
+// A weekday WORD ("month" isn't "mon"; "mons" isn't plural). The field reads "monday at 5" as monday; a title
+// span must be only the date, or "by monday finish report" would pill whole and lose the words.
+const WD_LEAD = '^(next\\s+week\\s+|next\\s+)?(tues|weds|thurs?|sun|mon|tue|wed|thu|fri|sat)(?:(?:day|sday|nesday|rsday|urday)s?)?(\\s+next\\s+week)?';
+const WD_WORD = new RegExp(WD_LEAD + '\\b'), WD_WHOLE = new RegExp(WD_LEAD + '[.,]?$');
+// a weekday beside an explicit date ("sat oct 3", "oct 3 sat") is absorbed; the date wins
+const WD_PRE = '(?:(?:' + WD_ALT + ')\\.?,?\\s+)', WD_SUF = '(?:,?\\s+(?:' + WD_ALT + ')\\b)?', ORD = '(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)';
+// no year: rolls to next year if already past. A day the month lacks ("feb 30") rolls over in Date → null.
 function monthDayIso(mi, day, year, now) {
-  if (mi < 0 || day < 1 || day > 31) return null;
+  if (mi < 0) return null;
   let d = new Date(year || now.getFullYear(), mi, day);
-  if (isNaN(+d)) return null;
   if (!year && d < midnight(now)) d = new Date(now.getFullYear() + 1, mi, day);
-  return isoDate(d);
+  return d.getDate() === day ? isoDate(d) : null;
+}
+// "the 12th": the next 12th from today; a month without it ("the 31st" in Nov) skips to one that has it
+function nextDayIso(day, now) {
+  for (let i = 0; i < 3; i++) {
+    const iso = monthDayIso(now.getMonth() + i, day, now.getFullYear(), now);
+    if (iso && iso >= isoDate(now)) return iso;
+  }
+  return null;
 }
 
-export function parseDate(s, now = new Date()) {
+export function parseDate(s, now = new Date(), whole = false) {
   s = (s || '').trim();
   if (!s) return null;
   const low = s.toLowerCase();
@@ -114,51 +136,66 @@ export function parseDate(s, now = new Date()) {
   if (V.dueYesterday.includes(low)) return quickDate('yesterday', now);
   if (V.weekend.includes(low)) return quickDate('weekend', now);
   if (V.nextWeek.includes(low)) return quickDate('nextweek', now);
+  if (/^next\s+weekend$/.test(low)) return isoDate(nextWeekDate(6, now));
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // weekday name: bare = nearest upcoming; "next <wd>" / "next week <wd>" = that day NEXT week
-  const wd = low.match(/^(next\s+week\s+|next\s+)?(sun|mon|tue|wed|thu|fri|sat)/);
+  const rel = low.match(/^(?:in\s+)?(\d+)\s*d(?:ays?)?$/);
+  if (rel) { const d = midnight(now); d.setDate(d.getDate() + +rel[1]); return isoDate(d); }
+  let mn = low.match(new RegExp('^' + WD_PRE + '?' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?' + WD_SUF + '$'));
+  if (mn) return monthDayIso(monthIdx(mn[1]), +mn[2], mn[3] && +mn[3], now);
+  mn = low.match(new RegExp('^' + WD_PRE + '?(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?' + WD_SUF + '$'));
+  if (mn) return monthDayIso(monthIdx(mn[2]), +mn[1], mn[3] && +mn[3], now);
+  mn = low.match(new RegExp('^' + WD_PRE + '?' + ORD + '$'));
+  if (mn) return nextDayIso(+mn[1], now);
+  // weekday name: bare = nearest upcoming; "next <wd>" / "next week <wd>" / "<wd> next week" = that day NEXT week
+  const wd = low.match(whole ? WD_WHOLE : WD_WORD);
   if (wd) {
-    const t = DAYS.indexOf(wd[2]);
-    if (wd[1]) return isoDate(nextWeekDate(t, now));
+    const t = DAYS.indexOf(wd[2].slice(0, 3));
+    if (wd[1] || wd[3]) return isoDate(nextWeekDate(t, now));
     const d = midnight(now); d.setDate(d.getDate() + ((t - d.getDay() + 7) % 7));
     return isoDate(d);
   }
-  const rel = low.match(/^(?:in\s+)?(\d+)\s*d(?:ays?)?$/);
-  if (rel) { const d = midnight(now); d.setDate(d.getDate() + +rel[1]); return isoDate(d); }
-  let mn = low.match(new RegExp('^' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?$'));
-  if (mn) return monthDayIso(monthIdx(mn[1]), +mn[2], mn[3] && +mn[3], now);
-  mn = low.match(new RegExp('^(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?$'));
-  if (mn) return monthDayIso(monthIdx(mn[2]), +mn[1], mn[3] && +mn[3], now);
   const md = s.match(/^(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?$/);
   if (md) {
     let yr = md[3] ? +md[3] : now.getFullYear(); if (yr < 100) yr += 2000;
     const d = new Date(yr, +md[1] - 1, +md[2]);
-    return isNaN(d) ? null : isoDate(d);
+    return d.getDate() === +md[2] && d.getMonth() === +md[1] - 1 ? isoDate(d) : null;   // M/D: "31/12" and "2/30" didn't happen
   }
-  // native Date only for strings with an explicit 4-digit year (too lenient otherwise, e.g. "10" → Oct 1)
-  if (!/(19|20|21)\d{2}/.test(s)) return null;
+  // native Date only for strings with an explicit 4-digit year (too lenient otherwise, e.g. "10" → Oct 1), and
+  // never an ISO date-only prefix: "2026-10" reads as UTC midnight, the day before west of UTC.
+  if (!/(19|20|21)\d{2}/.test(s) || /^\d{4}(-\d{2})?$/.test(s)) return null;
   const d = new Date(s);
   return isNaN(+d) ? null : isoDate(d);
 }
 
+const MERIDIEM = '([ap])(?:m\\b|\\.m\\b\\.?)';   // am · pm · a.m. · p.m. — captures a|p; no trailing \b, so "p.m." keeps its dot
+// sat/sun/wed are English words too ("I sat down", "the sun"): without on/this/next they pill only beside a time (#92)
+const WD_PROSE = /^(?:sat|sun|wed)$/i, TIME_RE = '(?:\\d{1,2}(?::\\d{2})?\\s*' + MERIDIEM + '|(?:[01]?\\d|2[0-3]):[0-5]\\d\\b)';
+// a bare "at 5" is the next 5 o'clock between 7am and 10pm (#103)
+const AT_HOUR = 'at\\s+(1[0-2]|[1-9])\\b(?![:.]\\d)';
+const TIME_AFTER = new RegExp('^\\.?\\s+(?:(?:at\\s+)?' + TIME_RE + '|' + AT_HOUR + ')', 'i'), TIME_BEFORE = new RegExp(TIME_RE + '\\s*$', 'i');
+function atHour(h, laterDay, now) {
+  const hours = [+h % 12, +h % 12 + 12].filter(x => x >= 7 && x <= 22).map(x => String(x).padStart(2, '0') + ':00');
+  return laterDay ? hours[0] : hours.reduce((a, b) => nextTimeAt(b, now) < nextTimeAt(a, now) ? b : a);   // a later day: its first
+}
 function parseTime(s) {
   const low = (s || '').toLowerCase();
-  let m = low.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
-  if (m) { let h = +m[1] % 12; if (m[3] === 'pm') h += 12; return String(h).padStart(2, '0') + ':' + (m[2] || '00'); }
+  let m = low.match(new RegExp('\\b(\\d{1,2})(?::(\\d{2}))?\\s*' + MERIDIEM));
+  if (m) { let h = +m[1] % 12; if (m[3] === 'p') h += 12; return String(h).padStart(2, '0') + ':' + (m[2] || '00'); }
   m = low.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
   return m ? String(+m[1]).padStart(2, '0') + ':' + m[2] : '';
 }
 
-// bare time defaults date to today
-export function parseDateText(s, now = new Date()) {
+// bare time defaults date to today (`bare` says so); `whole`: see WD_WHOLE
+export function parseDateText(s, now = new Date(), whole = false) {
   s = (s || '').trim();
   const time = parseTime(s);
   const dateStr = time
-    ? s.replace(/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i, '').replace(/\b(?:[01]?\d|2[0-3]):[0-5]\d\b/, '').trim()
+    ? s.replace(new RegExp('(?:\\bat\\s+)?\\b\\d{1,2}(?::\\d{2})?\\s*' + MERIDIEM, 'i'), '').replace(/(?:\bat\s+)?\b(?:[01]?\d|2[0-3]):[0-5]\d\b/i, '').trim()   // "fri at 5pm" → date "fri"
     : s;
-  let iso = dateStr ? parseDate(dateStr, now) : null;
-  if (!iso && time) iso = isoDate(now);
-  return { iso, time };
+  let iso = dateStr ? parseDate(dateStr, now, whole) : null;
+  const bare = !iso && !!time;
+  if (bare) iso = nextTimeAt(time, now).slice(0, 10);   // a passed time is tomorrow's
+  return { iso, time, bare };
 }
 
 // Recurrence grammar ("every[!] <rule>") — shared by parseQuick (strips) and parseRecurrence (date field).
@@ -166,7 +203,7 @@ export function parseDateText(s, now = new Date()) {
 // so every word that surface RENDERS is typeable, including its empty-value glyphs (`–`, `∞`, `never`).
 const REC_DAY_RE = '(?:sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|urday)?\\b';
 const REC_DAYS = '(?:(?:' + REC_DAY_RE + ')(?:\\s*,\\s*|\\s+)?)+';
-const REC_RULE = REC_DAYS + '|weekday|\\d+\\s*(?:days?|weeks?|months?|years?)|days?|weeks?|months?|years?|\\d{1,2}(?:st|nd|rd|th)';
+const REC_RULE = 'other\\s+(?:' + REC_DAYS + '|days?|weeks?|months?|years?)|' + REC_DAYS + '|weekday|\\d+\\s*(?:days?|weeks?|months?|years?)|days?|weeks?|months?|years?|\\d{1,2}(?:st|nd|rd|th)';
 const REC_ON = '\\s+on\\s+(' + REC_DAYS + '|the\\s+\\d{1,2}(?:st|nd|rd|th))';   // must hug the rule, so "work on the deck" is prose
 const REC_AT = '\\s+at\\s+(–|\\d{1,2}(?::\\d{2})?\\s*[ap]m|(?:[01]?\\d|2[0-3]):[0-5]\\d)';   // a TIME only — never "at <place>"
 // The count needs `for` or the popover's own comma (", 3 times"): a bare "<n> times" is ordinary English
@@ -182,18 +219,18 @@ function applyEnds(rec, tail, now) {
   for (const [raw, count, xCount, until] of (tail || '').matchAll(new RegExp(REC_END, 'gi'))) {
     if (count === '∞' || /^never$/i.test(until || '')) continue;
     if (count || xCount) rec.ends = { count: +(count || xCount) };
-    else { const d = parseDate(until.trim(), now); if (d) rec.ends = { date: d }; else rest += raw; }
+    else { const d = parseDate(until.trim(), now, true); if (d) rec.ends = { date: d }; else rest += raw; }
   }
   return rest;
 }
 function buildRecurrence(bang, rule, on, at, tail, now) {
   if (!rule && !bang) return {};   // bare "every" with no rule/bang is not a recurrence
   const rec = { freq: 'day', interval: 1, from_completion: !!bang, ends: null, done_count: 0 };
-  const body = (rule || '').toLowerCase();
-  const n = body.match(/^(\d+)/), interval = n ? +n[1] : 1;
+  const body = (rule || '').toLowerCase().replace(/^other\s+/, ''), other = body.length < (rule || '').length;   // "every other" = every 2
+  const n = body.match(/^(\d+)/), interval = n ? +n[1] : other ? 2 : 1;
   const wdays = t => (t.match(new RegExp(REC_DAY_RE, 'g')) || []).map(d => DAYS.indexOf(d.slice(0, 3)));
   if (/weekday/.test(body)) Object.assign(rec, { freq: 'week', weekdays: [1, 2, 3, 4, 5] });
-  else if (new RegExp('^' + REC_DAY_RE).test(body)) Object.assign(rec, { freq: 'week', weekdays: wdays(body) });
+  else if (new RegExp('^' + REC_DAY_RE).test(body)) Object.assign(rec, { freq: 'week', weekdays: wdays(body), interval });
   else if (/days?$/.test(body)) Object.assign(rec, { freq: 'day', interval });
   else if (/weeks?$/.test(body)) Object.assign(rec, { freq: 'week', interval });
   else if (/months?$/.test(body)) Object.assign(rec, { freq: 'month', interval });
@@ -210,7 +247,7 @@ export function parseRecurrence(s, now = new Date()) {
   return m ? buildRecurrence(m[1], m[2], m[3], m[4], m[5], now).rec ?? null : null;
 }
 
-// hybrid tokenizer: live preview keeps tokens; strips on save. `locations` (the places already in use) guards
+// hybrid tokenizer: classifyToken asks it whether a span is exactly one token. `locations` (the places already in use) guards
 // "at <name>" — only a known place pills, so "Meet Sam at 5pm" never invents one.
 export function parseQuick(raw, now = new Date(), locations = []) {
   let s = ' ' + (raw || '') + ' ';
@@ -226,9 +263,9 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   s = s.replace(/\s#([\w-]+)/g, (_, p) => (o.project = p, ' '));
 
   // "in N <unit>" before bare durations so "in 3hr" doesn't become an estimate
-  s = s.replace(/\sin\s+(\d+)\s*(months?|mos?|weeks?|wks?|days?|hours?|hrs?|h|minutes?|mins?|m)\b/gi, (_, n, unit) => {
-    n = +n; const u = unit.toLowerCase(), d = new Date(now);
-    if (/^mo/.test(u)) { d.setMonth(d.getMonth() + n); o.dueIso = isoDate(midnight(d)); }
+  s = s.replace(/\sin\s+(\d+|an?(?=\s+(?:day|week|wk|month|hour)\b))\s*(months?|mos?|weeks?|wks?|days?|hours?|hrs?|h|minutes?|mins?|m)\b/gi, (_, n, unit) => {   // "in a week"; "in a minute"/"in a mo" mean soon, so stay prose
+    n = +n || 1; const u = unit.toLowerCase(), d = new Date(now);
+    if (/^mo/.test(u)) o.dueIso = isoDate(midnight(addMonths(d, n)));
     else if (/^w/.test(u)) { d.setDate(d.getDate() + n * 7); o.dueIso = isoDate(midnight(d)); }
     else if (/^d/.test(u)) { d.setDate(d.getDate() + n); o.dueIso = isoDate(midnight(d)); }
     else if (/^h/.test(u)) { d.setHours(d.getHours() + n); o.dueIso = isoDate(d); setTime(d.getHours(), d.getMinutes()); }
@@ -247,28 +284,45 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   // 'only <date>' walls BOTH sides — a one-day world-window ("vote only tue"). Leading form only:
   // a trailing "<date> only" stays literal ("aug 10 only tue" ambiguity). Consumed before by/due below.
   s = s.replace(/\sonly\s+(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
-    const { iso, time } = parseDateText(dateStr.trim(), now);
+    const { iso, time } = parseDateText(dateStr.trim(), now, true);
     if (!iso) return m;
     o.onlyIso = iso; o.deadlineIso = iso + (time ? 'T' + time : '');
     return ' ';
   });
 
-  // Marked dates wall (§11): by/due/^ join the deadline keyword. Consumed before due-date matchers so
+  // By the end of that day / week (Sunday, as quickRange 'thisweek') / month
+  s = s.replace(/\s(?:(?:by|until|till|before)\s+)?(?:eo([dwm])|end\s+of\s+(?:the\s+)?(day|week|month))\b/i, (_, eo, unit) => {
+    const u = (eo || unit[0]).toLowerCase(), d = midnight(now);
+    if (u === 'm') d.setMonth(d.getMonth() + 1, 0);
+    o.deadlineIso = u === 'w' ? quickRange('thisweek', now).to : isoDate(d); return ' ';
+  });
+  // "next month" is a range: possible from its 1st, By its last day
+  s = s.replace(/\snext\s+month\b/i, () => {
+    const d = midnight(now); d.setDate(1); d.setMonth(d.getMonth() + 1);
+    o.deadlineFromIso = isoDate(d); d.setMonth(d.getMonth() + 1, 0); o.deadlineIso = isoDate(d); return ' ';
+  });
+  // Marked dates wall (§11): by/due/^ join the deadline keyword; until/till/before read as by. Consumed before due-date matchers so
   // the keyword's date isn't also taken as a due date; a non-date tail leaves the text untouched.
-  s = s.replace(/\s(?:(?:deadline|ddl|dl|by|due)\s+|\^\s*)(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
-    const { iso, time } = parseDateText(dateStr.trim(), now);   // "deadline fri 5pm" keeps the hour (F16)
+  s = s.replace(/\s(?:(?:deadline|ddl|dl|by|due|until|till|before)\s+|\^\s*)(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
+    const at = dateStr.match(new RegExp('\\s' + AT_HOUR + '$', 'i'));   // "by fri at 5"
+    const parsed = parseDateText(at ? dateStr.slice(0, at.index) : dateStr.trim(), now, true);   // "deadline fri 5pm" keeps the hour (F16)
+    const iso = parsed.iso, time = at ? atHour(at[1], iso > isoDate(now), now) : parsed.time;
     if (!iso) return m;                 // not a date → leave the text untouched
     o.deadlineIso = iso + (time ? 'T' + time : ''); return ' ';
   });
 
   s = s.replace(re(DPRE + '(\\d{4}-\\d{2}-\\d{2})'), (_, iso) => (o.dueIso = iso, ' '));
-  s = s.replace(re(DPRE + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?'),
-    (_, mon, day, yr) => (o.dueIso = monthDayIso(monthIdx(mon), +day, yr && +yr, now) || o.dueIso, ' '));
-  s = s.replace(re(DPRE + '(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?'),
-    (_, day, mon, yr) => (o.dueIso = monthDayIso(monthIdx(mon), +day, yr && +yr, now) || o.dueIso, ' '));
-  s = s.replace(re(DPRE + '(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{2,4}))?'), (_, a, b, y) => {
+  s = s.replace(re(DPRE + WD_PRE + '?' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?' + WD_SUF),
+    (m, mon, day, yr) => { const iso = monthDayIso(monthIdx(mon), +day, yr && +yr, now); return iso ? (o.dueIso = iso, ' ') : m; });
+  s = s.replace(re(DPRE + WD_PRE + '?(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?' + WD_SUF),
+    (m, day, mon, yr) => { const iso = monthDayIso(monthIdx(mon), +day, yr && +yr, now); return iso ? (o.dueIso = iso, ' ') : m; });
+  // a bare ordinal is prose ("my 12th birthday"): it needs "on" or a weekday
+  s = s.replace(re('(?:on\\s+' + WD_PRE + '?|' + WD_PRE + ')' + ORD), (m, day) => { const iso = nextDayIso(+day, now); return iso ? (o.dueIso = iso, ' ') : m; });
+  s = s.replace(re(DPRE + '(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{2,4}))?'), (m, a, b, y) => {
     let yr = y ? +y : now.getFullYear(); if (yr < 100) yr += 2000;
-    const d = new Date(yr, +a - 1, +b); if (!isNaN(+d)) o.dueIso = isoDate(d); return ' ';
+    const d = new Date(yr, +a - 1, +b);
+    if (d.getDate() !== +b || d.getMonth() !== +a - 1) return m;   // "2/30", "31/12" stay title
+    o.dueIso = isoDate(d); return ' ';
   });
 
   const DUE_WORDS = [...V.dueToday, ...V.dueTomorrow, ...V.dueYesterday].sort((a, b) => b.length - a.length);
@@ -280,14 +334,20 @@ export function parseQuick(raw, now = new Date(), locations = []) {
     return (o.dueFromIso = r.from, o.dueIso = r.to, ' ');
   });
   const WKND_RE = V.weekend.map(w => w.replace(' ', '\\s+')).sort((a, b) => b.length - a.length).join('|');
-  s = s.replace(re(DPRE + '(' + WKND_RE + ')'), () => { const r = quickRange('weekend', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' '); });
+  s = s.replace(re(DPRE + '(next\\s+)?(?:' + WKND_RE + ')'), (_, nx) => {
+    if (nx) return (o.dueFromIso = isoDate(nextWeekDate(6, now)), o.dueIso = isoDate(nextWeekDate(0, now)), ' ');   // next week's Sat–Sun, as "next sat"
+    const r = quickRange('weekend', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' ');
+  });
   // parsed as ONE unit (before bare "next week" / bare weekday)
-  s = s.replace(re(DPRE + 'next\\s+week\\s+(' + WD_ALT + ')'), (_, w) =>
-    (o.dueIso = o.dueFromIso = isoDate(nextWeekDate(DAYS.indexOf(w.slice(0, 3).toLowerCase()), now)), ' '));
+  s = s.replace(re(DPRE + '(?:next\\s+week\\s+(' + WD_ALT + ')|(' + WD_ALT + ')\\s+next\\s+week)'), (_, w, w2) =>
+    (o.dueIso = o.dueFromIso = isoDate(nextWeekDate(DAYS.indexOf((w || w2).slice(0, 3).toLowerCase()), now)), ' '));
   const THISWK_RE = V.thisWeek.map(w => w.replace(' ', '\\s+')).join('|');
   s = s.replace(new RegExp('\\s(?:' + THISWK_RE + ')\\b', 'gi'), () => { const r = quickRange('thisweek', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' '); });
   s = s.replace(new RegExp('\\s(?:' + V.nextWeek.map(w => w.replace(' ', '\\s+')).join('|') + ')\\b', 'gi'), () => { const r = quickRange('nextweek', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' '); });
-  s = s.replace(re(DPRE + '(next\\s+)?(' + WD_ALT + ')'), (_, nx, w) => {
+  const dated = !!o.dueIso;
+  s = s.replace(new RegExp('\\s((?:on|this)\\s+(?:coming\\s+)?|coming\\s+)?(next\\s+)?(' + WD_ALT + ')(?:,(?=\\s)|\\b)', 'gi'), (m, pre, nx, w, at, str) => {
+    if (dated) return !pre && !nx && WD_PROSE.test(w) ? m : ' ';   // an explicit date already won: the weekday word is absorbed, never overwrites it
+    if (!pre && !nx && WD_PROSE.test(w) && !TIME_AFTER.test(str.slice(at + m.length)) && !TIME_BEFORE.test(str.slice(0, at))) return m;
     const t = DAYS.indexOf(w.slice(0, 3).toLowerCase());
     if (nx) { o.dueIso = o.dueFromIso = isoDate(nextWeekDate(t, now)); return ' '; }   // "next <wd>" → that day next week
     const d = midnight(now); d.setDate(d.getDate() + ((t - d.getDay() + 7) % 7 || 7));
@@ -298,10 +358,11 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   s = s.replace(/\s(\d+)\s*(?:m|min|mins|minutes?)\b/gi, (_, m) => (o.durMin == null && (o.durMin = +m), ' '));
 
   s = s.replace(re(TPRE + '(noon|midnight)'), (_, w) => (setTime(/mid/i.test(w) ? 0 : 12, 0), ' '));
-  s = s.replace(re(TPRE + '(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)'), (_, h, m, ap) => {
-    h = +h % 12; if (/pm/i.test(ap)) h += 12; setTime(h, m ? +m : 0); return ' ';
+  s = s.replace(new RegExp('\\s' + TPRE + '(\\d{1,2})(?::(\\d{2}))?\\s*' + MERIDIEM, 'gi'), (_, h, m, ap) => {
+    h = +h % 12; if (/p/i.test(ap)) h += 12; setTime(h, m ? +m : 0); return ' ';
   });
   s = s.replace(re(TPRE + '([01]?\\d|2[0-3]):([0-5]\\d)'), (_, h, m) => (setTime(+h, +m), ' '));
+  s = s.replace(new RegExp('\\s' + AT_HOUR, 'i'), (_, h) => (o.dueTime = atHour(h, o.dueIso > isoDate(now), now), ' '));
   // the popover shows `at <time>` INSIDE the repeat sentence — so a time with a rule and no one-off date
   // rides the RULE (matches applyDateText). A one-off date present ("friday at 5pm every week") keeps its time.
   if (o.recurrence && o.dueTime && !o.dueIso) { o.recurrence.at = o.dueTime; o.dueTime = ''; }
@@ -331,7 +392,7 @@ export function classifyToken(text, now = new Date(), locations = []) {
   const hits = [];
   if (p.importance != null) hits.push({ kind: 'imp', value: p.importance });
   if (p.dueIso || p.dueTime) hits.push({ kind: 'date', value: { iso: p.dueIso, from: p.dueFromIso, time: p.dueTime } });
-  if (p.deadlineIso) hits.push({ kind: 'deadline', value: p.onlyIso ? { iso: p.onlyIso, only: true } : { iso: p.deadlineIso } });
+  if (p.deadlineIso) hits.push({ kind: 'deadline', value: p.onlyIso ? { iso: p.onlyIso, only: true } : p.deadlineFromIso ? { iso: p.deadlineIso, from: p.deadlineFromIso } : { iso: p.deadlineIso } });
   if (p.durMin != null) hits.push({ kind: 'dur', value: p.durMin });
   if (p.project) hits.push({ kind: 'proj', value: p.project });
   if (p.areas.length === 1) hits.push({ kind: 'area', value: p.areas[0] });
@@ -344,6 +405,7 @@ export function classifyToken(text, now = new Date(), locations = []) {
 // ("every 2 weeks on Mon Wed at 9am, 3 times, ending Sep 1"). Bounds both token scans.
 const TOK_MAX_WORDS = 13;
 
+const AFTER = /(^|\s)after\s+$/i;   // "after fri" stays prose (#103)
 export function tokenizeAll(text, now = new Date(), locations = []) {
   const parts = (text || '').match(/\s+|\S+/g) || [];      // alternating whitespace / word runs
   const isWord = p => /\S/.test(p);
@@ -357,7 +419,7 @@ export function tokenizeAll(text, now = new Date(), locations = []) {
       span += parts[j];
       if (!isWord(parts[j])) continue;                     // only test at word ends
       const cls = classifyToken(span.trim(), now, locations);
-      if (cls) { best = cls; bestJ = j; bestSpan = span; }
+      if (cls && !(cls.kind === 'date' && AFTER.test(segs[segs.length - 1]?.text || ''))) { best = cls; bestJ = j; bestSpan = span; }
     }
     if (best) { segs.push({ kind: best.kind, value: best.value, token: bestSpan.trim() }); i = bestJ + 1; }
     else { addText(parts[i]); i++; }
@@ -407,22 +469,31 @@ export function matchTrailingToken(pending, now = new Date(), locations = []) {
   while ((m = re.exec(text))) offsets.push(m.index);
   for (const start of offsets.slice(-TOK_MAX_WORDS)) {
     const tok = classifyToken(text.slice(start), now, locations);
-    if (tok) return { ...tok, start };
+    if (tok && !(tok.kind === 'date' && AFTER.test(text.slice(0, start)))) return { ...tok, start };
   }
   return null;
 }
 
 export const WEEKDAYS = V.weekdayLabels;
+// A word typed after a date pill folds into it when "<pill> <word>" reads as ONE date: [next week] + "sun",
+// [Fri 4:00] + "PM" (space mints the time before its meridiem exists). A word that alone is that same date
+// is an independent date ("fri" then "mon") — two pills, so backspacing the second restores the first.
+export function foldIntoDate(pillToken, word, now = new Date(), locations = []) {
+  const token = (pillToken + ' ' + word).trim();
+  const cls = classifyToken(token, now, locations);
+  if (cls?.kind !== 'date') return null;
+  const solo = classifyToken(word, now, locations);
+  return solo?.kind === 'date' && solo.value.iso && solo.value.iso === cls.value.iso ? null : { ...cls, token };
+}
+export const ordinal = d => d + (d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th');
 export function recurrenceLabel(rec) {
   if (!rec) return '';
   const n = rec.interval || 1;
-  const ord = d => d + (d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th');
+  // A day set or a month day NAMES the step — but an interval > 1 still counts ("every 2 weeks on Mon" ≠ "Every Mon").
   if (rec.freq === 'week' && rec.weekdays?.length) {
-    const wd = [...rec.weekdays].sort((a, b) => a - b);
-    if (wd.join() === '1,2,3,4,5') return 'Weekdays';
-    return 'Every ' + wd.map(d => WEEKDAYS[d]).join(', ');
+    const wd = [...rec.weekdays].sort((a, b) => a - b), days = wd.join() === '1,2,3,4,5' ? null : wd.map(d => WEEKDAYS[d]).join(', ');
+    return n > 1 ? `Every ${n} weeks on ${days ?? 'weekdays'}` : days ? 'Every ' + days : 'Weekdays';
   }
-  if (rec.freq === 'month' && rec.month_day) return 'Every ' + ord(rec.month_day);
-  const unit = { day: 'day', week: 'week', month: 'month', year: 'year' }[rec.freq] || rec.freq;
-  return n > 1 ? `Every ${n} ${unit}s` : 'Every ' + unit;
+  if (rec.freq === 'month' && rec.month_day) return n > 1 ? `Every ${n} months on the ${ordinal(rec.month_day)}` : 'Every ' + ordinal(rec.month_day);
+  return n > 1 ? `Every ${n} ${rec.freq}s` : 'Every ' + rec.freq;
 }
