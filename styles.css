@@ -61,7 +61,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
    .canvas's pan-y was ignored the moment the finger landed on a surface. Blink then claimed the sideways
    gesture for its own scrolling and fired pointercancel after the FIRST pointermove: the track never
    followed the finger, it only arrived at release via the flick heuristic. That is the "laggy swipe".  */
-.app, .cl-month { touch-action: pan-y; }   /* .cl-pages is no scroller: touch-action none, below */
+.app, .cl-month, .soc-list, .msgs { touch-action: pan-y; }   /* .cl-pages is no scroller: touch-action none, below */
 .canvas-track { display: flex; height: 100%; will-change: transform; --slide: .42s; transition: transform var(--slide) var(--ease-drawer); }   /* programmatic moves slide; .dragging below is 1:1 with the finger */
 .surface { flex: 0 0 100%; height: 100%; min-width: 0; overflow: hidden; }
 /* On [inert] only: leaving holds it drawn through the slide; arriving is instant, or focus into it fails for a frame */
@@ -70,6 +70,67 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
    A swipe draws it from the first move; leaving, it stays drawn through the track's slide. Layout reads still force it. */
 .canvas-track:not(.dragging) > .surface[inert] { content-visibility: hidden; }   /* ceiling: the swipe's first move pays the surface's render (6x phone, 240-item month: worst early frame 44 → 48–58ms); revisit if a swipe reads as stuttering */
 .surface-lists { display: flex; }
+/* ---- Social: chats list beside the thread (desktop); one or the other on a phone ---- */
+.social { display: grid; grid-template-columns: 280px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--sp-24); height: 100%; padding: var(--surface-top) var(--sp-24) var(--dock-clear) var(--surface-top); }
+.social h1 { margin: 0 0 var(--sp-20) var(--sp-2); font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
+.soc-out { grid-column: 1 / -1; justify-content: center; gap: var(--sp-12); color: var(--muted); }
+.soc-out p { margin: 0; }
+.soc-list { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; overflow-y: auto; }
+.chat-row, .soc-invite { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-10); align-items: center; padding: var(--sp-8) var(--sp-10);
+  border: 0; border-radius: var(--r-8); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.chat-row:hover, .chat-row.sel, .soc-invite:hover { background: var(--hover); }
+:is(.chat-row, .soc-invite) .av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-13); font-weight: 700;
+  color: var(--warm-ink); background: color-mix(in srgb, var(--warm) 15%, transparent); }
+.chat-row b { font-size: var(--fs-15); font-weight: 600; }
+.chat-row.new .av { position: relative; }
+.chat-row.new .av::after { content: ''; position: absolute; right: 0; top: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }   /* unread: the Social dot's look */
+.chat-row .when { font-size: var(--fs-11); color: var(--faint); }
+.chat-row .last { grid-column: 2 / -1; font-size: var(--fs-13); color: var(--muted); }
+.soc-invite { color: var(--muted); }
+.soc-invite .av { background: var(--hover); color: inherit; }
+.soc-invite .ico { width: 15px; height: 15px; flex: none; }
+.soc-invite b { grid-row: span 2; font-weight: 500; }
+.soc-empty { margin: 0; padding: var(--sp-8) var(--sp-10); color: var(--muted); }
+.thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.th-head { gap: var(--sp-10); padding: var(--sp-8) 0 var(--sp-12); }
+.th-head b { font-size: var(--fs-22); font-weight: 600; }
+.th-back { display: none; gap: var(--sp-2); border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: var(--fs-15); cursor: pointer; }
+.th-back .ico { width: 20px; height: 20px; flex: none; }
+/* column-reverse pins the scroll to the newest message with no JS */
+.msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+.msgs-in { display: flex; flex-direction: column; gap: var(--sp-8); padding-bottom: var(--sp-12); }
+.msg-row { align-self: flex-start; max-width: 78%; gap: var(--sp-4); }
+.msg-row.me { align-self: flex-end; }
+.msg { min-width: 0; padding: var(--sp-8) var(--sp-12); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-sm);
+  font-size: var(--fs-15); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; outline: 0; }
+.me .msg { background: color-mix(in srgb, var(--warm) 14%, var(--panel)); box-shadow: none; }
+.msg.editing { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.msg-ed { margin-left: var(--sp-6); font-size: var(--fs-11); color: var(--faint); }
+/* Own messages' Edit and Delete: shown on hover, or once the bubble (tabindex -1, so a tap) or a button has focus */
+.msg-acts { flex: none; opacity: 0; pointer-events: none; transition: opacity .12s var(--ease-out); }
+.msg-row:is(:hover, :focus-within) .msg-acts { opacity: 1; pointer-events: auto; }
+.msg-acts button, .chat-editing button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: none; color: var(--muted); cursor: pointer; }
+.msg-acts button:hover, .chat-editing button:hover { background: var(--hover); color: var(--ink); }
+.msg-acts .ico, .chat-editing .ico { width: 16px; height: 16px; }
+.chat-editing { justify-content: space-between; margin-bottom: var(--sp-4); padding-left: var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
+.chat-comp { gap: var(--sp-6); padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-10); border: 1px solid var(--edge-hi); border-radius: var(--r); background: var(--panel); }
+.chat-comp textarea { flex: 1; min-width: 0; max-height: 40vh; field-sizing: content; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-15); padding: var(--sp-2) var(--sp-4); }
+.chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.chat-comp .send:disabled { opacity: .45; cursor: default; }
+.chat-hint { margin: var(--sp-6) 0 0 var(--sp-4); font-size: var(--fs-11); color: var(--faint); }
+@media (max-width: 640px) {
+  .social { grid-template-columns: minmax(0, 1fr); padding: var(--sp-16) var(--sp-12) var(--dock-clear); }
+  .social > * { grid-area: 1 / 1; }   /* stacked: a swipe back slides the thread off the chats */
+  /* an open thread is the whole screen: no switcher (soc-2e); ‹ Chats, Back and a swipe right lead back */
+  .social.in-thread { padding-bottom: var(--sp-12); }
+  :root:has(.surface-social:not([inert]) .social.in-thread) :is(.canvas-dots, .settings-gear) { display: none; }
+  .social h1 { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
+  .social.in-thread:not(.back) .soc-list, .social:not(.in-thread) .thread { display: none; }
+  .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) var(--sp-12); }   /* full bleed, so it slides as a page */
+  .social.back .thread { background: var(--bg-wash), var(--bg); box-shadow: var(--shadow-sm); }
+  .th-back { display: flex; }
+  .chat-hint { display: none; }
+}
 .canvas-track.dragging { transition: none; }
 /* A key cuts what a click or swipe animates (ui-build G9). --slide also times the leaving surface's content-visibility hold. */
 .kbd .canvas-track { --slide: 0s; }
@@ -95,6 +156,8 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .cd-ico { width: 16px; height: 16px; flex: none; color: var(--nav-pip); }   /* the icon is the dot now — it dims to pip weight when the label drops away */
 .cd-cur .cd-ico, .cd-near .cd-ico { color: inherit; }
 .cd-far .cd-lab { display: none; }
+.cd-new { position: relative; }
+.cd-new::before { content: ''; position: absolute; left: 12px; top: calc(50% - 10px); width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }   /* on the icon's corner; the gear's .st dot */
 /* Plan's views fold into its dot on a phone (explorations #6): one navigator, and the grid keeps its whole
    bottom band for the nav and toasts. Same pill-and-raised-letter idiom as the desktop .cl-switcher, at
    strip scale. The ::after slop buys a 40px touch target without inflating the 24px control — the pill is
@@ -106,10 +169,11 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   color: var(--faint); font-size: var(--fs-11); font-weight: 700; cursor: pointer; transition: color .14s var(--ease-out), background .14s var(--ease-out); }
 .cd-segb::after { content: ''; position: absolute; inset: -9px -2px; }
 .cd-segb.on { background: var(--panel); box-shadow: var(--shadow-sm); color: var(--warm-ink); }
-/* Plan's actions after the views (D5): a 28×22 face on a 44×44 hit, pitched 44 so no two hits overlap. */
-.cd-act { position: relative; display: flex; align-items: center; justify-content: center; width: 28px; height: 22px; margin-left: var(--sp-10);
+/* Plan's actions after the views (D5): a 28×22 face on a 36×44 hit, pitched 36 so no two hits overlap
+   and every dot fits a 320px phone (soc-5). */
+.cd-act { position: relative; display: flex; align-items: center; justify-content: center; width: 28px; height: 22px; margin-left: var(--sp-2);
   border: 0; border-radius: var(--r-pill); background: none; color: var(--nav-ink); font-size: var(--fs-17); line-height: 1; cursor: pointer; touch-action: manipulation; user-select: none; }
-.cd-act::after { content: ''; position: absolute; inset: -11px -8px; }
+.cd-act::after { content: ''; position: absolute; inset: -11px -4px; }
 .cd-act .cd-ico { color: inherit; }
 .cd-act.on { background: var(--hover); color: var(--ink); }   /* a toggled panel is state, not "now" (as .cl-tray-btn.on) */
 .cd-today { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); font-size: var(--fs-11); font-weight: 700; }   /* .cd-segb face in .cl-today's colours (Android NavToday) */
@@ -195,13 +259,24 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 
 /* ---- App content (right pane) ---- */
 /* full-width padding (not max-width+margin) so margin-area wheel events scroll natively, not via JS */
-.app { flex: 1; min-width: 0; padding: 64px max(var(--sp-24), calc((100% - var(--list-w)) / 2)) 120px; height: 100%; overflow-y: auto; overflow-x: hidden; }
+:root { --surface-top: 64px; --dock-clear: 56px; }   /* where a surface's title starts (Lists, Social); room under fixed content for the nav dock's band */
+.app { flex: 1; min-width: 0; padding: var(--surface-top) max(var(--sp-24), calc((100% - var(--list-w)) / 2)) 120px; height: 100%; overflow-y: auto; overflow-x: hidden; }
 .topbar {
   align-items: flex-start;
   h1 { margin: 0; font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
   .date { margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-13); }
 }
 .empty { color: var(--muted); text-align: center; padding: 56px 0; font-size: 14px; }
+.empty-sun { width: 48px; height: 28px; margin-bottom: var(--sp-6); overflow: visible; fill: none; stroke: var(--warm); stroke-width: 2.25; stroke-linecap: round;
+  & .ray { transform-box: fill-box; transform-origin: center; } }
+.empty-sun ~ .empty-t { font-size: var(--fs-17); font-weight: 600; color: var(--ink); }
+/* All clear arriving (_clearIn): the sun rises, its rays light in turn, the words follow */
+.empty.arrive { & .arc { animation: clear-arc var(--motion-daily) var(--ease-spring) both; }
+  & .ray { animation: clear-ray var(--motion-daily) var(--ease-out) calc(100ms + sibling-index() * 40ms) both; }
+  & .empty-sun ~ .empty-t { animation: clear-t var(--motion-daily) var(--ease-out) 220ms both; } }
+@keyframes clear-arc { from { translate: 0 10px; opacity: 0; } }
+@keyframes clear-ray { from { scale: .3; opacity: 0; } }
+@keyframes clear-t { from { translate: 0 6px; opacity: 0; } }
 
 /* ---- Tasks: rows separated by space + hover tint, not lines (Things style) ---- */
 .list { list-style: none; margin: 0 -10px 0 -18px; padding: 0; }   /* left bleed = row's 18px padding so the check column lines up with the title/date above */
@@ -219,10 +294,11 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   /* indent guides: 2px vertical line per depth level (matches checklist connector) */
   background-image: repeating-linear-gradient(to right, transparent 0 9px, color-mix(in srgb, var(--faint) 55%, transparent) 9px 11px, transparent 11px 22px);
   background-repeat: no-repeat; background-position: calc(var(--gut) - 1px) 0; background-size: calc(var(--d, 0) * 22px) 100%;
-  &:hover:not(:has(a:hover, code:hover, .md-code:hover, .chk-rect:hover, .chk-rect:not(.plain) + .chk-txt:hover, .chk-more:hover)) { background-color: var(--row-hov, var(--hover)); }   /* lit where a click opens the composer: not where it ticks an item (box/text — app.js listOver mirrors) */
+  &:hover:not(:has(a:hover, code:hover, .md-code:hover, .chk-rect:hover, .chk-rect:not(.plain) + .chk-txt:hover, .chk-more:hover, .row-rel:hover)) { background-color: var(--row-hov, var(--hover)); }   /* lit where a click opens the composer: not where it ticks an item (box/text — app.js listOver mirrors) */
   .body { position: relative; }
   .title { display: block; width: 100%; font-size: var(--fs-15); line-height: 18px; cursor: pointer; }
   &.done .title { color: var(--muted); text-decoration: line-through; }
+  &.done .row-step .chk-txt { color: var(--muted); }   /* a done Steps row's last step: quiet, never struck like a checklist item */
 }
 /* Importance encoded in the checkbox color, Todoist-style (--pc set per task from importance) */
 .item:has(code:hover, .md-code:hover) { -webkit-user-drag: none; }   /* code selection wins over the row's HTML drag */
@@ -374,6 +450,10 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* the blocked-by stop sign is filled (solid) so it reads as an octagon, not a circle, at small sizes */
 .row-rel.blocked_by .ico, .rel-ico.blocked_by { fill: currentColor; stroke: none; }
 .row-rel-name { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-rel { padding: 0; }   /* a button: the UA padding would widen every chip */
+.row-rel.icon-only .row-rel-name, .row-rel-n { display: none; }   /* names drop one chip at a time (app.js _relIcon) */
+.row-rels.rolled { > .row-rel ~ .row-rel { display: none; } .row-rel-n { display: inline; } }   /* >3, all icons: the first chip stands for all, with the count */
+.rels-pop { .rel-chip-remove { flex: none; width: 28px; height: 28px; justify-content: center; border-radius: var(--r-6); } .rel-chip-remove .ico { width: 15px; height: 15px; } }
 .nlp-pill { font-size: var(--fs-13); line-height: 16px; color: var(--ink);
   background: color-mix(in srgb, var(--rc, var(--muted)) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--rc, var(--muted)) 35%, transparent);
@@ -414,26 +494,27 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* Note things: RULED LINES in the .check slot — the glyph for "there is writing here" (gallery pick N6,
    2026-08-13). Inert (a note isn't asking to be done); checkHtml never gives it .done, so a completed note
    keeps the mark unchanged (no amber fill, no tick). */
-.check.note { border-color: transparent; background: none; cursor: default; pointer-events: none; }
-.check.note .ico { width: 18px; height: 18px; flex: none; color: var(--muted); }
-/* Composer type toggle (#104): the draft's type in front, the other mark peeking from under it (larger on hover).
-   A swap orbits both 180deg round their midpoint; the angle pairs 0/180 and 180/360 turn them the same way, so they pass
-   on opposite sides. z-index is an integer, so it flips at the halfway point, where the two are furthest apart. */
+.check.note { border: 0; background: none; cursor: default; pointer-events: none; }
+.check.note .ico { width: 125%; height: 125%; flex: none; color: var(--muted); }   /* 1.25x the slot: the solid tack inks ~0.85 of the ring, which reads as the same size (user 10-07: never bigger than the checkbox) */
+/* Composer type toggle (#104): the draft's type in front, the other mark larger and faint behind it, on the same centre.
+   A swap circles each a full turn round its own side (--mx); the sides mirror, so the two always pass opposite each other,
+   and hovering the peek runs it part-way down that path. z-index is an integer, so it flips halfway, where they're furthest apart. */
 .type-tog { position: relative; flex: none; width: 18px; height: 18px;
-  /* 24px hit box (G5), unscaled: the mark scales inside it; the 18px panel disc hides the peek where they cross mid-swap.
-     At rest --my keeps the peek's ink 1px clear of that disc: a merely touching disc edge eats a ring's stroke (read as a spinner). */
-  > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; --a: 0deg; --s: 1; --mx: 2px; --my: 7.5px; z-index: 1;
-    transform: translate(var(--mx), var(--my)) rotate(var(--a)) translate(calc(-1 * var(--mx)), calc(-1 * var(--my))) rotate(calc(-1 * var(--a)));
-    transition: transform .26s var(--ease-in-out), z-index .26s var(--ease-in-out); }
-  .check { scale: var(--s); transition: scale .26s var(--ease-in-out), background-color .12s var(--ease-out); }
+  /* 24px hit box (G5) that scales with its mark; the 18px panel disc hides whatever is behind the front mark */
+  > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; --a: 0deg; --s: 1; --mx: 4.5px; z-index: 1;
+    transform: translateX(var(--mx)) rotate(var(--a)) translateX(calc(-1 * var(--mx))) rotate(calc(-1 * var(--a))) scale(var(--s));
+    transition: transform .26s var(--ease-in-out), opacity .26s var(--ease-in-out), z-index .26s var(--ease-in-out); }
+  > :last-child { --mx: -4.5px; }   /* the tack circles on the side away from the title */
   > button:disabled { cursor: default; }
-  &:not(.note) > :last-child, &.note > :first-child { --a: 180deg; --s: .55; z-index: 0; }
-  &.note > :last-child { --a: 360deg; }
-  @media (hover: hover) and (pointer: fine) { &:not(.note) > :last-child:hover, &.note > :first-child:hover { --mx: 3px; --my: 9px; --s: .7; } }
-  /* touch: no hover, so each mark gets the row check's 40px column, split where the two meet. Only the ::after
-     takes a finger: the buttons' boxes and the row check's own slop overlap the peek's mark, and a disabled front has none */
-  @media (pointer: coarse) { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -11px -11px -1px; pointer-events: auto; }
-    &:not(.note) > :last-child::after, &.note > :first-child::after { inset: 1px -7px -23px -15px; } }
+  &.note > button { --a: 360deg; }
+  &:not(.note) > :last-child, &.note > :first-child { --s: 1.5; opacity: .35; z-index: 0; }
+  @media (hover: hover) and (pointer: fine) { &:not(.note) > :last-child:hover { --a: 60deg; } &.note > :first-child:hover { --a: 300deg; }
+    &:not(.note) > :last-child:hover, &.note > :first-child:hover { --s: 1.8; opacity: .5; } }
+  /* touch: no hover, so the front takes the 46px column above its ring's foot and the peek the column below it. Only the ::after
+     takes a finger: the buttons' boxes and the row check's own slop overlap the peek's mark, and a disabled front has none.
+     The peek's insets sit in its 1.5x box. */
+  @media (pointer: coarse) { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -15px -11px 3px; pointer-events: auto; }
+    &:not(.note) > :last-child::after, &.note > :first-child::after { inset: 18px -3px -25px; } }
 }
 @media (prefers-reduced-motion: reduce) { .type-tog :is(button, .check) { transition: none; } .type-tog > button { animation: tt-fade .15s var(--ease-out); } .type-tog.note > button { animation-name: tt-fade-b; } }   /* a fresh name restarts the fade on each swap */
 @keyframes tt-fade { from { opacity: 0; } }
@@ -459,11 +540,14 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .item > .body:has(> .step-block) .row1 { .m, .proj { font-size: var(--fs-11); } .m .ico { width: 11px; height: 11px; } .area { line-height: 13px; } .badge { padding: 0 var(--sp-6); } .row-rels { flex: none; } }
 .shed-hid { display: none !important; }
 .hid-more { flex: none; font-size: var(--fs-11); line-height: 13px; color: var(--muted); padding: 0 var(--sp-6); border-radius: var(--r-pill); background: var(--hover); }
-/* _stepTick's frozen copies of what a tick sends away, and the spark an out-of-order tick sends into the ring */
 @property --p { syntax: '<number>'; inherits: true; initial-value: 0; }   /* typed, so the pie sweeps */
-.tick-ghost.tick-ghost { position: fixed; margin: 0; z-index: 70; pointer-events: none; }   /* doubled: beats .step-next's position */
 .step-node.done { background: var(--pc); border-color: var(--pc); --ck: 7px; }
-.tick-spark { position: fixed; z-index: 71; width: 5px; height: 5px; border-radius: 50%; background: var(--warm); box-shadow: 0 0 6px var(--warm); pointer-events: none; }
+.step-node.lit { background: var(--pc); border-color: var(--pc); }
+/* _stepTick: the rail fills down to the next node in the task's colour (motion.fill), then the step pushes (motion.push) */
+.rail-fill { position: absolute; left: calc(var(--rail-x) - 1px); width: 2px; top: var(--rail-top, 4px); bottom: 13px; background: var(--pc); transform-origin: top; }
+.pushing { clip-path: inset(0 -100vw); }   /* clips only above and below: the rail and its nodes sit left of the box */
+.pushing > .push-out { position: absolute; inset: 0 0 auto; pointer-events: none; &::before { content: none; } }   /* the old step, laid over the new; the rail stays the box's own */
+.pushing > .row-step { transform-origin: left top; }
 /* The step's ::desc, its own line well under the preview's size; the preview: the next open step, its node on the rail. */
 .step-desc { font-size: var(--fs-11); line-height: 14px; color: var(--faint); margin-top: 1px; }
 .step-next { position: relative; margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 16px; color: var(--faint); }
@@ -479,6 +563,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* I6, the part-dashed ring (Tabler "progress"): the right half a solid stroke, the left half four dashes. Inside it,
    inset 2px clear of the dashes, the pie fills by steps done (user: "the half circle stroke solid like in that icon"). */
 .check.steps { border-color: transparent; padding: var(--sp-2); background: conic-gradient(var(--pc) calc(var(--p) * 1%), transparent 0) content-box;
+  &.done { --ck: 9.9px; --ck-y: .5px; }   /* the tick sits in the full pie, clear of the dashes */
   &:hover { background: conic-gradient(var(--pc) calc(var(--p) * 1%), transparent 0) content-box, color-mix(in srgb, var(--pc) 15%, transparent) padding-box; }
   > .ring { position: absolute; inset: -2.25px; border-radius: 50%; pointer-events: none;
     background: conic-gradient(var(--pc) 0 186deg, transparent 0 198deg, var(--pc) 0 225deg, transparent 0 237deg, var(--pc) 0 264deg, transparent 0 276deg, var(--pc) 0 303deg, transparent 0 315deg, var(--pc) 0 342deg, transparent 0 354deg, var(--pc) 0);   /* solid runs past 12 and 6 o'clock so the rail lands on stroke */
@@ -2303,9 +2388,10 @@ textarea.inp { resize: vertical; }
    Sized by the POINTER, not the width: a finger needs a bigger target at any screen size, a mouse
    never does. Keeping these off the 640px block means narrowing a desktop window restacks the layout
    without inflating every control. Visual sizes are unchanged — only padding and hit area grow. */
-/* Below 361px Plan's full strip (~300px) is wider than the band right of the gear: its current label goes (the
+/* Below 361px Plan's full strip is wider than the band right of the gear: its current label goes (the
    accent icon still marks the surface — the trade the 640px block makes for the neighbours' labels) and the
-   dots close up to --sp-8, so every 44px hit stays inside the band down to 320px. */
+   dots close up to --sp-8. ceiling: the strip is then 274px and fits beside the gear down to 320px; a fourth
+   surface or a narrower phone needs a fold again. */
 @media (max-width: 360px) {
   .cd-plan .cd-lab { display: none; }
   .canvas-dots { gap: var(--sp-8); }

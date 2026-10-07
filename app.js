@@ -6,7 +6,7 @@ const _vars = (m) => Object.entries(m).map(([k, v]) => `--${k}:${v}`).join(';');
 const _scale = (d) => [
   d.space.map((n) => `--sp-${n}:${n}px`), d.type.map((n) => `--fs-${n}:${n}px`), Object.entries(d.layout).map(([k, v]) => `--${k}:${v}px`),
   Object.entries(d.radius).map(([k, v]) => `--r${k === 'r' ? '' : '-' + k}:${v}`),
-  Object.entries(d.ease).map(([k, v]) => `--ease-${k}:${v}`),
+  Object.entries(d.ease).map(([k, v]) => `--ease-${k}:${v}`), Object.entries(d.motion).map(([k, v]) => `--motion-${k}:${v}ms`),
   Object.entries(d.font).map(([k, v]) => `--font-${k}:${v}`),
   Object.entries(d.priority).map(([k, v]) => `--p${k}:${v}`),
   Object.entries(d.quick).map(([k, v]) => `--q-${k}:${v}`),
@@ -31,7 +31,7 @@ applyTheme(savedAppearance(), savedColorTheme()); // Before Alpine boots: no fla
 
 import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, MAX_DEPTH, pendingSweep, placedMap, overviewFields, liveRefs } from './store.js';
 import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, jMigrate } from './recovery.js';
-import { inNotes } from './predicates.js';
+import { inNotes, openBlockers } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, userReminders, offsetLabel } from './reminders.js';
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, bodyText } from './search.js';
@@ -45,6 +45,7 @@ import { SUPABASE, SURFACES } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
 const SURF_HOME = SURFACES.includes('lists') ? 'lists' : SURFACES[0];
 import { createSupabaseStore } from './supabase-store.js';
+import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, peerName, whenLabel, unread, markRead, createInvite, setName } from './chat.js';
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
 let _sb, _inFlight = 0;   // the client's requests not yet answered: onAuth lets them land before it reloads
@@ -53,7 +54,7 @@ const sbClient = () => { if (_sb === undefined) _sb = (globalThis.supabase && SU
 
 // Module-scope: kept outside Alpine state so render reads/writes don't loop. _calDataV busts on any task/event change.
 
-const SURF_META = { lists: { label: 'Lists', icon: 'i-all' }, plan: { label: 'Plan', icon: 'i-cal' } };
+const SURF_META = { lists: { label: 'Lists', icon: 'i-all' }, plan: { label: 'Plan', icon: 'i-cal' }, social: { label: 'Social', icon: 'i-chat' } };
 const CL_HOURS = Array.from({ length: 24 }, (_, h) => h);
 const CL_WAKING_START = 8;   // default waking day start (h); future: from sleep data
 const CL_WAKING_END = 24;    // waking day end (h)
@@ -135,7 +136,8 @@ function dragImage(e, html, r) {   // r: the grabbed box
   e.dataTransfer.setDragImage?.(_dragBlank, 0, 0);   // absent on synthesized DataTransfer (tests)
 }
 const dragImageEnd = () => { _dragOff = null; if (_dragGhost) _dragGhost.hidden = true; };
-let _intoAt = null, _dropSlot = null, _ghostAt = null, _ghostGrown = false, _sortRefused = false, _dragParents = null, _dragProjs = null;   // _sortRefused: the last dragover's slot is one a sort refuses · _dragParents: the carried roots' parents · _dragProjs: their projects · _intoAt: { id, t } the row whose middle the pointer entered, and when · _dropSlot: the last row zone, which the ghost keeps · _ghostAt: the slot the ghost first opened at this drag · _ghostGrown: it has moved or closed since
+const INTO_SEEN = 100;   // ms: a human reaction to the nest outline. ceiling: a release within it of the outline reorders; revisit if users report a deliberate nest landing as a reorder
+let _intoAt = null, _intoSeen = null, _dropSlot = null, _ghostAt = null, _ghostGrown = false, _sortRefused = false, _dragParents = null, _dragProjs = null;   // _sortRefused: the last dragover's slot is one a sort refuses · _dragParents: the carried roots' parents · _dragProjs: their projects · _intoAt: { id, t } the row whose middle the pointer entered, and when · _intoSeen: { t, half } when the last into was earned, and the half under it · _dropSlot: the last row zone, which the ghost keeps · _ghostAt: the slot the ghost first opened at this drag · _ghostGrown: it has moved or closed since
 // visibleRows() memo: O(n) tree walk called many times per render; cache on _rowV+navSel+listQ so drag/animation don't recompute per frame.
 let _listHay = new Map(), _listHayV = -1;   // task id → its lowercased searchable text, per _rowV (a _rowStale bump drops only its ids): built once, not per keystroke
 let _visMemo = null, _visKey = '', _doneMemo = [], _secMemo = [], _hitRank = new Map(), _qfToday = '', _qfTmr = '', _qfWk = '';   // _doneMemo: completed rows for the section below the add-task button
@@ -153,7 +155,7 @@ let _addSlot = 0;   // the Add task row's height + margin, measured while shown:
 let _kb = 0;   // the soft keyboard's height (init's keyboard()): pops sit above it
 let _editPin = null, _editEnd = null;   // mirror `editing` / the collapse's target height OUTSIDE Alpine (listHtml reads both; a reactive read there would make composer open/close rebuild the list)
 let _listW = -1, _fitV = 0;         // list width + the generation every row's fit is stamped with (see _fit)
-const _fitMemo = new Map();         // id → { sig, lad, shed, r1, l2 }: this width's fit outcome, replayed onto a rebuilt <li> (see _fit)
+const _fitMemo = new Map();         // id → { sig, lad, shed, r1, l2, ri }: this width's fit outcome, replayed onto a rebuilt <li> (see _fit)
 // The overflow ladder: what leaves line 1, in order, while the title is still truncated. Everything after
 // this list is what a row keeps longest — project 3rd-to-last, size 2nd-to-last, and the scheduled-time
 // badge never at all. `.m.dl` is skipped when there is no scheduled time (the deadline holds that slot).
@@ -176,6 +178,8 @@ let _model = null;                    // { rows, ent:[{id,order,h,mk,d,html,r}],
 let _doneModel = null;                // the Done list's, the same shape, memoised on completedRows()
 let _appRaw = null;   // the component unproxied (init): visibleRows rebuilds on it
 // _patchRows → visibleRows: { ids, drop, sort, key, v } = rebuild ONLY these rows of the memo keyed `key` (drop: roots leaving it; sort: parents whose children moved), once _rowV is `v`
+const GLIDE_ROWS = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head)';   // what _glideFrom moves
+const _push = new Map();   // task id → the Steps tick waiting for its re-rendered row (_stepTick)
 const _cele = new Map();   // task id → its running completion reward (_celebrate): its row holds its slot until it ends
 let _celeT = 0;   // the rewards' shared linger (_celebrate)
 let _rowPatch = null, _visBP = null, _visRoots = new Set();  // _visBP: the last full walk's parent → children index · _visRoots: its scope roots
@@ -270,6 +274,7 @@ const OVERLAYS = [
   [c => c.selMenu, c => c.selMenu = null],   // an open edit-bar sub-menu closes before the selection itself
   [c => c.sel.length, c => c.clearSel()],    // active multi-select clears (before the lower list states)
   [c => c.overview, c => c.closeOverview()],
+  [c => c.phoneThread(), c => c.chat.open = null],   // Back (the system's edge swipe) returns to the chats
   [c => c.composer.open && !c._closingComposer, c => c.closeComposer()],   // a collapsing composer is already closed
 ];
 // Completion-relevant fields for undo/redo fx diff (_apply's task complete/move/remove).
@@ -374,6 +379,7 @@ document.addEventListener('alpine:init', () => {
     session: null,
     authEmail: '', authCode: '', authSent: false, authMsg: '', authErr: false, authPass: '',   // inline sign-in (settings popup)
     setPassOpen: false, setPassVal: '', setPassErr: '',   // signed-in set-password affordance
+    setNameOpen: false, setNameVal: '',   // …and the name friends see (chat.js › setName)
     tasks: [],
     byId: new Map(),        // id → task, rebuilt in loadTasks → O(1) lookups (projName/blocked) instead of tasks.find
     parentIds: new Set(),   // ids that have children, rebuilt with byId — hasChildren was O(n) per call and rode every flush via the Now getters (stage-4 profile: 12,800 calls = 2.1s of a 2.2s save)
@@ -437,6 +443,7 @@ document.addEventListener('alpine:init', () => {
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
     surfaceOrder: SURFACES, surface: SURF_HOME,   // config.js owns the shipped set
+    chat: { chats: [], open: null, msgs: [], draft: '', watch: null, editing: null, stash: '', name: '' },   // stash: the draft an edit set aside
     visited: { [SURF_HOME]: true },   // lazy-mount memory — heavy surfaces (Plan) mount on first visit, stay mounted
     _nowTickV: 0, _nowDay: isoDate(new Date()),   // _nowDay: the reactive "today" — busts list + calendar memos on midnight rollover
     drag: { active: false, x0: 0, y0: 0, w: 0, t0: 0, id: null, axis: null },
@@ -588,6 +595,11 @@ document.addEventListener('alpine:init', () => {
         if (data.session) { this.session = data.session; this.store = createSupabaseStore(sb); }
         sb.auth.onAuthStateChange((e, session) => { if (e !== 'INITIAL_SESSION') this.onAuth(session); });
       }
+      // An invite link (?invite=<id>) waits in storage for a signed-in boot: signing in reloads, or arrives by a mail link without it.
+      const invite = new URLSearchParams(location.search).get('invite');
+      if (/^[0-9a-f-]{36}$/i.test(invite ?? '')) localStorage.setItem('adherod.invite', invite);
+      if (invite != null) history.replaceState(history.state, '', location.pathname);
+      if (localStorage.getItem('adherod.invite')) this.redeemInvite();
       // A tab holds its lock until it closes. A closed tab's add draft (or one from before slots had a tab): this account's
       // newest comes back in this tab's add composer if it has none, the rest go to their account's Bin.
       const held = async () => (await navigator.locks.query()).held.some(l => l.name === _tab);
@@ -715,6 +727,7 @@ document.addEventListener('alpine:init', () => {
         if (f && f.sig === el._sig && !el._lad) {
           const l2 = new Map(); for (const sel of f.shed) this._shed(el, sel, l2);   // the moves, then the final classes
           el.querySelector('.r1l').className = f.r1; if (f.l2) l2.get(el).className = f.l2;
+          for (let k = f.ri; k--;) this._relIcon(el);
           el._lad = f.lad; el._fitV = _fitV;
           continue;
         }
@@ -724,7 +737,7 @@ document.addEventListener('alpine:init', () => {
       if (!rows.length) return;
       const grown = this._fitEls(rows);
       for (const el of rows) if (el._sig) _fitMemo.set(el.dataset.id, { sig: el._sig, lad: el._lad, shed: (el._moved || []).map(m => m.sel),
-        r1: el.querySelector('.r1l').className, l2: el.querySelector('.row2.meta')?.className });
+        r1: el.querySelector('.r1l').className, l2: el.querySelector('.row2.meta')?.className, ri: el.querySelectorAll('.r1l .row-rel.icon-only').length });
       // A row that gained (or lost) line 2 changed HEIGHT, and _measure already ran this pass and stamped
       // these elements for this width generation. Un-stamp exactly those and ask for one more pass, or the
       // spacers keep last width's heights and the scrollbar drifts. Converges: next pass they are _fitV-
@@ -775,6 +788,9 @@ document.addEventListener('alpine:init', () => {
       // Rung 0/1 — chips in place: >3 chips roll on COUNT (unchanged from the old fitRows), otherwise the
       // squeeze that got the row here collapses them to icon pills. Both are writes; no read needed.
       for (const el of rows) this._chipMode(el);
+      // Then blocker chips drop their names ONE at a time, the last named first, so the row keeps every name it has room for (soc-2 b).
+      const relRungs = batch => { while ((batch = batch.filter(el => el.querySelector('.r1l .row-rel:not(.icon-only)') && !fits(el))).length) for (const el of batch) this._relIcon(el); };   // READ, then WRITE
+      relRungs(rows);
       const line2s = new Map();
       for (const sel of LADDER) {
         // Shed while the title is squeezed — AND for a row holding exactly ONE item on line 2. A lone item
@@ -793,12 +809,14 @@ document.addEventListener('alpine:init', () => {
       // reads worse than the slightly clipped title it bought, because the line looks like a mistake rather
       // than a row. Hand it back and let the title truncate. (Two or more is a meta row and reads as one.)
       // Whatever is STILL alone here had nothing left to pair with — the ladder ran out of rungs.
+      const back = [];
       for (const [el, l2] of line2s) {
         if (l2.children.length > 1) continue;
         this._unfit(el);                 // full restore: the node goes home, the empty line goes away
         this._chipMode(el);              // …but rung 1 was free, so the chips stay collapsed in place
-        line2s.delete(el);
+        line2s.delete(el); back.push(el);
       }
+      relRungs(back);                    // and so are the blocker rungs
       // Line 2 must never wrap to a third line, so it degrades IN PLACE: shrink text, then drop chip names,
       // then roll the chips away — same preference order as line 1, same rung-major batching.
       const l2s = [...line2s.values()];
@@ -841,6 +859,7 @@ document.addEventListener('alpine:init', () => {
       // icons-only/rolled are a LINE-1 treatment; once the chips leave line 1 the class is vestigial
       // there (it styles descendants it no longer has). Hand the count-based `rolled` to line 2 — >3
       // chips roll on any line — and let line 2's own ladder decide whether names still have to go.
+      if (sel === '.row-rels') this._relNames(n);   // line 2 has the room: names come back
       if (sel === '.areas') {
         const r1l = el.querySelector('.r1l');
         if (r1l.classList.contains('rolled')) l2.classList.add('icons-only', 'rolled');
@@ -864,7 +883,15 @@ document.addEventListener('alpine:init', () => {
       el._moved = null; el._lad = 0;
       el.querySelector('.row2.meta')?.remove(); el.querySelector('.hid-more')?.remove();
       el.querySelector('.r1l')?.classList.remove('icons-only', 'rolled');
+      const rels = el.querySelector('.row-rels'); if (rels) this._relNames(rels);
     },
+    // One blocker rung's WRITE: the last chip still named drops to its icon; once none is named, >3 roll into the first chip + count.
+    _relIcon(el) {
+      const chips = el.querySelector('.r1l .row-rels').children, i = [...chips].findLastIndex(c => !c.classList.contains('icon-only'));
+      chips[i].classList.add('icon-only');
+      if (!i && chips.length > 3) chips[0].parentElement.classList.add('rolled');   // ceiling: one kind (blockers); roll per kind once attachment chips share the row
+    },
+    _relNames(rels) { rels.classList.remove('rolled'); for (const c of rels.children) c.classList.remove('icon-only'); },
 
     // --- Nav ---
     setNav(type, id = null) {
@@ -894,6 +921,147 @@ document.addEventListener('alpine:init', () => {
     },
     closeOverview() { this.overview = false; this.navPop = null; },   // a ⋯ popover left open must not reappear on the next open
     surfMeta(s) { return SURF_META[s]; },   // label + icon
+    // --- Social: 1:1 chats (chat.js). Mounted on first visit; signed out shows a sign-in prompt. ---
+    async socialStart() {
+      const sb = sbClient();
+      if (!this.session || !sb || this.chat.watch) return;
+      this.chat.watch = watchMessages(sb, e => this.chatChange(e));
+      this._setChats(await loadChats(sb) ?? []);
+      if (!this.narrow && !this.chat.open && this.chat.chats[0]) this.openChat(this.chat.chats[0].id);   // desktop shows a thread beside the list
+    },
+    async openChat(id) {
+      if (this.chat.editing) this.endEdit();
+      this.chat.open = id; this.chat.msgs = [];
+      await this.chatReload(false);
+    },
+    // The journal's 'message' loader too (_loaders): the open thread, and the list's previews when an edit or delete may have moved them.
+    async chatReload(list = true) {
+      const sb = sbClient(), id = this.chat.open;
+      const [chats, msgs] = await Promise.all([list && loadChats(sb), id && loadMessages(sb, id)]);
+      if (chats) this._setChats(chats);
+      if (msgs && this.chat.open === id) this.chat.msgs = msgs;
+    },
+    phoneThread() { return this.narrow && this.surface === 'social' && !!this.chat.open; },   // a whole-screen page with no switcher (soc-2e)
+    chatPeer(chat) { return chat ? peerName(chat, this._acct()) : ''; },
+    // Signed out, Social asks to sign in and the invite waits. A server's no (used, expired, your own) drops it; a network failure keeps it for the next boot.
+    async redeemInvite() {
+      this.goSurface('social');
+      if (!this.session) return;
+      const { data: id, error } = await sbClient().rpc('redeem_invite', { invite: localStorage.getItem('adherod.invite') });
+      if (!error || error.code === 'P0001') localStorage.removeItem('adherod.invite');
+      if (error) return this.notify(error.code === 'P0001' ? 'That invite link has been used or has expired' : 'Invite not opened. Check your connection');
+      await this.chatReload();
+      this.openChat(id);
+    },
+    // A phone hands the link to the share sheet; elsewhere, or if the sheet can't open, it goes to the clipboard, else into the card.
+    async inviteFriend() {
+      const row = await createInvite(sbClient(), this._acct());
+      if (!row) return this.notify('Invite link not made');
+      const url = `${location.origin}${location.pathname}?invite=${row.id}`;
+      if (this.narrow && navigator.share) {
+        try { return await navigator.share({ url }); } catch (e) { if (e.name === 'AbortError') return; }   // dismissing the sheet is a choice
+      }
+      const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
+      this.notify(copied ? 'Invite link copied. It works once, for 14 days' : `Invite link: ${url}`);
+    },
+    // ceiling: with Social not yet opened on this device, only a name set here shows; load the chats with the card if that confuses
+    chatName() { return this._myMembers().find(m => m.name)?.name || this.chat.name || localStorage.getItem('adherod.chatName:' + this._acct()) || ''; },   // chat.name: storage isn't reactive
+    _myMembers() { return this.chat.chats.flatMap(c => c.members).filter(m => m.user_id === this._acct()); },
+    // The device keeps it too: with no chats yet there's no row to hold it, and the next new one gets it here.
+    async saveName() {
+      const name = this.setNameVal.trim();
+      if (!name) return;
+      if (!(await setName(sbClient(), this._acct(), name))) return this.notify('Name not saved');
+      localStorage.setItem('adherod.chatName:' + this._acct(), name);
+      this.chat.name = name;
+      for (const m of this._myMembers()) m.name = name;
+      this.setNameOpen = false;
+    },
+    // Every load of the list: a chat you joined (or a friend joined) since is named for you.
+    _setChats(chats) {
+      this.chat.chats = chats;
+      this._nameChats();
+    },
+    async _nameChats() {
+      const name = this.chatName();
+      if (!name || this._myMembers().every(m => m.name === name)) return;
+      if (!(await setName(sbClient(), this._acct(), name))) return;   // the next load tries again
+      for (const m of this._myMembers()) m.name = name;
+    },
+    chatNew(chat) { return unread(chat, this._acct()); },
+    chatUnread() { return this.chat.chats.some(c => this.chatNew(c)); },
+    // .social's x-effect: the chat on screen is read; its sync part tracks the surface, the open chat and its newest message.
+    async chatSeen(chat) {
+      const uid = this._acct();
+      if (!chat || this.surface !== 'social' || !unread(chat, uid)) return;
+      const at = chat.last.created_at;
+      if (await markRead(sbClient(), uid, chat.id, at)) chat.members.find(m => m.user_id === uid).last_read_at = at;
+    },
+    chatWhen: whenLabel,
+    openChatRow() { return this.chat.chats.find(c => c.id === this.chat.open); },
+    async sendChat() {
+      const body = this.chat.draft.trim(), id = this.chat.open;
+      if (!body || !id) return;
+      if (this.chat.editing) return this.saveEdit(body);
+      const row = await sendMessage(sbClient(), this._acct(), id, body);
+      if (!row) return this.notify('Message not sent');
+      this.chat.draft = '';
+      this.chatChange({ eventType: 'INSERT', new: row });
+    },
+    // Realtime and our own sends land here; a row already shown (by id) is never added twice.
+    chatChange({ eventType, new: row, old }) {
+      const chat = this.chat.chats.find(c => c.id === (row?.conversation_id ?? old?.conversation_id));
+      if (eventType === 'DELETE') {   // carries only the id: a chat whose preview it was re-reads its new last message
+        this.chat.msgs = this.chat.msgs.filter(m => m.id !== old.id);
+        if (this.chat.chats.some(c => c.last?.id === old.id)) loadChats(sbClient()).then(chats => chats && this._setChats(chats));
+        return;
+      }
+      if (eventType === 'UPDATE') {
+        this.chat.msgs = this.chat.msgs.map(m => m.id === row.id ? row : m);
+        if (chat?.last?.id === row.id) chat.last = row;
+        return;
+      }
+      if (row.conversation_id === this.chat.open && !this.chat.msgs.some(m => m.id === row.id)) this.chat.msgs.push(row);
+      if (!chat) return void loadChats(sbClient()).then(chats => chats && this._setChats(chats));   // a chat we haven't loaded yet
+      chat.last = row;
+      if (row.user_id !== this._acct() && !(this.surface === 'social' && this.chat.open === chat.id)) {   // soc-1b: a quiet card, never for the chat on screen
+        const line = row.body.split('\n')[0];
+        this.notify(`${this.chatPeer(chat)}: ${line.length > 80 ? line.slice(0, 79) + '…' : line}`, { actions: [{ label: 'Open', fn: () => { this.goSurface('social'); this.openChat(chat.id); } }], timeout: 6000 });
+      }
+      this.chat.chats.sort((a, b) => (b.last?.created_at ?? '').localeCompare(a.last?.created_at ?? ''));
+    },
+    chatKey(e) {
+      if (e.isComposing) return;
+      if (e.key === 'Escape' && this.chat.editing) { e.stopPropagation(); this.endEdit(); }   // not escape(): on a phone that also leaves the thread
+      else if (e.key === 'ArrowUp' && !this.chat.draft && !this.chat.editing) {   // ↑ in an empty composer edits your last message
+        const mine = this.chat.msgs.findLast(m => m.user_id === this._acct());
+        if (mine) { e.preventDefault(); this.startEdit(mine); }
+      } else if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendChat();
+      }
+    },
+    // An edit borrows the composer: the draft set aside comes back when it ends.
+    startEdit(m) {
+      if (!this.chat.editing) this.chat.stash = this.chat.draft;
+      this.chat.editing = m.id;
+      this.chat.draft = m.body;
+      queueMicrotask(() => this.$refs.chatInput?.focus());
+    },
+    endEdit() {
+      this.chat.editing = null;
+      this.chat.draft = this.chat.stash;
+      this.chat.stash = '';
+    },
+    async saveEdit(body) {
+      const id = this.chat.editing;
+      if (this.chat.msgs.find(m => m.id === id)?.body === body) return this.endEdit();
+      if (await this._journalRowChange('Edited message', 'message', id, () => editMessage(sbClient(), id, body), { fail: 'Message not saved' })) this.endEdit();
+    },
+    deleteMsg(m) {
+      if (this.chat.editing === m.id) this.endEdit();
+      return this.perform('Deleted message', { kind: 'delete', target: 'message', id: m.id }, { fail: 'Message not deleted' });
+    },
     dotStripHtml,
     rollerBoxHtml,
     areaOptHtml,
@@ -999,7 +1167,15 @@ document.addEventListener('alpine:init', () => {
         // makes, which the pointer path never did: a finger paged the app where a trackpad scrolled the
         // lane. Finger sign is inverted from wheel delta (drag left = scroll right), hence -dx.
         if (this.drag.axis === 'x' && this._ownedByScroller(this.drag.from, e.currentTarget, 'x', -dx)) this.drag.axis = 'own';
-        if (this.drag.axis === 'x') { this.dragging = true; document.body.classList.add('swiping'); try { this.$refs.canvas.setPointerCapture(e.pointerId); } catch {} }
+        if (this.drag.axis === 'x' && this.phoneThread()) this.drag.axis = 'back';   // swipes back to the chats, not to Plan
+        if (this.drag.axis === 'x') this.dragging = true;
+        if (this.drag.axis === 'x' || this.drag.axis === 'back') { document.body.classList.add('swiping'); try { this.$refs.canvas.setPointerCapture(e.pointerId); } catch {} }
+        if (this.drag.axis === 'back') this.$refs.thread.parentElement.classList.add('back');   // the chats show beneath
+      }
+      if (this.drag.axis === 'back') {
+        e.preventDefault();
+        this.$refs.thread.style.transform = `translateX(${dx > 0 ? dx : dx * 0.3}px)`;   // leftward: the same resistance as past the ends
+        return;
       }
       if (this.drag.axis !== 'x') return;                     // vertical, or a list that owns it → scroll natively
       e.preventDefault();
@@ -1015,6 +1191,7 @@ document.addEventListener('alpine:init', () => {
       this.drag.active = false; this.dragging = false; document.body.classList.remove('swiping');   // re-enable the transition + text selection
       const dx = this.dragDx, wasX = this.drag.axis === 'x';
       this.dragDx = 0;
+      if (this.drag.axis === 'back') return this.threadRelease(e);
       if (!wasX) return;                                      // a tap or a vertical scroll — stay put
       // Velocity from the EVENTS' own timestamps, not from when our handlers happened to run: a busy main
       // thread delays the handler, not the finger, and clock-at-handler-time under-reports the speed — which
@@ -1025,6 +1202,19 @@ document.addEventListener('alpine:init', () => {
       // An unchanged surface doesn't re-run Alpine's :style, leaving the drag offset inline: write the resting transform
       // so the CSS transition animates back.
       if (this.$refs.track) this.$refs.track.style.transform = `translateX(-${targetIdx * 100}%)`;
+    },
+    // The thread slides off to the right (a flick or past half-way, like the surface swipe) or springs back; the chats stay shown until it lands.
+    // ceiling: a new swipe inside the 220ms slide waits it out (the animation outranks the finger); make it interruptible if that reads as stuck.
+    threadRelease(e) {
+      const el = this.$refs.thread, social = el.parentElement, dx = e.clientX - this.drag.x0;
+      const back = this.snapTarget(dx, this.drag.w, dx / Math.max(1, e.timeStamp - this.drag.t0), 1, 2) === 0;
+      const from = el.style.transform, to = back ? 'translateX(100%)' : 'translateX(0)';
+      el.style.transform = to;
+      motion.go(null, el, [{ transform: from }, { transform: to }], { duration: DESIGN.motion.daily, easing: DESIGN.ease.drawer }).finished.then(() => {
+        if (back) this.chat.open = null;
+        el.style.transform = '';
+        social.classList.remove('back');   // the thread may be gone (‹ Chats mid-slide)
+      });
     },
     navHeading() {
       if (this.navSel.type === 'all') return 'All';
@@ -1630,6 +1820,7 @@ document.addEventListener('alpine:init', () => {
       if (id === this.focusId) { c.add('kbfocus'); _kbEl = el; }
       if (this.dragId && _dragIds?.has(id)) c.add('dragging');   // every carried row, not just the grabbed one
       if (id === _dropEl?.dataset.id) { c.add('drop-into'); _dropEl = el; }
+      _push.get(id)?.(el);
       const fx = _cele.get(id);
       if (fx && this.byId.get(id)?.completed_at) {
         c.add('cele', fx.mode, ...fx.leave ? ['leave'] : []);
@@ -1678,7 +1869,7 @@ document.addEventListener('alpine:init', () => {
       const prev = el._parts;
       if (prev === parts || (prev && prev.length === parts.length && parts.every((p, i) => p.html === prev[i].html))) return;
       el._parts = parts; const made = this.morphRows(el, parts);
-      if (made.length && el.closest('.surface-lists')) { queueMicrotask(() => { for (const n of made) this._stampRow(n); this.paintSel(); }); this.fitRows(); }   // list rows only; a microtask reads the state subscribing no effect
+      if (made.length && el.closest('.surface-lists')) { queueMicrotask(() => { for (const n of made) this._stampRow(n); this.paintSel(); this._rehover(); }); this.fitRows(); }   // list rows only; a microtask reads the state subscribing no effect
       else if (made.length && el.closest('.cl-side')) this._fitSide(el.closest('.cl-side'), made);
     },
     // Parses ONLY the rows whose html actually changed: a one-field save never does the work of a full rebuild.
@@ -1697,6 +1888,11 @@ document.addEventListener('alpine:init', () => {
         if (!cur || cur._sig !== p.html) {   // changed (or new) → this is the only row we pay to parse
           (tpl || (tpl = document.createElement('template'))).innerHTML = p.html;
           node = tpl.content.firstElementChild;
+          if (cur?.matches(':hover')) {   // patch the row under the pointer in place: a fresh <li> isn't :hover until the mouse next moves (a frame untinted)
+            for (const name of cur.getAttributeNames()) if (!node.hasAttribute(name)) cur.removeAttribute(name);
+            for (const attr of node.attributes) cur.setAttribute(attr.name, attr.value);
+            cur.replaceChildren(...node.childNodes); node = cur;
+          }
           node._sig = p.html; made.push(node);
         }
         if (cur === cursor) { cursor = cursor.nextElementSibling; if (node !== cur) container.replaceChild(node, cur); }   // same slot: keep or swap in place
@@ -1717,8 +1913,9 @@ document.addEventListener('alpine:init', () => {
     mkRow(t, depth, byParent, byId, def, now, edMemo, pm) {
       const kids = byParent.get(t.id) || [], parent = byId.get(t.parent_id), cl = t.checklist || [];
       const hasKids = kids.some(c => !inNotes(c)), hasCl = cl.length > 0;   // a note child never fills the ring
-      // Steps: the row leads with the first open step (stored order) and the pie counts steps, never subtasks.
-      const si = t.task_type === 'steps' && !t.checklist_plain ? cl.findIndex(x => !x.done) : -1;
+      const rels = openBlockers(t, byId).map(id => ({ id, type: 'blocked_by', icon: 'i-stop', name: byId.get(id).content }));   // a done blocker leaves the row
+      // Steps: the row leads with the first open step (stored order), or the last once all are done, so a done one still reads as steps; the pie counts steps, never subtasks.
+      const si = t.task_type === 'steps' && !t.checklist_plain ? (i => i < 0 ? cl.length - 1 : i)(cl.findIndex(x => !x.done)) : -1;
       const em = edMemo ? this.effDurMin(t, byParent, edMemo) : (t.est_minutes || 0);   // roll up subtasks when no own duration
       // ONE date fact: the placement (or, for a repeat, its next occurrence). A placement is an INTENTION that
       // reflows on miss, so it never wears the overdue band: a missed one wears the deadline red as a line, never the fill.
@@ -1742,7 +1939,7 @@ document.addEventListener('alpine:init', () => {
         loc: this.rowLoc(t),
         locX: t.location?.mode === 'except',   // away-from → negated pin
 
-        rels: (t.blocked_by ?? []).map(id => ({ id, type: 'blocked_by', icon: 'i-stop', name: byId.get(id)?.content || '' })),
+        rels,
         due: dueB,
         dl: t.deadline_at ? deadlineLeft(t.deadline_at, now) : null,
         projName: parent ? parent.content : '',
@@ -1752,7 +1949,7 @@ document.addEventListener('alpine:init', () => {
         childCount: kids.length,
         hasProgress: hasKids || hasCl,
         progress: this.rowProgress(t, si >= 0 ? [] : kids),
-        blocked: (t.blocked_by ?? []).some(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; }), // an incomplete blocker (matches is:blocked); archived can't complete, so it no longer blocks
+        blocked: rels.length > 0,
       };
     },
     // Enter keyboard navigation where the reader is, not at the corpus boundary.
@@ -2083,13 +2280,19 @@ document.addEventListener('alpine:init', () => {
 
     // halves = above/below; the middle 40% nests only after DWELL there, so a drag passing over never nests. A still pointer's
     // dragovers keep coming, so a stamp needs no timer; leaving the band or the row restarts it. No "into" past MAX_DEPTH.
+    // A drop nests only INTO_SEEN after into was earned (listDrop): a stalled page handles a stale dragover past DWELL and the drop
+    // right behind it, the nest never shown. Rate-free: the stall compresses both.
     _dropMode(e, overId) {
-      const rect = e.currentTarget.getBoundingClientRect(), y = e.clientY - rect.top, h = rect.height, now = performance.now();
+      const rect = e.currentTarget.getBoundingClientRect(), y = e.clientY - rect.top, h = rect.height, now = performance.now(), half = y < h * 0.5 ? 'above' : 'below';
       const band = !_dndHeld && y > h * 0.3 && y < h * 0.7 && projectDepth(this.tasks, overId) + _dragSubDepth <= MAX_DEPTH;   // a list gliding at its edge (_dndHeld) slides rows under the pointer: no rest
       if (!band) _intoAt = null;
       else if (_intoAt?.id !== overId) _intoAt = { id: overId, t: now };
-      if (!band || now - _intoAt.t < DWELL) return y < h * 0.5 ? 'above' : 'below';
-      _intoAt.top ??= e.currentTarget.offsetTop;   // where the row sat when into was earned (listDragOver)
+      if (!band || now - _intoAt.t < DWELL) return half;
+      if (_intoAt.top == null) {
+        _intoAt.top = e.currentTarget.offsetTop;   // where the row sat when into was earned (listDragOver)
+        _intoSeen = { t: now };
+      }
+      _intoSeen.half = half;
       return 'into';
     },
     // Sorted, a position ranks nothing the list shows: a slot (its parent) among the row's own siblings is refused, and one moving it to
@@ -2326,11 +2529,12 @@ document.addEventListener('alpine:init', () => {
       this.selAnchor = r.t.id;   // a plain click seeds the range anchor for a later Shift-click
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'collapse') return this.toggleTaskCollapse(r.t.id);
-      if (act === 'check') return r.step ? (e.detail ? this._stepTick(r, r.step.ci) : this.toggleChk(r.t.id, r.step.ci)) : this.toggle(r.t, e.detail ? r : null);   // a pointer tick celebrates; a key's (detail 0) stays instant
+      if (act === 'rel') return this.rowRelOpen(r.t, e.target.closest('.row-rel'));
+      if (act === 'check') return r.step ? (e.detail ? this._stepTick(r.t.id) : this.toggleChk(r.t.id, r.step.ci)) : this.toggle(r.t, e.detail ? r : null);   // a pointer tick celebrates; a key's (detail 0) stays instant
       if (act === 'chk-more') { this.chkOpen.has(r.t.id) ? this.chkOpen.delete(r.t.id) : this.chkOpen.add(r.t.id); this._dropRowHtml(r.t.id); this._paintRows(); return; }   // reveal/re-hide the collapsed done items; repaint here — no effect may have read chkOpen for this row
       // the checkbox OR its text toggles a checklist item; plain (uncheckable) items fall through to editTask
       const chk = e.target.closest('.chk-rect, .chk-txt')?.closest('.chk-row, .step-next');   // a Steps row's preview ticks by its node
-      if (chk && !r.t.checklist_plain) return chk.matches('.step-next') && e.detail ? this._stepTick(r, +chk.dataset.ci, true) : this.toggleChk(r.t.id, +chk.dataset.ci);
+      if (chk && !r.t.checklist_plain) return chk.matches('.step-next') && e.detail ? this._stepTick(r.t.id, true) : this.toggleChk(r.t.id, +chk.dataset.ci);
       this.editTask(r.t, e);
     },
     // first swatch = clear; '' → null; shared by editors + nav popovers
@@ -4077,7 +4281,7 @@ document.addEventListener('alpine:init', () => {
       if (open && !history.state?.overlay) history.pushState({ overlay: 1 }, '');
       else if (!open && history.state?.overlay && !_histPop) { _histPop = true; history.back(); }   // hand the entry back without navigating
     },
-    // The sticky note's keys (contract: ~/ws/multi/relay/sticky-typing-contract.md): from the title ↓ walks the matches; on a
+    // The sticky note's keys (contract: ops/shared/sticky-typing-contract.md): from the title ↓ walks the matches; on a
     // match Space completes, Enter opens, ↑ off the first returns, any other key types into the title again. Esc clears the
     // title; on an empty one it hands the foreground back. Its composer is always open, so onKey's list keys never run.
     // IME: composing keydowns never get here (init's capture listener stops them).
@@ -4085,6 +4289,7 @@ document.addEventListener('alpine:init', () => {
       const title = this.$refs.content, inTitle = e.target === title;
       if (e.metaKey || e.ctrlKey || e.altKey || (inTitle && Object.values(PICKERS).some(p => this[p.key].open))) return false;   // an open # / @ picker keeps its keys
       const take = () => { e.preventDefault(); e.stopPropagation(); return true; };
+      if (document.documentElement.classList.contains('folded')) return take();   // folded, the rows and line are hidden: no key acts on them unseen
       // Esc's clear is one ⌘Z step in the line: the pre-clear snapshot goes onto the fresh editor's history
       if (inTitle && e.key === 'Escape') { if (this.titleEmpty) desktopWindow('back'); else { const was = this._nlpSnap(title); this.resetDraft(); this.setEditorText(''); title._hist.undo.push(was); } return take(); }
       if (inTitle && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.visibleRows().length) { title.blur(); this.moveFocus(e.key === 'ArrowDown' ? 1 : -1); return take(); }   // the line sits under the rows: ↑ takes the one above it, ↓ the first
@@ -4161,7 +4366,7 @@ document.addEventListener('alpine:init', () => {
     _loaders() {
       const st = this.store;
       return {
-        task: () => this.loadTasks(), area: () => this.loadAreas(),
+        task: () => this.loadTasks(), area: () => this.loadAreas(), message: () => this.chatReload(),
         event: () => this.loadEvents(), block: () => this.loadBlocks(),
         filter: () => this.loadFilters(),
         location: async () => { this.locations = await st.locations.list(); this._rowV++; this.homeLocationId = st.homeLocationId(); this.currentRegion = st.currentRegion(); },   // _rowV: rows bake rowLoc's place name into the row cache
@@ -4453,7 +4658,7 @@ document.addEventListener('alpine:init', () => {
         const task = this.byId.get(e.payload?.taskId)?.content;
         return out(clip(e.payload?.item?.text), [e.kind === 'held-sub' ? 'Unsaved subtask' : 'Checklist item', this.trashBlocked(e) || clip(task, 40)].filter(Boolean).join(' · '));
       }
-      const opRow = op => (op.rows && op.rows[0]) || this._rowById(op.target || 'task', op.id ?? op.fwd?.id) || {}, name = r => r.content ?? r.name ?? r.title;
+      const opRow = op => (op.rows && op.rows[0]) || this._rowById(op.target || 'task', op.id ?? op.fwd?.id) || {}, name = r => r.content ?? r.name ?? r.title ?? r.body;
       // a change (move / priority / completion): the rows still exist — the label's own sentence and the muted names it touched, never red
       if (this.trashIsChange(e)) return out(e.label, 'Changed', peek(this._entryOps(e).map(op => name(opRow(op)) || '(untitled)'), ''));
       if (e.target === 'reminder') {   // a save's removed reminders: one task's, named by it and each one's time
@@ -4621,8 +4826,8 @@ document.addEventListener('alpine:init', () => {
       return !!t;
     },
     // --- Inverse-op journal (recovery engine; ⌘Z/⌘⇧Z drive undo()/redo() below). ---
-    _res(t) { return this.store[t + 's']; },                 // task→tasks, area→areas, event→events, block→blocks, filter→filters, location→locations
-    _rowById(t, id) { return t === 'task' ? this.byId.get(id) : (this[t + 's'] ?? []).find(r => r.id === id); },
+    _res(t) { return t === 'message' ? messageStore(sbClient()) : this.store[t + 's']; },                 // task→tasks, area→areas, event→events, block→blocks, filter→filters, location→locations
+    _rowById(t, id) { return t === 'task' ? this.byId.get(id) : (t === 'message' ? this.chat.msgs : this[t + 's'] ?? []).find(r => r.id === id); },   // a message: the open thread's
     // What a task delete takes beyond its rows (the DB cascades, LocalStore prunes): links in from outside, schedule items, reminders.
     // ix: the refs keyed by the id they point at — one pass per action (a bulk delete shares it), not a scan per removed task.
     _taskRefs(rows, ix = this._refIndex()) {
@@ -4881,7 +5086,7 @@ document.addEventListener('alpine:init', () => {
           // the store checks what's stored, never the lists or a cache: a write their re-read missed (another tab's, a realtime gap) leaves them stale.
           // A row already stored stays as it is (live): this entry's own earlier try, or another version — compared as this restore writes it
           const live = new Set();
-          if (!await this.store.reinsert(k, rows, live)) return keep([...k === 'task' ? rows.filter(r => !live.has(r.id)).flatMap(r => ['blocked_by', 'relates'].flatMap(e => (r[e] || []).map(x => [r.id, x, e]))) : [], ...links]);
+          if (!await (k === 'message' ? this._res(k) : this.store).reinsert(k, rows, live)) return keep([...k === 'task' ? rows.filter(r => !live.has(r.id)).flatMap(r => ['blocked_by', 'relates'].flatMap(e => (r[e] || []).map(x => [r.id, x, e]))) : [], ...links]);
           // a removed reminder's own Bin row: the store's answer decides it landed — it drops one whose task went unseen, or (signed in) one long past
           const own = k === 'reminder' && k === op.target, read = (live.size || own) && await this._res(k).list().catch(() => null), stored = new Map((read || []).map(r => [r.id, r]));   // unread: kept, dropped — the Bin keeps it
           unread ||= own && !read;
@@ -5871,6 +6076,7 @@ document.addEventListener('alpine:init', () => {
         _hoverEls.push(li);
       }
     },
+    _rehover() { const r = _rowMap?.get(_hoverId) ?? _doneMap?.get(_hoverId); if (r) this.hoverRow(r); },   // a re-rendered block row comes back without its classes
     clearHover() { for (const li of _hoverEls) li.classList.remove('inblock', 'rb-top', 'rb-bottom'); _hoverEls = []; _hoverId = null; },
     _rowEl(id) { return document.querySelector('.surface-lists .list .item[data-id="' + id + '"]'); },
     // drag "nest here" outline — one element, not a reactive :class on every row. dwell: .drop-dwell while the pointer waits out
@@ -5906,7 +6112,7 @@ document.addEventListener('alpine:init', () => {
     // --- Delegated row events (bound once on the <ul>, resolve the row by data-id) — see the list markup ---
     _rowFromEl(el) { return el ? (_rowMap?.get(el.dataset.id) ?? _doneMap?.get(el.dataset.id) ?? null) : null; },   // O(1) via Maps maintained in visibleRows(); active OR Done list
     listOver(e) {
-      if (e.target.closest('a, code, .md-code, .chk-more, .chk-rect, .chk-rect:not(.plain) + .chk-txt')) return this.clearHover();   // they own their clicks (an item's box/text ticks it) — styles.css .item:hover mirrors
+      if (e.target.closest('a, code, .md-code, .chk-more, .chk-rect, .chk-rect:not(.plain) + .chk-txt, .row-rel')) return this.clearHover();   // they own their clicks (an item's box/text ticks it) — styles.css .item:hover mirrors
       const el = e.target.closest?.('.item'), id = el?.dataset.id;
       if (id === _hoverId) return;                  // mouseover fires per child element — skip if same row
       const r = id ? this._rowFromEl(el) : null;
@@ -6009,7 +6215,10 @@ document.addEventListener('alpine:init', () => {
     // padding, or the drop-ghost (an .item with NO data-id, rendered exactly where you're aiming). Gating on
     // "the release resolved to a row" threw those away, which is why some drags silently did nothing. The last
     // dragOver already recorded the intent in taskDropHint, and drop() reads only that.
-    listDrop() { this.drop(); },
+    listDrop(e) {
+      if (this.taskDropHint?.mode === 'into' && performance.now() - _intoSeen.t < INTO_SEEN) this.dragOver(_dropSlot.t, e, _dropSlot.depth, _intoSeen.half);   // unseen: the slot it would have shown
+      this.drop();
+    },
     hasProgress(t) { return this.hasChildren(t.id) && this._taskIdx().kids.get(t.id)?.some(c => c.id !== t.id && !inNotes(c)) || (t.checklist || []).length > 0; },   // a note child never fills the ring
     rowProgress(t, kids = this.childTasks(t.id)) {
       let count = 0, closed = 0, mins = 0, minsClosed = 0, timed = true;
@@ -6434,57 +6643,61 @@ document.addEventListener('alpine:init', () => {
         _celeT = setTimeout(() => this._celeExit(), motion.t(600));
       };
     },
-    // A pointer tick on a Steps row (docs/ui/task-list.md §Steps · round4-marks.md): the rail advances — the tick pops in the
-    // ring, the old step lifts away, the preview's text rises into the step line and its node grows into the ring. A tick on
-    // the preview's node fills it and a spark climbs into the ring; the current step stays. The step that finishes the task
-    // takes the completion reward instead. Movement rides frozen copies over the re-rendered row; motion.soften keeps reduced
-    // motion to its fades. Keys and ⌘Z never come here: they stay instant.
-    async _stepTick(r, ci, preview = false) {
-      const id = r.t.id, el = this._rowEl(id);
-      if (!preview && !r.next) {   // the last step: the task's own reward, unless the tick has to ask first (toggleChk's sweep)
-        const start = this.celebrations !== 'off' && !pendingSweep(this.tasks, id, this.byId, this._taskIdx().kids).length ? this._celebrate(r) : null;
-        await this.toggleChk(id, ci); start?.(); return;
-      }
-      if (this.celebrations === 'off' || !el) return this.toggleChk(id, ci);
-      const q = sel => el.querySelector(sel), from = q('.step-node').getBoundingClientRect(), fromTxt = q('.step-next-txt').getBoundingClientRect();
-      const ghost = src => {   // a frozen copy of what leaves, fixed over its old place (it keeps the row's colour and rail)
-        const b = src.getBoundingClientRect(), g = src.cloneNode(true);
-        g.classList.add('tick-ghost'); g.style.cssText += `;left:${b.left}px;top:${b.top}px;width:${b.width}px;height:${b.height}px;--pc:${r.pc};--rail-x:${getComputedStyle(src).getPropertyValue('--rail-x')}`;
-        return document.body.appendChild(g);
-      };
-      const ghosts = preview ? [ghost(q('.step-next'))] : [ghost(q(':scope > .check')), ghost(q('.row-step')), ...q('.step-desc') ? [ghost(q('.step-desc'))] : []];
-      if (preview) ghosts[0].querySelector('.step-node').classList.add('done');
-      else { ghosts[0].className = 'check done tick-ghost'; ghosts[0].replaceChildren(); }   // the ring's copy is the ticked check
-      const p0 = r.progress;
-      await this.toggleChk(id, ci);
-      await new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));   // the row re-rendered
-      const now = this._rowEl(id), chk = now?.querySelector(':scope > .check'), step = now?.querySelector('.row-step'), next = now?.querySelector('.step-next');
-      const E = DESIGN.ease, runs = [], go = (target, kf, o) => { if (target) { const a = target.animate(kf, { fill: 'backwards', ...o }); motion.soften(a); runs.push(a.finished); } };
-      const [g0, ...gText] = ghosts;
-      if (!preview) {
-        go(g0, [{ scale: .82, opacity: 1 }, { scale: 1, opacity: 1, offset: .4, easing: E.spring }, { scale: 1, opacity: 1, offset: .55 }, { translate: '0 -8px', opacity: 0 }], { duration: 320, fill: 'forwards' });   // the tick lands, then the ring rolls up
-        for (const g of gText) go(g, [{ translate: '0 0', opacity: 1, filter: 'blur(0)' }, { translate: '0 -10px', opacity: 0, filter: 'blur(2px)' }], { duration: 180, delay: 120, easing: E.out, fill: 'both' });
-        if (step) { const b = step.getBoundingClientRect(); step.style.transformOrigin = 'left top';
-          go(step, [{ translate: `${fromTxt.left - b.left}px ${fromTxt.top - b.top}px`, scale: .87, color: 'var(--faint)' }, { translate: '0 0', scale: 1, color: 'var(--ink)' }], { duration: 260, delay: 120, easing: E['in-out'] }); }
-        go(now?.querySelector('.step-desc'), [{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: 380, easing: E.out });
-        if (chk) { const b = chk.getBoundingClientRect();   // the preview's node rides the rail up and grows into the ring
-          go(chk, [{ translate: `${from.left + from.width / 2 - b.left - b.width / 2}px ${from.top + from.height / 2 - b.top - b.height / 2}px`, scale: .55 }, { translate: '0 0', scale: 1 }], { duration: 260, delay: 120, easing: E['in-out'] }); }
-      } else {
-        go(g0.querySelector('.step-node'), [{ scale: .6 }, { scale: 1.15, offset: .6, easing: E.spring }, { scale: 1 }], { duration: 260, easing: E.out, fill: 'forwards' });
-        go(g0.querySelector('.step-next-txt'), [{ opacity: 1, translate: '0 0' }, { opacity: 0, translate: '0 -6px' }], { duration: 220, delay: 140, easing: E.out, fill: 'forwards' });
-        go(g0, [{ opacity: 1 }, { opacity: 0 }], { duration: 120, delay: 300, easing: E.out, fill: 'forwards' });
-        if (chk) { const b = chk.getBoundingClientRect(), spark = document.body.appendChild(document.createElement('i'));   // the tick counts toward the task
-          spark.className = 'tick-spark'; spark.style.cssText = `left:${from.left + from.width / 2 - 2.5}px;top:${from.top + from.height / 2 - 2.5}px`;
-          const dx = b.left + b.width / 2 - from.left - from.width / 2, dy = b.top + b.height / 2 - from.top - from.height / 2;
-          go(spark, [{ translate: '0 0', opacity: 0 }, { translate: '0 0', opacity: 1, offset: .1 }, { translate: `${dx}px ${dy}px`, opacity: 1, offset: .8 }, { translate: `${dx}px ${dy}px`, opacity: 0 }], { duration: 300, delay: 120, easing: E['in-out'], fill: 'both' });
-          ghosts.push(spark);
-          go(chk, [{ scale: 1 }, { scale: 1.12, offset: .5 }, { scale: 1 }], { duration: 200, delay: 360, easing: E.out }); }
-      }
-      go(next, [{ translate: '0 8px', opacity: 0 }, { translate: '0 0', opacity: 1 }], { duration: 200, delay: preview ? 300 : 260, easing: E.out });
-      go(chk, [{ '--p': p0 }, { '--p': this.rowProgress(this.byId.get(id), []) }], { duration: 320, delay: preview ? 160 : 120, easing: E['in-out'] });   // the pie sweeps
-      if (this.celebrations === 'full') go(chk, [{ outline: '2px solid var(--warm)', outlineOffset: '0px' }, { outline: '2px solid transparent', outlineOffset: '6px' }], { duration: 280, delay: preview ? 200 : 120, easing: E.out, fill: 'none' });   // = cele-pulse
-      await Promise.allSettled(runs);
-      for (const g of ghosts) g.remove();
+    // A pointer tick on a Steps row (docs/ui/task-list.md §Steps, docs/ui/motion.md), one phase after another: the rail
+    // fills down to the next step in the task's colour, that step's node lights, then the write lands and the next step's
+    // text pushes the old one up out of the row while the step after rises in below. A tick on the preview's node lights
+    // it and pushes the preview line alone. The step that finishes the task takes the completion reward instead. Keys and
+    // ⌘Z never come here: they stay instant. A second tap hurries the first to its end (motion.seq), then ticks what's
+    // current by then.
+    _stepTick(id, preview = false) {
+      let block, before, d = 0, p0 = 0, fs = 0, faint;
+      return motion.seq('step:' + id,
+        async s => {
+          const r = _rowMap.get(id) ?? _doneMap.get(id), el = this._rowEl(id), step = preview ? r?.next : r?.step;   // a done task's row is in the Done list
+          if (!step) return;
+          if (!preview && !r.next) {   // the last step: the task's own reward, unless the tick has to ask first (toggleChk's sweep)
+            const start = this.celebrations !== 'off' && !pendingSweep(this.tasks, id, this.byId, this._taskIdx().kids).length ? this._celebrate(r) : null;
+            await this.toggleChk(id, step.ci); start?.(); return;
+          }
+          if (this.celebrations === 'off' || !el) return this.toggleChk(id, step.ci);
+          block = el.querySelector(preview ? '.step-next' : '.step-block');
+          const rect = sel => el.querySelector(sel).getBoundingClientRect();
+          d = preview ? rect('.step-next').height : rect('.step-next-txt').top - rect('.row-step').top;   // one step's pitch
+          const was = getComputedStyle(el.querySelector('.step-next-txt .chk-txt') ?? el.querySelector('.step-next-txt'));   // the preview's look, which the next step grows out of
+          s.ci = step.ci; p0 = r.progress; fs = parseFloat(was.fontSize); faint = was.color;
+          if (preview) return;
+          const fill = block.appendChild(document.createElement('i'));
+          fill.className = 'rail-fill';
+          return motion.fill(s, fill);
+        },
+        s => block && motion.light(s, block.querySelector('.step-node'), preview ? 'done' : 'lit'),
+        async s => {
+          if (!block) return;
+          const out = block.cloneNode(true);   // the old step, frozen; the moving preview text is the new row's own
+          out.classList.add('push-out');
+          out.querySelector(preview ? '.step-next-txt' : ':scope > .step-next .step-next-txt')?.remove();
+          before = this._rowTops();
+          const stamped = new Promise(res => _push.set(id, res));   // _stampRow hands over the re-rendered row
+          await this.toggleChk(id, s.ci);
+          const el = await Promise.race([stamped, new Promise(res => requestAnimationFrame(() => res(null)))]);
+          _push.delete(id);
+          const box = el?.querySelector(preview ? '.step-next' : '.step-block');
+          if (!box) {   // the write failed, so the row stays: it drops what the first phases drew
+            block.querySelector('.rail-fill')?.remove();
+            block.querySelector('.step-node')?.classList.remove('lit', 'done');
+            return;
+          }
+          box.prepend(out);
+          const step = !preview && box.querySelector(':scope > .row-step'), chk = el.querySelector(':scope > .check'), o = { duration: DESIGN.motion.daily, easing: DESIGN.ease.drawer };
+          const runs = motion.push(s, box, out, [...box.children].filter(c => c !== out && c !== step), d, step ? [step] : []);
+          if (step) {   // the preview's text carries on, growing and darkening into the step line (its colour is the text's own)
+            const txt = step.querySelector('.chk-txt') ?? step;
+            runs.push(motion.go(s, step, { scale: [fs / parseFloat(getComputedStyle(step).fontSize), 1] }, o), motion.go(s, txt, { color: [faint, getComputedStyle(txt).color] }, o));
+          }
+          runs.push(motion.go(s, chk, { '--p': [p0, getComputedStyle(chk).getPropertyValue('--p')] }, o));   // the ring's pie takes the step
+          this._glideFrom(before);
+          return runs;
+        });
     },
     _celeExit() {
       const held = [..._cele];
@@ -6500,9 +6713,16 @@ document.addEventListener('alpine:init', () => {
         };
         // Unmarked after the list renders: dirtied before, the render's window read (_winOf) forces a layout the glide's
         // own read then repeats. Same task, so no frame shows the marks.
-        if (left.length) this._glideRows(left, () => { this._exitRows(left); queueMicrotask(unmark); });   // only a leaving row changes visibleRows: a staying one rebuilds nothing
+        if (left.length) { this._glideRows(left, () => { this._exitRows(left); queueMicrotask(unmark); }); this._clearIn(); }   // only a leaving row changes visibleRows: a staying one rebuilds nothing
         else unmark();
       }, motion.t(200));
+    },
+    // A pointer tick's exit may empty the list: if so, its All clear arrives (CSS, on .arrive — it runs once x-show
+    // displays it). Only here: on load or after a key it's plain.
+    _clearIn() {
+      const el = document.querySelector('.surface-lists .empty'); if (!el) return;
+      el.classList.add('arrive');
+      setTimeout(() => el.classList.remove('arrive'), motion.t(1200));
     },
     // The ended rewards' rows leave: dropped from the rows as they stand when the patch can, else a full rebuild.
     _exitRows(left) {
@@ -6517,20 +6737,21 @@ document.addEventListener('alpine:init', () => {
     // with no before (the one arriving in Done) fades in. Keyed by id: the morph may rebuild a row. Reads the rendered
     // window only, animates on screen only. Alpine renders in its microtask flush, so ours, queued after, sees the new layout.
     _glideRows(left, change) {
-      const sel = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head)', key = el => el.dataset.id || el;
-      const before = new Map([...document.querySelectorAll(sel)].map(el => [key(el), el.getBoundingClientRect().top]));
+      const before = this._rowTops();
       for (const id of left) before.delete(id);   // in Done it arrives, it doesn't travel
       change();
-      queueMicrotask(() => {
-        const els = [...document.querySelectorAll(sel)], rects = els.map(el => el.getBoundingClientRect());   // all reads first: an animate() between two reads forces a layout each
-        let dy = 0;   // a row with no before rides with the one above it
-        for (const [i, el] of els.entries()) {
-          const r = rects[i], from = before.get(key(el));
-          if (from != null) dy = from - r.top;
-          if (r.bottom < 0 || r.top > innerHeight || (from != null && !dy)) continue;
-          motion.soften(el.animate({ translate: [`0 ${dy}px`, '0 0'], ...from == null && { opacity: [0, 1] } }, { duration: 200, easing: DESIGN.ease['in-out'] }));
-        }
-      });
+      queueMicrotask(() => this._glideFrom(before));
+    },
+    _rowTops() { return new Map([...document.querySelectorAll(GLIDE_ROWS)].map(el => [el.dataset.id || el, el.getBoundingClientRect().top])); },
+    _glideFrom(before) {
+      const els = [...document.querySelectorAll(GLIDE_ROWS)], rects = els.map(el => el.getBoundingClientRect());   // all reads first: an animate() between two reads forces a layout each
+      let dy = 0;   // a row with no before rides with the one above it
+      for (const [i, el] of els.entries()) {
+        const r = rects[i], from = before.get(el.dataset.id || el);
+        if (from != null) dy = from - r.top;
+        if (r.bottom < 0 || r.top > innerHeight || (from != null && !dy)) continue;
+        motion.soften(el.animate({ translate: [`0 ${dy}px`, '0 0'], ...from == null && { opacity: [0, 1] } }, { duration: 200, easing: DESIGN.ease['in-out'] }));
+      }
     },
     // Clearing the day (_clCleared: every task planned for today done) by THIS completion: a one-shot moment over the
     // page, named in work done, never a count. Built and removed here: no state, nothing reactive.
@@ -6589,6 +6810,14 @@ document.addEventListener('alpine:init', () => {
         return this.pickerMatches(r.open ??= this.tasks.filter(t => t.id !== this.editing && t.id !== def && !r.rels.some(x => x.id === t.id))).slice(0, 40); }, 1);
     },
     relChips() { return this._relIdx().rels; },
+    // A row's blocker chip opens its task as the palette does; a rolled one lists them all (soc-2 c).
+    relsFor: null,
+    rowRelOpen(t, chip) {
+      if (!chip.parentElement.classList.contains('rolled')) return this.openTaskById(chip.dataset.rel);
+      this.relsFor = t.id;
+      this.togglePop('rels', chip);
+    },
+    relsList() { const t = this.byId.get(this.relsFor); return t ? openBlockers(t, this.byId) : []; },
     // A linked task in a well is still a TASK: it gets the same row the picker above it uses, so its state
     // (done, blocked, its areas, which project it's in) is readable without leaving the pop.
     relLine(id) { const t = this.byId.get(id); return t ? this.taskLine(t) : ''; },
@@ -6604,11 +6833,11 @@ document.addEventListener('alpine:init', () => {
     },
     async addRelation(otherId, type) { if (otherId && await this._relChange('Added relation', 'link', otherId, type)) this.pickerQ = ''; },
     async dropRel(e, type) { const id = e.dataTransfer.getData('text/plain'); if (id && this.byId.has(id)) await this.addRelation(id, type); },
-    removeRelation(otherId, type) { return this._relChange('Removed relation', 'unlink', otherId, type); },
+    removeRelation(otherId, type, from) { return this._relChange('Removed relation', 'unlink', otherId, type, from); },
     // 'blocks' is blocked_by on the OTHER task (swapped direction). 'relates' is symmetric, and the store mirrors a
     // relates write to the partner — so one row's diff undoes both sides.
-    _relChange(label, verb, otherId, type) {
-      const [id, linkId] = type === 'blocks' ? [otherId, this.editing] : [this.editing, otherId];
+    _relChange(label, verb, otherId, type, from = this.editing) {
+      const [id, linkId] = type === 'blocks' ? [otherId, from] : [from, otherId];
       return this._journalRowChange(label, 'task', id, () => this.store.tasks[verb](id, linkId, type));
     },
 
@@ -7725,7 +7954,7 @@ document.addEventListener('alpine:init', () => {
     // imp: the composer's check shows the DRAFT's importance, not the stored one.
     _chkArgs(t, imp = t.importance) {
       const hp = this.hasProgress(t);
-      return { t, pc: this.pc(imp), note: inNotes(t), blocked: (t.blocked_by ?? []).some(id => { const b = this.byId.get(id); return b && !b.completed_at && !b.archived_at; }), hasProgress: hp, progress: hp ? this.rowProgress(t) : 0 };
+      return { t, pc: this.pc(imp), note: inNotes(t), blocked: openBlockers(t, this.byId).length > 0, hasProgress: hp, progress: hp ? this.rowProgress(t) : 0 };
     },
     clCheckHtml(it, cls = 'cl-chip-check') { const t = this.byId.get(it.id); return t ? checkHtml(this._chkArgs(t), 'button', cls) : ''; },   // calendar task checkboxes
     entryCheckHtml(c) { return checkHtml(this._chkArgs(c), 'button', 'sm'); },   // composer subtask rows — adds archived/blocked/paused not covered by inline :class
@@ -7737,7 +7966,7 @@ document.addEventListener('alpine:init', () => {
     // type it had (steps), and deleting the memo keeps a round trip's draft equal to its base (no phantom unsaved edit).
     typeTap(tack) {
       const d = this.draft;
-      if (this.typeFront(tack)) return this.toggleEditing();
+      if (this.typeFront(tack)) return this._pillThen(() => this.toggleEditing());   // the done check saves the draft first, so it pills like Enter
       if (tack) { d.typeBeforeNote = d.task_type; d.task_type = 'note'; }
       else { d.task_type = d.typeBeforeNote ?? null; delete d.typeBeforeNote; }
     },

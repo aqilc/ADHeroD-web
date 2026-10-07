@@ -16,6 +16,8 @@
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
   <symbol id="i-sofa" viewBox="0 0 24 24"><path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3"/><path d="M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z"/><path d="M4 18v2"/><path d="M20 18v2"/><path d="M12 4v9"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
   <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
   <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
   <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></symbol>
@@ -116,7 +118,7 @@
       <!-- Lists surface: task-list views (All/Backlog/projects/areas/filters); project-picker lives in the overview roller -->
       <section class="surface surface-lists" data-surface="lists" :style="surfaceStyle('lists')" :inert="surface !== 'lists'" @wheel.passive="onOverscroll($event)">
 
-    <main class="app" :class="{ tinted: !!listTintCol() }" @dragenter="listDragLeft($event)" @dragover="listDragLeft($event)" @drop.self.prevent="listDrop()" :style="listTintStyle()">
+    <main class="app" :class="{ tinted: !!listTintCol() }" @dragenter="listDragLeft($event)" @dragover="listDragLeft($event)" @drop.self.prevent="listDrop($event)" :style="listTintStyle()">
     <div class="topbar flex justify-between">
       <div class="topbar-title min-w-0">
         <h1 x-text="navHeading()"></h1>
@@ -319,7 +321,10 @@
       </div>
     </div>
 
-    <div class="empty" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></div>
+    <div class="empty flex-col items-center gap-6" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)">
+      <template x-if="!(navSel.type === 'filter' || filtering()) && completedRows().hidden"><svg class="empty-sun" viewBox="0 0 48 28" aria-hidden="true"><path class="arc" d="M8 26a16 16 0 0 1 32 0"/><path class="ray" d="M24 4V0"/><path class="ray" d="M10 10 7 7"/><path class="ray" d="M38 10l3-3"/><path class="ray" d="M4 22H0"/><path class="ray" d="M44 22h4"/></svg></template>
+      <span class="empty-t" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></span>
+    </div>
     <!-- rows: one innerHTML parse (not x-for) — ~1s→~50ms; events delegated to <ul>; hover/drag/kbfocus imperative -->
     <ul class="list flex-col" x-effect="paintSel()" x-init="initListSort($el)"
         @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)"
@@ -338,7 +343,7 @@
       <li class="composer" x-ref="composer" x-effect="persistDraft()" @focus.capture="markFocus($event)" :style="'order:' + (editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
           @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); _pillThen(() => submitAndClose()); }">
         <div class="composer-grow" x-ref="grow" x-effect="persistDraft(true)" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
-        <form class="composer-card" @submit.prevent="submitComposer()">
+        <form class="composer-card" @submit.prevent="_pillThen(() => submitComposer())">
         <!-- type toggle (#104): the draft's type in front, the other peeking from under it; click the peek to swap -->
         <span class="type-tog" :class="{ note: typeFront(true) }">
           <button type="button" x-html="compCheckHtml(false)" @click="typeTap(false)" :aria-label="typeLabel(false)" :disabled="typeFront(false) && !editing"
@@ -715,6 +720,15 @@
             <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="pulseCal()" title="drag across days on the calendar above">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="pulseCal()" title="drag across days on the calendar above" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''">×</button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !timeGet() }" @click.stop="toggleTimePop($event)" x-text="timeGet() ? fmtTime(timeGet()) : '–'"></button></p><button type="button" class="evrow" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
           </div>
           <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" @click="addRepeat()">+ repeat</button></div>
+        </div></template></template>
+        <!-- A rolled blocker chip's list (.row-rels): each opens, or its link goes (Undo restores). The blocking task itself stays. -->
+        <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" x-cloak :style="popStyle()" @click.outside.capture="popAway('rels', $event)">
+          <template x-for="id in relsList()" :key="id">
+            <div class="flex items-center gap-4">
+              <button type="button" class="pop-item min-w-0" @click="pop = null; openTaskById(id)"><span class="task-line grow min-w-0" x-html="relLine(id)"></span></button>
+              <button type="button" class="rel-chip-remove" :aria-label="'Remove ' + byId.get(id)?.content" title="Remove" @click="removeRelation(id, 'blocked_by', relsFor)"><svg class="ico"><use href="#i-x"/></svg></button>
+            </div>
+          </template>
         </div></template></template>
         <!-- ── Composer actions + completed section + Peek Pane ── -->
         <div class="composer-actions flex gap-6">
@@ -1112,10 +1126,49 @@
     </template>
       </section><!-- /surface-plan -->
 
+    <!-- ── Social surface: 1:1 chats (chat.js). Desktop: list beside the thread; phone: one or the other. ── -->
+    <section class="surface surface-social" data-surface="social" :style="surfaceStyle('social')" :inert="surface !== 'social'">
+    <template x-if="mounted('social')">
+    <div class="social" :class="{ 'in-thread': !!chat.open }" x-init="socialStart()" x-effect="chatSeen(openChatRow())">
+      <template x-if="!session">
+        <div class="soc-out flex flex-col items-center"><h1>Social</h1><p>Sign in to chat with friends.</p><button type="button" class="primary" @click="settingsOpen = true">Sign in</button></div>
+      </template>
+      <template x-if="session">
+      <div class="soc-list">
+        <h1>Social</h1>
+        <template x-for="c in chat.chats" :key="c.id">
+          <button type="button" class="chat-row" :class="{ sel: c.id === chat.open, new: chatNew(c) }" @click="openChat(c.id)">
+            <span class="av" x-text="chatPeer(c).slice(0, 1).toUpperCase()"></span><b class="truncate" x-text="chatPeer(c)"></b>
+            <span class="when" x-text="chatWhen(c.last?.created_at)"></span><span class="last truncate" x-text="c.last?.body ?? ''"></span>
+          </button>
+        </template>
+        <p class="soc-empty" x-show="!chat.chats.length">No chats yet</p>
+        <button type="button" class="soc-invite" @click="inviteFriend()"><span class="av"><svg class="ico" aria-hidden="true"><use href="#i-link"/></svg></span><b>Invite a friend</b></button>
+      </div>
+      </template>
+      <template x-if="session &amp;&amp; openChatRow()">
+      <div class="thread" x-ref="thread">
+        <div class="th-head flex items-center"><button type="button" class="th-back flex items-center" @click="chat.open = null"><svg class="ico" aria-hidden="true"><use href="#i-chev-l"/></svg>Chats</button><b x-text="chatPeer(openChatRow())"></b></div>
+        <div class="msgs"><div class="msgs-in">
+          <!-- own messages: tapping one (tabindex -1) or hovering shows Edit and Delete -->
+          <template x-for="m in chat.msgs" :key="m.id"><div class="msg-row flex items-center" :class="{ me: m.user_id === _acct() }">
+            <template x-if="m.user_id === _acct()"><span class="msg-acts flex"><button type="button" class="msg-edit" @click="startEdit(m)" aria-label="Edit" title="Edit"><svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg></button><button type="button" class="msg-del" @click="deleteMsg(m)" aria-label="Delete" title="Delete"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg></button></span></template>
+            <div class="msg" :class="{ editing: m.id === chat.editing }" :tabindex="m.user_id === _acct() ? -1 : null" :title="chatWhen(m.created_at)"><span x-text="m.body"></span><template x-if="m.edited_at"><span class="msg-ed">edited</span></template></div>
+          </div></template>
+        </div></div>
+        <div class="chat-editing flex items-center" x-show="chat.editing">Editing message<button type="button" @click="endEdit()" aria-label="Cancel edit" title="Cancel (Esc)"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+        <div class="chat-comp flex items-end"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chat.draft.trim()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
+        <div class="chat-hint"><kbd>↵</kbd> send · <kbd>⇧</kbd><kbd>↵</kbd> new line · <kbd>↑</kbd> edit last</div>
+      </div>
+      </template>
+    </div>
+    </template>
+    </section><!-- /surface-social -->
+
      </div><!-- /canvas-track -->
     <!-- ── Canvas dots + settings + overview deck + nav popovers ── -->
      <div class="canvas-dots" @click="dotStripClick($event)" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }"
-          x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView, today: clShowToday(), side: clSideOpen } : null })), surfaceIndex())"></div>
+          x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), unread: s === 'social' &amp;&amp; chatUnread(), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView, today: clShowToday(), side: clSideOpen } : null })), surfaceIndex())"></div>
      <!-- Account & settings: a gear in the corner, apart from the dots (a door over the app, not a place in it).
           Status dot only when signed in — accent = syncing fine, gray = offline. Top-right up-arrow: a Windows-app update is ready. -->
      <button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">
@@ -1149,6 +1202,9 @@
       <div class="ov-grid">
       <button class="ov-card" x-show="surfaceOrder.includes('plan')" :class="{ sel: ovSel === surfaceOrder.indexOf('plan') }" @click="diveTo('plan')" @mouseenter="ovSel = surfaceOrder.indexOf('plan')">
         <div class="ov-head"><svg class="ico pick-ico"><use href="#i-cal"/></svg> Plan</div>
+      </button>
+      <button class="ov-card" x-show="surfaceOrder.includes('social')" :class="{ sel: ovSel === surfaceOrder.indexOf('social') }" @click="diveTo('social')" @mouseenter="ovSel = surfaceOrder.indexOf('social')">
+        <div class="ov-head"><svg class="ico pick-ico"><use href="#i-chat"/></svg> Social</div>
       </button>
     </div>
     </div>
@@ -1205,10 +1261,20 @@
         <div>
           <div class="set-acct flex items-center">
             <span class="set-ember rounded-full flex-none" aria-hidden="true"></span>
-            <span class="set-who min-w-0"><b class="truncate" x-text="(session.user.email || '').split('@')[0]"></b><span class="truncate" x-text="(session.user.email || '') + (online ? ' &#183; synced' : ' &#183; offline')"></span></span>
+            <span class="set-who min-w-0"><b class="truncate" x-text="chatName() || (session.user.email || '').split('@')[0]"></b><span class="truncate" x-text="(session.user.email || '') + (online ? ' &#183; synced' : ' &#183; offline')"></span></span>
             <button type="button" class="set-out flex-none muted-12" @click="signOut()">Sign out</button>
           </div>
           <div class="set-form">
+            <button type="button" class="set-alt muted-12" x-show="!setNameOpen" @click="setNameOpen = true; setNameVal = chatName(); $nextTick(() => $refs.setNameInput.focus())">Set name</button>
+            <form class="flex-col gap-8" x-show="setNameOpen" @submit.prevent="saveName()">
+              <input class="inp" x-ref="setNameInput" x-model="setNameVal" placeholder="Your name" autocomplete="name" maxlength="40">
+              <div class="set-actions flex items-center gap-8">
+                <button type="submit" class="primary">Save</button>
+                <button type="button" class="set-alt muted-12" @click="setNameOpen = false">Cancel</button>
+              </div>
+            </form>
+          </div>
+          <div class="set-form set-pass">
             <button type="button" class="set-alt muted-12" x-show="!setPassOpen" @click="setPassOpen=true;$nextTick(()=>$refs.setPassInput.focus())">Set password</button>
             <form class="flex-col gap-8" x-show="setPassOpen" @submit.prevent="setPassword()">
               <p class="set-msg muted-12" :class="{err:setPassErr}" x-text="setPassErr" :style="setPassErr?'':'display:none'"></p>

@@ -68,6 +68,8 @@
     "drawer": "cubic-bezier(.32,.72,0,1)",
     "spring": "cubic-bezier(.34,1.4,.64,1)"
   },
+  "//motion": "Durations (ms) by frequency tier, docs/ui/motion.md: constant = tens of times a day and answers on the touch frame; daily = a state change worth watching; extraordinary = milestones only.",
+  "motion": { "constant": 160, "daily": 220, "extraordinary": 520 },
   "light": {
     "bg": "oklch(.97 .005 58)",
     "panel": "oklch(.985 .006 65)",

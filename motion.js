@@ -2,8 +2,10 @@
 // transitions/animations, scrollers). `motion.idle()` is the single truthful "nothing is moving"
 // signal; zero-motion mode and the harness hang off it rather than sampling geometry.
 // Spec: docs/superpowers/specs/2026-08-04-motion-engine-unification.md
+import DESIGN from './design.json' with { type: 'json' };
 export const EASE_OUT = p => 1 - Math.pow(1 - p, 3);
 
+const seqs = new Map();       // key -> the sequence playing under it (motion.seq)
 const tweens = new Map();      // key (any value; e.g. the scroller element) -> step(now) => boolean alive
 const css = new Map();         // Element -> Set<'t:prop' | 'a:name'>
 const scrollers = new Map();   // element (or document) mid-scroll -> scroll-event count; cleared by scrollend or a silent frame
@@ -70,6 +72,53 @@ export const motion = {
   // Only the forced dial scales time: OS reduced motion drops movement, not the user's thresholds.
   t(ms) { return ms * (forced ?? 1); },
   rand: Math.random,   // reward rolls draw here; a test pins it
+  // A sequence: its phases play one after another, each starting when the last one's animations end. A new sequence
+  // under the same key first hurries the old one to its end (every animation finishes, the rest of its phases run
+  // instantly), so a second tap never overlaps the first or plays it twice. A phase gets the sequence `s` and returns
+  // what it waits on (animations, promises); it reads the DOM when it runs, never before the sequence starts.
+  async seq(key, ...phases) {
+    const prev = seqs.get(key);
+    if (prev) { prev.hurry(); await prev.done; }
+    const s = { fast: false, anims: new Set(), hurry() { this.fast = true; for (const a of this.anims) a.finish(); } };
+    seqs.set(key, s);
+    s.done = (async () => {
+      try { for (const phase of phases) await Promise.allSettled([await phase(s)].flat().map(x => x?.finished ?? x)); }
+      finally { if (seqs.get(key) === s) seqs.delete(key); }
+    })();
+    return s.done;
+  },
+  // One animation through the dial (reduced motion, the test clock), joined to sequence `s` if given. `fill: 'backwards'`
+  // holds its first frame through a delay, so a move set up before paint never shows its end state first.
+  go(s, el, keyframes, opts) {
+    if (!el) return null;
+    const a = el.animate(keyframes, { fill: 'backwards', ...opts });
+    soften(a);
+    if (s) { s.anims.add(a); if (s.fast) a.finish(); }
+    return a;
+  },
+  // The primitives (docs/ui/motion.md): named moves the app composes, timed by tier (design.json motion).
+  // Fill: `el` grows down from its transform-origin (a line filling with colour). Set the origin in CSS.
+  fill(s, el, tier = 'daily') {
+    return motion.go(s, el, { scale: ['1 0', '1 1'] }, { duration: DESIGN.motion[tier], easing: DESIGN.ease['in-out'] });
+  },
+  // Light: `el` takes class `cls` (its colour, from CSS) and pops once.
+  light(s, el, cls = 'lit', tier = 'constant') {
+    el?.classList.add(cls);
+    return motion.go(s, el, { scale: [.6, 1] }, { duration: DESIGN.motion[tier], easing: DESIGN.ease.spring });
+  },
+  // Push: the new content (`incoming`, already in place) rises `d` px into `box` while `outgoing` (a frozen copy of the
+  // old, laid over it) rises out by the same `d`; `box` clips both. The old is gone before the new fades in, so two texts
+  // never show at once. `carried` (the same text, moving on) rides the move unfaded. The calendar's month titles move the
+  // same way, driven by scroll (_clPositionZone). Reduced motion keeps only the fades: out, then in.
+  push(s, box, outgoing, incoming, d, carried = [], tier = 'daily') {
+    const o = { duration: DESIGN.motion[tier], easing: DESIGN.ease.drawer }, rise = { translate: [`0 ${d}px`, '0 0'] }, fadeIn = { opacity: [0, 0, 1] };
+    box.classList.add('pushing');
+    const runs = [motion.go(s, outgoing, [{ translate: '0 0', opacity: 1 }, { opacity: 0, offset: .3 }, { translate: `0 ${-d}px`, opacity: 0 }], { ...o, fill: 'forwards' }),
+      ...incoming.map(el => motion.go(s, el, { ...rise, ...fadeIn }, o)),
+      ...carried.map(el => motion.go(s, el, { ...rise, ...motion.gentle && fadeIn }, o))];   // reduced, it can't move, so it fades in like the rest
+    Promise.allSettled(runs.map(a => a?.finished)).then(() => { box.classList.remove('pushing'); outgoing?.remove(); });
+    return runs;
+  },
   // Register a per-frame step under a key. A new run with the same key SUPERSEDES the old one — a
   // second request never queues behind or races the first. step returns true while it stays alive.
   run(key, step) { tweens.set(key, step); if (!rafId) rafId = requestAnimationFrame(pump); },

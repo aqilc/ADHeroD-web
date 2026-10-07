@@ -5,4 +5,4 @@ export const SUPABASE = {
 };
 
 // Shipped surfaces, in order.
-export const SURFACES = ['lists', 'plan'];
+export const SURFACES = ['lists', 'plan', 'social'];

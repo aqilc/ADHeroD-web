@@ -166,7 +166,7 @@ export const checkHtml = (r, tag = 'button', extra = '', recArr = recList(r.t.re
   const isPaused = !done && !archived && recArr.length > 0 && recArr.every(x => x.paused);
   // archived → inert archive glyph (means "set aside"); suppress done/prog/blocked/paused overlays.
   const steps = !!r.step && !r.blocked;   // a blocked Steps task keeps the blocked check
-  const cls = ['check', extra, done && 'done', archived && 'archived', !archived && r.hasProgress && !done && 'prog', steps && 'steps', !!r.step && r.progress > 0 && 'walked', !archived && r.blocked && !done && 'blocked', isPaused && 'paused'].filter(Boolean).join(' ');
+  const cls = ['check', extra, done && 'done', archived && 'archived', !archived && r.hasProgress && !done && 'prog', steps && 'steps', !!r.step && r.progress > 0 && !done && 'walked', !archived && r.blocked && !done && 'blocked', isPaused && 'paused'].filter(Boolean).join(' ');
   const lock = !archived && r.blocked && !done ? '<svg class="ico lock-ico"><use href="#i-lock"/></svg>' : '';
   const pause = isPaused ? '<svg class="ico pause-ico"><use href="#i-pause"/></svg>' : '';
   const act = tag === 'button' ? ` type="button" data-act="check" role="checkbox" aria-checked="${done}" aria-label="${esc(t.content || '')}"` : '';   // never a submit: the composer's own check sits inside its <form>
@@ -221,8 +221,9 @@ export const rowBodyHtml = (r, opts = {}) => {
   const row1 = (left, right) => `<div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${left}</div><div class="r1r flex items-center gap-8 min-w-0">${right}</div></div>`;
   // Plan's tray: one flat line — check, title, project, when. Nothing that unfolds, nests or ages (user, decision #79).
   if (opts.tray) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}</div>`;
-  const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map(rl =>
-    `<span class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span></span>`).join('')}</div>` : '';
+  // One chip per item; the ladder drops names one at a time and rolls >3 into the first chip's count (app.js _relIcon).
+  const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map((rl, i) =>
+    `<button type="button" class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11" data-act="rel" data-rel="${esc(rl.id)}" aria-label="Blocked by ${esc(rl.name)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${i || r.rels.length < 4 ? '' : `<span class="row-rel-n">${r.rels.length}</span>`}</button>`).join('')}</div>` : '';
   // Relations are a LINE-1 CITIZEN — the ladder sheds them like anything else, so a row with a relation is
   // no longer two lines at every width. The DESCRIPTION is the deliberate exception: prose always owns its own line
   // (user, 2026-08-17), so it never competes with the title and never joins the meta line. → app.js LADDER
@@ -284,8 +285,9 @@ export const dotStripHtml = (surfaces, idx) =>
     // Its own icon, on every dot — the pip it replaces named nothing, so a far surface was only reachable by
     // counting positions. The icon is the constant; the label is what drops away with distance.
     const ico = raw(`<svg class="ico cd-ico" aria-hidden="true"><use href="#${esc(s.icon || 'i-all')}"/></svg>`);
-    if (i === idx) { const dot = html`<button type="button" data-idx="${i}" data-sk="Overview" class="cd cd-cur" aria-label="${s.label}, open menu" aria-haspopup="dialog">${ico}<span class="cd-lab">${s.label}</span></button>`;
+    const label = s.unread ? s.label + ', new messages' : s.label, cls = s.unread ? ' cd-new' : '';   // the quiet unread dot (soc-1b)
+    if (i === idx) { const dot = html`<button type="button" data-idx="${i}" data-sk="Overview" class="cd cd-cur${cls}" aria-label="${label}, open menu" aria-haspopup="dialog">${ico}<span class="cd-lab">${s.label}</span></button>`;
       return s.seg ? `<span class="cd-plan">${dot}${segHtml(s.seg)}</span>` : dot; }
-    if (d === 1)   return html`<button type="button" data-idx="${i}" data-sk="Go to ${s.label}" class="cd cd-near" aria-label="${s.label}">${ico}<span class="cd-lab">${s.label}</span></button>`;
-    return html`<button type="button" data-idx="${i}" data-sk="Go to ${s.label}" class="cd cd-far" aria-label="${s.label}">${ico}</button>`;
+    if (d === 1)   return html`<button type="button" data-idx="${i}" data-sk="Go to ${s.label}" class="cd cd-near${cls}" aria-label="${label}">${ico}<span class="cd-lab">${s.label}</span></button>`;
+    return html`<button type="button" data-idx="${i}" data-sk="Go to ${s.label}" class="cd cd-far${cls}" aria-label="${label}">${ico}</button>`;
   }).join('');
