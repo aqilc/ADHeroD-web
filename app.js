@@ -29,7 +29,7 @@ function applyTheme(mode, family) {
 }
 applyTheme(savedAppearance(), savedColorTheme()); // Before Alpine boots: no flash of the previous palette.
 
-import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, MAX_DEPTH, pendingSweep, placedMap, overviewFields, liveRefs } from './store.js';
+import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, cascades, MAX_DEPTH, pendingSweep, placedMap, overviewFields, liveRefs } from './store.js';
 import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, jMigrate } from './recovery.js';
 import { inNotes, openBlockers } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, userReminders, offsetLabel } from './reminders.js';
@@ -39,16 +39,17 @@ import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurr
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
-import { esc as escHtml, mdLive as mdLiveRender, chkLive as chkLiveRender, chkParts, byDone, chkVisible, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, areaChipHtml, areaOptHtml, keyTip } from './ui.js';
+import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip } from './ui.js';
 import { makeSortable, edgeScrollStep, edgeSpeed, sorting, DWELL } from './sortable.js';
-import { SUPABASE, SURFACES } from './config.js';
+import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
 const SURF_HOME = SURFACES.includes('lists') ? 'lists' : SURFACES[0];
 import { createSupabaseStore } from './supabase-store.js';
-import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, peerName, whenLabel, unread, markRead, createInvite, setName } from './chat.js';
+import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, peerName, whenLabel, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
-let _sb, _inFlight = 0;   // the client's requests not yet answered: onAuth lets them land before it reloads
+let _sb, _inFlight = 0;
+let _filesTried = new Set(), _tasksGen = 0;   // file ids a read answered without a row (not re-read per load) · loadTasks' generation   // the client's requests not yet answered: onAuth lets them land before it reloads
 const countedFetch = (...a) => { _inFlight++; return fetch(...a).finally(() => _inFlight--); };   // every signed-in read and write passes here
 const sbClient = () => { if (_sb === undefined) _sb = (globalThis.supabase && SUPABASE.url) ? globalThis.supabase.createClient(SUPABASE.url, SUPABASE.anonKey, { global: { fetch: countedFetch } }) : null; return _sb; };
 
@@ -107,7 +108,7 @@ let _clSideV = -1;   // the _rowV the tray's cached row html holds for: _patchTa
 let _clAdNxH = null;   // last written --adh (the incoming claims rail height)
 const _clPgCache = new Map();   // day/week periods by index: scale-free days + bands, and their packed cols at one scale
 const _clWkCache = new Map();   // month week rows by index, off the Alpine proxy (a reactive Map deep-proxies every cell)
-const _nextMemo = new Map();   // repeat rule + anchor + day → its NEXT occurrence (whenShown): one step-walk per repeat per day
+const _nextMemo = new Map();   // repeat rule + anchor + day → the occurrence its row shows (whenShown): one step-walk per repeat per day
 let _clBlocksSig = null, _clBlocksCache = [], _clWkOut = [], _clWkSig = null, _clPgSig = null;   // clBlocks() single-entry memo — a view switch/scroll settle re-fires it ~100×; returning the SAME array ref lets Alpine's x-for no-op instead of re-diffing 500+ nodes
 const _clWheel = { t: -Infinity, v: Infinity, hi: 0, lo: 0, hiT: 0, n: 0 };   // wheel gesture gate (_clGestureFresh): last event time and speed, peak/floor speed, the peak's time, events since it — module scope, off the Alpine proxy
 let _calDataV = 0, _clScrollT, _clFrac = 0, _clMTop = 0, _clAdD, _clAdPg, _clAdH = 0;   // last boundary offset / rail page / deadline-rail height painted   // _clFrac mirrors clPos.frac, _clMTop the month scrollTop, without Alpine reactivity
@@ -176,6 +177,7 @@ const WIN_MARGIN = 600, WIN_KEEP = 200, WIN_RUN = 120, SEC_H = 30;   // SEC_H: s
 let _winSt = 0, _winAt = 0, _winV = 0, _winRun = WIN_RUN, _win = new WeakMap(), _restT = 0;   // the last scroll event's scrollTop, timeStamp, velocity (px/ms), runway (ms) · the kept window per list model { s, e } · the at-rest re-grow timer
 let _model = null;                    // { rows, ent:[{id,order,h,mk,d,html,r}], ix:Map(id→i), total } — the flat <li> sequence
 let _doneModel = null;                // the Done list's, the same shape, memoised on completedRows()
+let _chkHeld = null, _chkHeldT = 0, _chkOut = null, _chkDraftList = null;   // a checklist whose ticks show in place: app._holdChk
 let _appRaw = null;   // the component unproxied (init): visibleRows rebuilds on it
 // _patchRows → visibleRows: { ids, drop, sort, key, v } = rebuild ONLY these rows of the memo keyed `key` (drop: roots leaving it; sort: parents whose children moved), once _rowV is `v`
 const GLIDE_ROWS = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head)';   // what _glideFrom moves
@@ -325,6 +327,13 @@ let _qfGone = [];   // area ids _pruneQfAreas took out of the filter: one that c
 let _wiping = false;   // resetLocalData is reloading: the page-hide flush must not write back what it just wiped
 let _chkQ = null, _chkFuzzy = null, _chkTinted = false;   // ghost-find memo (query+len → id→ranges) + its uFuzzy instance; any row carries .chk-sel
 const _chkHtml = new Map();   // item text → chkLive html: paintChk re-derives every row's html on each checklist change
+const DESC_BLOCK = 4000;   // chars per block of a huge description (_descHtml): about a screen of it
+let _liveOn = [];   // the live field's tokens showing their markers (liveReveal)
+const _canon = document.createElement('template');
+let _linkPress = null;   // a press on a composer link (description, title, subtask row): where it started (pointer and text), whether it moved into a selection
+let _press = null;   // the mouse press under way, a tap's too: the description shows markers at its release
+let _opened = null;   // the field openComposer focused: an opened task reads as a view, no markers, until a key or a press (web-14)
+const _textWidth = document.createElement('canvas').getContext('2d');   // _descHtml's chars-per-line estimate
 const _tpl = h => Object.assign(document.createElement('template'), { innerHTML: h }).content.firstChild;
 const CHK_ROW = _tpl('<div class="entry chk"><button type="button" class="chk-rect"></button><div class="entry-txt" role="textbox" tabindex="0"></div><button type="button" class="entry-del" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button></div>');
 const GRIP = '<span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>', CHK_GRIP = _tpl(GRIP);
@@ -443,7 +452,10 @@ document.addEventListener('alpine:init', () => {
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
     surfaceOrder: SURFACES, surface: SURF_HOME,   // config.js owns the shipped set
-    chat: { chats: [], open: null, msgs: [], draft: '', watch: null, editing: null, stash: '', name: '' },   // stash: the draft an edit set aside
+    chat: { chats: [], open: null, msgs: [], draft: '', watch: null, editing: null, stash: '', name: '', pending: [] },   // stash: the draft an edit set aside; pending: files on their way up
+    attach: [],   // files on their way to a task: a new draft's ({ sid }) until it saves, then bound ({ taskId })
+    files: {},   // attachments rows by id, chat's and task chips' both; a sign-in change reloads the page, so it's this account's
+    filesUrl: FILES_URL,
     visited: { [SURF_HOME]: true },   // lazy-mount memory — heavy surfaces (Plan) mount on first visit, stay mounted
     _nowTickV: 0, _nowDay: isoDate(new Date()),   // _nowDay: the reactive "today" — busts list + calendar memos on midnight rollover
     drag: { active: false, x0: 0, y0: 0, w: 0, t0: 0, id: null, axis: null },
@@ -452,6 +464,7 @@ document.addEventListener('alpine:init', () => {
     kbd: false,   // the last input was a key: keyboard paths cut instead of animating (ui-build G9); a pointer or wheel clears it
     overview: false,
     ovSel: 0,
+    ovArchOpen: false,   // Overview's Archived row: shut until opened, as left after that
     rollerSel: 0,
     navPopXY: null,                   // escapes overflow clip
     collapsed: {},
@@ -620,16 +633,17 @@ document.addEventListener('alpine:init', () => {
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
       this._migrateNotes();       // not awaited: its per-row writes never hold up live sync
       setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
-      if (window.desktopWindow) {   // the Windows app (desktop/main.ts) downloads updates in the background
-        if (!this.sticky) this.desk = await desktopWindow('desk');
-        const pollUpdate = async () => { this.updateReady = await desktopWindow('updateReady'); };
-        pollUpdate();
-        setInterval(pollUpdate, 60000);
+      if (window.desktopWindow && !this.sticky) {   // the Windows app (desktop/main.ts); its overlay.js checks for updates
+        this.desk = await desktopWindow('desk');
+        const checkUpdate = async () => { this.updateUrl = await desktopUpdate(); };
+        checkUpdate();
+        setInterval(checkUpdate, 6 * 3600e3);
       }
       document.addEventListener('selectionchange', () => this._chkSelTint());   // checklist cross-row selection tint
       // An IME owns its keys mid-composition (its Enter converts): no handler may act on them — a title Enter saved the unconverted word.
       document.addEventListener('keydown', e => { if (e.isComposing || e.keyCode === 229) e.stopImmediatePropagation(); }, true);
       // A paste event can't name the shortcut that fired it — remember ⌘/Ctrl+Shift+V here so chkPaste can honour it.
+      document.addEventListener('keydown', () => { _opened = null; }, true);
       document.addEventListener('keydown', e => { this._rawPaste = (e.metaKey || e.ctrlKey) && e.shiftKey && /^v$/i.test(e.key); }, true);   // any other key clears it
       // Decorate on blur; raw text while editing. Pointer focus alone must not interrupt drag selection.
       // chk handlers use item.text (authoritative) not el.textContent (potentially stale on reused elements).
@@ -640,6 +654,34 @@ document.addEventListener('alpine:init', () => {
         if (!el.matches?.('.composer-entries .entry.chk:not(.ghost) .entry-txt')) return;
         const item = this._chkItem(el); if (item) paint(el, item, e);
       }, true);
+      // A huge description's blocks (_descHtml) draw markdown near the screen and go back to plain text off it.
+      // ceiling: a block reached by a long jump (or on screen at blur) shows plain text for a frame, and Tab skips the Copy of
+      // a code block not yet drawn; render ahead if either is noticed.
+      this.$refs.desc?.addEventListener('contentvisibilityautostatechange', e => {
+        const block = e.target, ends = this._selOffsets(block);
+        if (e.skipped === !block.firstElementChild || ends && e.skipped) return;   // already plain / already drawn; the selection's stays as it is
+        block.innerHTML = this._blockHtml(block, e.skipped);
+        if (ends) this._setSel(block, ends);
+      }, true);
+      // A press on a link opens it at release: focus would put the caret there, revealing its markers under the pointer.
+      // Past 4px it selects from where it started instead (4A); touch keeps its native long-press selection.
+      document.addEventListener('mousedown', e => {
+        const el = e.target.closest?.('.composer a.dm-link')?.closest('.desc, .content, .sub-ce');
+        _press = e; _opened = null;
+        _linkPress = el && { el, x: e.clientX, y: e.clientY, from: document.caretPositionFromPoint(e.clientX, e.clientY), moved: false };
+        if (el) e.preventDefault();
+      }, true);
+      document.addEventListener('click', e => { const a = _linkPress && !_linkPress.moved && e.target.closest('a.dm-link'); if (a) { e.preventDefault(); window.open(a.href, '_blank', 'noopener'); } });
+      document.addEventListener('mouseup', () => { _press = null; this._pastMarks(); this.liveReveal(); }, true);
+      document.addEventListener('selectionchange', () => this.liveReveal());
+      document.addEventListener('mousemove', e => {
+        if (!_linkPress || !(e.buttons & 1) || !_linkPress.moved && Math.hypot(e.clientX - _linkPress.x, e.clientY - _linkPress.y) < 4) return;
+        const from = _linkPress.from, to = document.caretPositionFromPoint(e.clientX, e.clientY);   // from: a scroll mid-drag keeps the start
+        if (!from || !to) return;
+        if (!_linkPress.moved) _linkPress.el.focus({ preventScroll: true });
+        _linkPress.moved = true;
+        getSelection().setBaseAndExtent(from.offsetNode, from.offset, to.offsetNode, to.offset);
+      });
       decorate('focus', el => this.onDescFocus(el), (el, item) => { this._chkBefore = item.text; this.chkFocus(el); });
       decorate('blur', el => this.onDescBlur(el), (el, item, e) => {
         if (!el.contains(e.relatedTarget)) el.innerHTML = el._h = this.chkHl(item);   // don't remove a copy button receiving focus
@@ -727,7 +769,7 @@ document.addEventListener('alpine:init', () => {
         if (f && f.sig === el._sig && !el._lad) {
           const l2 = new Map(); for (const sel of f.shed) this._shed(el, sel, l2);   // the moves, then the final classes
           el.querySelector('.r1l').className = f.r1; if (f.l2) l2.get(el).className = f.l2;
-          for (let k = f.ri; k--;) this._relIcon(el);
+          for (const i of f.ri) this._relIcon(el, i);
           el._lad = f.lad; el._fitV = _fitV;
           continue;
         }
@@ -737,7 +779,7 @@ document.addEventListener('alpine:init', () => {
       if (!rows.length) return;
       const grown = this._fitEls(rows);
       for (const el of rows) if (el._sig) _fitMemo.set(el.dataset.id, { sig: el._sig, lad: el._lad, shed: (el._moved || []).map(m => m.sel),
-        r1: el.querySelector('.r1l').className, l2: el.querySelector('.row2.meta')?.className, ri: el.querySelectorAll('.r1l .row-rel.icon-only').length });
+        r1: el.querySelector('.r1l').className, l2: el.querySelector('.row2.meta')?.className, ri: [...el.querySelectorAll('.r1l .row-rel')].flatMap((c, i) => c.classList.contains('icon-only') ? [i] : []) });
       // A row that gained (or lost) line 2 changed HEIGHT, and _measure already ran this pass and stamped
       // these elements for this width generation. Un-stamp exactly those and ask for one more pass, or the
       // spacers keep last width's heights and the scrollbar drifts. Converges: next pass they are _fitV-
@@ -788,8 +830,8 @@ document.addEventListener('alpine:init', () => {
       // Rung 0/1 — chips in place: >3 chips roll on COUNT (unchanged from the old fitRows), otherwise the
       // squeeze that got the row here collapses them to icon pills. Both are writes; no read needed.
       for (const el of rows) this._chipMode(el);
-      // Then blocker chips drop their names ONE at a time, the last named first, so the row keeps every name it has room for (soc-2 b).
-      const relRungs = batch => { while ((batch = batch.filter(el => el.querySelector('.r1l .row-rel:not(.icon-only)') && !fits(el))).length) for (const el of batch) this._relIcon(el); };   // READ, then WRITE
+      // Then blocker and file chips drop their names ONE at a time, the widest named first, so the row keeps the most names it has room for (soc-2 b).
+      const relRungs = batch => { while ((batch = batch.filter(el => !fits(el) && (el._relAt = this._relWidest(el)) >= 0)).length) for (const el of batch) this._relIcon(el, el._relAt); };   // READ, then WRITE
       relRungs(rows);
       const line2s = new Map();
       for (const sel of LADDER) {
@@ -816,7 +858,7 @@ document.addEventListener('alpine:init', () => {
         this._chipMode(el);              // …but rung 1 was free, so the chips stay collapsed in place
         line2s.delete(el); back.push(el);
       }
-      relRungs(back);                    // and so are the blocker rungs
+      relRungs(back);                    // and so are the chip rungs
       // Line 2 must never wrap to a third line, so it degrades IN PLACE: shrink text, then drop chip names,
       // then roll the chips away — same preference order as line 1, same rung-major batching.
       const l2s = [...line2s.values()];
@@ -885,13 +927,21 @@ document.addEventListener('alpine:init', () => {
       el.querySelector('.r1l')?.classList.remove('icons-only', 'rolled');
       const rels = el.querySelector('.row-rels'); if (rels) this._relNames(rels);
     },
-    // One blocker rung's WRITE: the last chip still named drops to its icon; once none is named, >3 roll into the first chip + count.
-    _relIcon(el) {
-      const chips = el.querySelector('.r1l .row-rels').children, i = [...chips].findLastIndex(c => !c.classList.contains('icon-only'));
-      chips[i].classList.add('icon-only');
-      if (!i && chips.length > 3) chips[0].parentElement.classList.add('rolled');   // ceiling: one kind (blockers); roll per kind once attachment chips share the row
+    // A chip rung's READ: the widest line-1 chip still named (a tie: the later one), -1 when none is.
+    _relWidest(el) {
+      let at = -1, widest = -1;
+      el.querySelectorAll('.r1l .row-rel').forEach((c, i) => { if (!c.classList.contains('icon-only') && c.offsetWidth >= widest) [at, widest] = [i, c.offsetWidth]; });
+      return at;
     },
-    _relNames(rels) { rels.classList.remove('rolled'); for (const c of rels.children) c.classList.remove('icon-only'); },
+    // A chip rung's WRITE: chip i drops to its icon; a kind with >3 chips and none named rolls into its first chip + count.
+    _relIcon(el, i) {
+      const chips = [...el.querySelector('.r1l .row-rels').children], kind = chips[i].dataset.kind, same = chips.filter(c => c.dataset.kind === kind);
+      chips[i].classList.add('icon-only');
+      if (same.length < 4 || same.some(c => !c.classList.contains('icon-only'))) return;
+      same[0].classList.add('rolled');
+      for (const c of same.slice(1)) c.classList.add('rel-hid');
+    },
+    _relNames(rels) { for (const c of rels.children) c.classList.remove('icon-only', 'rolled', 'rel-hid'); },
 
     // --- Nav ---
     setNav(type, id = null) {
@@ -940,6 +990,24 @@ document.addEventListener('alpine:init', () => {
       const [chats, msgs] = await Promise.all([list && loadChats(sb), id && loadMessages(sb, id)]);
       if (chats) this._setChats(chats);
       if (msgs && this.chat.open === id) this.chat.msgs = msgs;
+      if (msgs) this._chatFiles(msgs);
+    },
+    _chatFiles(msgs) { return this._loadFiles(msgs.flatMap(m => m.attachments ?? [])); },
+    // Rows for ids not in the map yet, in one read. Signed out, gone or failed: their chips say "File unavailable" (a failed read retries next load).
+    async _loadFiles(ids) {
+      const sb = this.session && sbClient(), missing = [...new Set(ids)].filter(id => !this.files[id] && !_filesTried.has(id));
+      if (!sb || !missing.length) return;
+      const rows = await loadFiles(sb, missing).catch(() => null); if (!rows) return;
+      for (const id of missing) _filesTried.add(id);
+      this._putFiles(rows);
+    },
+    // A row already drawn with one of these ids re-renders (just those rows): the lists' unchanged-tasks return would keep "File unavailable".
+    _putFiles(rows) {
+      for (const f of rows) this.files[f.id] = f;
+      const ids = new Set(rows.map(f => f.id)), hit = new Set(window.Alpine.raw(this.tasks).filter(t => t.attachments?.some(id => ids.has(id))).map(t => t.id));
+      if (!hit.size) return;
+      if (this._canPatch()) this._patchRows(hit);
+      else this._rowV++;
     },
     phoneThread() { return this.narrow && this.surface === 'social' && !!this.chat.open; },   // a whole-screen page with no switcher (soc-2e)
     chatPeer(chat) { return chat ? peerName(chat, this._acct()) : ''; },
@@ -998,14 +1066,18 @@ document.addEventListener('alpine:init', () => {
       if (await markRead(sbClient(), uid, chat.id, at)) chat.members.find(m => m.user_id === uid).last_read_at = at;
     },
     chatWhen: whenLabel,
+    chatLine(m) { return m?.body || (m?.attachments?.length ? 'File' : ''); },   // a files-only message previews as "File"
     openChatRow() { return this.chat.chats.find(c => c.id === this.chat.open); },
+    chatCanSend() { return this.chat.editing ? !!this.chat.draft.trim() : (!!this.chat.draft.trim() || !!this.chat.pending.length) && this.chat.pending.every(f => f.row); },
     async sendChat() {
       const body = this.chat.draft.trim(), id = this.chat.open;
-      if (!body || !id) return;
+      if (!id || !this.chatCanSend()) return;
       if (this.chat.editing) return this.saveEdit(body);
-      const row = await sendMessage(sbClient(), this._acct(), id, body);
+      const files = this.chat.pending.map(f => f.row);
+      const row = await sendMessage(sbClient(), this._acct(), id, body, files.map(f => f.id));
       if (!row) return this.notify('Message not sent');
       this.chat.draft = '';
+      this.chat.pending = [];
       this.chatChange({ eventType: 'INSERT', new: row });
     },
     // Realtime and our own sends land here; a row already shown (by id) is never added twice.
@@ -1016,6 +1088,7 @@ document.addEventListener('alpine:init', () => {
         if (this.chat.chats.some(c => c.last?.id === old.id)) loadChats(sbClient()).then(chats => chats && this._setChats(chats));
         return;
       }
+      if (row.attachments?.length) this._chatFiles([row]);
       if (eventType === 'UPDATE') {
         this.chat.msgs = this.chat.msgs.map(m => m.id === row.id ? row : m);
         if (chat?.last?.id === row.id) chat.last = row;
@@ -1025,7 +1098,7 @@ document.addEventListener('alpine:init', () => {
       if (!chat) return void loadChats(sbClient()).then(chats => chats && this._setChats(chats));   // a chat we haven't loaded yet
       chat.last = row;
       if (row.user_id !== this._acct() && !(this.surface === 'social' && this.chat.open === chat.id)) {   // soc-1b: a quiet card, never for the chat on screen
-        const line = row.body.split('\n')[0];
+        const line = this.chatLine(row).split('\n')[0];
         this.notify(`${this.chatPeer(chat)}: ${line.length > 80 ? line.slice(0, 79) + '…' : line}`, { actions: [{ label: 'Open', fn: () => { this.goSurface('social'); this.openChat(chat.id); } }], timeout: 6000 });
       }
       this.chat.chats.sort((a, b) => (b.last?.created_at ?? '').localeCompare(a.last?.created_at ?? ''));
@@ -1042,6 +1115,49 @@ document.addEventListener('alpine:init', () => {
       }
     },
     // An edit borrows the composer: the draft set aside comes back when it ends.
+    // Uploads start as files arrive (drop, paste, the phone's +); Send waits until every one has its row.
+    addFiles(list, into = this.chat.pending, bind = {}) {
+      for (const file of list) {
+        if (file.size > 15728640) { this.notify(`${file.name} is over 15 MB`); continue; }
+        into.push({ key: crypto.randomUUID(), name: file.name, size: file.size, pct: 0, row: null, failed: false, file, ...bind });
+        this._upload(into.at(-1));
+      }
+    },
+    async _upload(pending) {
+      pending.failed = false;
+      pending.row = await uploadFile(this.filesUrl, this.session.access_token, pending.file, f => pending.pct = f);
+      pending.failed = !pending.row;
+      if (pending.row) this._putFiles([pending.row]);   // named before any chip draws it
+      if (pending.row && pending.taskId) this._attachFiles(pending.taskId);
+      else if (pending.failed && pending.taskId && !this.composerFiles().includes(pending)) this.notify(`${pending.name} didn’t upload`, { actions: [{ label: 'Retry', fn: () => this._upload(pending) }] });   // its composer closed: no chip shows it
+    },
+    // ceiling: a file removed after it uploaded stays in Drive until the daily sweep's 90-day grace ends; fine at chat volumes
+    dropPending(pending) {
+      this.chat.pending = this.chat.pending.filter(f => f !== pending);
+      this.attach = this.attach.filter(f => f !== pending);
+    },
+    chatPaste(e) {
+      if (!this.filesUrl || !e.clipboardData?.files.length || e.clipboardData.types.includes('text/plain')) return;   // Excel and Word put a picture of copied text beside it
+      e.preventDefault();
+      this.addFiles(e.clipboardData.files);
+    },
+    chatDrop() { return !!this.filesUrl && this.surface === 'social' && !!this.chat.open && !this.chat.editing; },
+    composerDrop() { return !!this.filesUrl && this.composer.open && !this._closingComposer; },   // an open task or draft takes dropped and pasted files
+    dropNote() { return !this.chatDrop() && !this.composerDrop() ? 'Drop a calendar file to import its events' : this.session ? 'Drop to attach' : 'Sign in to attach files'; },
+    // Images, PDFs and text open in a tab (opened before the await, or it's a blocked popup); the rest download.
+    async openFile(file) {
+      const tab = /^(image\/|application\/pdf$|text\/plain)/.test(file.mime) ? window.open('', '_blank') : null;
+      const blob = await fileBlob(this.filesUrl, this.session.access_token, file.id);
+      if (!blob) {
+        tab?.close();
+        return this.notify('File not opened. Check your connection');
+      }
+      const url = URL.createObjectURL(blob);
+      if (tab) tab.location = url;
+      else Object.assign(document.createElement('a'), { href: url, download: file.name }).click();
+      setTimeout(() => URL.revokeObjectURL(url), 60e3);
+    },
+    fileSize,
     startEdit(m) {
       if (!this.chat.editing) this.chat.stash = this.chat.draft;
       this.chat.editing = m.id;
@@ -1457,13 +1573,14 @@ document.addEventListener('alpine:init', () => {
           }
         }
         // a completed (non-archived) root + its whole subtree → the Done list, tree-structured
+        const shelvedView = inProj && this._shelved().has(this.navSel.id);   // an archived project, opened: its archived tasks are what it holds
         const visitDone = (t, depth) => { if (seen.has(t.id)) return; seen.add(t.id); done.push(mkRow(t, depth)); if (fold && this.collapsed[t.id]) return; for (const c of (byParent.get(t.id) || [])) visitDone(c, depth + 1); };
         walk = (t, depth) => {
           if (keep && !keep.has(t.id)) return;
           // A completed/archived ROOT or PROJECT CHILD (a section's row) (+ its subtree) goes to the Done section or is
           // hidden. A completed/archived SUBTASK under an ACTIVE task stays inline (struck / dashed) so it keeps its place in the tree.
           const top = !depth || this.isOverviewProject(byId.get(t.parent_id));
-          if (t.archived_at && top) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
+          if (t.archived_at && top && !shelvedView) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
           if (t.completed_at && top && !_cele.has(t.id)) { if (this.showCompleted) visitDone(t, 0); else done.hidden = true; return; }   // a celebrating root holds its slot; .hidden: done tasks the lens hides (the empty copy reads "All clear")
           if (seen.has(t.id)) return; seen.add(t.id);
           out.push(mkRow(t, depth));
@@ -1619,7 +1736,7 @@ document.addEventListener('alpine:init', () => {
     // tracks the same content the row builder renders.
     _rowEst(r) {
       const chk = r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []);   // folded or Steps → the checklist contributes no height
-      const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id)) : null;
+      const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id), _chkHeld?.key === r.t.id ? _chkHeld.done : null) : null;
       // Relations ride line 1 until the ladder sheds them onto the shared meta line. A DESCRIPTION always owns its
       // (prose never joins the meta line), so they add their own 17.
       const ml = this._metaLines(r);
@@ -1913,16 +2030,18 @@ document.addEventListener('alpine:init', () => {
     mkRow(t, depth, byParent, byId, def, now, edMemo, pm) {
       const kids = byParent.get(t.id) || [], parent = byId.get(t.parent_id), cl = t.checklist || [];
       const hasKids = kids.some(c => !inNotes(c)), hasCl = cl.length > 0;   // a note child never fills the ring
-      const rels = openBlockers(t, byId).map(id => ({ id, type: 'blocked_by', icon: 'i-stop', name: byId.get(id).content }));   // a done blocker leaves the row
+      const blockers = openBlockers(t, byId), files = t.attachments ?? [];   // a done blocker leaves the row
+      // n: the kind's count, on its first chip, which stands for them all once that kind rolls (_relIcon)
+      const rels = [...blockers.map((id, i) => ({ id, type: 'blocked_by', icon: 'i-stop', name: byId.get(id).content, label: 'Blocked by ' + byId.get(id).content, n: !i && blockers.length > 3 ? blockers.length : 0 })),
+        ...files.map((id, i) => ({ id, type: 'file', icon: 'i-file', name: this.fileName(id), label: this.files[id] ? 'File ' + this.files[id].name : 'File unavailable', n: !i && files.length > 3 ? files.length : 0 }))];
       // Steps: the row leads with the first open step (stored order), or the last once all are done, so a done one still reads as steps; the pie counts steps, never subtasks.
       const si = t.task_type === 'steps' && !t.checklist_plain ? (i => i < 0 ? cl.length - 1 : i)(cl.findIndex(x => !x.done)) : -1;
       const em = edMemo ? this.effDurMin(t, byParent, edMemo) : (t.est_minutes || 0);   // roll up subtasks when no own duration
-      // ONE date fact: the placement (or, for a repeat, its next occurrence). A placement is an INTENTION that
-      // reflows on miss, so it never wears the overdue band: a missed one wears the deadline red as a line, never the fill.
-      const when = this.whenShown(t, pm), sched = !t.recurrence && !!when;
+      // ONE date fact: the placement (or, for a repeat, whenShown). Either is an INTENTION, so a passed one never
+      // wears the overdue band's fill, only the deadline red as a line.
+      const when = this.whenShown(t, pm);
       let dueB = when ? windowBadge({ available_from: t.available_from, recur_from: when, completed_at: t.completed_at }, now) : null;
-      if (dueB && sched) dueB = { ...dueB, kind: dueB.kind === 'overdue' ? 'missed' : dueB.kind, sched: true };
-      else if (dueB && t.recurrence && dueB.kind === 'overdue') dueB = { ...dueB, kind: '' };
+      if (dueB?.kind === 'overdue') dueB = { ...dueB, kind: 'missed' };
       return {
         t, depth, pc: this.pc(t.importance), collapsed: !!this.collapsed[t.id],
         note: inNotes(t),   // note → inert dot instead of the checkbox
@@ -1949,7 +2068,7 @@ document.addEventListener('alpine:init', () => {
         childCount: kids.length,
         hasProgress: hasKids || hasCl,
         progress: this.rowProgress(t, si >= 0 ? [] : kids),
-        blocked: rels.length > 0,
+        blocked: blockers.length > 0,
       };
     },
     // Enter keyboard navigation where the reader is, not at the corpus boundary.
@@ -2060,17 +2179,17 @@ document.addEventListener('alpine:init', () => {
     },
     overviewProjectRows() {   // all overview projects at all depths always shown (roller uses this)
       // ONE position-sorted byParent index: the old form re-scanned every task for each project it found (O(projects·tasks) per roller paint).
-      const rows = [], seen = new Set(), def = this.store.defaultProject(), byP = buildByParent(this.tasks), visit = (parentId, depth) => {
+      const rows = [], seen = new Set(), def = this.store.defaultProject(), byP = buildByParent(this.tasks), visit = (parentId, depth, shelved) => {
         for (const p of byP.get(parentId) || []) {
           if (seen.has(p.id)) continue;
           seen.add(p.id);
-          const shown = p.overview && p.id !== def;
+          const gone = shelved || !!p.archived_at, shown = p.overview && p.id !== def && !gone;   // gone: under an archived row (_shelved, walked)
           if (shown) rows.push({ p, depth });
-          visit(p.id, depth + (shown ? 1 : 0));   // hidden parents must not hide overview descendants
+          visit(p.id, depth + (shown ? 1 : 0), gone);   // hidden parents must not hide overview descendants
         }
       };
-      visit(null, 0);
-      for (const p of this.tasks) if (p.overview && !seen.has(p.id)) visit(p.parent_id, 0);   // legacy cycles/orphans remain navigable without rewriting data
+      visit(null, 0, false);
+      for (const p of this.tasks) if (p.overview && !seen.has(p.id)) visit(p.parent_id, 0, this._shelved().has(p.parent_id));   // legacy cycles/orphans remain navigable without rewriting data
       return rows;
     },
     rollerItems() {
@@ -2079,6 +2198,10 @@ document.addEventListener('alpine:init', () => {
                   { kind: 'backlog', type: 'backlog', id: null, label: 'Backlog' }];
       for (const { p, depth } of this.overviewProjectRows())
         it.push({ kind: 'proj', type: 'project', id: p.id, label: p.content, depth, p });
+      // Projects end with the archived ones, folded into one row: the top of each archived tree, latest first
+      const shelved = this._shelved(), arch = this.tasks.filter(t => t.overview && t.archived_at && !shelved.has(t.parent_id)).sort((a, b) => b.archived_at.localeCompare(a.archived_at));
+      if (arch.length) it.push({ kind: 'arch', label: 'Archived', n: arch.length, open: this.ovArchOpen });
+      if (this.ovArchOpen) for (const p of arch) it.push({ kind: 'proj', type: 'project', id: p.id, label: p.content, depth: 1, p, archived: true });
       it.push({ kind: 'sec', label: 'Filters', add: 'filter' });
       for (const f of this.filters) it.push({ kind: 'filter', type: 'filter', id: f.id, label: f.name, f });
       it.push({ kind: 'sec', label: 'Areas', add: 'area' });
@@ -2097,6 +2220,7 @@ document.addEventListener('alpine:init', () => {
     },
     rollerOpen() {
       const it = this.selectableRollerItems()[this.rollerSel]; if (!it) return;
+      if (it.kind === 'arch') { this.ovArchOpen = !this.ovArchOpen; return; }
       if (it.kind === 'loc') { this.locMgr = true; this.loadLocations(); return; }   // dialog layers over the overview (z 200 > 60); leave the overview open behind it
       this.setNav(it.type, it.id); this.closeOverview();
     },
@@ -2168,6 +2292,8 @@ document.addEventListener('alpine:init', () => {
       else if (it.kind === 'filter') { d.icon = it.f.query === 'is:any' ? 'i-all' : 'i-search'; d.color = it.f.color || ''; }   // the 'All tasks' null filter keeps its original glyph; filters aren't otherwise icon-configurable
       else if (it.kind === 'backlog') d.icon = 'i-backlog';
       else if (it.kind === 'loc') { d.icon = 'i-tag-map'; d.count = ''; }
+      else if (it.kind === 'arch') { d.icon = 'i-archive'; d.count = it.n; }
+      if (it.archived) d.count = '';   // nothing in it is open
       return d;
     },
     rollerRows() {   // rollerItems with section headers kept inline; non-sec rows carry a running focus index (ridx)
@@ -2418,7 +2544,7 @@ document.addEventListener('alpine:init', () => {
         // Default focus must not steal a click/Tab that reached the composer before this deferred callback,
         // nor land in a session an Escape already closed (a stall queues input ahead of this callback).
         if (c && this._live(d) && (document.activeElement === focusBefore || !this.$refs.composer.contains(document.activeElement))) {
-          c.focus({ preventScroll: true });
+          c.focus({ preventScroll: true }); _opened = c;
           if (!ghost && (this.editing || this.draftRestored)) this._caret(c);   // a restored draft goes on where its typing stopped
         }
         if (this._inPanel()) return;   // the panel hosts it: hidden Lists' scroller isn't the open's to move
@@ -2519,7 +2645,7 @@ document.addEventListener('alpine:init', () => {
     // A Done root from a subproject names it inside the project view (even grouped); a row of the viewed project itself doesn't.
     rowBody(r, opts) {
       const subDone = this.navSel.type === 'project' && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== this.navSel.id;
-      return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...opts });
+      return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...opts });
     },
     // body is inert x-html — delegate here; editTask measures .item
     onRowClick(r, e) {
@@ -3286,8 +3412,8 @@ document.addEventListener('alpine:init', () => {
       const def = this.store.defaultProject();
       // pool per _relIdx (data × editing): a keystroke reuses its haystack; the copy keeps the sort off the cached pool (an empty query returns it as is)
       const idx = this._relIdx();
-      if (!idx.projs) { const own = new Set(this.editing ? descendantIds(this.tasks, this.editing) : []);   // filing a task under its own subtree is a cycle the store refuses
-        idx.projs = this.tasks.filter(t => !own.has(t.id) && (t.id === def || t.overview || this.hasChildren(t.id))); }
+      if (!idx.projs) { const own = new Set(this.editing ? descendantIds(this.tasks, this.editing) : []), shelved = this._shelved();   // filing a task under its own subtree is a cycle the store refuses
+        idx.projs = this.tasks.filter(t => !own.has(t.id) && !shelved.has(t.id) && (t.id === def || t.overview || this.hasChildren(t.id))); }
       return [...this.pickerMatches(idx.projs)].sort((a, b) => (b.overview === true || b.id === def ? 1 : 0) - (a.overview === true || a.id === def ? 1 : 0));
     },
     taskProj(p) { return !p.overview && p.id !== this.store.defaultProject(); },   // container task, not an overview project
@@ -3306,7 +3432,7 @@ document.addEventListener('alpine:init', () => {
     },
     async createFilteredProj() {
       const name = this.pickerQ.trim(); if (!name) return;
-      const existing = this.tasks.find(x => x.content === name && x.parent_id === null);
+      const existing = this.tasks.find(x => x.content === name && x.parent_id === null && !x.archived_at);
       const project = existing || await this._newTask({ content: name, parent_id: null, overview: true });
       if (!project) return this.toast(`Failed creating “${name}”. Try again?`);   // the name stays typed in the picker
       await this.loadTasks();
@@ -3369,6 +3495,14 @@ document.addEventListener('alpine:init', () => {
       this.endPicking = false; this.tpop = false;
       this._calTo(this.draft[this._dateKey()] || this.draft.on || isoDate(new Date()));
       this.$nextTick(() => this.$refs.calType?.focus());
+    },
+    // A repeat resumed after falling behind starts again at its next date from today, not the pile it missed
+    // (user, tweak-9: "let's not unload onto the user when they restart a project"); one still ahead keeps its date.
+    repPause(r) {
+      r.paused = !r.paused;
+      if (r.paused || !this.draft.on || this.draft.on >= isoDate(new Date())) return;
+      this.draft.on = '';
+      this.refreshRecurrenceDue();
     },
     // Recompute the next-occurrence due whenever the recurrence rule changes (anchored at the current due, else today).
     refreshRecurrenceDue() {
@@ -3678,9 +3812,12 @@ document.addEventListener('alpine:init', () => {
     // --- Inline-pill editor (contenteditable title) ---
     // draft.content = the editor's TEXT nodes only (pills excluded), whitespace-collapsed. WYSIWYG: this
     // is the title verbatim; fields come only from pills (Task 3), never a submit-time re-parse.
-    syncTitle() {
+    syncTitle(composing) {
       const el = this._nlpEl(), d = this._nlpDraft(); if (!el) return;
-      d.content = [...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join('').replace(/\s+/g, ' ').trim();
+      if (!composing) this._pillDraw(el);   // an IME's text draws at compositionend
+      const w = this._chipWalker(el); let text = '', n;
+      while ((n = w.nextNode())) if (n.nodeType === 3) text += n.nodeValue;
+      d.content = text.replace(/\s+/g, ' ').trim();
       const empty = !el.querySelector('.nlp-pill') && d.content === '';
       this._nlpTrack(el);
       if (!_nlpFocus) this.titleEmpty = empty;   // titleEmpty is title-only placeholder state
@@ -3690,16 +3827,20 @@ document.addEventListener('alpine:init', () => {
         this._caret(el, 0);
       }
     },
-    setEditorText(text) { const el = this.$refs.content; if (el) { el.textContent = text || ''; this.titleEmpty = !el.querySelector('.nlp-pill') && (text || '') === ''; this._noPillOnce = false; el._hist = { undo: [], redo: [], prev: this._nlpSnap(el) }; } },
+    setEditorText(text) { const el = this.$refs.content; if (el) { el.innerHTML = titleLive(text); this.titleEmpty = !el.querySelector('.nlp-pill') && (text || '') === ''; this._noPillOnce = false; el._hist = { undo: [], redo: [], prev: this._nlpSnap(el) }; } },
     // Minting/removing a pill is ONE ⌘Z step together with the raw text it consumed: snapshot a pill editor (title,
     // subtask row) after every edit into its own el._hist. ⌘Z outside the field never touches it: a wholesale restore would wipe later words.
     _nlpSnap(el) { return { html: el.innerHTML, sig: [...el.querySelectorAll('.nlp-pill')].map(p => p.dataset.kind + ':' + p.dataset.value).join('|'), f: Object.fromEntries(PILL_KINDS.map(k => [k, PILL_SPEC[k].snapshot(this, this._nlpDraft())])), caret: this._caretOffset(el) }; },
     _nlpTrack(el) {
-      const snap = this._nlpSnap(el), h = el._hist ||= { undo: [], redo: [] }, prev = h.prev, kind = this._tKind, caret = this._tCaret; this._tKind = this._tCaret = null;
-      if (prev && prev.html !== snap.html) {
-        // In-field ⌘Z steps: one per chip change, word typed (its space included) or run of ⌫/⌦; a caret jump starts a new one.
-        const run = prev.sig === snap.sig && /^(insertText|insertComposition|deleteContent|space)/.test(kind) ? kind : null;
-        if (!run || caret !== prev.caret || !(run === h.run || run === 'space' && /^insert/.test(h.run))) h.undo.push({ ...prev, caret: caret ?? prev.caret });   // undo lands the caret where this edit began
+      const snap = this._nlpSnap(el), h = el._hist ||= { undo: [], redo: [] }, kind = this._tKind, caret = this._tCaret; this._tKind = this._tCaret = null;
+      this._histStep(h, snap, h.prev && h.prev.html !== snap.html, h.prev?.sig === snap.sig && kind, caret);   // a chip change is its own step
+    },
+    // In-field ⌘Z steps (title, subtask rows, description): one per word typed (its space included) or run of ⌫/⌦; a caret
+    // jump or any other edit starts a new one. `caret`: where this edit began, where its undo lands.
+    _histStep(h, snap, changed, kind, caret) {
+      if (changed) {
+        const run = /^(insertText|insertComposition|deleteContent|space)/.test(kind) ? kind : null, prev = h.prev;
+        if (!run || caret !== prev.caret || !(run === h.run || run === 'space' && /^insert/.test(h.run))) h.undo.push({ ...prev, caret: caret ?? prev.caret });
         h.redo = []; h.run = run === 'space' ? null : run;
       }
       h.prev = snap;
@@ -3720,29 +3861,146 @@ document.addEventListener('alpine:init', () => {
       for (const k of PILL_KINDS) if (chips(now, k) !== chips(s.sig, k)) this._restoreField(k, s.f[k]);
       el._hist.prev = s; this.syncTitle();
     },
-    // --- Markdown at rest, plain editing. A trailing <br> gives an empty last line a caret home;
-    // textContent ignores it, so both representations retain the exact source. ---
-    _descHtml(text) { return mdLiveRender(text) + (text.endsWith('\n') ? '<br>' : ''); },
+    // --- The description is live Markdown, focused or not (mdLive): a token's markers show only while the caret touches it
+    // (liveReveal), and an edit redraws what changed (onDescInput). A trailing <br> gives an empty last line a caret home;
+    // textContent ignores it, so the DOM always holds the exact source. ---
+    // A huge one renders as blocks of whole lines that skip layout and paint off screen (.desc-block). Only the first and the
+    // always laid out last start with their markdown; the rest get theirs near the screen (init), so opening it styles about a screen, not 70K spans.
+    // Few top-level nodes also keep Alpine's MutationObserver cheap: it tests each removed node against each added one,
+    // so reopening a 500K one (70K spans replaced by 70K) hung 46s. A block not yet drawn holds the height _descSize estimates.
+    _descHtml(text) {
+      const tail = text.endsWith('\n') ? '<br>' : '';   // inside the last block, so a redraw of it keeps the closing line
+      if (text.length <= DESC_BLOCK) return mdLiveRender(text) + tail;
+      let html = '';
+      for (let at = 0, end; at < text.length; at = end) {
+        end = mdCut(text, at, DESC_BLOCK);
+        const part = text.slice(at, end);
+        html += `<div class="desc-block">${at && end < text.length ? escHtml(part) : mdLiveRender(part)}${end < text.length ? '' : tail}</div>`;
+      }
+      return html;
+    },
+    _blockHtml(block, plain) {
+      const text = block.textContent;
+      return (plain ? escHtml(text) : mdLiveRender(text)) + (!block.nextElementSibling && text.endsWith('\n') ? '<br>' : '');
+    },
     _plainHtml(text) { return escHtml(text) + (text.endsWith('\n') ? '<br>' : ''); },
-    setDescText(text) { const el = this.$refs.desc; if (el) el.innerHTML = this._descHtml(text || ''); },
+    _rowHtml(text) { return chkLiveRender(text, text.endsWith('\n') ? '<br>' : ''); },   // a focused checklist row
+    // Each unsized block's lines wrapped at the field's width (ceiling: one average char width from the first block, off
+    // for code or wide glyphs; measure per block if a first scroll is seen to jump).
+    _descSize(el) {
+      const blocks = el.querySelectorAll(':scope > .desc-block:not([style])'), sample = blocks[0]?.textContent;
+      if (!sample || !el.clientWidth) return;
+      _textWidth.font = getComputedStyle(el).font;
+      const cols = Math.floor(el.clientWidth / (_textWidth.measureText(sample).width / sample.length));
+      for (const block of blocks) {
+        const text = block.textContent; let lines = 0;
+        for (let at = 0, end; at < text.length; at = end + 1) {   // a closing newline starts no line
+          end = text.indexOf('\n', at); if (end < 0) end = text.length;
+          lines += Math.ceil((end - at) / cols) || 1;
+        }
+        block.style.setProperty('--h', lines + 'lh');
+      }
+    },
+    setDescText(text) {
+      const el = this.$refs.desc; if (!el) return;
+      this._descPaint(el, text || '');
+      el._hist = { undo: [], redo: [], prev: { text: text || '', caret: null } };
+    },
+    _descPaint(el, text, frag) {   // frag: _descHtml(text) already parsed
+      if (frag) el.replaceChildren(frag);
+      else el.innerHTML = this._descHtml(text);
+      _liveOn = [];
+      queueMicrotask(() => this._descSize(el));   // opening: the composer shows in Alpine's flush
+    },
     // Repaint every idle row's text from the draft (after undo/restore rewrote it wholesale).
     syncChkRows() { this.paintChk(document.querySelector('.composer-entries .entry-list > .entry.chk.ghost')?.parentElement, true); },
-    // defer-to-blur: only capture text on input; decoration applied by onDescBlur (preserves native ⌘Z).
+    // An edit redraws the field (a huge one: the caret's block) only when its markdown changed, so plain typing keeps its
+    // nodes. The caret is kept by offset. Never mid-composition: an IME's text redraws at compositionend.
     onDescInput(e) {
-      if (e && e.isComposing) return;
+      if (e?.isComposing) return;
       const el = this.$refs.desc; if (!el) return;
-      this.draft.notes = el.textContent;
+      if (e?.inputType?.startsWith('history')) return this._liveUndo(el, e.inputType);
+      const text = this.draft.notes = el.textContent;
+      const a = getSelection().anchorNode, block = (a?.nodeType === 1 ? a : a?.parentElement)?.closest('.desc-block'), part = block?.parentNode === el ? block : el;
+      this._redraw(part, part === el ? this._descHtml(text) : this._blockHtml(part), part === el && (frag => this._descPaint(el, text, frag)));
+      this._liveStep(el, text, e);
     },
-    // On focus: restore raw text so the user edits raw markup and ⌘Z starts fresh.
-    // Caret offset is computed first (textContent===raw is the mdLive contract, so the offset is valid in both).
+    // A live field (the description, a checklist row) redraws only when its markdown changed, so plain typing keeps its nodes.
+    _redraw(part, html, paint) {
+      for (const t of _liveOn) t.classList.remove('on');
+      _canon.innerHTML = html;   // parsed, so it compares as the DOM serializes
+      if (part.innerHTML === _canon.innerHTML) return;
+      const off = this._caretOffset(part);
+      paint ? paint(_canon.content) : part.replaceChildren(_canon.content);
+      this._setCaret(part, off);
+    },
+    _liveStep(el, text, e) {
+      this.liveReveal();
+      const h = el._hist, caret = this._tCaret; this._tCaret = null;   // no beforeinput (execCommand): it began where the last ended
+      if (h) this._histStep(h, { text, caret: this._caretOffset(el) }, h.prev.text !== text, e?.inputType === 'insertText' && /\s/.test(e.data) ? 'space' : e?.inputType, caret ?? h.prev.caret);
+    },
+    _liveUndo(el, type) { this._liveRestore(el); this.liveHistory(el, type === 'historyUndo' ? -1 : 1); },   // Chrome's own undo ran with no beforeinput
+    // ⌘Z inside a live field steps its own history: a redraw replaces nodes native undo would replay against.
+    liveBeforeInput(e) {
+      const type = e.inputType || '';
+      if (type.startsWith('history')) { e.preventDefault(); return this.liveHistory(e.target, type === 'historyUndo' ? -1 : 1); }
+      this._tCaret = this._caretOffset(e.target);
+    },
+    liveHistory(el, dir) {
+      const h = el?._hist, s = h?.[dir < 0 ? 'undo' : 'redo'].pop();
+      if (!s) return;
+      h[dir < 0 ? 'redo' : 'undo'].push({ text: el.textContent, caret: this._caretOffset(el) }); h.run = null;
+      h.prev = s;
+      this._liveRestore(el);
+    },
+    _liveRestore(el) {
+      const s = el._hist.prev, item = this._chkItem(el);
+      if (item) el.innerHTML = this._rowHtml(item.text = s.text); else this._descPaint(el, this.draft.notes = s.text);
+      this._setCaret(el, s.caret ?? s.text.length);
+      this.liveReveal();
+    },
+    // ⌘Z / ⌘⇧Z (Ctrl+Y on Windows and Linux) → -1 / 1, else 0. key?: autofill fires key-less keydowns.
+    _undoKey(e) { const k = e.key?.toLowerCase(); return (e.metaKey || e.ctrlKey) && !e.altKey && (k === 'z' || k === 'y' && e.ctrlKey && !MAC) ? k === 'y' || e.shiftKey ? 1 : -1 : 0; },
+    // The tokens whose markers show: those the caret (each end of a selection) touches, inside one or at its edge on the
+    // same line. Waits for a press's release: shown sooner, the markers would move the text out from under the pointer.
+    liveReveal() {
+      const el = document.activeElement, s = getSelection();
+      if (_press) return;
+      const on = el !== _opened && el?.matches('.composer :is(.desc, .content, .entry-txt)') && s.rangeCount ? this._liveToks(el, s.anchorNode, s.anchorOffset).concat(this._liveToks(el, s.focusNode, s.focusOffset)) : [];
+      for (const t of _liveOn) if (!on.includes(t)) t.classList.remove('on');
+      for (const t of on) t.classList.add('on');
+      _liveOn = on;
+    },
+    // A press past a line's end leaves the caret at its last visible spot, before the hidden markers that close the line
+    // (a link's `](url)`): typing there would join the link's text. The end of a line means after them.
+    _pastMarks() {
+      const el = document.activeElement, s = getSelection();
+      if (!el?.matches('.composer :is(.desc, .content, .entry-txt)') || !s.isCollapsed || s.focusNode.nodeType !== 3 || s.focusOffset < s.focusNode.length || !el.contains(s.focusNode)) return;
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let n, last = null;
+      w.currentNode = s.focusNode;
+      while ((n = w.nextNode()) && n.parentElement.closest('.dm-mark')?.getClientRects()[0]?.width === 0) last = n;
+      if (last && (!n || n.nodeValue[0] === '\n' && !n.parentElement.closest('.nlp-pill'))) s.collapse(last, last.length);
+    },
+    _liveToks(el, node, off) {
+      if (!el.contains(node)) return [];
+      if (node.nodeType === 3 && (!off || off === node.length)) {   // at a text's edge: the point between it and its neighbours
+        off = [].indexOf.call(node.parentNode.childNodes, node) + (off && 1); node = node.parentNode;
+      }
+      const toks = [], prev = node.childNodes?.[off - 1], next = node.childNodes?.[off];
+      for (let n = node; n !== el; n = n.parentNode) if (n.classList?.contains('dm-tok')) toks.push(n);
+      if (prev?.classList?.contains('dm-tok') && !prev.textContent.endsWith('\n')) toks.push(prev);   // a fence's last line break: the caret starts the next line
+      if (next?.classList?.contains('dm-tok')) toks.push(next);
+      return toks;
+    },
+    // Blur is the draft's commit boundary: one ⌘Z step per focus session, however much was typed; inside the field ⌘Z is
+    // its own history (liveHistory), fresh each focus.
     onDescFocus(el) {
-      const off = this._caretOffset(el), raw = this.draft.notes || '';
-      this._descBefore = raw;   // blur is the commit boundary: one ⌘Z step per focus session, however much was typed
-      el.innerHTML = this._plainHtml(raw);
-      this._setCaret(el, off ?? raw.length);
+      this._descBefore = this.draft.notes || '';
+      el._hist = { undo: [], redo: [], prev: { text: this._descBefore, caret: null } };
     },
-    onDescBlur(el) {
-      el.innerHTML = this._descHtml(el.textContent);
+    onDescBlur() {
+      this.liveReveal();
       const after = this.draft.notes || '';
       if (this._descBefore != null && this._descBefore !== after) this._pushDraftEdit('Description edit', 'desc-edit', { before: this._descBefore, after });
       this._descBefore = null;
@@ -3751,17 +4009,24 @@ document.addEventListener('alpine:init', () => {
       // ArrowDown out of an EMPTY description continues the ladder into the entry rows; with text in it, down
       // still moves the caret through the lines (the field owns the key).
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (!this.$refs.desc?.textContent.trim() && (e.key === 'ArrowDown' ? this.focusFirstEntry() : this._focusEntry(this.$refs.content))) e.preventDefault(); return; }
+      const dir = this._undoKey(e);
+      if (dir) { e.preventDefault(); return this.liveHistory(this.$refs.desc, dir); }
       // Enter AND Shift+Enter both newline here — a description is multi-line, and only ⌘/Ctrl+Enter ever saves
       // (caught by the composer's capture handler before this runs, so there's no modifier case left to handle).
       if (e.key !== 'Enter' || e.metaKey || e.ctrlKey) return;
       e.preventDefault();
       this.insertPlainText('\n');
     },
-    // Escaped HTML inserts literal newlines (insertText creates div/brs that textContent loses),
-    // replaces the selection, and stays on the native undo stack. Only the trailing caret sentinel is markup.
+    // Escaped HTML inserts literal newlines (insertText creates div/brs that textContent loses) and replaces the selection.
+    // Only the trailing caret sentinel is markup.
     insertPlainText(str) { document.execCommand('insertHTML', false, this._plainHtml(str)); },
     descPaste(e) { e.preventDefault(); this.insertPlainText(e.clipboardData.getData('text/plain')); },
-    descClick(e) { const a = e.target.closest?.('a.dm-link'); if (a) { e.preventDefault(); window.open(a.href, '_blank', 'noopener'); } },
+    // Copy takes the source, hidden markers included: the browser's own copy leaves out a hidden fence.
+    descCopy(e) {
+      const s = getSelection(); if (s.isCollapsed) return;
+      e.preventDefault(); e.clipboardData.setData('text/plain', s.getRangeAt(0).toString());
+      if (e.type === 'cut') document.execCommand('delete');
+    },
     // stable across innerHTML re-render (mdLive never changes text, only wraps it)
     _caretOffset(el) {
       const s = getSelection(); if (!s || !s.rangeCount) return null;
@@ -3771,17 +4036,44 @@ document.addEventListener('alpine:init', () => {
       for (const p of el.querySelectorAll('.nlp-pill')) if (pre.intersectsNode(p)) len -= p.textContent.length - 1;
       return len;
     },
-    _setCaret(el, off) {
-      if (off == null) return;
-      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, { acceptNode: x => x.nodeType === 3 ? (x.parentElement.closest('.nlp-pill') ? 2 : 1) : x.classList.contains('nlp-pill') ? 1 : 3 });
+    // A pill editor's text nodes and chips, in order (a chip's own label skipped).
+    _chipWalker(el) { return document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, { acceptNode: x => x.nodeType === 3 ? (x.parentElement.closest('.nlp-pill') ? 2 : 1) : x.classList.contains('nlp-pill') ? 1 : 3 }); },
+    // A title's (or subtask row's) text is live Markdown between its chips: a token never spans one. The chips keep their nodes.
+    _pillDraw(el) {
+      const w = this._chipWalker(el), pills = [];
+      let html = '', text = '', n;
+      while ((n = w.nextNode())) if (n.nodeType === 3) text += n.nodeValue; else { pills.push(n); html += titleLive(text) + n.outerHTML; text = ''; }
+      this._redraw(el, html + titleLive(text), frag => { frag.querySelectorAll('.nlp-pill').forEach((p, i) => p.replaceWith(pills[i])); el.replaceChildren(frag); });
+    },
+    _setCaret(el, off) { if (off != null) this._caret(...this._pointAt(el, off)); },
+    // The DOM point `off` caret steps into el (its end past the last).
+    _pointAt(el, off) {
+      const w = this._chipWalker(el);
       let n = 0, node;
       while ((node = w.nextNode())) {
-        if (node.nodeType === 1) { if (off <= n) { this._caret(node.parentNode, [...node.parentNode.childNodes].indexOf(node)); return; } n++; continue; }   // a chip: one step
+        if (node.nodeType === 1) { if (off <= n) return [node.parentNode, [...node.parentNode.childNodes].indexOf(node)]; n++; continue; }   // a chip: one step
         const len = node.nodeValue.length;
-        if (n + len >= off) { this._caret(node, off - n); return; }
+        if (n + len >= off) return [node, off - n];
         n += len;
       }
-      this._caret(el);
+      return [el, el.childNodes.length];
+    },
+    // The selection's ends, anchor first (null when neither is in el): an offset into el when inside it, so it survives el's
+    // redraw, else the DOM point. Read off the range: Chrome reports anchorNode in a skipped block at the block's start.
+    _selOffsets(el) {
+      const s = getSelection(), r = s.rangeCount ? s.getRangeAt(0) : null;
+      if (!r || !el.contains(r.startContainer) && !el.contains(r.endContainer)) return null;
+      const ends = [[r.startContainer, r.startOffset], [r.endContainer, r.endOffset]];
+      if (s.direction === 'backward') ends.reverse();
+      return ends.map(([node, at]) => {
+        if (!el.contains(node)) return [node, at];
+        const r = document.createRange(); r.selectNodeContents(el); r.setEnd(node, at);
+        return r.toString().length;
+      });
+    },
+    _setSel(el, ends) {
+      const [anchor, focus] = ends.map(end => typeof end === 'number' ? this._pointAt(el, end) : end);
+      getSelection().setBaseAndExtent(...anchor, ...focus);
     },
     // Set caret: off == null → collapse to end of n (selectNodeContents); else → setStart at offset.
     _caret(n, off) { const r = document.createRange(); if (off == null) { r.selectNodeContents(n); r.collapse(false); } else { r.setStart(n, off); r.collapse(true); } const s = getSelection(); s.removeAllRanges(); s.addRange(r); },
@@ -3972,7 +4264,7 @@ document.addEventListener('alpine:init', () => {
       return this.areas.filter(a => this._seqMatch(a.name, frag));
     },
     // "#" means file it under a project — overview projects + the default, not every task that happens to have children.
-    projMatches() { if (!this.projPicker.open) return []; const def = this.store.defaultProject(); return this.pickerMatches(this._relIdx().proj ??= this.tasks.filter(t => t.overview || t.id === def), this.projPicker.frag); },   // closed → [] (every open resets the picker, re-running its hidden x-for)
+    projMatches() { if (!this.projPicker.open) return []; const def = this.store.defaultProject(); const shelved = this._shelved(); return this.pickerMatches(this._relIdx().proj ??= this.tasks.filter(t => t.overview && !shelved.has(t.id) || t.id === def), this.projPicker.frag); },   // closed → [] (every open resets the picker, re-running its hidden x-for)
     locMatches() { const q = this.locPicker.frag.trim().toLowerCase(); return this.locations.filter(l => !q || l.name.toLowerCase().includes(q)); },
     // Dependencies autocomplete over EXISTING open tasks — a dependency on something that doesn't exist yet
     // is a note, and notes already have a field.
@@ -4048,8 +4340,8 @@ document.addEventListener('alpine:init', () => {
     // Pill-editor keydown shared by the title + every subtask row: pickers, trigger chars, and space→pill.
     // Returns true when fully consumed (pickers / trigger chars); Enter is left to the caller (submit vs commit-row).
     _pillKeydown(e) {
-      const k = e.key?.toLowerCase();   // autofill fires key-less keydowns
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && (k === 'z' || k === 'y' && e.ctrlKey && !MAC)) { e.preventDefault(); this.nlpHistory(k === 'y' || e.shiftKey ? 1 : -1, e.target); return true; }   // Ctrl+Y = Windows/Linux redo
+      const dir = this._undoKey(e);
+      if (dir) { e.preventDefault(); this.nlpHistory(dir, e.target); return true; }
       for (const t in PICKERS) if (this[PICKERS[t].key].open && this.pickerKeydown(t, e)) { e.preventDefault(); e.stopPropagation(); return true; }
       // Trigger chars open their picker on their own input event — the char isn't in the DOM when keydown fires,
       // and a deferred tick can run after later keys (a transition holds $nextTick), opening on an older '@'.
@@ -4330,6 +4622,9 @@ document.addEventListener('alpine:init', () => {
     // through _patchTask; anything it can't patch (a row added or gone, a moved one) replaces the list.
     async loadTasks() {
       const tasks = await this.store.tasks.list().catch(() => null); if (!tasks) return;
+      const gen = ++_tasksGen;
+      await this._loadFiles(tasks.flatMap(t => t.attachments ?? []));   // before the rows publish: a chip never draws nameless
+      if (gen !== _tasksGen) return;   // a later load's list is newer
       this._defId = this.store.defaultProject();
       const had = window.Alpine.raw(this.byId), changed = tasks.length === had.size && tasks.filter(t => { const o = had.get(t.id); return o !== t && JSON.stringify(o) !== JSON.stringify(t); });
       if (changed && (!changed.length || this._patchTask(changed))) return;
@@ -4375,6 +4670,8 @@ document.addEventListener('alpine:init', () => {
           const si = await st.scheduleItems.list(), was = this._placedMap(); _calDataV++; this.scheduleItems = si;
           const now = this._placedMap(), ids = new Set([...was.keys(), ...now.keys()].filter(id => was.get(id) !== now.get(id)));
           if (!ids.size) return;   // a block attachment: no row reads it
+          const kids = this._taskIdx().kids;   // and the subtasks showing a placed row's date, or showing it until now (_follows)
+          for (const id of [...ids]) for (const d of descendantIds(this.tasks, id, kids).slice(1)) if (this._follows(this.byId.get(d), now) || this._follows(this.byId.get(d), was)) ids.add(d);
           if (this._canPatch() && ![...VIEW_KEYS[this.sortBy] || [], ...VIEW_KEYS[this.groupBy] || []].includes('recur_from')) this._patchRows(ids);
           else this._rowV++;
         },
@@ -5126,9 +5423,11 @@ document.addEventListener('alpine:init', () => {
       if (op.kind === 'complete') {
         // Forward: (re)run setCompleted, capturing the full completion delta so the reverse can undo the whole sweep, not just the target.
         if (op.mode === 'forward') {
-          const { id, done } = op.fwd, fx = this._fxSnap([id, ...pendingSweep(this.tasks, id, this.byId, this._taskIdx().kids), ...this._chain(this.byId.get(id)?.parent_id)]);
+          const { id, done } = op.fwd, kids = this._taskIdx().kids, chain = this._chain(this.byId.get(id)?.parent_id);
+          const reopens = [id, ...chain].filter(x => recActive(this.byId.get(x)?.recurrence)).flatMap(x => descendantIds(this.tasks, x, kids));   // a repeating occurrence reopens its subtasks
+          const fx = this._fxSnap([id, ...pendingSweep(this.tasks, id, this.byId, kids), ...chain, ...reopens]);
           if (!done) this._reopenNow(this.byId.get(id)?.parent_id);
-          if (!((!done || await this._checkAllItems(id)) && await this._withPending(id, () => this.store.tasks.setCompleted(id, done)))) {
+          if (!((!done || op.fwd.ticked || await this._checkAllItems(id)) && await this._withPending(id, () => this.store.tasks.setCompleted(id, done)))) {
             const ts = await this.store.tasks.list().catch(() => null), now = ts && new Map(ts.map(t => [t.id, t]));   // unreadable: a throw would skip a batch's rollback
             if (now) await this._reverseFx(this._fxDiff(now, fx.before), now);   // all or nothing: a ticked checklist goes back too
             return null;
@@ -5143,10 +5442,10 @@ document.addEventListener('alpine:init', () => {
 
     // The [label, op]s an `ops` collector gathered, as ONE `target` entry (a save's lone date part too). A composite part (a date's) flattens in: its ops are already in undo order.
     _pushOps(label, target, j, opts) { if (j.length) this._pushEntry(label, j.length > 1 || j[0][1].target !== target ? { kind: 'composite', target, ops: j.map(x => x[1]).reverse().flatMap(o => o.kind === 'composite' ? o.ops : o) } : j[0][1], opts); },
-    _pushEntry(label, entryOp, { bin = false, silent = false, restored = false, msg = label } = {}) {
+    _pushEntry(label, entryOp, { bin = false, silent = false, restored = false, msg = label, actions = [] } = {}) {
       this._journalPush({ label, target: entryOp.target, kind: entryOp.kind, op: entryOp, bin: !!bin, restored });
       // silent = frequent actions (completion) that shouldn't toast on every press (emil: don't notify 100×/day).
-      if (!silent) this.notify(msg, { actions: [this._cardStep(-1, this.journal.at(-1).id)] });
+      if (!silent) this.notify(msg, { actions: [this._cardStep(-1, this.journal.at(-1).id), ...actions] });
       if (!bin && !restored) this._pushSmall(entryOp);
     },
     // A task field's live value as a small change records it; 'date' = its date-item's day (+ 'T' start); item = that checklist item's text.
@@ -5202,20 +5501,23 @@ document.addEventListener('alpine:init', () => {
     // a failed one too: a write that partly landed (signed in, one of several) stays undoable.
     // Use for edits/archive/complete/etc. A mutate returning the task fields it wrote is patched in place if the list's shape allows.
     // ops: collect [label, entryOp] instead of pushing, so a caller can land several writes as ONE entry
-    async _journalRowChange(label, target, id, mutate, { bin = false, silent = false, ops, fail = `Failed saving “${label}”. Try again?` } = {}) {
-      const before = JSON.parse(JSON.stringify(this._rowById(target, id) || {}));
+    // id: one row, or several one write changes (a cascade) — journaled as one entry.
+    // only: the ids the write changed, read after it (false: unknown, so every row) — a held write skips rows another device changed, which aren't this step's to undo.
+    async _journalRowChange(label, target, id, mutate, { bin = false, silent = false, ops, only, actions, fail = `Failed saving “${label}”. Try again?` } = {}) {
+      const ids = [id].flat(), befores = ids.map(x => JSON.parse(JSON.stringify(this._rowById(target, x) || {})));
       const row = await mutate(); if (!(target === 'task' && this._patchTask([row]))) await this._reloadFor(target);
-      const failed = row === false || row === null;
-      const after = this._rowById(target, id) || {};
-      // normalize: treat missing array fields as empty so undefined→[] isn't a spurious diff
-      for (const k of Object.keys(after)) if (before[k] === undefined && Array.isArray(after[k])) before[k] = [];
-      const rollback = {}, forward = {};
-      for (const k of new Set([...Object.keys(before), ...Object.keys(after)]))
-        if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) { rollback[k] = before[k] ?? null; forward[k] = after[k] ?? null; }
-      const op = { kind: 'update', target, id, after: rollback, was: forward };
-      // only data that landed: the store's own stamp bump (an unchanged save, a failed write's undone part) is nothing to undo
-      const kept = Object.keys(rollback).some(k => k !== 'updated_at');
-      if (kept) ops ? ops.push([label, op]) : this._pushEntry(label, op, { bin, silent: silent || failed });
+      const failed = row === false || row === null, keep = only?.();
+      const parts = ids.map((x, i) => {
+        const before = befores[i], after = this._rowById(target, x) || {};
+        // normalize: treat missing array fields as empty so undefined→[] isn't a spurious diff
+        for (const k of Object.keys(after)) if (before[k] === undefined && Array.isArray(after[k])) before[k] = [];
+        const rollback = {}, forward = {};
+        for (const k of new Set([...Object.keys(before), ...Object.keys(after)]))
+          if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) { rollback[k] = before[k] ?? null; forward[k] = after[k] ?? null; }
+        return { kind: 'update', target, id: x, after: rollback, was: forward };
+      }).filter(op => (!keep || keep.includes(op.id)) && Object.keys(op.after).some(k => k !== 'updated_at'));   // only data that landed: the store's own stamp bump (an unchanged save, a failed write's undone part) is nothing to undo
+      const kept = parts.length > 0, op = parts.length > 1 ? { kind: 'composite', target, ops: parts } : parts[0];
+      if (kept) ops ? ops.push([label, op]) : this._pushEntry(label, op, { bin, silent: silent || failed, actions: actions?.() });
       if (failed && fail) this.toast(kept ? `“${label}” didn’t fully save. The list shows what’s saved` : fail);
       return !failed;
     },
@@ -5538,7 +5840,7 @@ document.addEventListener('alpine:init', () => {
         this.$nextTick(() => { this.$refs.content?.focus({ preventScroll: true }); this._showComposer(); });
       }
       // Created at the end of its siblings (the parent the store resolves), so it appears just above the composer.
-      const pid = fields.parent_id !== undefined ? fields.parent_id : fields.project ? this.tasks.find(t => t.parent_id === null && t.content === fields.project)?.id : this.store.defaultProject();
+      const pid = fields.parent_id !== undefined ? fields.parent_id : fields.project ? this.tasks.find(t => t.parent_id === null && t.content === fields.project && !t.archived_at)?.id : this.store.defaultProject();
       const sibs = pid === undefined ? [] : this.tasks.filter(t => (t.parent_id ?? null) === pid);
       // the add reopens completed ancestors (resolver): journal their completion with it, as _saveSubs does
       const reopen = this._reopenIds(pid).map(x => ({ kind: 'update', target: 'task', id: x, after: { completed_at: this.byId.get(x).completed_at } }));
@@ -5562,6 +5864,9 @@ document.addEventListener('alpine:init', () => {
       for (const e of this.journal) if (e.kind === 'checklist-item' && e.sid === sid && e.payload && !e.payload.taskId) { e.payload.taskId = id; bound = true; }
       if (bound) this._journalSave();
       this._indexNew(row);
+      // its files by a follow-up write (never the INSERT: the column is new), kept apart from the add: a failed one keeps the task and its pending files
+      for (const f of this.attach) if (f.sid === sid && !f.taskId) f.taskId = id;
+      await this._attachFiles(id, true);
       await reload();   // _reloadFor task + area, and the date/reminders it wrote
       // ONE silent entry (no toast, as before): ⌘Z reopens what the completion swept, deletes the task (its date, reminders and
       // links go with it), and re-completes the ancestors the add reopened
@@ -5592,18 +5897,23 @@ document.addEventListener('alpine:init', () => {
     // ONE pass per data version (_rowV bumps on every tasks write): children in position order + whom each task blocks.
     // A composer open used to scan every task ~7× (each childTasks template, the progress ring, descendants, relations).
     _taskIdx() {
-      return _memo(_taskIdxMemo, this._rowV, () => { const inv = new Map();
-        for (const o of this.tasks) for (const b of o.blocked_by ?? []) inv.has(b) ? inv.get(b).push(o.id) : inv.set(b, [o.id]);
-        return { kids: buildByParent(this.tasks), inv }; }, 1);
+      return _memo(_taskIdxMemo, this._rowV, () => { const inv = new Map(), arch = [];
+        for (const o of this.tasks) {
+          for (const b of o.blocked_by ?? []) inv.has(b) ? inv.get(b).push(o.id) : inv.set(b, [o.id]);
+          if (o.archived_at) arch.push(o.id);
+        }
+        return { kids: buildByParent(this.tasks), inv, arch }; }, 1);
     },
     childTasks(id) { return (this._taskIdx().kids.get(id) ?? []).filter(t => t.id !== id); },
+    // every archived row and all under it: an archived project's subtree leaves Overview, the pickers and the Lists nav
+    _shelved() { const ix = this._taskIdx(); return ix.shelved ??= new Set(ix.arch.flatMap(id => descendantIds(this.tasks, id, ix.kids))); },
     addChecklistItem(text) {   // a checklist adds on top; steps append, in the order they're done
       if (!text.trim()) return;
       const it = { id: crypto.randomUUID(), text: text.trim(), done: false }, cl = this.draft.checklist, at = this.chkSteps() ? cl.length : 0;
       cl.splice(at, 0, it); this._pushChkItem(it, at, null, it.text);
     },
     // Bucket only the display: unchecking restores the item's saved position. Steps keep stored order.
-    checklistRows() { return this.chkSteps() ? this.draft.checklist : chkVisible(this.draft.checklist, this.chkPlain(), true).rows; },
+    checklistRows() { return this.chkSteps() ? this.draft.checklist : chkVisible(this.draft.checklist, this.chkPlain(), true, _chkHeld?.key === 'draft' ? _chkHeld.done : null).rows; },
     // The composer's entry rows are plain DOM, not x-fors: mounting ~12 Alpine directives per row made a long list the
     // open's longest frame. One effect per list paints them keyed by id, after the list's ghost; a row keeps its element
     // and rewrites only what changed. Every row renders: drag, ↓/Tab, the grow's measure, zebra, copy and find read them all.
@@ -5615,6 +5925,7 @@ document.addEventListener('alpine:init', () => {
     },
     paintChk(list, force) {
       if (!list?.isConnected) return;
+      _chkDraftList = list;
       const plain = this.chkPlain(), find = this.chkFind(), grip = this.editing && !this.chkGhost.trim(), ae = document.activeElement;   // ae: the row being typed in
       const cur = this.chkSteps() ? this.draft.checklist.find(x => !x.done) : null;
       this._paintKeyed(list, this.checklistRows(), () => { const el = CHK_ROW.cloneNode(true); el._r = el.firstChild; el._t = el._r.nextSibling; return el; }, (el, item) => {
@@ -5669,7 +5980,10 @@ document.addEventListener('alpine:init', () => {
       if (e.type === 'pointerdown') return this.chkRowDown(e);
       if (e.type === 'pointerup') return this.chkRowUp(txt, e);
       if (e.type === 'paste') return this.chkPaste(e, item);
+      if (e.type === 'beforeinput') return this.liveBeforeInput(e);
       if (e.type !== 'keydown') return this.chkInput(item, e);   // input / compositionend
+      const dir = this._undoKey(e);
+      if (dir) { e.preventDefault(); this.liveHistory(txt, dir); }
       this.entryKey(e);
       if (e.key === 'Backspace' || e.key === 'Delete') this.chkDelSel(e) || this.entryBackspace(e, () => this.removeChecklistItem(item));
       else if (e.key === 'Enter') this.chkEnter(e, item);
@@ -5693,7 +6007,7 @@ document.addEventListener('alpine:init', () => {
       else delete d.typeBeforeNote;   // absent = null on the way back, and keeps the draft equal to its base
       if (type) d.checklist_plain = false;
     },
-    toggleChecklistItem(item) { item.done = !item.done; },
+    toggleChecklistItem(item) { this._holdChk('draft', item.id, !!item.done); item.done = !item.done; },
     removeChecklistItem(item) { const i = this.draft.checklist.indexOf(item); if (i >= 0) this.draft.checklist.splice(i, 1); if ((item.text || '').trim()) this._pushChkItem(item, i, item.text, null); },
     // Backspace on an empty entry row (checklist item or subtask) deletes it and lands the caret on the neighboring entry.
     // A fresh press only: the caret lands at the end of the row above, so a held key would erase and delete up the list.
@@ -5742,7 +6056,7 @@ document.addEventListener('alpine:init', () => {
       if (el.isContentEditable) return;   // already editing (2nd click of dblclick) — let browser word-select natively
       const r = document.caretRangeFromPoint?.(e.clientX, e.clientY);
       if (r && el.contains(r.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
-      const off = this._caretOffset(el);   // preserve the clicked source position before removing decoration
+      const off = this._caretOffset(el);   // the clicked source position, kept through the live redraw
       this.chkFocus(el); el.focus(); this._setCaret(el, off);
     },
     // Rows are tabbable (tabindex=0) so keyboard Tab reaches the item title — but a MOUSE press must NOT enter edit
@@ -5751,7 +6065,8 @@ document.addEventListener('alpine:init', () => {
     chkFocus(el) {
       if (this._chkPointer || el.isContentEditable) return;   // mouse path: chkRowUp decides click-to-edit vs drag
       el.contentEditable = 'plaintext-only';
-      el.innerHTML = this._plainHtml(el.textContent);
+      el.innerHTML = this._rowHtml(el.textContent);   // a find hit's highlight gives way to the live markdown
+      el._hist = { undo: [], redo: [], prev: { text: el.textContent, caret: null } };   // its own ⌘Z, fresh each edit (liveHistory)
       // A div that becomes editable while already focused has NO caret inside it, so keystrokes do nothing —
       // place a collapsed caret at the end so keyboard Tab-in is immediately typable.
       this._caret(el);
@@ -5817,7 +6132,7 @@ document.addEventListener('alpine:init', () => {
         if (!from) this.nlpHistory(e.inputType === 'historyUndo' ? -1 : 1, el);
         else if (from.el === document.body) el.blur();
         else from.el.focus();
-      } else this.syncTitle();
+      } else this.syncTitle(e.isComposing);
       this.refreshPickers();
     },
     subEditorKeydown(e, c) {
@@ -5922,10 +6237,16 @@ document.addEventListener('alpine:init', () => {
       // A selection spanning whole rows makes the ROW the keydown target, not an editor — it has no caret to
       // reason about (and no .value, which used to throw and kill ⌘C over a multi-item selection).
       if (!ce && typeof el.value !== 'string') return;
-      const len = ce ? el.textContent.length : el.value.length, off = ce ? this._caretOffset(el) : el.selectionStart;
-      const collapsed = ce ? getSelection()?.isCollapsed : el.selectionStart === el.selectionEnd;
-      if (e.key === 'ArrowUp' && collapsed && off === 0) { if (this.moveEntryFocus(el, -1) || this._focusEntry(this.$refs.desc)) e.preventDefault(); }
-      else if (e.key === 'ArrowDown' && collapsed && off === len) { if (this.moveEntryFocus(el, 1)) e.preventDefault(); }
+      const down = e.key === 'ArrowDown', s = getSelection();
+      if (ce ? !s?.isCollapsed : el.selectionStart !== el.selectionEnd) return;
+      if (ce) {   // a live row's edge is its last visible character: the markers past it hide once the caret leaves (3B)
+        const r = document.createRange(); r.selectNodeContents(el);
+        if (down) r.setStart(s.focusNode, s.focusOffset); else r.setEnd(s.focusNode, s.focusOffset);
+        const rest = r.cloneContents();
+        for (const m of rest.querySelectorAll('.dm-mark')) m.remove();
+        if (rest.textContent) return;
+      } else if (el.selectionStart !== (down ? el.value.length : 0)) return;
+      if (down ? this.moveEntryFocus(el, 1) : this.moveEntryFocus(el, -1) || this._focusEntry(this.$refs.desc)) e.preventDefault();
     },
     // VISUAL order (ghost → open bucket → done bucket) — sort by on-screen top so the CSS-ordered ghost-on-top
     // layout is respected regardless of DOM order.
@@ -5963,7 +6284,10 @@ document.addEventListener('alpine:init', () => {
     // Never repaint an active editor: native typing/selection/undo own its DOM until blur.
     chkInput(item, e) {
       if (e.isComposing) return;
-      item.text = e.target.textContent;
+      const el = e.target;
+      if (e.inputType?.startsWith('history')) return this._liveUndo(el, e.inputType);
+      this._redraw(el, this._rowHtml(item.text = el.textContent));
+      this._liveStep(el, item.text, e);
     },
     // paste multiline text → new items split ONLY at bullet markers ("- "/"* "). Lines without a bullet are
     // continuations that join the current item (space-joined) — so a wrapped/multi-line sentence isn't torn apart.
@@ -6017,8 +6341,8 @@ document.addEventListener('alpine:init', () => {
       const sel = getSelection(); if (!e.clipboardData || !sel?.rangeCount || sel.isCollapsed) return;
       const range = sel.getRangeAt(0);
       const items = [...e.currentTarget.querySelectorAll('.entry.chk:not(.ghost) .entry-txt')].filter(el => range.intersectsNode(el));
-      if (items.length < 2) return;   // single item → native inline copy
-      e.clipboardData.setData('text/plain', items.map(el => '- ' + el.textContent.trim()).join('\n'));
+      if (!items.length) return;   // the ghost's textarea, a subtask row: native
+      e.clipboardData.setData('text/plain', items.length < 2 ? range.toString() : items.map(el => '- ' + el.textContent.trim()).join('\n'));   // one item: its source, hidden markers included
       e.preventDefault();
     },
     // Task → markdown: a checkbox line per task, description indented under it, checklist items and subtasks
@@ -6233,24 +6557,63 @@ document.addEventListener('alpine:init', () => {
     },
     toggleChk(taskId, i) {
       const t = this.byId.get(taskId), cl = t?.checklist ?? [], tick = () => this._serial(taskId, () => this._toggleChk(taskId, i));   // a task's ticks: each reads the list the last one wrote
+      this._holdChk(taskId, i, !!cl[i]?.done);
       // the tick that finishes the task completes its blockers and subtasks with it (store setCompleted): it asks first, like the task's own check
       const finishes = t && !t.completed_at && !cl[i]?.done && cl.every((x, j) => j === i || x.done);
       return finishes ? this.confirmSweep(taskId, tick).then(asked => asked || tick()) : tick();
     },
+    // A tick shows in place, struck through, and its list sorts once, when the pointer leaves the list or 1.5s after the
+    // last tick: quick ticks each land on the row they aimed at. key: the task id, or 'draft' for the composer's list;
+    // item: the item's id, or a row's ci (its stored index, which a tick never moves). done: what it showed before.
+    _holdChk(key, item, done) {
+      if (_chkHeld?.key !== key) {
+        this._releaseChk();
+        _chkHeld = { key, done: new Map() };
+        addEventListener('pointerover', _chkOut ??= e => this._chkPointerIn(e) || this._releaseChk(e.buttons > 0), { passive: true });
+      }
+      if (!_chkHeld.done.has(item)) _chkHeld.done.set(item, done);
+      clearTimeout(_chkHeldT);
+      _chkHeldT = setTimeout(() => this._releaseChk(), 1500);
+    },
+    _chkListEl(key = _chkHeld?.key) { return key === 'draft' ? _chkDraftList : document.querySelector(`.item:not(.composer)[data-id="${key}"] .chk-list`); },
+    // by the list's box, not the event's target: a landed tick repaints the row under a still pointer, which fires pointerover on the row
+    _chkPointerIn(e) { const r = this._chkListEl()?.getBoundingClientRect(); return !!r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; },
+    // pressed: a press is under way. Its row repainted now, the press's element goes and its click with it, so the release waits it out.
+    _releaseChk(pressed = !!document.querySelector(':active')) {
+      if (!_chkHeld) return;
+      if (pressed) {
+        const held = _chkHeld;
+        clearTimeout(_chkHeldT);
+        _chkHeldT = 0;   // a tick by this press re-arms it, and the hold goes on
+        return void addEventListener('pointerup', () => setTimeout(() => _chkHeld === held && !_chkHeldT && this._releaseChk(false)), { once: true });
+      }
+      const id = _chkHeld.key, rows = () => [...this._chkListEl(id)?.querySelectorAll(':scope > [data-id], :scope > [data-ci], :scope > .chk-more') ?? []], key = el => el.dataset.id || el.dataset.ci || 'more';
+      const before = new Map(rows().map(el => [key(el), el.getBoundingClientRect().top]));
+      clearTimeout(_chkHeldT);
+      removeEventListener('pointerover', _chkOut);
+      _chkHeld = null;
+      if (id === 'draft') this.paintChk(_chkDraftList);
+      else { this._dropRowHtml(id); this._paintRows(); }
+      const els = rows(), tops = els.map(el => el.getBoundingClientRect().top);   // all reads first: an animate() between two reads forces a layout each
+      for (const [i, el] of els.entries()) {   // the one slide, each row from where it showed; one arriving ("…N more") fades in
+        const from = before.get(key(el)), dy = from - tops[i];
+        if (from == null || dy) motion.soften(el.animate(from == null ? { opacity: [0, 1] } : { translate: [`0 ${dy}px`, '0 0'] }, { duration: 200, easing: DESIGN.ease['in-out'] }));
+      }
+    },
     async _toggleChk(taskId, i) {
       const task = this.byId.get(taskId); if (!task) return;
       const list = task.checklist || [], item = list[i]; if (!item) return;
-      const done = !item.done;
-      // Journal the whole delta (item done + any parent auto-complete) against taskId so ⌘Z reverses THIS toggle,
-      // not an earlier action on a different task. silent: a checklist tick is a frequent action — no toast (like completion).
-      await this._journalRowChange(done ? 'Checked item' : 'Unchecked item', 'task', taskId, async () => {
+      const done = !item.done, allDone = list.every((x, j) => j === i ? done : x.done), label = done ? 'Checked item' : 'Unchecked item', ops = [];
+      // ONE silent entry against taskId (⌘Z reverses THIS toggle, never another task's action): the item, then, when the
+      // list's state flips the task's, the completion's own op, whose snapshot takes back all it did (a sweep, parents,
+      // a repeating occurrence and what it reopened). ticked: the item write already ticked the list.
+      await this._journalRowChange(label, 'task', taskId, async () => {
         const at = await this.store.tasks.setChecklistItem(taskId, item.id, done); if (!at) return false;
-        // sync task completion once every item is checked
-        const allDone = list.length > 0 && list.every((x, j) => j === i ? done : x.done);
         if (allDone === !!task.completed_at) return { id: taskId, checklist: list.map((x, j) => j === i ? { ...x, done } : x), updated_at: at };   // what the write changed
-        if (await this.store.tasks.setCompleted(taskId, allDone)) return true;   // → a full reload
+        if (await this.perform(label, { kind: 'complete', target: 'task', mode: 'forward', fwd: { id: taskId, done: allDone, ticked: true } }, { ops, fail: null })) return true;   // → a full reload
         await this.store.tasks.setChecklistItem(taskId, item.id, !done); return false;   // untick: the "didn't save" toast is then true
-      }, { silent: true });
+      }, { silent: true, ops });
+      this._pushOps(label, 'task', ops, { silent: true });
     },
     // parentId and its ancestors, bottom-up — O(depth) over byId (store.js ancestorIds scans every row per level).
     _chain(parentId) { const out = []; for (let a = this.byId.get(parentId); a && !out.includes(a.id); a = this.byId.get(a.parent_id)) out.push(a.id); return out; },
@@ -6387,7 +6750,8 @@ document.addEventListener('alpine:init', () => {
     modalOpen() { return this.settingsOpen || this.anyDialog(); },   // the page behind is inert while true
     closeDialogs() { for (const [open, close, dialog] of OVERLAYS) if (dialog && open(this)) close(this); },
     // Focus moves in once Alpine shows it (closing hands it back: _modalFrom); a stray Enter must never be what destroys data.
-    askConfirm(opts) { this.confirm = opts; queueMicrotask(() => this.$refs[opts.danger ? 'confirmNo' : 'confirmYes'].focus()); },
+    // $refs read now: Alpine resolves it from the element that called, and a menu item asking is gone by the microtask
+    askConfirm(opts) { this.confirm = opts; const refs = this.$refs; queueMicrotask(() => refs[opts.danger ? 'confirmNo' : 'confirmYes'].focus()); },
     async confirmYes(k = 'onConfirm') { const c = this.confirm; this.confirm = null; if (c?.[k]) await c[k](); },   // 'onAlt' = the optional left secondary
     confirmNo() { const c = this.confirm; this.confirm = null; if (c?.onCancel) c.onCancel(); },
     onPaste(e) {
@@ -6488,7 +6852,9 @@ document.addEventListener('alpine:init', () => {
     async onFileDrop(e) {
       if (!e.dataTransfer?.types?.includes('Files')) return;
       e.preventDefault(); this.fileDrag = false;
-      const files = [...(e.dataTransfer.files || [])].filter(f => f.name.toLowerCase().endsWith('.ics'));
+      if (this.chatDrop()) return this.addFiles(e.dataTransfer.files);   // an open chat takes any file
+      const dropped = [...(e.dataTransfer.files || [])], files = dropped.filter(f => f.name.toLowerCase().endsWith('.ics'));
+      if (this.composerDrop() && files.length < dropped.length) return this.attachFiles(dropped);   // so does an open composer, but calendar files still import
       if (!files.length) return;   // not ours — stay silent, same as a non-.ics drop on macOS
       try { this.openImport('ics', (await Promise.all(files.map(f => f.text()))).join('\n'), files.map(f => f.name).join(', ')); }
       catch { this.toast('Failed reading that calendar'); }   // unreadable file, or a time parseICS can't place
@@ -6566,7 +6932,7 @@ document.addEventListener('alpine:init', () => {
     async _importList(name, cache, created) {
       const key = name.trim().toLowerCase();
       if (cache.has(key)) return cache.get(key);
-      const found = this.tasks.find(t => t.overview && t.content.trim().toLowerCase() === key);
+      const found = this.tasks.find(t => t.overview && !t.archived_at && t.content.trim().toLowerCase() === key);   // an archived one is retired, as the store's #project
       if (found) { cache.set(key, found.id); return found.id; }
       const row = await this._newTask({ content: name, overview: true, parent_id: null });
       if (!row) throw new Error(`could not create the list “${name}”`);
@@ -6617,11 +6983,10 @@ document.addEventListener('alpine:init', () => {
     async confirmSweep(id, complete = () => this.applyComplete(id, true)) {
       const sweep = pendingSweep(this.tasks, id, this.byId, this._taskIdx().kids);
       if (!sweep.length) return false;
-      const items = sweep.map(x => this.byId.get(x)).filter(Boolean);
-      const bodyHtml = `<div class="sweep-list">${items.map(it => `<div class="task-line">${this.taskLine(it)}</div>`).join('')}</div>`;
-      this.askConfirm({ message: 'Completing this will also complete:', bodyHtml, confirmLabel: 'Complete all', onConfirm: complete });
+      this.askConfirm({ message: 'Completing this will also complete:', bodyHtml: this._sweepHtml(sweep.map(x => this.byId.get(x)).filter(Boolean)), confirmLabel: 'Complete all', onConfirm: complete });
       return true;
     },
+    _sweepHtml(items) { return `<div class="sweep-list">${items.map(it => `<div class="task-line">${this.taskLine(it)}</div>`).join('')}</div>`; },
     async toggle(t, row = null) {
       if (inNotes(t) && !t.completed_at) return;   // a note never completes (x, the row, the composer); one that came in done reopens
       if (t.archived_at) { this.toast('Archived. Unarchive from the task menu'); return; }   // dash checkbox is inert
@@ -6774,18 +7139,37 @@ document.addEventListener('alpine:init', () => {
     // banner ("Archived task" + Undo) is the single truthful confirmation, so no extra toast.
     async toggleArchive() {
       const id = this.editing, t = this.byId.get(id), d = this.draft; if (!t || !await this._saveOpenEdits(d)) return;
-      const val = !t.archived_at;
-      if (await this._journalRowChange(val ? 'Archived task' : 'Unarchived task', 'task', id, () => this.store.tasks.setArchived(id, val))) { if (this._live(d)) this.closeComposer(true); }
-      // ceiling: a save closes the composer, so a failed archive after one closes then reopens it — keep it open once a save can stay open
-      else if (!this.composer.open || this._closingComposer) this.editTask(this.byId.get(id));   // the save closed it: the failure reopens it, edits saved — not over another composer
+      await this.archive(id, !t.archived_at, ok => { if (ok) { if (this._live(d)) this.closeComposer(true); }
+        // ceiling: a save closes the composer, so a failed archive after one closes then reopens it — keep it open once a save can stay open
+        else if (!this.composer.open || this._closingComposer) this.editTask(this.byId.get(id)); });   // the save closed it: the failure reopens it, edits saved — not over another composer
+    },
+    // Archive cascades as completion does: the open tasks inside go with it, after the same ask; done ones stay done. One store
+    // write stamps them all with one instant, and that instant is what Unarchive reads back: it reopens only the rows under it
+    // carrying it, never one archived on its own (another instant). One ⌘Z step either way.
+    archive(id, val, then = () => {}) {
+      const t = this.byId.get(id); if (!t) return;
+      const kids = descendantIds(this.tasks, id, this._taskIdx().kids).slice(1).map(x => this.byId.get(x)).filter(k => cascades(t, k, val));
+      const ids = [id, ...kids.map(k => k.id)], what = this.isOverviewProject(t) ? 'project' : 'task';
+      let wrote;
+      const set = async () => !!(wrote = await this.store.tasks.setArchived(ids, val));
+      // Unarchive keeps the dates that passed meanwhile (user, tweak-11a: "the dates are still valuable information to understand the timeline
+      // of the project"); its card offers clearing them, the open rows' past date-items re-read on the click: the card lingers 8s
+      const passed = () => (wrote || []).map(x => this.byId.get(x)).filter(k => k && !k.completed_at && !k.archived_at)
+        .map(k => this._siOf(k.id)).filter(si => si && si.date < isoDate(new Date()));
+      const dates = n => `${n} passed date${n === 1 ? '' : 's'}`;
+      const clear = () => { const ops = passed().map(si => ({ kind: 'remove', target: 'scheduleItem', id: si.id })); if (ops.length) this.perform(`Cleared ${dates(ops.length)}`, { kind: 'composite', target: 'scheduleItem', ops }); };
+      const actions = () => { const n = val ? 0 : passed().length; return n ? [{ label: `Clear ${dates(n)}`, fn: clear }] : []; };
+      const run = async () => then(await this._journalRowChange((val ? 'Archived ' : 'Unarchived ') + what, 'task', ids, set, { only: () => wrote, actions }));
+      if (!val || !kids.length) return run();
+      this.askConfirm({ message: 'Archiving this will also archive:', bodyHtml: this._sweepHtml(kids), confirmLabel: 'Archive all', onConfirm: run });
     },
     // Mark all checklist items done (inside the completion's fx snapshot, so undo takes it back).
     // Returns false if the store update failed — caller aborts setCompleted on failure to stay atomic.
-    // Skips recurring leaf tasks: setCompleted advances their occurrence instead of closing them; leave checklist alone.
+    // Skips a repeating task: setCompleted advances its occurrence, which unticks the list, instead of closing it.
     async _checkAllItems(id) {
       const t = this.byId.get(id); const cl = t?.checklist;
       if (!cl?.length || inNotes(t) || cl.every(c => c.done)) return true;   // a note never completes (an old entry can name a row made a note since)
-      if (recActive(t.recurrence) && !t.completed_at && !this.tasks.some(r => r.parent_id === id)) return true;
+      if (recActive(t.recurrence) && !t.completed_at) return true;
       return !!await this.store.tasks.update(id, { checklist: cl.map(c => ({ ...c, done: true })) });
     },
     // silent: completion is a 100×/day action. The entry is the reverse, carrying the FULL completion delta (target + swept
@@ -6810,14 +7194,53 @@ document.addEventListener('alpine:init', () => {
         return this.pickerMatches(r.open ??= this.tasks.filter(t => t.id !== this.editing && t.id !== def && !r.rels.some(x => x.id === t.id))).slice(0, 40); }, 1);
     },
     relChips() { return this._relIdx().rels; },
-    // A row's blocker chip opens its task as the palette does; a rolled one lists them all (soc-2 c).
-    relsFor: null,
+    // A row's blocker chip opens its task as the palette does, a file chip its file; a rolled one lists its kind (soc-2 c).
+    relsFor: null,   // { taskId, kind }: the rolled chip whose list is open
     rowRelOpen(t, chip) {
-      if (!chip.parentElement.classList.contains('rolled')) return this.openTaskById(chip.dataset.rel);
-      this.relsFor = t.id;
+      const kind = chip.dataset.kind;
+      if (!chip.classList.contains('rolled')) return kind === 'file' ? this.openFileId(chip.dataset.rel) : this.openTaskById(chip.dataset.rel);
+      this.relsFor = { taskId: t.id, kind };
       this.togglePop('rels', chip);
     },
-    relsList() { const t = this.byId.get(this.relsFor); return t ? openBlockers(t, this.byId) : []; },
+    relsList() { const t = this.byId.get(this.relsFor?.taskId); return !t ? [] : this.relsFor.kind === 'file' ? t.attachments ?? [] : openBlockers(t, this.byId); },
+    relItemName(id) { return this.relsFor?.kind === 'file' ? this.fileName(id) : this.byId.get(id)?.content; },
+    fileName(id) { return this.files[id]?.name ?? 'File unavailable'; },
+    openFileId(id) { return this.files[id] ? this.openFile(this.files[id]) : this.notify('File unavailable'); },
+    // Remove to the Bin: the id leaves the task (Undo and the Bin put it back by id, recovery.js guardedFields); the file itself stays.
+    removeAttachment(taskId, id) {
+      const t = this.byId.get(taskId);
+      return t && this._journalRowChange('Removed ' + this.fileName(id), 'task', taskId, () => this.store.tasks.update(taskId, { attachments: t.attachments.filter(x => x !== id) }), { bin: true });
+    },
+    attachFiles(list) {
+      if (!this.session) return this.toast('Sign in to attach files');
+      this.addFiles(list, this.attach, this.editing ? { taskId: this.editing } : { sid: this._draftSid, taskId: null });
+    },
+    composerPaste(e) {   // capture: a pasted file never reaches the title's or a row's own paste; text does
+      if (!this.composerDrop() || !e.clipboardData?.files.length || e.clipboardData.types.includes('text/plain')) return;   // Excel and Word put a picture of copied text beside it
+      e.preventDefault(); e.stopPropagation();
+      this.attachFiles(e.clipboardData.files);
+    },
+    composerFiles() { return this.attach.filter(f => this.editing ? f.taskId === this.editing : !f.taskId && f.sid === this._draftSid); },
+    retryFile(f) { return f.row ? this._attachFiles(f.taskId) : this._upload(f); },
+    // Every landed file of the task's in one write. Failed, they stay pending: Retry re-sends the ids, never the files.
+    // added: the add's own follow-up write (its Undo removes the task), so no entry of its own.
+    // ceiling: a read-modify-write of the cached list; another device's attach in between is overwritten (server-side append if it bites)
+    _attachFiles(taskId, added) { return this._serial('attach:' + taskId, () => this._attachNow(taskId, added)); },   // two uploads landing together write in turn
+    async _attachNow(taskId, added) {
+      const files = this.attach.filter(f => f.taskId === taskId && f.row), t = this.byId.get(taskId);
+      if (!files.length || !t) return true;
+      const ids = [...new Set([...t.attachments ?? [], ...files.map(f => f.row.id)])], write = () => this.store.tasks.update(taskId, { attachments: ids });
+      const label = files.length > 1 ? `Attached ${files.length} files` : 'Attached ' + files[0].name;
+      const row = added && await write();
+      if (row && !this._patchTask([row])) await this._reloadFor('task');   // the next write in the queue reads this one's list
+      const ok = added ? !!row : await this._journalRowChange(label, 'task', taskId, write, { fail: null });
+      if (ok) this.attach = this.attach.filter(f => !files.includes(f));
+      else {
+        for (const f of files) f.failed = true;
+        this.notify(added ? `Added “${t.content}” without its files` : 'File not attached', { actions: [{ label: 'Retry', fn: () => this._attachFiles(taskId) }] });
+      }
+      return ok;
+    },
     // A linked task in a well is still a TASK: it gets the same row the picker above it uses, so its state
     // (done, blocked, its areas, which project it's in) is readable without leaving the pop.
     relLine(id) { const t = this.byId.get(id); return t ? this.taskLine(t) : ''; },
@@ -8167,21 +8590,39 @@ document.addEventListener('alpine:init', () => {
     // and it is read once per row in the list pipeline, so rebuilding it per call is not free.
     _placedMap() { void this.scheduleItems; return _memo(_placedMemo, 'p|' + _calDataV, () => placedMap(this.scheduleItems), 1); },
     // THE date a task sits on. The placement is the whole answer for a plain task; recur_from is consulted ONLY
-    // for a repeat, where it is the rule anchor rather than a placement.
-    whenOf(t, pm = this._placedMap()) { return pm.get(t.id) || (t.recurrence ? t.recur_from : null) || ''; },
+    // for a repeat, where it is the rule anchor rather than a placement; a task with neither follows its repeating project.
+    whenOf(t, pm = this._placedMap()) { const lead = this._follows(t, pm); return lead ? this.whenOf(lead, pm) : pm.get(t.id) || (t.recurrence ? t.recur_from : null) || ''; },
+    // The repeating project whose date a subtask without its own follows: the nearest repeating ancestor, the set
+    // store.js completionPatches reopens. An ancestor with its own date, an archive or a paused repeat ends it.
+    _follows(t, pm) {
+      if (t.recurrence || t.deadline_at || pm.has(t.id)) return null;
+      for (let a = this.byId.get(t.parent_id), hops = 0; a && hops < MAX_DEPTH; a = this.byId.get(a.parent_id), hops++) {
+        if (a.recurrence) return recActive(a.recurrence) ? a : null;
+        if (a.archived_at || a.deadline_at || pm.has(a.id)) return null;
+      }
+      return null;
+    },
     // DELIBERATE FORK, never merge: whenOf is the SELECTION fact (sort, filters, Reschedule), where a repeat stays its
-    // anchor so a slipped one keeps surfacing; whenShown is what the ROW SAYS — the occurrence that is NEXT, at the
-    // rule's time. Asked from yesterday so today counts (`inclusive` admits only an anchor ≥ the from-day);
-    // from_completion steps from the clock itself, so it's asked with the real now.
+    // anchor so a slipped one keeps surfacing; whenShown is what the ROW SAYS — today's occurrence, else the anchor
+    // while behind (user, tweak-7: "Last Mon"), else the next, at the rule's time. Asked from yesterday so today
+    // counts (`inclusive` admits only an anchor ≥ the from-day).
+    // from_completion has no next until this one is done: it is the anchor, due today once slipped (counted from
+    // now, the row showed where completing lands, so completing never moved it).
     whenShown(t, pm) {
+      const lead = this._follows(t, pm); if (lead) return this.whenShown(lead, pm);
       const placed = pm.get(t.id); if (placed || !t.recurrence || !t.recur_from) return placed || '';
       const key = t.recur_from + '|' + JSON.stringify(t.recurrence) + '|' + this._nowDay;
       let v = _nextMemo.get(key);
       if (v === undefined) {
         if (_nextMemo.size > 2000) _nextMemo.clear();
-        const from = new Date(); if (!recRules(t.recurrence).some(r => r.from_completion)) from.setDate(from.getDate() - 1);   // calendar day, not 24h: DST
-        const best = nextAcrossRules(t.recurrence, t.recur_from, from, { inclusive: true });
-        _nextMemo.set(key, v = best ? best.iso + t.recur_from.slice(10) : t.recur_from);   // rule spent → its anchor is all there is
+        if (recRules(t.recurrence).some(r => r.from_completion && !r.paused)) v = t.recur_from.slice(0, 10) < this._nowDay ? this._nowDay + t.recur_from.slice(10) : t.recur_from;
+        else {
+          const from = new Date(); from.setDate(from.getDate() - 1);   // calendar day, not 24h: DST
+          const best = nextAcrossRules(t.recurrence, t.recur_from, from, { inclusive: true });
+          const behind = t.recur_from.slice(0, 10) < this._nowDay && !(best?.iso <= this._nowDay);
+          v = best && !behind ? best.iso + t.recur_from.slice(10) : t.recur_from;   // rule spent → its anchor is all there is
+        }
+        _nextMemo.set(key, v);
       }
       return v;
     },
@@ -8410,6 +8851,7 @@ document.addEventListener('alpine:init', () => {
       const store = this.store, gen = ++this._loadGen;
       // ONE parallel round-trip set (cloud): the whole account in a single query + the two side lists
       const [b, si, bd, rem, dn] = await Promise.allSettled([store.bootstrap(), store.scheduleItems.list(), store.blockDays.list(), store.reminders.list(), store.dayNotes.list()]);
+      if (b.value) await this._loadFiles(b.value.tasks.flatMap(t => t.attachments ?? []));   // as loadTasks
       if (gen !== this._loadGen) return;   // superseded — by the minute retry or a reconnect's 'all'
       // What landed is applied; a failed part keeps its last good state and stays unloaded in the store, so it's re-pulled.
       const failed = !b.value || !si.value || !bd.value || !rem.value;
@@ -8479,7 +8921,7 @@ document.addEventListener('alpine:init', () => {
     // --- Account & settings popup (corner gear). Sign-in/phone reuse the auth machine above; surfaces + theme persist locally. ---
     settingsOpen: false,
     online: navigator.onLine,         // gear status dot + account-row sub (listeners live on the popup markup)
-    updateReady: false,               // Windows app only: gear update arrow + "Restart to update" row
+    updateUrl: null,                  // Windows app only: a newer installer's download → gear arrow + "Update available" row
     desk: null,                       // Windows app only: the sticky note's Settings switches, { on, share } (desktop/main.ts)
     setDesk(key, v) { this.desk[key] = v; desktopWindow('desk', key, v); },
     theme: savedAppearance(),

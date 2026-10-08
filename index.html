@@ -33,6 +33,8 @@
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></symbol>
   <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86"/><rect x="7" y="10.75" width="10" height="2.5" rx="0.5" fill="#fff" stroke="none"/></symbol>
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
@@ -82,7 +84,8 @@
   <!-- thumbtack tilted ~40° (not the map-pin i-pin; that stays for locations). One fill-only path: a stroked fill doubles a translucent ink (dark --muted) where they overlap -->
   <symbol id="i-tack" viewBox="0 0 24 24"><path transform="rotate(40 12 12)" fill="currentColor" stroke="none" d="M8 3h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2zM8 4h8v5.77L18.62 15H5.38L8 9.77zM11 14h2v6a1 1 0 0 1-2 0z"/></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
-  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="10" height="7" x="7" y="13" rx="2" ry="2" fill="currentColor"/><path d="M7 15V9a5 5 0 0 1 10 0v6"/></symbol>
+  <!-- lock: one fill-only path (body + shackle, both drawn clockwise so they union), like i-tack: paint over paint doubles a translucent ink -->
+  <symbol id="i-lock" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M9 11.5h6a3.5 3.5 0 0 1 3.5 3.5v3a3.5 3.5 0 0 1-3.5 3.5H9A3.5 3.5 0 0 1 5.5 18v-3A3.5 3.5 0 0 1 9 11.5zM5.5 15V9a6.5 6.5 0 0 1 13 0v6h-3V9a3.5 3.5 0 0 0-7 0v6z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
   <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 13h6M9 17h4"/></symbol>
@@ -164,7 +167,7 @@
               <button type="button" data-sk="Filter tasks" aria-haspopup="menu" :aria-expanded="listMenu === 'add'" :aria-label="f.aria + ': ' + f.label" :title="f.aria + ': ' + f.label" @click.stop="listMenu = listMenu === 'add' ? null : 'add'">
                 <template x-if="f.flag"><span class="ls-flag"></span></template>
                 <template x-if="f.dot"><span class="lc-dot rounded-full flex-none" :style="'background:' + f.col"></span></template>
-                <span x-text="f.label"></span>
+                <span class="ls-lbl" x-text="f.label"></span>
               </button>
               <button type="button" class="ls-x" :aria-label="'Clear ' + f.aria + ' filter'" @click.stop="clearQfFacet(f.k)">×</button>
             </span>
@@ -340,7 +343,7 @@
 
       <!-- ── Composer: title, pills, relations, entries ── -->
       <!-- composer: bottom for new; overlaps edited row (pulled up) for check+title crossfade -->
-      <li class="composer" x-ref="composer" x-effect="persistDraft()" @focus.capture="markFocus($event)" :style="'order:' + (editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
+      <li class="composer" x-ref="composer" x-effect="persistDraft()" @focus.capture="markFocus($event)" @paste.capture="composerPaste($event)" :style="'order:' + (editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
           @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); _pillThen(() => submitAndClose()); }">
         <div class="composer-grow" x-ref="grow" x-effect="persistDraft(true)" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
         <form class="composer-card" @submit.prevent="_pillThen(() => submitComposer())">
@@ -355,7 +358,7 @@
         <div class="composer-titlerow">
         <div class="composer-title">
         <div class="content" x-ref="content" contenteditable="true" role="textbox" aria-label="Task name" x-effect="mirrorPills()"
-             @focus="focusTitle()" @input="pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="editorKeydown($event)" @paste="onPaste($event)"></div>
+             @focus="focusTitle()" @input="pillInput($event)" @compositionend="pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="editorKeydown($event)" @paste="onPaste($event)"></div>
         <div class="content-hint overlay flex items-center gap-4" x-show="titleEmpty" aria-hidden="true">Buy milk
           <span class="nlp-pill inline-flex items-center" data-kind="date">tomorrow</span>
           <span class="nlp-pill inline-flex items-center" data-kind="date">5pm</span>
@@ -423,18 +426,27 @@
             <button type="button" class="ac-row create flex" @click="createLocFromPicker()">New place "<span x-text="locPicker.frag.trim()"></span>"</button>
           </template>
         </div>
-        <!-- Markdown at rest; plain text while editing. -->
+        <!-- Live Markdown: a token's markers show while the caret touches it. -->
         <div class="desc" x-ref="desc" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Description"
-             data-placeholder="Description" @input="onDescInput($event)" @compositionend="onDescInput()"
-             @keydown="descKeydown($event)" @paste="descPaste($event)" @click="descClick($event)"></div>
-        <!-- Relation chips, shown under the description so they're easy to see (add more via the Relations chip) -->
-        <div class="composer-rels" x-show="relChips().length > 0">
+             data-placeholder="Description" @beforeinput="liveBeforeInput($event)" @input="onDescInput($event)" @compositionend="onDescInput()"
+             @keydown="descKeydown($event)" @paste="descPaste($event)" @copy="descCopy($event)" @cut="descCopy($event)"></div>
+        <!-- Relation and file chips, shown under the description so they're easy to see (add more via the Relations chip, a drop or a paste) -->
+        <div class="composer-rels" x-show="relChips().length || editingTask()?.attachments?.length || composerFiles().length">
           <template x-for="r in relChips()" :key="r.type + r.id">
             <span class="rel-chip" :class="r.type">
               <svg class="ico rel-ico" :class="r.type" :title="relTypeLabel(r.type)"><use href="#i-stop"/></svg>
               <span class="rel-chip-name" x-text="projName(r.id)"></span>
               <button type="button" class="rel-chip-remove" @click="removeRelation(r.id, r.type)" title="Remove">×</button>
             </span>
+          </template>
+          <template x-for="id in editingTask()?.attachments ?? []" :key="id">
+            <span class="msg-file pend flex items-center"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="fileName(id)"></span>
+              <button type="button" class="drop" @click="removeAttachment(editing, id)" :aria-label="'Remove ' + fileName(id)"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
+          </template>
+          <template x-for="f in composerFiles()" :key="f.key">
+            <span class="msg-file pend flex items-center" :class="{ failed: f.failed, up: !f.row &amp;&amp; !f.failed }" :style="{ '--pct': f.pct }"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="f.name"></span>
+              <template x-if="f.failed"><button type="button" class="retry" @click="retryFile(f)">Retry</button></template>
+              <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
           </template>
         </div>
         <!-- Inline subtasks / checklist entries (Things-style), directly below the description -->
@@ -470,7 +482,7 @@
             <!-- grip only while editing a SAVED task: a not-yet-created task has no order worth preserving -->
             <!-- Rows are plain DOM painted by paintChk (keyed by item id), their events delegated here — see paintChk. -->
             <div class="entry-list flex-col" :class="{ steps: chkSteps() }" x-init="editing && initEntrySort($el, 'chk')" x-effect="paintChk($el)"
-                 @pointerdown="chkRowEv($event)" @pointerup="chkRowEv($event)" @input="chkRowEv($event)" @compositionend="chkRowEv($event)" @keydown="chkRowEv($event)" @paste="chkRowEv($event)" @click="chkRowEv($event)">
+                 @pointerdown="chkRowEv($event)" @pointerup="chkRowEv($event)" @beforeinput="chkRowEv($event)" @input="chkRowEv($event)" @compositionend="chkRowEv($event)" @keydown="chkRowEv($event)" @paste="chkRowEv($event)" @click="chkRowEv($event)">
               <div class="entry chk ghost" :class="{ active: chkGhost.length }">
                 <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
                 <textarea class="entry-txt chk-ghost-ta" rows="1" :placeholder="chkSteps() ? 'Add step' : 'New checklist item'" x-model="chkGhost" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
@@ -700,7 +712,7 @@
                 <button type="button" class="zbtn inline-flex items-center justify-center" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion - tap for fixed schedule' : 'Fixed schedule - tap to repeat after completion'" @click="repIdx = ri; toggleFromCompletion()">
                   <svg class="ico"><use :href="r.from_completion ? '#i-repeat-done' : '#i-repeat'"/></svg>
                 </button>
-                <button type="button" class="zbtn inline-flex items-center justify-center" :class="{ on: r.paused }" :title="r.paused ? 'Resume' : 'Pause'" @click="r.paused = !r.paused">
+                <button type="button" class="zbtn inline-flex items-center justify-center" :class="{ on: r.paused }" :title="r.paused ? 'Resume' : 'Pause'" @click="repPause(r)">
                   <svg class="ico"><use :href="r.paused ? '#i-play' : '#i-pause'"/></svg>
                 </button>
               </div>
@@ -721,12 +733,13 @@
           </div>
           <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" @click="addRepeat()">+ repeat</button></div>
         </div></template></template>
-        <!-- A rolled blocker chip's list (.row-rels): each opens, or its link goes (Undo restores). The blocking task itself stays. -->
+        <!-- A rolled chip's list (.row-rels), its kind only: each opens, or goes (Undo restores). The blocking task or the file itself stays. -->
         <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" x-cloak :style="popStyle()" @click.outside.capture="popAway('rels', $event)">
           <template x-for="id in relsList()" :key="id">
             <div class="flex items-center gap-4">
-              <button type="button" class="pop-item min-w-0" @click="pop = null; openTaskById(id)"><span class="task-line grow min-w-0" x-html="relLine(id)"></span></button>
-              <button type="button" class="rel-chip-remove" :aria-label="'Remove ' + byId.get(id)?.content" title="Remove" @click="removeRelation(id, 'blocked_by', relsFor)"><svg class="ico"><use href="#i-x"/></svg></button>
+              <template x-if="relsFor.kind === 'file'"><button type="button" class="pop-item min-w-0" @click="pop = null; openFileId(id)"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="fileName(id)"></span></button></template>
+              <template x-if="relsFor.kind !== 'file'"><button type="button" class="pop-item min-w-0" @click="pop = null; openTaskById(id)"><span class="task-line grow min-w-0" x-html="relLine(id)"></span></button></template>
+              <button type="button" class="rel-chip-remove" :aria-label="'Remove ' + relItemName(id)" title="Remove" @click="relsFor.kind === 'file' ? removeAttachment(relsFor.taskId, id) : removeRelation(id, 'blocked_by', relsFor.taskId)"><svg class="ico"><use href="#i-x"/></svg></button>
             </div>
           </template>
         </div></template></template>
@@ -1139,7 +1152,7 @@
         <template x-for="c in chat.chats" :key="c.id">
           <button type="button" class="chat-row" :class="{ sel: c.id === chat.open, new: chatNew(c) }" @click="openChat(c.id)">
             <span class="av" x-text="chatPeer(c).slice(0, 1).toUpperCase()"></span><b class="truncate" x-text="chatPeer(c)"></b>
-            <span class="when" x-text="chatWhen(c.last?.created_at)"></span><span class="last truncate" x-text="c.last?.body ?? ''"></span>
+            <span class="when" x-text="chatWhen(c.last?.created_at)"></span><span class="last truncate" x-text="chatLine(c.last)"></span>
           </button>
         </template>
         <p class="soc-empty" x-show="!chat.chats.length">No chats yet</p>
@@ -1153,11 +1166,16 @@
           <!-- own messages: tapping one (tabindex -1) or hovering shows Edit and Delete -->
           <template x-for="m in chat.msgs" :key="m.id"><div class="msg-row flex items-center" :class="{ me: m.user_id === _acct() }">
             <template x-if="m.user_id === _acct()"><span class="msg-acts flex"><button type="button" class="msg-edit" @click="startEdit(m)" aria-label="Edit" title="Edit"><svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg></button><button type="button" class="msg-del" @click="deleteMsg(m)" aria-label="Delete" title="Delete"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg></button></span></template>
-            <div class="msg" :class="{ editing: m.id === chat.editing }" :tabindex="m.user_id === _acct() ? -1 : null" :title="chatWhen(m.created_at)"><span x-text="m.body"></span><template x-if="m.edited_at"><span class="msg-ed">edited</span></template></div>
+            <div class="msg" :class="{ editing: m.id === chat.editing }" :tabindex="m.user_id === _acct() ? -1 : null" :title="chatWhen(m.created_at)"><span x-text="m.body"></span><template x-if="m.edited_at"><span class="msg-ed">edited</span></template><template x-for="id in m.attachments ?? []" :key="id"><button type="button" class="msg-file flex items-center" x-show="files[id]" @click="openFile(files[id])"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="files[id]?.name"></span><span class="fsz" x-text="fileSize(files[id]?.size ?? 0)"></span></button></template></div>
           </div></template>
         </div></div>
         <div class="chat-editing flex items-center" x-show="chat.editing">Editing message<button type="button" @click="endEdit()" aria-label="Cancel edit" title="Cancel (Esc)"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
-        <div class="chat-comp flex items-end"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chat.draft.trim()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
+        <div class="chat-pend flex" x-show="chat.pending.length &amp;&amp; !chat.editing"><template x-for="f in chat.pending" :key="f.key">
+          <span class="msg-file pend flex items-center" :class="{ failed: f.failed, up: !f.row &amp;&amp; !f.failed }" :style="{ '--pct': f.pct }"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="f.name"></span>
+            <template x-if="f.failed"><button type="button" class="retry" @click="_upload(f)">Retry</button></template>
+            <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
+        </template></div>
+        <div class="chat-comp flex items-end"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach files"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
         <div class="chat-hint"><kbd>↵</kbd> send · <kbd>⇧</kbd><kbd>↵</kbd> new line · <kbd>↑</kbd> edit last</div>
       </div>
       </template>
@@ -1174,7 +1192,7 @@
      <button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">
        <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
        <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online }"></span></template>
-       <template x-if="updateReady"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
+       <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
      </button>
     </div><!-- /canvas -->
 
@@ -1215,6 +1233,7 @@
         <button class="nav-pop-item" @click.stop="startRename(navPopProj().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })" x-text="navPopProj().favorite ? '&#9733; Unfavorite' : '&#9734; Favorite'"></button>
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { overview: false }, 'Hidden from Overview')">Hide from Overview</button>
+        <button class="nav-pop-item" @click.stop="archive(navPopProj().id, !navPopProj().archived_at); navPop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="navPopProj().archived_at ? 'Unarchive' : 'Archive'"></span></button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
         <div class="nav-pop-sep"></div>
@@ -1254,8 +1273,8 @@
        @online.window="online = true" @offline.window="online = false">
     <div class="settings-card" role="dialog" aria-modal="true" aria-label="Account &amp; settings" @click.stop><div class="set-scroll" x-effect="settingsOpen && ($el.scrollTop = 0)">
       <h1>Account &amp; settings</h1>
-      <template x-if="updateReady">
-        <button type="button" class="set-row set-rowbtn set-update flex items-center gap-10" @click="desktopWindow('update')"><svg class="ico set-ico"><use href="#i-repeat"/></svg>Update ready<span class="set-sub muted-12">Restart to update</span></button>
+      <template x-if="updateUrl">
+        <button type="button" class="set-row set-rowbtn set-update flex items-center gap-10" @click="desktopWindow('open', updateUrl)"><svg class="ico set-ico"><use href="#i-repeat"/></svg>Update available<span class="set-sub muted-12">Download</span></button>
       </template>
       <template x-if="session">
         <div>
@@ -1390,7 +1409,7 @@
   <!-- The whole window accepts a dropped .ics. Shown only while a FILE is over the page, so ordinary
        task/event dragging never sees it. -->
   <div class="drop-veil flex items-center justify-center" x-show="fileDrag" x-cloak>
-    <div class="drop-note">Drop a calendar file to import its events</div>
+    <div class="drop-note" x-text="dropNote()"></div>
   </div>
 
   <!-- ── Modal dialogs: confirm, shortcuts, trash, palette, filter editor ── -->

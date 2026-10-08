@@ -62,7 +62,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
    gesture for its own scrolling and fired pointercancel after the FIRST pointermove: the track never
    followed the finger, it only arrived at release via the flick heuristic. That is the "laggy swipe".  */
 .app, .cl-month, .soc-list, .msgs { touch-action: pan-y; }   /* .cl-pages is no scroller: touch-action none, below */
-.canvas-track { display: flex; height: 100%; will-change: transform; --slide: .42s; transition: transform var(--slide) var(--ease-drawer); }   /* programmatic moves slide; .dragging below is 1:1 with the finger */
+.canvas-track { display: flex; height: 100%; will-change: transform; transition: transform var(--slide) var(--ease-drawer); }   /* programmatic moves slide; .dragging below is 1:1 with the finger */
 .surface { flex: 0 0 100%; height: 100%; min-width: 0; overflow: hidden; }
 /* On [inert] only: leaving holds it drawn through the slide; arriving is instant, or focus into it fails for a frame */
 .surface[inert] { transition: content-visibility var(--slide) allow-discrete; }
@@ -118,6 +118,23 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .chat-comp .send:disabled { opacity: .45; cursor: default; }
 .chat-hint { margin: var(--sp-6) 0 0 var(--sp-4); font-size: var(--fs-11); color: var(--faint); }
+.chat-comp .attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
+.chat-comp .attach .ico { width: 18px; height: 18px; }
+/* Files: one chip per file, under a bubble's text, and above the composer while it uploads (the 2px bar is its progress). */
+.msg-file { gap: var(--sp-6); max-width: 100%; margin-top: var(--sp-6); padding: var(--sp-4) var(--sp-8); border: 0; border-radius: var(--r-6);
+  background: var(--hover); color: var(--ink); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
+.msg-file .ico { flex: none; width: 14px; height: 14px; color: var(--muted); }
+.msg-file .fsz { flex: none; font-size: var(--fs-11); color: var(--faint); }
+.chat-pend { flex-wrap: wrap; gap: var(--sp-6); margin-bottom: var(--sp-6); }
+.msg-file.pend { position: relative; overflow: hidden; max-width: 240px; margin: 0; padding-right: var(--sp-2); cursor: default; }
+.msg-file.up { color: var(--muted); }
+.msg-file.up::after { content: ''; position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: var(--accent);
+  transform: scaleX(var(--pct)); transform-origin: left; transition: transform .2s var(--ease-out); }
+.msg-file.failed, .msg-file.failed .ico { color: var(--p1); }
+.msg-file :is(.retry, .drop) { flex: none; display: grid; place-items: center; height: 22px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-6);
+  background: none; color: inherit; font: inherit; cursor: pointer; }
+.msg-file .retry { font-weight: 600; }
+.msg-file :is(.retry, .drop):hover { background: var(--hover); }
 @media (max-width: 640px) {
   .social { grid-template-columns: minmax(0, 1fr); padding: var(--sp-16) var(--sp-12) var(--dock-clear); }
   .social > * { grid-area: 1 / 1; }   /* stacked: a swipe back slides the thread off the chats */
@@ -132,8 +149,10 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   .chat-hint { display: none; }
 }
 .canvas-track.dragging { transition: none; }
-/* A key cuts what a click or swipe animates (ui-build G9). --slide also times the leaving surface's content-visibility hold. */
-.kbd .canvas-track { --slide: 0s; }
+/* A key cuts what a click or swipe animates (ui-build G9). --slide also times the leaving surface's content-visibility hold.
+   Not inherited: an inherited one restyled every element under the track on the first key (60K with a huge description). */
+@property --slide { syntax: '<time>'; inherits: false; initial-value: .42s; }
+.kbd :is(.canvas-track, .surface) { --slide: 0s; }
 .kbd :is(.overview, .ov-grid, .sel-anim, .lc-anim) { transition: none; }
 .swiping, .swiping * { user-select: none; -webkit-user-select: none; }   /* no text selection / flicker mid horizontal swipe */
 /* The strip floats OVER scrolling content, and --muted/--faint carry ALPHA in every dark theme — the last
@@ -217,6 +236,12 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .rl-cnt { font-size: var(--fs-13); color: var(--muted); font-variant-numeric: tabular-nums; }
 .rl-more { background: none; border: 0; color: var(--muted); cursor: pointer; font-weight: 700; letter-spacing: 1px; opacity: .5; padding: 0 var(--sp-2); font-size: var(--fs-15); }
 .rl-more:hover { opacity: 1; }
+/* Overview's Archived row and the projects it opens: the box family, quieter (retired work); the chevron sits in the ⋯'s column */
+.rl-arch-row .rl-nm, .rl-arch .rl-nm { color: var(--muted); }
+.rl-chev { width: 16px; height: 16px; padding: 0 var(--sp-2); box-sizing: content-box; flex: none; color: var(--muted); opacity: .5;   /* the ⋯'s footprint and rest, so the count lines up with Backlog's */
+  rotate: -90deg; transition: rotate .18s var(--ease-out), opacity .12s var(--ease-out); }
+.rl-chev.open { rotate: 0deg; }
+.rl-box:hover .rl-chev { opacity: 1; }
 /* the two arrows stack INSIDE the ⋯'s line height, so adding them widened no row — a chevron each way, the
    down one as-drawn and the up one flipped. Same resting .5 as the ⋯: a control you can't see is a control
    nobody finds, and reordering has no other entry point on this rail. */
@@ -327,7 +352,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
    a dashed ring already means "archived" (dash-in-circle) and "add task" (ghost), and read as either. */
 .check.blocked { background: none; border-color: color-mix(in srgb, var(--pc, var(--faint)) 45%, transparent); }
 .item.waiting .title, .item.waiting .m, .item.waiting .badge, .item.waiting .chk-list { opacity: .62; }
-.check .lock-ico { position: absolute; inset: 0; margin: auto; width: var(--lk, 11px); height: var(--lk, 11px); color: var(--muted); opacity: .5; stroke-width: 3; pointer-events: none; }   /* --lk scales it for smaller rings (the 11px calendar chip), same lever as --dash above */
+.check .lock-ico { position: absolute; inset: 0; margin: auto; width: var(--lk, 11px); height: var(--lk, 11px); color: var(--muted); opacity: .5; pointer-events: none; }   /* --lk scales it for smaller rings (the 11px calendar chip), same lever as --dash above */
 /* Paused recurrence: themed border + pause icon instead of checkmark. */
 .check.paused { border-color: var(--gold); }
 .check.paused .pause-ico { position: absolute; inset: 0; margin: auto; width: 8px; height: 8px; color: var(--gold); fill: currentColor; stroke: none; pointer-events: none; }
@@ -382,13 +407,13 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 /* project TEXT shares the title baseline; the icon-only default proj stays centered (areas/goals stay centered too) */
 .r1l .title, .r1l .proj:has(.proj-nm) { align-self: baseline; }
 .r1l .title { width: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* content-width so areas sit right beside it; truncates only when the row runs out of room (override .item .title width:100%) */
-:is(.title, .row-step) strong { font-weight: 600; }
-:is(.title, .row-step) em { font-style: italic; }
-:is(.title, .row-step) a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+:is(.title, .row-step, .composer-title .content, .sub-ce) strong { font-weight: 600; }
+:is(.title, .row-step, .composer-title .content, .sub-ce) em { font-style: italic; }
+:is(.title, .row-step, .composer-title .content, .sub-ce) a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 .item a:is(:hover, :focus-visible) { background: var(--hover); border-radius: var(--r-4); color: var(--accent); text-decoration-thickness: 2px; cursor: pointer; }
-:is(.title, .row-step) code { font: var(--fs-13) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); }
+:is(.title, .row-step, .composer-title .content, .sub-ce) code { font: var(--fs-13) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); }
 /* strikethrough (~~) reads as "struck out" — dim it, in titles + descriptions (rows and the composer editor) */
-:is(.title, .row-step) s, .desc-line s, .desc s { color: var(--muted); }
+:is(.title, .row-step, .composer-title .content, .sub-ce) s, .desc-line s, .desc s { color: var(--muted); }
 /* a struck-through LINK: draw the strikethrough with the same color + thickness as the underline (accent, 1px),
    so it doesn't read as a dim line-through crossing a bright underline */
 :is(.title, .row-step) a, .desc-line a, .desc a.dm-link { text-decoration-thickness: 1px; }
@@ -440,10 +465,28 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .code-copy { display: flex; align-items: center; border: 0; color: var(--muted); cursor: pointer; user-select: none; max-height: 100%;
   .ico { width: 14px; height: 14px; } &:hover, &:focus-visible { color: var(--ink); } }
 .desc .dm-h { font-weight: 600; color: var(--ink); }
-.desc a.dm-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.desc .dm-h.h1 { font-size: var(--fs-22); }
+.desc .dm-h.h2 { font-size: var(--fs-17); }
+/* Live preview: a token's markers show only while the caret touches it (app.js descReveal). No transition: arrows reveal
+   them 100+ times a day. A hidden bullet reads as a dot, a fence takes no line. */
+/* Composer checklist and subtask rows and the title too, at rest and editing. */
+:is(.desc, .entry-txt, .composer-title .content) {
+  .dm-tok:not(.on) > .dm-mark { font-size: 0; }
+  .dm-fence { display: block; }   /* the prose's newline before it then ends at the block, not on an empty line */
+  .dm-fence:not(.on) > .dm-mark { display: none; }
+  .dm-tok:not(.on) > .dm-li { font-size: inherit; color: transparent; position: relative;
+    &::before { content: "•"; position: absolute; left: .15em; color: var(--muted); } }
+  .dm-ol { color: var(--muted); }
+}
+/* A huge description's blocks (app.js _descHtml) skip style, layout and paint off screen; `auto` keeps a drawn one's height,
+   --h holds one never drawn (measured at blur, else estimated by _descSize). */
+.desc-block { content-visibility: auto; contain-intrinsic-size: auto var(--h, 1lh); }
+.desc-block:last-child { content-visibility: visible; }   /* ⌘↓ into a skipped block lands at its start, not the end */
+:is(.desc, .composer-title .content, .sub-ce) a.dm-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 /* One line, always: a linked task's title is arbitrary text, and wrapping it gave every dependent row a
    second (sometimes third) line of chrome. */
 .row-rels { flex-wrap: nowrap; overflow: hidden; min-width: 0; }   /* a line-1 citizen now — the ladder sheds it; .row2's own margin spaces it when it lands there */
+.r1l .row-rels { flex: none; }   /* the title takes the squeeze: the ladder drops chip names (app.js _relIcon), never cuts a chip */
 .row-rel {
   .ico { width: 11px; height: 11px; flex: none; color: var(--rc, var(--muted)); } }
 .row-rel.blocked_by { --rc: var(--p1); }
@@ -451,8 +494,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .row-rel.blocked_by .ico, .rel-ico.blocked_by { fill: currentColor; stroke: none; }
 .row-rel-name { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-rel { padding: 0; }   /* a button: the UA padding would widen every chip */
-.row-rel.icon-only .row-rel-name, .row-rel-n { display: none; }   /* names drop one chip at a time (app.js _relIcon) */
-.row-rels.rolled { > .row-rel ~ .row-rel { display: none; } .row-rel-n { display: inline; } }   /* >3, all icons: the first chip stands for all, with the count */
+.row-rel.icon-only .row-rel-name, .row-rel-n, .row-rel.rel-hid { display: none; }   /* names drop one chip at a time (app.js _relIcon) */
+.row-rel.rolled .row-rel-n { display: inline; }   /* >3 of a kind, all icons: its first chip stands for them, with the count */
 .rels-pop { .rel-chip-remove { flex: none; width: 28px; height: 28px; justify-content: center; border-radius: var(--r-6); } .rel-chip-remove .ico { width: 15px; height: 15px; } }
 .nlp-pill { font-size: var(--fs-13); line-height: 16px; color: var(--ink);
   background: color-mix(in srgb, var(--rc, var(--muted)) 12%, transparent);
@@ -477,16 +520,18 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* 2px indent guide spans to item bottom (no padding-bottom when chk-list present); matches subtask guide */
 .chk-list::before { content: ""; position: absolute; left: -14px; top: 2px; bottom: calc(-1 * var(--sp-8));
   width: 2px; background: color-mix(in srgb, var(--faint) 55%, transparent); border-radius: 2px; }
-.chk-row { align-items: flex-start; cursor: pointer; padding: 1px 0; }
-.chk-row .chk-rect { margin-top: calc((1lh - 16px) / 2); }   /* box centers on the first line (top-anchored for multiline) */
+.chk-row { align-items: baseline; cursor: pointer; padding: 1px 0; }   /* text and its smaller detail share one baseline */
+.chk-row .chk-rect { align-self: flex-start; margin-top: calc((1lh - 16px) / 2); }   /* box centers on the first line (top-anchored for multiline) */
+.chk-list .chk-desc { margin-bottom: -1lh; }   /* never sets the row's height: its descent runs into the text's */
 /* any sortable.js item being dragged lifts above its siblings + the indent guide; siblings' shift transition is set inline */
 .sorting { position: relative; z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
 .chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 2px solid color-mix(in srgb, var(--faint) 60%, transparent); background: none; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check */
 .chk-list .chk-rect { background: color-mix(in srgb, var(--faint) 8%, transparent); }   /* faint tint on the LIST checklist boxes only (composer entry boxes stay transparent) */
 .chk-list .chk-rect:not(.plain)::before { content: ""; position: absolute; inset: -5px -3px; }   /* 5px: boxes tile down the column, meeting mid-gap — no row flash, never a neighbour's tick */
-.chk-list .chk-desc { translate: 0 var(--sp-2); }
 /* text 2px lower via padding, its box 1px taller above: item texts tile with no gap, so moving between them never flashes the row */
 .chk-list .chk-txt { box-sizing: content-box; padding-top: 3px; margin: -1px 0 -2px; }
+.chk-list .chk-txt:empty { margin-right: calc(-1 * var(--sp-8)); }   /* an item that is only a detail: the detail starts where text would (gap-8) */
+.chk-list .chk-txt:empty::before { content: "\200b"; }   /* …and still has a line: the row's baseline and height */
 .chk-row > .chk-rect:not(.plain):is(:hover, :has(+ .chk-txt:hover)) { border-color: var(--muted); }   /* what a click ticks — the box OR its text — lights the box */
 /* uncheckable list: the box becomes a plain bullet — same footprint, no interaction */
 .chk-rect.plain { border-color: transparent; background: none; pointer-events: none; cursor: default; }
@@ -537,7 +582,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   .md-code:not(.md-code-inline)::after { content: '…'; color: var(--faint); } }
 /* b4c: every chip stays on the 13px title line, a type size down with it (15:12 → 13:11); past the title's floor they
    hide behind a "…" pill (app.js _shed) — a pill, so it never reads as the title's own ellipsis. */
-.item > .body:has(> .step-block) .row1 { .m, .proj { font-size: var(--fs-11); } .m .ico { width: 11px; height: 11px; } .area { line-height: 13px; } .badge { padding: 0 var(--sp-6); } .row-rels { flex: none; } }
+.item > .body:has(> .step-block) .row1 { .m, .proj { font-size: var(--fs-11); } .m .ico { width: 11px; height: 11px; } .area { line-height: 13px; } .badge { padding: 0 var(--sp-6); } }
 .shed-hid { display: none !important; }
 .hid-more { flex: none; font-size: var(--fs-11); line-height: 13px; color: var(--muted); padding: 0 var(--sp-6); border-radius: var(--r-pill); background: var(--hover); }
 @property --p { syntax: '<number>'; inherits: true; initial-value: 0; }   /* typed, so the pie sweeps */
@@ -710,15 +755,14 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   padding: 1.5px var(--sp-8); border-radius: var(--r-6); white-space: nowrap; color: var(--muted); background: var(--hover);
   .badge-rep { width: 11px; height: 11px; flex: none; } }   /* repeat glyph inherits the badge's color */
 .badge.overdue { color: var(--p1); background: color-mix(in srgb, var(--p1) 13%, transparent); }
-/* Dark: Today and Missed drop the plate/ring for a dashed line (a solid plate read too bright on dark).
-   Missed wears the deadline chip's red (.chip.dl.set ink) so a passed day never reads as Today.
+/* Dark: Today drops its plate for a dashed line (a solid plate read too bright on dark).
+   Missed is full --danger ink in a solid ring in both themes, so a passed day differs from Today in hue and line.
    light-dark() follows color-scheme, so it covers both a picked and a system dark theme; outline keeps the box size.
    Today's ink is --warm-ink: the accent as 11px text on dark misses G6. */
-.badge.today { background: light-dark(var(--accent), transparent); color: light-dark(var(--on-accent), var(--warm-ink)); font-weight: 700; }
+.badge.today { background: light-dark(var(--accent), transparent); color: light-dark(var(--on-accent), var(--warm-ink)); font-weight: 700;
+  outline: 1px dashed light-dark(transparent, var(--accent)); outline-offset: -1px; }
 .badge.soon { color: var(--soon-ink); background: color-mix(in srgb, var(--accent) 13%, transparent); }
-.badge.missed { --line: var(--deadline); background: none; color: color-mix(in srgb, var(--deadline) 66%, var(--ink));
-  box-shadow: inset 0 0 0 1px light-dark(var(--line), transparent); }
-.badge:is(.today, .missed) { outline: 1px dashed light-dark(transparent, var(--line, var(--accent))); outline-offset: -1px; }
+.badge.missed { background: none; color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
 /* No fill ⇒ no chip: the inline padding goes with the background, else the date reads as text inset by an
    invisible box. (`.later` needs no rule of its own — the base .badge above IS its appearance.) */
 .item.done .badge { color: var(--faint); background: none; padding-inline: 0; box-shadow: none; outline: none; }
@@ -786,6 +830,10 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     font-size: var(--fs-12); color: var(--muted); font-weight: 500; border: 1px solid var(--edge);
     border-radius: var(--r-8); background: var(--panel);
     &:hover { border-color: var(--muted); }
+    /* 1B: an unset pill keeps its place and word but drops its box and dims its icon, so the eye lands on what's set. Its word
+       stays --muted: --faint text fails contrast (layout-rules G6). An open pop's pill keeps its box. */
+    &:not(.set, [aria-expanded="true"]) { border-color: transparent; background: none; .ico { color: var(--faint); }
+      &:hover { border-color: transparent; background: var(--hover); .ico { color: inherit; } } }
     &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }   /* owns the open pop */
     &.set { color: var(--ink); } }
   .ico { width: 15px; height: 15px; flex: none; }
@@ -839,20 +887,14 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .entry.chk { align-items: flex-start; }
 .entry.chk .chk-rect { margin-top: calc((1lh - 16px) / 2); }
 .entry.chk .entry-grip { align-items: flex-start; padding-top: calc(var(--sp-4) + (1lh - 14px) / 2); }
-/* checklist item live "::" editor. At rest: one line, title-first — the title shows fully and the ":: description"
-   tail (small/faded, chkLive) is what clips at the edge. While editing: wrap to multiple lines so no text hides. */
-/* Two-state rule: at rest `nowrap` keeps rows one-line and compact (hard \n is IN the data — textContent
-   never loses it — but not rendered, so the list stays tight). While editing `[contenteditable="plaintext-only"]`
-   switches to `pre-wrap` so every stored line is visible and editable (#367: the WIP used `pre` at rest,
-   which made every \n render as a break even outside edit mode, regressing the compact list). */
-.entry.chk .entry-txt { white-space: nowrap; overflow: hidden; cursor: text; }   /* editable-on-demand: plain-selectable until clicked, so a drag spans rows */
+/* 2A: an item shows in full, every line, at rest as while editing, so a focus never reflows it. */
+.entry.chk .entry-txt { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }   /* editable-on-demand: plain-selectable until clicked, so a drag spans rows */
 .entry.chk div.entry-txt { min-height: 1lh; }   /* an EMPTY item's div must keep one line of height or it's unclickable */
-.entry.chk .entry-txt[contenteditable="plaintext-only"] { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; }
-.entry.chk .entry-txt .chk-idesc { font-size: var(--fs-11); color: var(--faint); }
+.entry.chk .entry-txt .chk-idesc { display: block; font-size: var(--fs-11); color: var(--faint); }   /* a note takes its own line, as on the row (5B) */
 .entry.chk.done .entry-txt .chk-idesc { color: var(--muted); }
-/* the "new item" ghost is a textarea so it wraps and grows to fit a long item. Needs pre-wrap to beat the item rows' nowrap rule above. */
+/* the "new item" ghost is a textarea so it wraps and grows to fit a long item. */
 /* ceiling: field-sizing needs Chrome 123 / Safari+iOS 26.2 — below, the ghost stays one line (wrapped/pasted lines hidden, still saved); revisit if the iOS port targets <26.2 */
-.entry.chk textarea.entry-txt { field-sizing: content; resize: none; overflow: hidden; line-height: 1.35; white-space: pre-wrap; overflow-wrap: anywhere; }
+.entry.chk textarea.entry-txt { field-sizing: content; resize: none; overflow: hidden; line-height: 1.35; }
 /* zebra: alternating item rows get a subtle lift so adjacent rows (and their trash icons) read as distinct.
    The band gets horizontal padding via padding-inline + a compensating negative margin-inline applied to EVERY
    checklist row — so the tint has breathing room around the content while the checkboxes never move. */
@@ -898,6 +940,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-16)); opacity: 0; transition: opacity .15s var(--ease-out);
   &:focus { opacity: 1; } }   /* higher specificity than the base .entry-del:focus reveal — must restate it or keyboard focus never shows the × */
 @media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del, .md-code:hover > .code-copy { opacity: 1; } }
+.composer .md-code-short > .code-copy { left: 100%; right: auto; padding: 0 var(--sp-4); background: none; }   /* beside, so a click on the code reaches editing */
+.entry.chk .entry-txt .md-code { max-width: calc(100% - var(--sp-24) - 14px - var(--sp-4)); }   /* its Copy clears the × (a row's first line can be the code) */
 code:has(> .code-copy) { display: inline-block; position: relative; cursor: text; user-select: text; --row-bg: var(--bg); }
 :is(.title, .desc-line, .chk-txt, .chk-desc):has(code) { text-overflow: clip; } /* ellipsis hides an entire inline-block, even with room for its first characters */
 :is(.title, .desc-line) code { --row-bg: var(--hover); }
@@ -1526,7 +1570,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 @keyframes ls-tok-in { from { clip-path: inset(0 100% 0 0); transform: translateX(-6px); } }
 .ls-tok > button { display: inline-flex; align-items: center; gap: var(--sp-4); border: none; background: none; color: inherit; font: inherit; font-size: var(--fs-13); font-weight: 600; cursor: pointer;
   padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-10); min-width: 0; }
-.ls-tok > button > span:last-child { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* long area names truncate; full name in title */
+.ls-lbl { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* long area names truncate; full name in title */
 .ls-flag { width: 10px; height: 10px; border-radius: 3px; background: var(--tc); flex: none; }
 .ls-tok .ls-x { padding: var(--sp-2) var(--sp-8) var(--sp-2) var(--sp-2); color: color-mix(in srgb, var(--tc) 55%, var(--muted));
   font-size: var(--fs-15); line-height: 1; opacity: .7; transition: opacity .15s var(--ease-out), color .15s var(--ease-out); }   /* always visible — × is the remove affordance (body click edits) */
@@ -1575,8 +1619,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
    Tokens never flex-shrink: squeezing them proportionally crushed short labels while long ones had room to give. */
 .shed-1 .ls-sent > .ls-verb:first-child { display: none; }
 .shed-2 .ls-sortw { font-size: 0; &::after { content: '⇅'; font-size: var(--fs-13); } }
-.shed-3 .ls-tok > button > span:last-child { max-width: 6ch; }
-.shed-4 :is(.ls-tok:has(.ls-flag, .lc-dot) > button > span:last-child, .ls-frag > .ls-verb) { display: none; }
+.shed-3 .ls-lbl { max-width: 6ch; }
+.shed-4 :is(.ls-tok:has(.ls-flag, .lc-dot) .ls-lbl, .ls-frag > .ls-verb) { display: none; }   /* .ls-lbl, not span: a :has() rule ending in a bare tag restyles every such tag in the page on DOM changes (a huge description's spans: ~1s per delete) */
 .ls-add-pop { top: calc(100% - var(--sp-16)); width: 360px; max-width: 100%; max-height: min(440px, 70vh); overflow-y: auto; }   /* never wider than the controls row, so it fits a phone */
 .ls-prow { padding: var(--sp-2) var(--sp-4) var(--sp-6); }
 .ls-save { color: var(--accent); font-weight: 600; }

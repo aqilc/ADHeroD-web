@@ -22,8 +22,9 @@ export async function loadMessages(sb, chatId) {
   return rows && rows.reverse();
 }
 
-export async function sendMessage(sb, uid, chatId, body) {
-  const rows = ok(await sb.from('messages').insert({ user_id: uid, conversation_id: chatId, body }).select());
+// `attachments` rides only when there are files: the column is new, and an unknown column fails the whole insert.
+export async function sendMessage(sb, uid, chatId, body, attachments = []) {
+  const rows = ok(await sb.from('messages').insert({ user_id: uid, conversation_id: chatId, body, ...(attachments.length && { attachments }) }).select());
   return rows?.[0] ?? false;
 }
 
@@ -93,3 +94,30 @@ export function whenLabel(ts, now = new Date()) {
   const at = new Date(ts), days = Math.round((new Date(now).setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 864e5);   // round: a DST day is 23 or 25 h
   return (days < 1 ? TIME : days < 7 ? WEEKDAY : DAY).format(at);
 }
+
+// ── Files: bytes go through the files Worker (scripts/files-worker.js) to Drive; the rows say what a chip shows. ──
+export async function loadFiles(sb, ids) {
+  return ids.length ? ok(await sb.from('attachments').select('id, name, mime, size').in('id', ids)) : [];
+}
+
+// XHR, not fetch: only XHR reports upload progress. Resolves the attachments row, or false.
+export function uploadFile(url, jwt, file, onProgress) {
+  return new Promise(resolve => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url + '/upload');
+    xhr.setRequestHeader('Authorization', 'Bearer ' + jwt);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('X-File-Name', encodeURIComponent(file.name));
+    xhr.upload.onprogress = e => onProgress(e.loaded / e.total);
+    xhr.onload = () => resolve(xhr.status === 201 && JSON.parse(xhr.responseText));
+    xhr.onerror = () => resolve(false);
+    xhr.send(file);
+  });
+}
+
+export async function fileBlob(url, jwt, id) {
+  const res = await fetch(`${url}/a/${id}`, { headers: { Authorization: 'Bearer ' + jwt } }).catch(() => null);
+  return res?.ok ? res.blob() : null;
+}
+
+export const fileSize = n => n < 1e6 ? `${Math.max(1, Math.round(n / 1e3))} KB` : `${(n / 1e6).toFixed(1)} MB`;

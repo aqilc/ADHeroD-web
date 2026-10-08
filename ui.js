@@ -31,7 +31,8 @@ const _highlight = (src, lang) => {
   return out + esc(src.slice(at));
 };
 const _copyCode = '<button class="code-copy" type="button" contenteditable="false" aria-label="Copy code" title="Copy code"><svg class="ico"><use href="#i-copy"/></svg></button>';
-const _codeBlock = (src, info, compact) => { const key = String(info || '').toLowerCase(), lang = Object.hasOwn(_langs, key) ? _langs[key] : ''; return `<span class="md-code${compact ? ' md-code-inline' : ''}"${lang ? ` data-lang="${lang}"` : ''}><code>${_highlight(src, lang)}</code>${_copyCode}</span>`; };
+// A short pill (≤ 8 chars) would sit mostly under its Copy, so the composer puts Copy beside it (styles.css).
+const _codeBlock = (src, info, compact) => { const key = String(info || '').toLowerCase(), lang = Object.hasOwn(_langs, key) ? _langs[key] : ''; return `<span class="md-code${compact ? ` md-code-inline${src.length <= 8 ? ' md-code-short' : ''}` : ''}"${lang ? ` data-lang="${lang}"` : ''}><code>${_highlight(src, lang)}</code>${_copyCode}</span>`; };
 // ceiling: triple-backtick fences only; use a parser if nested fences or full Markdown are requested.
 const _fences = /```([\s\S]*?)(```|$)/g;
 const _hasFence = src => String(src ?? '').includes('```');
@@ -68,58 +69,77 @@ const _md = (src, opts = {}) => {
 };
 
 const _fenced = (src, live, inline = false, copy = false) => {
-  const raw = String(src ?? ''), prose = s => live ? s.split('\n').map(_dLine).join('\n') : _md(s, { inline, copy });
+  const raw = String(src ?? ''), prose = s => live ? s.split('\n').map(line => _dLine(line)).join('\n') : _md(s, { inline, copy });
   let out = '', at = 0;
   for (const m of raw.matchAll(_fences)) {
     // Only a newline-ended opening line is language metadata; same-line commands stay literal.
-    const head = m[1].match(/^([^\s`]*)[ \t]*\r?\n/), prefix = head?.[0] || '', block = _codeBlock(m[1].slice(prefix.length), head?.[1], !m[1].includes('\n'));
-    out += prose(raw.slice(at, m.index)) + (live ? `<span class="dm-mark">${esc('```' + prefix)}</span>${block}${m[2] ? '<span class="dm-mark">```</span>' : ''}` : block);
-    at = m.index + m[0].length;
+    const head = m[1].match(/^([^\s`]*)[ \t]*\r?\n/), prefix = head?.[0] || '', compact = !m[1].includes('\n'), block = _codeBlock(m[1].slice(prefix.length), head?.[1], compact);
+    // A multiline fence is a block and takes its closing line break (hidden, it leaves no empty line); a compact one flows in its line.
+    const nl = live && !compact && m[2] && raw[m.index + m[0].length] === '\n' ? '\n' : '';
+    out += prose(raw.slice(at, m.index)) + (live ? `<span class="dm-tok${compact ? '' : ' dm-fence'}"><span class="dm-mark">${esc('```' + prefix)}</span>` + block + (m[2] ? '<span class="dm-mark">```' + nl + '</span>' : '') + '</span>' : block);
+    at = m.index + m[0].length + nl.length;
   }
   return out + prose(raw.slice(at));
 };
 export const md = (src, opts = {}) => opts.literal ? _md(src, opts) : _fenced(src, false, !!opts.inline, !!opts.copy);
 
-// Overlay for composer desc: textContent(mdLive(t))===t keeps caret aligned; .dm-mark fades markers behind the transparent contenteditable.
+// The composer's live Markdown: textContent(mdLive(t)) === t keeps the caret aligned. Each construct is a .dm-tok holding its
+// .dm-mark markers, which show only while the caret touches it (app.js descReveal).
 export const mdLive = (src) => _fenced(src, true);
-const _dLine = (line) => {
+// Where a long text from `start` (a line start outside any fence) can be cut: the first line end at least `min` chars on
+// that no ``` fence spans, so each part renders as its share of the whole. src.length when there's none.
+// ceiling: a text with no newline, or one huge fence, is one part: the composer draws it whole, and a row whose first fence
+// is huge previews all of it. Cut mid-line or mid-fence if a pasted log is seen to stutter.
+export const mdCut = (src, start, min) => {
+  let end = src.indexOf('\n', start + min) + 1 || src.length;
+  while (end < src.length && src.slice(start, end).split('```').length % 2 === 0) {   // an odd count of ``` before end: inside a fence
+    const close = src.indexOf('```', end);
+    end = close < 0 ? src.length : src.indexOf('\n', close + 3) + 1 || src.length;
+  }
+  return end;
+};
+const _tok = (open, inner, close) => `<span class="dm-tok"><span class="dm-mark">${open}</span>${inner}<span class="dm-mark">${close}</span></span>`;
+const _dLine = (line, literal) => {   // literal: a title's, where # and - stay text
   const parts = [], S = _sentinel(line, '\uE000'), E = S + '\uE001';
   const stash = (html) => S + (parts.push(html) - 1) + E;   // pull code/links out so their text isn't bold/italic-scanned
-  let t = line.replace(/`([^`\n]+)`/g, (_, c) => stash(`<span class="dm-mark">\`</span><code>${esc(c)}</code><span class="dm-mark">\`</span>`));
+  let t = line.replace(/`([^`\n]+)`/g, (_, c) => stash(`<span class="dm-tok"><span class="dm-mark">\`</span><code>${esc(c)}</code><span class="dm-mark">\`</span></span>`));
   t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => {
-    const u = _mdUrl(url), a = s => u ? `<a class="dm-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(s)}</a>` : esc(s);
-    return stash(`<span class="dm-mark">[</span>${a(txt)}<span class="dm-mark">](</span>${a(url)}<span class="dm-mark">)</span>`);
+    const u = _mdUrl(url);
+    return stash(_tok('[', u ? `<a class="dm-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(txt)}</a>` : esc(txt), `](${esc(url)})`));
   });
   t = esc(t);
-  t = t.replace(/\*\*([^*\n]+)\*\*/g, '<span class="dm-mark">**</span><strong>$1</strong><span class="dm-mark">**</span>');
-  t = t.replace(/~~([^~\n]+)~~/g, '<span class="dm-mark">~~</span><s>$1</s><span class="dm-mark">~~</span>');
-  t = t.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<span class="dm-mark">*</span><em>$2</em><span class="dm-mark">*</span>');
-  t = t.replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_/g, '$1<span class="dm-mark">_</span><em>$2</em><span class="dm-mark">_</span>');
-  const li = t.match(/^([-*] |\d+\. )/);
-  if (li) { t = `<span class="dm-mark">${li[1]}</span>` + t.slice(li[1].length); }
-  else { const h = t.match(/^(#{1,3})(\s[\s\S]*)?$/); if (h) t = `<span class="dm-mark">${h[1]}</span><span class="dm-h">${h[2] || ''}</span>`; }
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, (_, x) => _tok('**', `<strong>${x}</strong>`, '**'));
+  t = t.replace(/~~([^~\n]+)~~/g, (_, x) => _tok('~~', `<s>${x}</s>`, '~~'));
+  t = t.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, (_, pre, x) => pre + _tok('*', `<em>${x}</em>`, '*'));
+  t = t.replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_/g, (_, pre, x) => pre + _tok('_', `<em>${x}</em>`, '_'));
+  const li = !literal && t.match(/^([-*] )|^(\d+\. )/), h = !literal && !li && t.match(/^(#{1,3})(\s[\s\S]*)?$/);
+  if (li) t = (li[1] ? `<span class="dm-tok"><span class="dm-mark dm-li">${li[1]}</span></span>` : `<span class="dm-mark dm-ol">${li[2]}</span>`) + t.slice(li[0].length);   // a number always shows
+  else if (h) t = `<span class="dm-tok dm-h h${h[1].length}"><span class="dm-mark">${h[1]}${h[2]?.[0] || ''}</span>${h[2]?.slice(1) || ''}</span>`;   // the space after # is a marker too: the heading starts flush
   return t.replace(new RegExp(S + '(\\d+)' + E, 'g'), (_, i) => parts[+i]);
 };
 
-// Shared open-first/done-last comparator (stable) — the composer checklist and the row checklist bucket identically.
-export const byDone = (a, b) => (a.done ? 1 : 0) - (b.done ? 1 : 0);
-
 // Which checklist items a list row actually shows: 3+ done collapse behind "…N more" (open items unaffected;
 // plain = no collapse); `open` reveals them. `more` = the toggle exists at all. Shared with app.js's row-height
-// estimate for contain-intrinsic-size, so the rendered count and the estimated count can't drift.
-export function chkVisible(cl, plain, open) {
+// estimate for contain-intrinsic-size, so the rendered count and the estimated count can't drift. Open first, done last (stable),
+// the composer's and the row's alike. held: item key (id, or a row's ci) → the done it showed before a tick still in place (app.js _holdChk).
+export function chkVisible(cl, plain, open, held) {
   if (plain) return { rows: cl, hidden: 0, more: 0 };
-  const view = cl.slice().sort(byDone), done = view.filter(x => x.done), more = Math.max(done.length - 2, 0);
-  return { rows: !more || open ? view : view.filter(x => !x.done).concat(done.slice(0, 2)), hidden: open ? 0 : more, more };
+  const isDone = x => !!(held?.has(x.id ?? x.ci) ? held.get(x.id ?? x.ci) : x.done);
+  const view = cl.slice().sort((a, b) => isDone(a) - isDone(b)), done = view.filter(isDone), more = Math.max(done.length - 2, 0);
+  return { rows: !more || open ? view : view.filter(x => !isDone(x)).concat(done.slice(0, 2)), hidden: open ? 0 : more, more };
 }
 
-// Live editor for a composer checklist item: everything after the first "::" renders small/faded inline (the ::
-// is a dimmed marker). textContent(chkLive(t)) === t so the contenteditable caret math holds (same contract as mdLive).
-export const chkLive = (text) => {
+// Live editor for a composer checklist item: everything after the first "::" is its note, led by the "::" as a marker
+// (the caret at the note's start touches it). textContent(chkLive(t)) === t so the caret math holds (same contract as mdLive).
+// tail goes inside the note's block: a <br> after it leaves the caret before a trailing newline.
+export const chkLive = (text, tail = '') => {
   const s = String(text ?? ''), i = _chkSep(s);
-  return i < 0 ? mdLive(s)
-    : `${mdLive(s.slice(0, i))}<span class="dm-mark">::</span><span class="chk-idesc">${mdLive(s.slice(i + 2))}</span>`;
+  return i < 0 ? mdLive(s) + tail
+    : `${mdLive(s.slice(0, i))}<span class="chk-idesc"><span class="dm-tok"><span class="dm-mark">::</span></span>${mdLive(s.slice(i + 2))}${tail}</span>`;
 };
+
+// A composer title's live Markdown (a pill editor's text between chips): mdTitle's constructs, markers kept as in mdLive.
+export const titleLive = src => _dLine(String(src ?? ''), true);
 
 // Inline markdown for task titles: bold/italic/strike/code/links; no headings/bullets (-/# stay literal); markers removed.
 const _titleMemo = new Map();   // ceiling: cleared past 20k titles; an LRU if a corpus that size churns it
@@ -221,18 +241,24 @@ export const rowBodyHtml = (r, opts = {}) => {
   const row1 = (left, right) => `<div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${left}</div><div class="r1r flex items-center gap-8 min-w-0">${right}</div></div>`;
   // Plan's tray: one flat line — check, title, project, when. Nothing that unfolds, nests or ages (user, decision #79).
   if (opts.tray) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}</div>`;
-  // One chip per item; the ladder drops names one at a time and rolls >3 into the first chip's count (app.js _relIcon).
-  const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map((rl, i) =>
-    `<button type="button" class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11" data-act="rel" data-rel="${esc(rl.id)}" aria-label="Blocked by ${esc(rl.name)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${i || r.rels.length < 4 ? '' : `<span class="row-rel-n">${r.rels.length}</span>`}</button>`).join('')}</div>` : '';
+  // One chip per item, blockers then files; the ladder drops names one at a time and rolls a kind's >3 into its first chip's count (app.js _relIcon).
+  const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map(rl =>
+    `<button type="button" class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11" data-act="rel" data-kind="${rl.type}" data-rel="${esc(rl.id)}" aria-label="${esc(rl.label)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${rl.n ? `<span class="row-rel-n">${rl.n}</span>` : ''}</button>`).join('')}</div>` : '';
   // Relations are a LINE-1 CITIZEN — the ladder sheds them like anything else, so a row with a relation is
   // no longer two lines at every width. The DESCRIPTION is the deliberate exception: prose always owns its own line
   // (user, 2026-08-17), so it never competes with the title and never joins the meta line. → app.js LADDER
-  const desc = t.notes ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(t.notes, { inline: true, copy: true })}</span></div>` : '';
+  const head = t.notes ? t.notes.slice(0, mdCut(t.notes, 0, 1000)) : '';   // one line shows: the first 1000+ chars, never half a fence
+  let lead = head;
+  for (const m of _hasFence(head) ? head.matchAll(_fences) : []) if (m[1].includes('\n')) {   // a code block after prose would wrap below the one line, half clipped; a one-line fence stays inline
+    if (head.slice(0, m.index).trim()) lead = head.slice(0, m.index);
+    break;
+  }
+  const desc = t.notes ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(lead, { inline: true, copy: true })}</span></div>` : '';
   // Checklist items pre-split (text::desc) in mkRow; fall back for callers that pass a bare row.
   const cl = r.chk || (t.checklist || []).map(chkParts);
   // Display-only sort: done below open (stable); data-ci = original index so toggling never reorders the stored array.
   const plain = !!t.checklist_plain;   // uncheckable: plain notes list — bullets instead of boxes, no done styling
-  const { rows: clRows, hidden, more } = chkVisible(cl, plain, opts.chkOpen);
+  const { rows: clRows, hidden, more } = chkVisible(cl, plain, opts.chkOpen, opts.chkHeld);
   const morePlaceholder = more ? `<button type="button" class="chk-row flex gap-8 chk-more" data-act="chk-more"><span class="chk-more-txt">${hidden ? '…' + hidden + ' more' : 'Show less'}</span></button>` : '';
   const chkMd = s => md(s, { inline: true, literal: !_hasFence(s), copy: true });
   const renderRow = ({ ci, done, txt, desc }) =>
@@ -256,13 +282,15 @@ export const rollerBoxHtml = (it) => {
     ? `<span class="rl-ic rl-prog" style="--p:${esc(it.progress || 0)};--pc:${esc(it.color || 'var(--muted)')}"></span>`
     : `<span class="rl-ic"${it.color ? ` style="color:${esc(it.color)}"` : ''}><svg class="ico"><use href="#${esc(it.icon || 'i-circle')}"/></svg></span>`;
   const cnt = (it.count ?? '') !== '' ? `<span class="rl-cnt">${esc(it.count)}</span>` : '';
-  const more = it.kind === 'loc' ? '' : `<button type="button" class="rl-more" data-more="${it.kind}:${it.id ?? ''}">&#8943;</button>`;   // 'Manage locations' has no per-item menu
+  const more = it.kind === 'loc' ? '' : it.kind === 'arch' ? `<svg class="ico rl-chev${it.open ? ' open' : ''}"><use href="#i-chev-d"/></svg>`   // 'Manage locations' has no per-item menu; the Archived row folds
+    : `<button type="button" class="rl-more" data-more="${it.kind}:${it.id ?? ''}">&#8943;</button>`;
   // The rail has no drag, so these arrows ARE the ordering control — they sit beside the ⋯ instead of inside it
   // because reordering is a repeated one-press-per-step action, and a menu round-trip per step kills that.
   // Backlog/locations are fixed rows: there is nothing to order them against.
-  const mv = ['proj', 'area', 'filter'].includes(it.kind) ? `<span class="rl-mv">${[-1, 1].map(d =>
+  const mv = ['proj', 'area', 'filter'].includes(it.kind) && !it.archived ? `<span class="rl-mv">${[-1, 1].map(d =>
     `<button type="button" class="rl-mvb" data-move="${it.kind}:${it.id}:${d}" aria-label="Move ${d < 0 ? 'up' : 'down'}"><svg class="ico"><use href="#i-chev-d"/></svg></button>`).join('')}</span>` : '';
-  return html`<div class="rl-box" data-ridx="${it.ridx}"${raw(indent)}>${raw(icon)}<span class="rl-nm">${it.label}</span>${raw(cnt)}${raw(mv)}${raw(more)}</div>`;
+  const cls = it.kind === 'arch' ? ' rl-arch-row' : it.archived ? ' rl-arch' : '';
+  return html`<div class="rl-box${cls}" data-ridx="${it.ridx}"${raw(indent)}>${raw(icon)}<span class="rl-nm">${it.label}</span>${raw(cnt)}${raw(mv)}${raw(more)}</div>`;
 };
 
 // The strip IS the navigation on a phone (the hamburger is gone), so every dot needs a name: cd-far wears

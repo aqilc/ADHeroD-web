@@ -27,13 +27,13 @@ const dayDiff = (iso, now) => {
   return { d, diff: Math.round((d - midnight(now)) / 86400000) };
 };
 
-// Short relative label for a due date: past reads "…ago", future extends past this week; both fall back to an
-// absolute date beyond ~6 weeks. (Weekday shown for the coming few days; "Nd ago" for the past few.)
+// Short relative label for a due date: weekdays within a week either side ("Last Mon", "Fri", "Next Mon"), then
+// weeks and months; both fall back to an absolute date beyond ~6 weeks. Never "missed" (user: tweak-7).
 const relDue = (d, diff, now) => {
-  const ago = diff < 0, n = Math.abs(diff);
+  const ago = diff < 0, n = Math.abs(diff), day = () => d.toLocaleDateString([], { weekday: 'short' });
   if (n === 1)  return ago ? L.yest : L.tmr;
-  if (n <= 6)   return ago ? `${n}d ago` : d.toLocaleDateString([], { weekday: 'short' });
-  if (n <= 13)  return ago ? 'Last week' : 'Next wk';
+  if (n <= 6)   return ago ? `Last ${day()}` : day();
+  if (n <= 13)  return ago ? 'Last week' : `Next ${day()}`;
   if (n <= 27)  return `${Math.round(n / 7)}w${ago ? ' ago' : ''}`;
   if (n <= 45)  return ago ? 'Last month' : 'Next month';
   return shortDate(d, now);

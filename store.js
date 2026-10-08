@@ -26,7 +26,7 @@ export const baseTask = () => {
   return {
     id: crypto.randomUUID(), content: '', notes: null, importance: 'none', recur_from: null, available_from: null, deadline_at: null,
     est_minutes: null, parent_id: null, area_ids: [], goal_ids: [], color: null, favorite: false, place: null, location: { mode: 'any', ids: [] }, milestone: false,
-    position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], overview: false, checklist: [], checklist_plain: false, task_type: null,
+    position: 0, completed_at: null, archived_at: null, blocked_by: [], relates: [], attachments: [], overview: false, checklist: [], checklist_plain: false, task_type: null,
     recurrence: null, completions: [], created_at: ts, updated_at: ts,
     starts_at: null, ends_at: null, tz: null, task_size: null, anchor: null, possible: null,
   };
@@ -40,9 +40,10 @@ export function subtreeDepth(rows, id, kids = childIndex(rows)) {
   return depth;
 }
 // [id, ...all descendant ids], breadth-first in kids' order. Cycle-safe. kids: parent → ids, or → rows (the app's _taskIdx).
-export function descendantIds(projects, id, kids = childIndex(projects)) {
+// skip: a descendant it's true for is left out with its subtree.
+export function descendantIds(projects, id, kids = childIndex(projects), skip = null) {
   const result = [id], seen = new Set([id]);
-  for (let i = 0; i < result.length; i++) for (const c of kids.get(result[i]) || []) { const k = c.id ?? c; if (!seen.has(k)) { seen.add(k); result.push(k); } }
+  for (let i = 0; i < result.length; i++) for (const c of kids.get(result[i]) || []) { const k = c.id ?? c; if (!seen.has(k) && !skip?.(k)) { seen.add(k); result.push(k); } }
   return result;
 }
 
@@ -64,10 +65,11 @@ export function projectDepth(projects, id) {
 }
 
 // Incomplete descendants + incomplete blockers that a completion of `id` would sweep (archived rows and notes excluded — never force-completed).
-// byId/kids: the app passes the indexes it holds — two O(n) builds per call otherwise.
-export function pendingSweep(rows, id, byId = new Map(rows.map(r => [r.id, r])), kids = childIndex(rows)) {
+// A repeating parent's occurrence leaves the subtasks with their own repeat alone. byId/kids: the app passes the indexes it holds — two O(n) builds per call otherwise.
+export function pendingSweep(rows, id, byId = new Map(rows.map(r => [r.id, r])), kids = childIndex(rows), ts = new Date().toISOString()) {
   const t = byId.get(id); if (!t || inNotes(t)) return [];   // a note never completes, so it sweeps nothing
-  return [...new Set([...descendantIds(rows, id, kids).slice(1), ...(t.blocked_by || [])])].filter(x => { const r = byId.get(x); return r && !r.completed_at && !r.archived_at && !inNotes(r); });
+  const own = occursAgain(t, ts) ? k => recActive(byId.get(k)?.recurrence) : null;
+  return [...new Set([...descendantIds(rows, id, kids, own).slice(1), ...(t.blocked_by || [])])].filter(x => { const r = byId.get(x); return r && !r.completed_at && !r.archived_at && !inNotes(r); });
 }
 export function ancestorIds(rows, id) {
   const out = [], seen = new Set([id]); let cur = rows.find(r => r.id === id);
@@ -80,14 +82,16 @@ export const ancestorsToReopen = (rows, id) => { const t = rows.find(r => r.id =
   return t && !t.completed_at && !t.archived_at ? ancestorIds(rows, id).filter(a => rows.find(r => r.id === a)?.completed_at) : []; };
 // Parent ids (bottom-up) to auto-complete after id is marked done — stops when a sibling is still open, at a note (never
 // done, so an open child of its own parent), or at the default project, which never auto-completes (pg twin: auto_complete_parent).
-export function parentsToComplete(rows, id, defaultId) {
+// ts: a completion — a repeating parent whose rule goes on ends the list (its occurrence advances, so it stays open).
+export function parentsToComplete(rows, id, defaultId, ts = null) {
   const out = [], marked = new Set(); let cur = rows.find(r => r.id === id);
   while (cur?.parent_id) {
     const parent = rows.find(r => r.id === cur.parent_id); if (!parent) break;
-    const kids = rows.filter(r => r.parent_id === parent.id);
-    // archived children count as satisfied (like completed) so a parent can close when its remaining work is done/abandoned.
-    const done = kids.length && kids.every(k => k.completed_at || k.archived_at || marked.has(k.id));
-    if (done && parent.id !== defaultId && !inNotes(parent)) { if (!parent.completed_at && !parent.archived_at) { out.push(parent.id); marked.add(parent.id); } cur = parent; }
+    const kids = rows.filter(r => r.parent_id === parent.id), occurs = ts && occursAgain(parent, ts);
+    // archived children count as satisfied (like completed) so a parent can close when its remaining work is done/abandoned;
+    // under an occurrence, so does a subtask with its own repeat (left alone).
+    const done = kids.length && kids.every(k => k.completed_at || k.archived_at || marked.has(k.id) || occurs && recActive(k.recurrence));
+    if (done && parent.id !== defaultId && !inNotes(parent)) { if (!parent.completed_at && !parent.archived_at) { out.push(parent.id); marked.add(parent.id); } if (occurs) break; cur = parent; }
     else break;
   }
   return out;
@@ -235,7 +239,7 @@ export function buildFreeText(uf, getIdx, tasks) {   // getIdx: the index is bui
 }
 // Prepend id to a recent list, dedup, cap at 12.
 export const updateRecent = (id, recent) => [id, ...(recent || []).filter(x => x !== id)].slice(0, 12);
-// Compute recurrence advance patch for a completed occurrence (non-mutating; returns {recurrence,recur_from,completed_at}).
+// Compute recurrence advance patch for a completed occurrence (non-mutating; returns {recurrence,recur_from,completed_at[,checklist]}).
 export function advanceRecurrence(target, ts) {
   const wasArray = Array.isArray(target.recurrence);
   const rules = recRules(target.recurrence).map(r => ({ ...r }));
@@ -250,11 +254,42 @@ export function advanceRecurrence(target, ts) {
   let completed_at = null, recur_from = target.recur_from;
   if (!best) completed_at = ts;
   else { best.rule.gen_due = true; recur_from = best.iso + (best.rule.at ? 'T' + best.rule.at : (target.recur_from?.length > 10 ? target.recur_from.slice(10) : '')); }
-  return { recurrence: rec, recur_from, completed_at };
+  return { recurrence: rec, recur_from, completed_at, ...!completed_at && untick(target) };   // the next occurrence starts unticked
+}
+const untick = t => !t.checklist_plain && t.checklist?.some(c => c.done) && { checklist: t.checklist.map(c => ({ ...c, done: false })) };   // a plain list has no ticks
+// A completion of t now is an occurrence: its rule goes on, so it advances instead of closing.
+const occursAgain = (t, ts) => recActive(t?.recurrence) && !t.completed_at && !advanceRecurrence(t, ts).completed_at;
+// What completing `id` writes, net per row (both stores apply it). A repeating task advances instead of closing; a repeating
+// parent's occurrence (the target, or the top of the walk) also reopens the subtasks that follow its date, unticked: no date, deadline or
+// repeat of their own, not archived (a dated one stays done, an own repeat is left alone). placed: placedMap.
+export function completionPatches(rows, id, ts, defaultId, placed) {
+  const byId = new Map(rows.map(r => [r.id, r])), kids = childIndex(rows), t = byId.get(id), out = new Map();
+  const set = (x, patch) => out.set(x, { ...out.get(x), ...patch });
+  const adv = recActive(t.recurrence) && !t.completed_at ? advanceRecurrence(t, ts) : null;
+  if (!adv || kids.has(id)) {
+    for (const x of pendingSweep(rows, id, byId, kids, ts)) {
+      const r = byId.get(x);
+      set(x, { completed_at: ts, ...recActive(r.recurrence) && { recurrence: pauseRecurrence(r.recurrence) } });   // pause, never destroy
+    }
+  }
+  set(id, adv ?? { completed_at: ts });
+  const after = rows.map(r => out.has(r.id) ? { ...r, ...out.get(r.id) } : r), walk = out.get(id).completed_at ? parentsToComplete(after, id, defaultId, ts) : [];
+  for (const x of walk) set(x, { completed_at: ts });
+  const top = walk.at(-1), occ = adv && !adv.completed_at ? kids.has(id) && id : top && occursAgain(byId.get(top), ts) && top;
+  if (!occ) return out;
+  if (occ !== id) set(occ, advanceRecurrence(byId.get(occ), ts));
+  const own = k => { const r = byId.get(k); return r.archived_at || r.recurrence || r.deadline_at || placed.has(k); };   // a repeat's anchor and a deadline are its own date (a start date alone isn't)
+  for (const x of descendantIds(rows, occ, kids, own).slice(1)) {
+    const r = byId.get(x), patch = { ...r.completed_at && { completed_at: null }, ...!inNotes(r) && untick(r) };
+    if (Object.keys(patch).length) out.set(x, patch); else out.delete(x);   // swept open: it ends where it began
+  }
+  return out;
 }
 // A placement is minted in a clock — stamp it (freeze §8 step 3) so day-boundary math survives travel. Explicit tz wins.
 export const captureTz = f => { if ((f.starts_at || f.ends_at) && !f.tz) f.tz = Intl.DateTimeFormat().resolvedOptions().timeZone; return f; };
 // Pause all rules in a recurrence (non-mutating).
+// An archive takes the open tasks under its root; an Unarchive brings back only those at the root's instant, never one archived on its own
+export const cascades = (root, t, val) => val ? !t.completed_at && !t.archived_at : Date.parse(t.archived_at) === Date.parse(root.archived_at);
 export const pauseRecurrence = rec => Array.isArray(rec) ? rec.map(x => ({ ...x, paused: true })) : { ...rec, paused: true };
 // Seed initial recur_from for a new recurring task (mutates rec's rule to mark gen_due). Returns recur_from string or null.
 export function seedRecurrenceDue(rec, ts) {
@@ -499,7 +534,7 @@ export function createLocalStore(opts = {}) {
     if (fields.project) {
       const tasks = readTasks();
       const ts = now();
-      let t = tasks.find(x => x.parent_id === null && x.content === fields.project);
+      let t = tasks.find(x => x.parent_id === null && x.content === fields.project && !x.archived_at);   // an archived one is retired: the name starts a new project
       if (!t) {
         const pos = tasks.length ? Math.min(...tasks.map(x => x.position ?? 0)) - 1 : 0;
         t = { ...baseTask(), id: uuid(), content: fields.project, position: pos, overview: true, created_at: ts, updated_at: ts };
@@ -718,7 +753,7 @@ export function createLocalStore(opts = {}) {
             checklist_plain: fields.checklist_plain ?? false,
             task_type: fields.task_type ?? null,
             milestone: fields.milestone ?? false,
-            blocked_by: fields.blocked_by ?? [], relates: fields.relates ?? [],
+            blocked_by: fields.blocked_by ?? [], relates: fields.relates ?? [], attachments: fields.attachments ?? [],
             // substrate columns — Supabase create persists these via its post-insert update; parity demands the same here
             task_size: fields.task_size ?? null, anchor: fields.anchor ?? null, possible: fields.possible ?? null,
             starts_at: fields.starts_at ?? null, ends_at: fields.ends_at ?? null, tz: fields.tz ?? null,
@@ -823,39 +858,28 @@ export function createLocalStore(opts = {}) {
         } catch (e) { console.error('[store] remove failed', e); return false; }
       },
       async setCompleted(id, done) {
-        const [rows, edit, get] = cow(TASKS_KEY), ts = now();
-        const mark = (tid, val) => { const r = edit(tid); if (r) { r.completed_at = val; r.updated_at = nextTs(ts, r.updated_at); } };
+        const [rows, edit] = cow(TASKS_KEY), ts = now();
         const target = rows.find(r => r.id === id); if (!target) return false;
         if (done && inNotes(target)) return true;   // a note is reference, never done: every completing path lands here
-        // Recurring: advance recur_from unless every statement ends (all-paused falls through to permanent complete).
-        if (done && recActive(target.recurrence) && !target.completed_at && !rows.some(r => r.parent_id === id)) {
-          const t = edit(id);
-          t.updated_at = nextTs(ts, t.updated_at);
-          Object.assign(t, advanceRecurrence(t, ts));
-          if (t.completed_at) for (const pid of parentsToComplete(rows, id, readMeta().default_project_id)) mark(pid, ts);   // the last occurrence: auto_complete_parent.sql
-          return writeTasks(rows);
-        }
-        if (done) {
-          const kids = rows.some(r => r.parent_id === id) ? childIndex(rows) : new Map();   // a leaf sweeps only its blockers
-          for (const x of pendingSweep(rows, id, { get }, kids)) {
-            const r = edit(x);
-            if (r?.recurrence && recActive(r.recurrence)) r.recurrence = pauseRecurrence(r.recurrence);   // permanent completion pauses (never destroys) the rule(s)
-            mark(x, ts);
-          }
-          mark(id, ts);
-          for (const pid of parentsToComplete(rows, id, readMeta().default_project_id)) mark(pid, ts);
-        } else {
-          mark(id, null); reopen(rows, edit, id, ts);
-        }
+        const patches = done ? completionPatches(rows, id, ts, readMeta().default_project_id, placedMap(view(SCHEDULE_ITEMS_KEY))) : new Map([[id, { completed_at: null }]]);
+        for (const [x, patch] of patches) { const r = edit(x); Object.assign(r, patch); r.updated_at = nextTs(ts, r.updated_at); }
+        if (!done) reopen(rows, edit, id, ts);
         return writeTasks(rows);
       },
       // Archive: a task that can't be completed anymore. Non-destructive — pauses recurrence (never destroys the rule).
-      // Excluded from sweeps/parent-walks (see pendingSweep/parentsToComplete).
-      async setArchived(id, val) {
-        const [rows, edit] = cow(TASKS_KEY), ts = now(), t = edit(id); if (!t) return false;
-        t.archived_at = val ? ts : null; t.updated_at = nextTs(ts, t.updated_at);
-        if (val && recActive(t.recurrence)) t.recurrence = pauseRecurrence(t.recurrence);   // pause, never destroy
-        reopen(rows, edit, id, ts); return writeTasks(rows);
+      // Excluded from sweeps/parent-walks (see pendingSweep/parentsToComplete). ids: one id, or a cascade's set — one write, one instant.
+      async setArchived(ids, val) {
+        const [rows, edit] = cow(TASKS_KEY), ts = now(), asked = [ids].flat(), byId = new Map(rows.map(r => [r.id, r])), root = byId.get(asked[0]);
+        if (!asked.every(id => byId.has(id))) return false;
+        // as the stored rows stand, not another tab's view: a root another tab archived since keeps its instant, as signed in
+        const list = asked.filter(id => id === asked[0] ? !val || !root.archived_at : cascades(root, byId.get(id), val));
+        for (const id of list) {
+          const t = edit(id);
+          t.archived_at = val ? ts : null; t.updated_at = nextTs(ts, t.updated_at);
+          if (val && recActive(t.recurrence)) t.recurrence = pauseRecurrence(t.recurrence);   // pause, never destroy
+        }
+        for (const id of list) reopen(rows, edit, id, ts);
+        return writeTasks(rows) && list;   // the ids written: the caller's undo takes back only those
       },
       async link(id, otherId, type) {
         if (id === otherId) return false;

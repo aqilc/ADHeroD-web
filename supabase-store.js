@@ -1,6 +1,6 @@
 // Supabase adapter — same interface as createLocalStore (see store.js). Mapping helpers exported for tests.
 
-import { chkIds, childIndex, descendantIds, projectDepth, subtreeDepth, pendingSweep, ancestorsToReopen, parentsToComplete, movedOutParents, removedOutParents, recActive, MAX_DEPTH, resolveAreaNames, searchDocs, buildFreeText, updateRecent, advanceRecurrence, pauseRecurrence, seedRecurrenceDue, captureTz, placedMap, REFS, liveRefs, overviewFields } from './store.js';
+import { chkIds, childIndex, descendantIds, projectDepth, subtreeDepth, ancestorsToReopen, completionPatches, movedOutParents, removedOutParents, recActive, MAX_DEPTH, resolveAreaNames, searchDocs, buildFreeText, updateRecent, pauseRecurrence, seedRecurrenceDue, captureTz, placedMap, REFS, liveRefs, overviewFields } from './store.js';
 import { makeFuzzy, buildSearchDocs, matchQuery } from './search.js';
 import { isoDate } from './nlp.js';
 import { inNotes } from './predicates.js';
@@ -37,6 +37,7 @@ export function hydrateTask(row) {
     archived_at: row.archived_at ?? null,
     blocked_by: rel.filter(r => r.type === 'needs').map(r => r.related_id),
     relates: rel.filter(r => r.type === 'relates').map(r => r.related_id),
+    attachments: row.attachments ?? [],   // never in dehydrateTask: an INSERT naming it fails whole until db:apply, so it rides an UPDATE
     overview: row.overview ?? false,
     milestone: row.milestone ?? false,
     checklist: chkIds((row.checklist ?? []).map(({ id, text, done }) => ({ id, text, done }))),   // array order IS the order
@@ -366,7 +367,8 @@ export function createSupabaseStore(client) {
   // A project named, not picked (the # pill) → its root task, made an overview project if new: LocalStore's resolveParent.
   // A failed create throws here (null.id), so the caller's save fails rather than filing the task somewhere else.
   async function projectId(name, create) {
-    return ((await taskRows()).find(t => t.parent_id === null && t.content === name) ?? await create({ content: name, parent_id: null, overview: true })).id;
+    return ((await taskRows()).find(t => t.parent_id === null && t.content === name && !t.archived_at) ??   // an archived one is retired: the name starts a new project
+      await create({ content: name, parent_id: null, overview: true })).id;
   }
 
   // Replaces one edge-type in task_relations ('relates' is symmetric: mirrors too). The new set lands first, only
@@ -457,6 +459,7 @@ export function createSupabaseStore(client) {
         const landed = new Set(data.map(r => r.id)), rels = out.flatMap(({ task_relations }, i) => landed.has(ids[i]) ? task_relations.map(r => ({ ...r, task_id: ids[i], user_id: uid })) : []);
         for (const id of ids) if (!landed.has(id)) live?.add(id);
         if (!await upsertLive('relation', 'task_relations', rels, 'task_id,related_id,type')) return false;
+        for (const t of rows) if (landed.has(t.id) && t.attachments?.length && (await taskUpdate(t.id, uid, { attachments: t.attachments })).error) return false;   // out of the upsert: see hydrateTask
         if (!await refreshTasks(ids)) { _loaded = false; _cacheV++; }   // landed; a failed refetch leaves the cache cold, so the next read re-pulls
         // a landed open subtree root reopens its done ancestors (a live one is as it was left); a failed reopen can't fail the restore
         const back = new Set(ids);
@@ -606,7 +609,7 @@ export function createSupabaseStore(client) {
           const uid = await userId();
           captureTz(fields);
           const curr = _cTasks.find(x => x.id === id);
-          const upd = { ...pick(fields, ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'task_size', 'anchor', 'possible', 'starts_at', 'ends_at', 'tz', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'overview', 'milestone', 'checklist_plain', 'task_type']) };
+          const upd = { ...pick(fields, ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'task_size', 'anchor', 'possible', 'starts_at', 'ends_at', 'tz', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'archived_at', 'overview', 'milestone', 'checklist_plain', 'task_type', 'attachments']) };
           if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;   // one jsonb column now
           if ('location' in fields) { upd.location_mode = fields.location?.mode ?? 'any'; upd.location_ids = fields.location?.ids ?? []; }
           if ('areas' in fields || 'area_ids' in fields) upd.area_ids = await resolveAreaIds(fields);
@@ -726,33 +729,29 @@ export function createSupabaseStore(client) {
         const target = rows.find(r => r.id === id); if (!target) return false;
         if (done && inNotes(target)) return true;   // a note is reference, never done: every completing path lands here
 
-        // Recurring: advance recur_from unless every statement ends (all-paused falls through to permanent complete).
-        if (done && recActive(target.recurrence) && !target.completed_at && !rows.some(r => r.parent_id === id)) {
-          const { recurrence: rec, recur_from: newDueAt, completed_at: newCompletedAt } = advanceRecurrence(target, ts);
-          markEcho(id);
-          const { error } = await client.from('tasks').update({ recurrence: rec, recur_from: newDueAt, completed_at: newCompletedAt }).eq('id', id).eq('user_id', uid);
-          await refreshTasks([id]);
-          return !error;
-        }
-
         if (done) {
-          const sweepIds = pendingSweep(rows, id);
-          const toMark = [...new Set([...sweepIds, id])];
-          const affected = [...toMark];
-          // Recurring tasks swept by a parent completion are permanently completed — the rule is PAUSED, never destroyed.
-          const recurringSwept = sweepIds.filter(sid => recActive(rows.find(x => x.id === sid)?.recurrence));
-          if ((await client.from('tasks').update({ completed_at: ts }).in('id', toMark).eq('user_id', uid)).error) return false;
-          // Independent writes fan out in parallel — a sweep of N tasks was N+ sequential RTTs (the felt save lag on cloud).
-          const res = recurringSwept.length ? await Promise.all(recurringSwept.map(sid => client.from('tasks').update({ recurrence: pauseRecurrence(rows.find(r => r.id === sid).recurrence) }).eq('id', sid).eq('user_id', uid))) : [];
-          const updatedRows = rows.map(r => toMark.includes(r.id) ? { ...r, completed_at: ts } : r);
-          const pids = parentsToComplete(updatedRows, id, (await settings()).default_project_id);
-          if (pids.length) {
-            res.push(await client.from('tasks').update({ completed_at: ts }).in('id', pids).eq('user_id', uid));
-            affected.push(...pids);
-          }
-          markEcho(...affected);
-          await refreshTasks(affected);   // a part that failed: the cache shows what did land
-          if (res.some(r => r.error)) return false;
+          const placed = await COLL.schedule_items.list().catch(() => null); if (!placed) return false;
+          const plan = rs => completionPatches(rs, id, ts, def, placedMap(placed)), def = (await settings()).default_project_id, patches = plan(rows);
+          const only = v => [...patches].filter(([, p]) => Object.keys(p).length === 1 && p.completed_at === v).map(([x]) => x), closes = only(ts), opens = only(null);
+          const rest = [...patches].filter(([x]) => !closes.includes(x) && !opens.includes(x));
+          markEcho(...patches.keys());
+          // A rest patch rewrites columns (checklist, recurrence) from the row as read: only over that row, as setChecklistItem.
+          // Another device's edit since (the cache can miss it) matches nothing, so the patch is remade from one fresh read.
+          const put = (x, p, at) => client.from('tasks').update(p).eq('id', x).eq('user_id', uid).eq('updated_at', at).select('id');
+          // A row our own closes closed (the old trigger stamps this ts) is re-planned as it was: still open.
+          const ours = r => r && Date.parse(r.completed_at) === Date.parse(ts) ? { ...r, completed_at: null } : r;
+          const guarded = async ([x, p]) => {
+            const res = await put(x, p, rows.find(r => r.id === x).updated_at); if (res.error || res.data?.length) return res;
+            const fresh = await this.get(x).catch(() => null), again = fresh && plan(rows.map(r => r.id === x ? ours(fresh) : r)).get(x);
+            return again ? put(x, again, fresh.updated_at) : { error: !fresh };
+          };
+          // In turn: closes, reopens, then the rewrites. A server still on the old auto_complete_parent closes the repeating
+          // parent and reopen_ancestors may take it back; both are settled before its advance lands. Partial: the app rolls back.
+          const res = [];
+          for (const [ids, v] of [[closes, ts], [opens, null]]) if (ids.length && !res.some(r => r.error)) res.push(await client.from('tasks').update({ completed_at: v }).in('id', ids).eq('user_id', uid).select('id'));
+          if (!res.some(r => r.error)) res.push(...await Promise.all(rest.map(guarded)));
+          await refreshTasks([...patches.keys()]);   // a part that failed: the cache shows what did land
+          if (res.some(r => r.error || r.data?.length === 0)) return false;
         } else {
           markEcho(id);
           const { error } = await client.from('tasks').update({ completed_at: null }).eq('id', id).eq('user_id', uid);
@@ -762,19 +761,26 @@ export function createSupabaseStore(client) {
         return true;
       },
 
-      // Archive: a task that can't be completed anymore. Non-destructive — pauses recurrence; echo-marked, single-row patch.
-      // Excluded from sweeps/parent-walks (see store.js).
-      async setArchived(id, val) {
-        const uid = await userId(); const ts = new Date().toISOString();
+      // Archive: a task that can't be completed anymore. Non-destructive — pauses recurrence; echo-marked.
+      // Excluded from sweeps/parent-walks (see store.js). ids: one id, or a cascade's set at one instant — all or none.
+      async setArchived(ids, val) {
+        const uid = await userId(), ts = new Date().toISOString(), list = [ids].flat(), at = val ? ts : null;
         const rows = await taskRows().catch(() => null); if (!rows) return false;
-        const t = rows.find(r => r.id === id); if (!t) return false;
-        const upd = { archived_at: val ? ts : null };
-        if (val && recActive(t.recurrence)) upd.recurrence = pauseRecurrence(t.recurrence);   // pause, never destroy
-        markEcho(id);
-        const { error } = await client.from('tasks').update(upd).eq('id', id).eq('user_id', uid);
-        if (error) return false;
-        await refreshTasks([id]); await reopenAncestors(id, uid);
-        return true;
+        const byId = new Map(rows.map(r => [r.id, r])); if (!list.every(x => byId.has(x))) return false;
+        // each write holds the server row to what this cache saw (cascades): a row another device archived on its own since keeps its instant
+        const was = byId.get(list[0]).archived_at, held = (q, back) => val !== !!back ? q.is('archived_at', null) : q.eq('archived_at', back ? ts : was);
+        const repeats = val ? list.filter(x => recActive(byId.get(x).recurrence)) : [], plain = list.filter(x => !repeats.includes(x));
+        const put = (x, upd, back) => held(client.from('tasks').update(upd).eq('id', x).eq('user_id', uid), back).select('id');
+        markEcho(...list);
+        // ceiling: one URL holds ~150 ids — a cascade past that splits into requests; chunk it once a project that big archives
+        const res = await Promise.all([...plain.length ? [held(client.from('tasks').update({ archived_at: at }).in('id', plain).eq('user_id', uid)).select('id')] : [],
+          ...repeats.map(x => put(x, { archived_at: at, recurrence: pauseRecurrence(byId.get(x).recurrence) }))]);   // pause, never destroy
+        const wrote = res.flatMap(r => r.data || []).map(r => r.id);   // the held rows the server took: the caller's undo takes back only those
+        // a part failed: the parts that landed go back, so no row is left half-archived
+        if (res.some(r => r.error)) await Promise.all(wrote.map(x => put(x, { archived_at: byId.get(x).archived_at ?? null, ...repeats.includes(x) && { recurrence: byId.get(x).recurrence } }, true)));
+        await refreshTasks(list); if (res.some(r => r.error)) return false;
+        await reopenAncestors(list[0], uid);
+        return wrote;
       },
       async link(id, otherId, type) {
         if (id === otherId) return false;

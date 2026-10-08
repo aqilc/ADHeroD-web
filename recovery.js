@@ -4,11 +4,20 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);   // deep-equal fo
 
 // Keep only the fields whose current live value still equals what we last wrote (`expect`).
 // A field changed underneath (by another device or a later edit) is dropped → never clobbered.
+// attachments merge by id instead: putting one file back must not undo another one added or removed since.
 export function guardedFields(target, currentRow, expect) {
   const out = {};
-  for (const k in target) if (!(k in expect) || eq(currentRow?.[k], expect[k])) out[k] = target[k];
+  for (const k in target) {
+    if (k === 'attachments' && k in expect && currentRow?.id) out[k] = byMember(currentRow?.[k] ?? [], target[k] ?? [], expect[k] ?? []);
+    else if (!(k in expect) || eq(currentRow?.[k], expect[k])) out[k] = target[k];
+  }
   return out;
 }
+// In target's order (a file put back returns to its place), then the ones added since.
+const byMember = (cur, target, expect) => {
+  const keep = new Set([...cur.filter(id => target.includes(id) || !expect.includes(id)), ...target.filter(id => !expect.includes(id))]);
+  return [...target.filter(id => keep.has(id)), ...cur.filter(id => keep.has(id) && !target.includes(id))];
+};
 
 // A live row as a Bin copy, stamps and edges aside: restoring that copy over it would change nothing.
 const ASIDE = new Set(['updated_at', 'created_at', 'blocked_by', 'relates']);
