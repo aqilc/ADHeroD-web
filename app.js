@@ -183,6 +183,15 @@ let _appRaw = null;   // the component unproxied (init): visibleRows rebuilds on
 const GLIDE_ROWS = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head)';   // what _glideFrom moves
 const _push = new Map();   // task id → the Steps tick waiting for its re-rendered row (_stepTick)
 const _cele = new Map();   // task id → its running completion reward (_celebrate): its row holds its slot until it ends
+// A completion's ember burst: 7 to 9 particles around the check, each its own angle, reach, size and timing
+// (docs/ui/task-list.md §Completion reward). Rolled once per tick, so a re-rendered row replays the same burst.
+const emberBurst = () => {
+  const n = 7 + Math.floor(motion.rand() * 3);
+  return '<i class="ember">' + Array.from({ length: n }, (_, i) => {
+    const reach = 6 + motion.rand() * 8;   // px past the ring; the farther, the longer it flies
+    return `<i style="--a:${(i + motion.rand() * .5 - .25) * 360 / n}deg;--d:${reach}px;--s:${3 + motion.rand() * 1.5}px;--t:${480 + reach * 12 + motion.rand() * 80}ms;--f:${450 + motion.rand() * 100}ms"></i>`;
+  }).join('') + '</i>';
+};
 let _celeT = 0;   // the rewards' shared linger (_celebrate)
 let _rowPatch = null, _visBP = null, _visRoots = new Set();  // _visBP: the last full walk's parent → children index · _visRoots: its scope roots
 let _secKids = null;   // childIndex for this pass's section pies — one build, not one per head
@@ -330,7 +339,8 @@ const _chkHtml = new Map();   // item text → chkLive html: paintChk re-derives
 const DESC_BLOCK = 4000;   // chars per block of a huge description (_descHtml): about a screen of it
 let _liveOn = [];   // the live field's tokens showing their markers (liveReveal)
 const _canon = document.createElement('template');
-let _linkPress = null;   // a press on a composer link (description, title, subtask row): where it started (pointer and text), whether it moved into a selection
+let _linkPress = null;   // a press on a composer link (description, title, subtask or checklist row): where it started (pointer and text), whether it moved into a selection
+let _linkCard = null;   // the still press whose link card is open: its field and text point, for Edit
 let _press = null;   // the mouse press under way, a tap's too: the description shows markers at its release
 let _opened = null;   // the field openComposer focused: an opened task reads as a view, no markers, until a key or a press (web-14)
 const _textWidth = document.createElement('canvas').getContext('2d');   // _descHtml's chars-per-line estimate
@@ -663,15 +673,15 @@ document.addEventListener('alpine:init', () => {
         block.innerHTML = this._blockHtml(block, e.skipped);
         if (ends) this._setSel(block, ends);
       }, true);
-      // A press on a link opens it at release: focus would put the caret there, revealing its markers under the pointer.
-      // Past 4px it selects from where it started instead (4A); touch keeps its native long-press selection.
+      // A press on a link shows its card at release (4C): focus would put the caret there, revealing its markers under the pointer.
+      // Past 4px it selects from where it started instead; touch keeps its native long-press selection.
       document.addEventListener('mousedown', e => {
-        const el = e.target.closest?.('.composer a.dm-link')?.closest('.desc, .content, .sub-ce');
+        const el = e.target.closest?.('.composer a.dm-link')?.closest('.desc, .content, .sub-ce, .entry-txt');
         _press = e; _opened = null;
         _linkPress = el && { el, x: e.clientX, y: e.clientY, from: document.caretPositionFromPoint(e.clientX, e.clientY), moved: false };
         if (el) e.preventDefault();
       }, true);
-      document.addEventListener('click', e => { const a = _linkPress && !_linkPress.moved && e.target.closest('a.dm-link'); if (a) { e.preventDefault(); window.open(a.href, '_blank', 'noopener'); } });
+      document.addEventListener('click', e => { const a = _linkPress && !_linkPress.moved && e.target.closest('a.dm-link'); if (a) { e.preventDefault(); _linkCard = _linkPress; this.linkUrl = a.href; this.togglePop('link', a); } });
       document.addEventListener('mouseup', () => { _press = null; this._pastMarks(); this.liveReveal(); }, true);
       document.addEventListener('selectionchange', () => this.liveReveal());
       document.addEventListener('mousemove', e => {
@@ -1025,7 +1035,7 @@ document.addEventListener('alpine:init', () => {
     async inviteFriend() {
       const row = await createInvite(sbClient(), this._acct());
       if (!row) return this.notify('Invite link not made');
-      const url = `${location.origin}${location.pathname}?invite=${row.id}`;
+      const url = `https://7ris.net/?invite=${row.id}`;   // the desktop app's own origin (127.0.0.1) means nothing to a friend
       if (this.narrow && navigator.share) {
         try { return await navigator.share({ url }); } catch (e) { if (e.name === 'AbortError') return; }   // dismissing the sheet is a choice
       }
@@ -1941,7 +1951,7 @@ document.addEventListener('alpine:init', () => {
       const fx = _cele.get(id);
       if (fx && this.byId.get(id)?.completed_at) {
         c.add('cele', fx.mode, ...fx.leave ? ['leave'] : []);
-        if (fx.ember) el.querySelector('.check')?.insertAdjacentHTML('beforeend', '<i class="ember"></i>');
+        if (fx.ember) el.querySelector('.check')?.insertAdjacentHTML('beforeend', fx.ember);
       }
     },
     // The scroll-coordinate top of an entry, straight out of the model — a windowed list can be asked to go
@@ -3475,7 +3485,7 @@ document.addEventListener('alpine:init', () => {
       if (this.draft.areas.includes(id) && !this.reduceMotion())
         el.animate({ transform: ['scale(1)', 'scale(1.06)', 'scale(1)'] }, { duration: 180, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() || 'ease-out' });
     },
-    endPicking: false, tpop: false, calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
+    endPicking: false, tpop: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
     // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (placement, amber,
     // saved as a schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). Derived from
     // the draft on every open, so the pop always reads back what the task already holds.
@@ -4046,6 +4056,18 @@ document.addEventListener('alpine:init', () => {
       this._redraw(el, html + titleLive(text), frag => { frag.querySelectorAll('.nlp-pill').forEach((p, i) => p.replaceWith(pills[i])); el.replaceChildren(frag); });
     },
     _setCaret(el, off) { if (off != null) this._caret(...this._pointAt(el, off)); },
+    linkOpen() { this.pop = null; window.open(this.linkUrl, '_blank', 'noopener'); },
+    linkCopy() { this.pop = null; return this._copyText(this.linkUrl, 'Link copied'); },
+    // Edit: the caret goes where the link was pressed, which shows its markers.
+    linkEdit() {
+      const { el, from } = _linkCard;
+      this.pop = null;
+      if (!from?.offsetNode.isConnected) return;
+      getSelection().collapse(from.offsetNode, from.offset);
+      const off = this._caretOffset(el);   // a checklist row redraws as its focus turns it editable
+      el.focus({ preventScroll: true });
+      this._setCaret(el, off);
+    },
     // The DOM point `off` caret steps into el (its end past the last).
     _pointAt(el, off) {
       const w = this._chipWalker(el);
@@ -6053,6 +6075,7 @@ document.addEventListener('alpine:init', () => {
     chkRowUp(el, e) {
       const d = this._chkDownAt; this._chkDownAt = null; this._chkPointer = false;
       if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;   // a drag-select (or one begun off this row) → keep the selection, don't edit
+      if (e.target.closest('a.dm-link')) return;   // its link card opens instead
       if (el.isContentEditable) return;   // already editing (2nd click of dblclick) — let browser word-select natively
       const r = document.caretRangeFromPoint?.(e.clientX, e.clientY);
       if (r && el.contains(r.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
@@ -7002,7 +7025,7 @@ document.addEventListener('alpine:init', () => {
     // state (_stampRow), so nothing re-renders for it. Returns the linger's start, run once the write lands.
     _celebrate(r) {
       const id = r.t.id, full = this.celebrations === 'full', leaves = !r.depth || this.navSel.type === 'filter' || this.isOverviewProject(this.byId.get(r.t.parent_id));   // a subtask of a task stays inline
-      _cele.set(id, { mode: this.celebrations, leaves, leave: false, ember: full && !motion.gentle && motion.rand() < emberOdds(r.estSize) });
+      _cele.set(id, { mode: this.celebrations, leaves, leave: false, ember: full && !motion.gentle && motion.rand() < emberOdds(r.estSize) ? emberBurst() : '' });
       return () => {
         clearTimeout(_celeT);   // ONE linger, restarted by each tick: a burst exits together, never shifting rows under the pointer
         _celeT = setTimeout(() => this._celeExit(), motion.t(600));

@@ -385,15 +385,24 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .check.pending::after, .check.pending .lock-ico, .check.pending .pause-ico { display: none !important; }
 @keyframes checkSpin { to { transform: rotate(360deg); } }
 /* Completion reward (_celebrate; docs/ui/task-list.md §Completion reward): the tick springs in, a leaving row exits up.
-   Full adds a warm ring and, on a roll, one ember burst (8 dots on one element). Transform/opacity only: reduced motion keeps the fades, and _glideRows measures rows with the marks on. */
-.item.cele .check.done::after { animation: cele-tick 260ms var(--ease-spring) both; }
-.item.cele.full .check::before { content: ""; position: absolute; inset: -2.25px; border-radius: 50%; border: 2px solid var(--warm); pointer-events: none; animation: cele-pulse 280ms var(--ease-out) both; }
+   Full adds a warm ring and, on a roll, an ember burst off the ring (emberBurst). Each mark runs ~800ms, ending with the linger + exit. Transform/opacity only: reduced motion keeps the fades, and _glideRows measures rows with the marks on. */
+.item.cele .check.done::after { animation: cele-tick 800ms var(--ease-pop) both; }
+.item.cele.full .check::before { content: ""; position: absolute; inset: -2.25px; border-radius: 50%; border: 2px solid var(--warm); opacity: .55; pointer-events: none;
+  animation: cele-pulse 800ms var(--ease-pop) both, cele-fade 800ms var(--ease-in-out) both; }   /* bright while it springs out, then fades */
 .item.cele.leave { animation: cele-out 200ms var(--ease-out) both; }
-.check .ember { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; translate: -50% -50%; border-radius: 50%; pointer-events: none; animation: cele-ember 280ms var(--ease-out) both;
-  box-shadow: 0 -11px var(--warm), 8px -8px var(--hot), 11px 0 var(--deep), 8px 8px var(--gold), 0 11px var(--warm), -8px 8px var(--hot), -11px 0 var(--deep), -8px -8px var(--gold); }
-@keyframes cele-tick { from { scale: .4; opacity: 0; } }
-@keyframes cele-pulse { from { scale: .85; opacity: .9; } to { scale: 1.7; opacity: 0; } }
-@keyframes cele-ember { from { scale: .75; opacity: 0; } 25% { opacity: 1; } to { scale: 1.35; opacity: 0; } }   /* from the ring's edge, not over the tick */
+.check .ember { position: absolute; left: 50%; top: 50%; pointer-events: none; }
+.check .ember i { position: absolute; width: var(--s); height: var(--s); margin: calc(var(--s) / -2); border-radius: 50%; background: var(--accent);
+  animation: cele-ember var(--t) var(--ease-pop) both, cele-fade calc(var(--t) * .35) var(--ease-in-out) var(--f) both; }
+/* shades of the theme's accent, so every theme bursts in its own colour: paler, deeper, a hue step either way */
+.check .ember i:nth-child(4n+2) { background: oklch(from var(--accent) calc(l + .2) calc(c * .6) h); }
+.check .ember i:nth-child(4n+3) { background: oklch(from var(--accent) calc(l - .06) c calc(h - 14)); }
+.check .ember i:nth-child(4n) { background: oklch(from var(--accent) calc(l + .06) c calc(h + 20)); }
+@keyframes cele-tick { from { scale: .4; opacity: 0; } 15% { opacity: 1; } }   /* opaque early: the spring is in the scale */
+@keyframes cele-pulse { from { scale: .85; } to { scale: 1.6; } }
+@keyframes cele-ember {   /* from just past the ring (12px), not over the tick, out --d further */
+  from { translate: calc(cos(var(--a)) * 12px) calc(sin(var(--a)) * 12px); scale: .6; }
+  to { translate: calc(cos(var(--a)) * (12px + var(--d))) calc(sin(var(--a)) * (12px + var(--d))); } }
+@keyframes cele-fade { to { opacity: 0; } }
 @keyframes cele-out { to { opacity: 0; translate: 0 -4px; } }
 /* Clearing the day (_dayClearFx): the cleared calendar day's warm wash (.cl-cleared), rising over the whole page once */
 .day-clear { position: fixed; inset: auto 0 0 0; height: 40vh; z-index: 59; display: flex; align-items: center; justify-content: center; pointer-events: none;
@@ -482,7 +491,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
    --h holds one never drawn (measured at blur, else estimated by _descSize). */
 .desc-block { content-visibility: auto; contain-intrinsic-size: auto var(--h, 1lh); }
 .desc-block:last-child { content-visibility: visible; }   /* ⌘↓ into a skipped block lands at its start, not the end */
-:is(.desc, .composer-title .content, .sub-ce) a.dm-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+:is(.desc, .composer-title .content, .entry-txt) a.dm-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 /* One line, always: a linked task's title is arbitrary text, and wrapping it gave every dependent row a
    second (sometimes third) line of chrome. */
 .row-rels { flex-wrap: nowrap; overflow: hidden; min-width: 0; }   /* a line-1 citizen now — the ladder sheds it; .row2's own margin spaces it when it lands there */
@@ -840,21 +849,24 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 }
 /* Composer inline entries (Things-style): subtask/checklist rows + grayed ghost row */
 .entry-list { gap: 1px; }
-.entry { display: flex; align-items: center; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative;
+.entry { display: flex; align-items: flex-start; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative; font-size: 14px;
+  /* multiline entries: box, grip, chevron and trash anchor to the FIRST text line, never the row middle (1lh = the text's line box: the row carries its font size) */
+  > :is(.chk-rect, .ghost-check, .entry-chk) { margin-top: calc((1lh - 16px) / 2); }
+  .entry-chk { display: flex; }
   /* grip lives in the empty gutter LEFT of the entry (absolute → no reflow); revealed on hover */
-  .entry-grip { position: absolute; left: -16px; top: 0; bottom: 0; width: 14px; display: flex; align-items: center; justify-content: center;
+  .entry-grip { position: absolute; left: -16px; top: 0; bottom: 0; width: 14px; display: flex; align-items: flex-start; padding-top: calc(var(--sp-4) + (1lh - 14px) / 2); justify-content: center;
     color: var(--faint); cursor: grab; opacity: 0; touch-action: none; transition: opacity .15s ease;
     .ico { width: 14px; height: 14px; fill: currentColor; stroke: none; } &:active { cursor: grabbing; } }
-  .entry-txt { flex: 1; min-width: 0; border: none; background: none; font: inherit; font-size: 14px;
+  .entry-txt { flex: 1; min-width: 0; border: none; background: none; font: inherit;
     color: var(--ink); padding: 0; outline: none; &::placeholder { color: var(--muted); } }
-  .entry-del { display: flex; align-items: center; border: none; background: none; color: var(--muted);
+  .entry-del { display: flex; align-items: center; height: 1lh; border: none; background: none; color: var(--muted);
     padding: 0 var(--sp-2); cursor: pointer; opacity: 0; transition: opacity .1s; &:hover { color: var(--p1); }
     .ico { width: 14px; height: 14px; }
     &:focus { opacity: 1; color: var(--p1); } }   /* reveal + redden when tab-focused, like row-hover */
   &:hover .entry-del { opacity: .6; }
   &.done .entry-txt { color: var(--muted); text-decoration: line-through; }
   /* horizontal chevron → opens the subtask in the composer */
-  .entry-kids { border: none; background: none; padding: var(--sp-2); flex: none; line-height: 0; color: var(--muted); cursor: pointer;
+  .entry-kids { display: flex; align-items: center; height: 1lh; border: none; background: none; padding: 0 var(--sp-2); flex: none; color: var(--muted); cursor: pointer;
     .ico { width: 13px; height: 13px; } &:hover { color: var(--ink); } }
   /* subtask pill editor (contenteditable) — same live-NLP chips as the title, wrapping inline within the row */
   .entry-txt.sub-ce { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; min-height: 1lh; cursor: text; display: flow-root;
@@ -868,9 +880,6 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 @media (hover: none) { .entry .entry-grip { display: none; } }   /* a finger holds the row itself (sortable.js) — no grip, too small */
 /* Ghost "new entry": gray+dashed at rest → ink+solid as typed; reverses on backtrack. */
 .entry.ghost {
-  /* reset styles leaking from the .ghost button class (collision) so the ghost row blends into the list */
-  padding: var(--sp-4) 0; background: none; border: none; border-radius: 0;
-  &:hover { background: none; }
   .entry-txt { color: var(--muted); transition: color .15s ease; &::placeholder { color: var(--muted); } }
   .ghost-check { transition: border-color .15s ease; }
   &.active .entry-txt { color: var(--ink); }
@@ -883,10 +892,6 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
    AFTER .done so a done match floats too (equal specificity — order in the sheet decides). */
 .entry.chk.chk-hit { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: var(--r-6); order: -1; }
 .entry-list > .entry.ghost { order: -3; }   /* the input outranks floating hits — but only in the LIST (the empty state's ghost·OR·ghost trio keeps its DOM order) */
-/* multiline items: box + grip anchor to the FIRST text line, not the row middle (1lh = the row's line box) */
-.entry.chk { align-items: flex-start; }
-.entry.chk .chk-rect { margin-top: calc((1lh - 16px) / 2); }
-.entry.chk .entry-grip { align-items: flex-start; padding-top: calc(var(--sp-4) + (1lh - 14px) / 2); }
 /* 2A: an item shows in full, every line, at rest as while editing, so a focus never reflows it. */
 .entry.chk .entry-txt { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }   /* editable-on-demand: plain-selectable until clicked, so a drag spans rows */
 .entry.chk div.entry-txt { min-height: 1lh; }   /* an EMPTY item's div must keep one line of height or it's unclickable */
@@ -982,6 +987,9 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &::placeholder { color: var(--muted); } }
 /* Priority: horizontal row of color-tinted chips */
 .pop.pri-pop { flex-direction: row; gap: var(--sp-6); width: max-content; padding: var(--sp-6); }
+.pop.link-pop { flex-direction: row; align-items: center; width: max-content; min-width: 0;
+  .link-host { max-width: 220px; padding: 0 var(--sp-8) 0 var(--sp-4); color: var(--muted); font-size: var(--fs-13); }
+  .pop-item { width: auto; } }
 .pri-chip {
   display: inline-flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-10); border: none; border-radius: var(--r-8);
   font-size: var(--fs-12); font-weight: 600;
@@ -1266,12 +1274,12 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
 /* 1.5px border on all buttons (transparent for filled) — action-row siblings stay pixel-equal height */
-.primary, .ghost, .danger { padding: var(--sp-4) var(--sp-12); border: 1.5px solid transparent; border-radius: var(--r-8); font-size: var(--fs-13); cursor: pointer; }
+.primary, :where(button).ghost, .danger { padding: var(--sp-4) var(--sp-12); border: 1.5px solid transparent; border-radius: var(--r-8); font-size: var(--fs-13); cursor: pointer; }
 .primary, .danger { font-weight: 600; }
 .primary { background: var(--accent); color: var(--on-accent); }
 .primary:disabled { opacity: .45; cursor: default; }
 .danger { background: var(--p1); color: var(--on-accent); }
-.ghost { background: none; border-color: color-mix(in srgb, var(--muted) 55%, transparent); color: var(--ink); transition: border-color .15s ease, background-color .15s ease;
+:where(button).ghost { background: none; border-color: color-mix(in srgb, var(--muted) 55%, transparent); color: var(--ink); transition: border-color .15s ease, background-color .15s ease;
   &:hover { background: var(--hover); border-color: var(--muted); } }
 /* Actions on their own compact row, divided from the pickers (Todoist-style) */
 .composer-actions {

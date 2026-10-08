@@ -4,8 +4,8 @@ export const SUPABASE = {
   anonKey: 'sb_publishable_0Le3HpubSIss4JgjiVhd9w_FkijCawb',
 };
 
-// The files Worker (scripts/files-worker.js). Null until it's deployed: attaching stays off.
-export const FILES_URL = null;
+// The files Worker (scripts/files-worker.js). Null turns attaching off.
+export const FILES_URL = 'https://adherod-files.aqilcm.workers.dev';
 
 // Shipped surfaces, in order.
 export const SURFACES = ['lists', 'plan', 'social'];

@@ -62,11 +62,13 @@
     "ui": "\"Instrument Sans\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", system-ui, sans-serif",
     "display": "\"LT Remark\", \"Instrument Sans\", Georgia, serif"
   },
+  "//ease": "pop: a real spring (mass 1, stiffness 300, damping 20: 11% overshoot, then settles) sampled over 400ms; a longer duration slows it, same overshoot.",
   "ease": {
     "out": "cubic-bezier(.23,1,.32,1)",
     "in-out": "cubic-bezier(.77,0,.175,1)",
     "drawer": "cubic-bezier(.32,.72,0,1)",
-    "spring": "cubic-bezier(.34,1.4,.64,1)"
+    "spring": "cubic-bezier(.34,1.4,.64,1)",
+    "pop": "linear(0, .052, .18, .346, .521, .686, .827, .938, 1.019, 1.071, 1.099, 1.108, 1.104, 1.091, 1.073, 1.054, 1.036, 1.02, 1.008, .999, 1)"
   },
   "//motion": "Durations (ms) by frequency tier, docs/ui/motion.md: constant = tens of times a day and answers on the touch frame; daily = a state change worth watching; extraordinary = milestones only.",
   "motion": { "constant": 160, "daily": 220, "extraordinary": 520 },
