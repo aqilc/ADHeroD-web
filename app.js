@@ -50,7 +50,18 @@ import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchM
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
 let _sb, _inFlight = 0;
 let _filesTried = new Set(), _tasksGen = 0;   // file ids a read answered without a row (not re-read per load) · loadTasks' generation   // the client's requests not yet answered: onAuth lets them land before it reloads
-const countedFetch = (...a) => { _inFlight++; return fetch(...a).finally(() => _inFlight--); };   // every signed-in read and write passes here
+const countedFetch = async (...a) => {   // every signed-in read and write passes here
+  _inFlight++;
+  let synced = false;
+  try {
+    const response = await fetch(...a);
+    synced = response.status < 500;   // a 4xx is an answer (PGRST116's 406 is "no such row"); the store reports a refused write itself
+    return response;
+  } finally {
+    _inFlight--;
+    window.dispatchEvent(new CustomEvent('sync-status', { detail: synced }));
+  }
+};
 const sbClient = () => { if (_sb === undefined) _sb = (globalThis.supabase && SUPABASE.url) ? globalThis.supabase.createClient(SUPABASE.url, SUPABASE.anonKey, { global: { fetch: countedFetch } }) : null; return _sb; };
 
 // Module-scope: kept outside Alpine state so render reads/writes don't loop. _calDataV busts on any task/event change.
@@ -286,7 +297,7 @@ const OVERLAYS = [
   [c => c.selMenu, c => c.selMenu = null],   // an open edit-bar sub-menu closes before the selection itself
   [c => c.sel.length, c => c.clearSel()],    // active multi-select clears (before the lower list states)
   [c => c.overview, c => c.closeOverview()],
-  [c => c.phoneThread(), c => c.chat.open = null],   // Back (the system's edge swipe) returns to the chats
+  [c => c.phoneThread(), c => c.openChat(null)],   // Back (the system's edge swipe) returns to the chats
   [c => c.composer.open && !c._closingComposer, c => c.closeComposer()],   // a collapsing composer is already closed
 ];
 // Completion-relevant fields for undo/redo fx diff (_apply's task complete/move/remove).
@@ -463,7 +474,7 @@ document.addEventListener('alpine:init', () => {
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
     surfaceOrder: SURFACES, surface: SURF_HOME,   // config.js owns the shipped set
-    chat: { chats: [], open: null, msgs: [], draft: '', watch: null, editing: null, stash: '', name: '', pending: [] },   // stash: the draft an edit set aside; pending: files on their way up
+    chat: { chats: [], open: null, msgs: [], draft: '', drafts: {}, sending: {}, watch: null, editing: null, stash: '', name: '', pending: [] },   // stash: the draft an edit set aside; pending: files on their way up
     attach: [],   // files on their way to a task: a new draft's ({ sid }) until it saves, then bound ({ taskId })
     files: {},   // attachments rows by id, chat's and task chips' both; a sign-in change reloads the page, so it's this account's
     filesUrl: FILES_URL,
@@ -995,6 +1006,10 @@ document.addEventListener('alpine:init', () => {
     },
     async openChat(id) {
       if (this.chat.editing) this.endEdit();
+      if (this.chat.open) this.chat.drafts[this.chat.open] = { draft: this.chat.draft, pending: this.chat.pending };
+      const draft = this.chat.drafts[id];
+      this.chat.draft = draft?.draft ?? '';
+      this.chat.pending = draft?.pending ?? [];
       this.chat.open = id; this.chat.msgs = [];
       await this.chatReload(false);
     },
@@ -1082,17 +1097,24 @@ document.addEventListener('alpine:init', () => {
     chatWhen: whenLabel,
     chatLine(m) { return m?.body || (m?.attachments?.length ? 'File' : ''); },   // a files-only message previews as "File"
     openChatRow() { return this.chat.chats.find(c => c.id === this.chat.open); },
-    chatCanSend() { return this.chat.editing ? !!this.chat.draft.trim() : (!!this.chat.draft.trim() || !!this.chat.pending.length) && this.chat.pending.every(f => f.row); },
+    chatCanSend() { return this.chat.editing ? !!this.chat.draft.trim() : !this.chat.sending[this.chat.open] && (!!this.chat.draft.trim() || !!this.chat.pending.length) && this.chat.pending.every(f => f.row); },
     async sendChat() {
       const body = this.chat.draft.trim(), id = this.chat.open;
       if (!id || !this.chatCanSend()) return;
       if (this.chat.editing) return this.saveEdit(body);
-      const files = this.chat.pending.map(f => f.row);
-      const row = await sendMessage(sbClient(), this._acct(), id, body, files.map(f => f.id));
-      if (!row) return this.notify('Message not sent');
+      const snapshot = this.chat.draft, pending = this.chat.pending.slice();
+      this.chat.sending[id] = true;
+      // The request owns this snapshot; new typing and uploads belong to the next send.
       this.chat.draft = '';
       this.chat.pending = [];
-      this.chatChange({ eventType: 'INSERT', new: row });
+      const row = await sendMessage(sbClient(), this._acct(), id, body, pending.map(f => f.row.id)).catch(() => false);
+      delete this.chat.sending[id];
+      if (row) return this.chatChange({ eventType: 'INSERT', new: row });
+      const draft = this.chat.open === id ? this.chat : this.chat.drafts[id];
+      const field = this.chat.open === id && this.chat.editing ? 'stash' : 'draft';
+      draft[field] = snapshot + (snapshot && draft[field] ? '\n' : '') + draft[field];
+      draft.pending = [...pending, ...draft.pending];
+      this.notify('Message not sent');
     },
     // Realtime and our own sends land here; a row already shown (by id) is never added twice.
     chatChange({ eventType, new: row, old }) {
@@ -1341,7 +1363,7 @@ document.addEventListener('alpine:init', () => {
       const from = el.style.transform, to = back ? 'translateX(100%)' : 'translateX(0)';
       el.style.transform = to;
       motion.go(null, el, [{ transform: from }, { transform: to }], { duration: DESIGN.motion.daily, easing: DESIGN.ease.drawer }).finished.then(() => {
-        if (back) this.chat.open = null;
+        if (back) this.openChat(null);
         el.style.transform = '';
         social.classList.remove('back');   // the thread may be gone (‹ Chats mid-slide)
       });
@@ -1749,13 +1771,15 @@ document.addEventListener('alpine:init', () => {
     // One flat 38px guess against real 34/46/54+ rows made the scrollbar lurch on the way down (#307), so this
     // tracks the same content the row builder renders.
     _rowEst(r) {
+      // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
+      const step = r.step ? 14 + (r.step.desc ? 15 : 0) + (r.next ? 20 : 0) : 0;
+      if (this.sticky) return 24 + step;   // the note draws one line a task, padded 3px not 8 (sticky.js): no checklist, notes or meta line
       const chk = r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []);   // folded or Steps → the checklist contributes no height
       const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id), _chkHeld?.key === r.t.id ? _chkHeld.done : null) : null;
       // Relations ride line 1 until the ladder sheds them onto the shared meta line. A DESCRIPTION always owns its
       // (prose never joins the meta line), so they add their own 17.
       const ml = this._metaLines(r);
-      // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
-      return 34 + (r.step ? 14 + (r.step.desc ? 15 : 0) + (r.next ? 20 : 0) : 0) + (ml ? L2_PAD + ml * L2_ROW_H : 0) + (r.t.notes ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * 19 : 0);
+      return 34 + step + (ml ? L2_PAD + ml * L2_ROW_H : 0) + (r.t.notes ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * 19 : 0);
     },
     // How many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
     // but a row that has never rendered has no measurement — and guessing one line for a taller row is
@@ -1826,6 +1850,9 @@ document.addEventListener('alpine:init', () => {
       const el = rowsEl.firstElementChild || rowsEl.parentElement;
       return el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
     },
+    // Scroller px per list px: the Windows note zooms its list (.8), so a row's offsetHeight and the scroller's scrollTop
+    // differ in scale, and a window placed without it falls a fifth of the scroll depth behind the reader (win-6).
+    _listZoom(sc, sel) { return (document.querySelector(sel)?.parentElement.currentCSSZoom ?? 1) / (sc.currentCSSZoom ?? 1); },
     // Fold the LIVE heights of the rendered entries back into the model: the list's size memory, without which
     // the spacers, and so the scrollbar, drift.
     // Measured ONCE per element per width generation (`_fitV`, same key _fit stamps with): a row's height is
@@ -1867,7 +1894,7 @@ document.addEventListener('alpine:init', () => {
       // A fling outruns a FIXED margin once one frame scrolls further than it (a slow phone frame at speed — B5).
       // Bands start once a frame outlasts margin ÷ speed (~75ms at 8000px/s), so the travel direction gets
       // _winRun ms of runway (capped at 2× the margin), at the speed the scroll listener measured.
-      const g = Math.min(2 * WIN_MARGIN, Math.abs(_winV) * _winRun), o = sc.scrollTop - this._listOrigin(sc, m.sel), H = sc.clientHeight;
+      const z = this._listZoom(sc, m.sel), g = Math.min(2 * WIN_MARGIN, Math.abs(_winV) / z * _winRun), o = (sc.scrollTop - this._listOrigin(sc, m.sel)) / z, H = sc.clientHeight / z;
       const n = m.ent.length, { k, x, sp } = E, h = i => sp(i) + (i === k ? x : 0);
       // ceiling: span, the `top` walk, _winHtml's split and _modelTop walk from entry 0 — O(rows above), 0.6ms/frame at 5000 rows
       // on 16× CPU vs ~4ms for _measure (_bench_window). A prefix sum + binary search once _winOf's split there passes ~2ms.
@@ -1975,9 +2002,9 @@ document.addEventListener('alpine:init', () => {
       const m = this._modelOf(id), sc = this._listScroller();
       if (!m || !sc) return null;
       const i = m.ix.get(id), { k, x, sp } = this._editShift(m);
-      let y = this._listOrigin(sc, m.sel) + (i > k ? x : 0);
+      let y = i > k ? x : 0;
       for (let j = 0; j < i; j++) y += sp(j);
-      return y;
+      return this._listOrigin(sc, m.sel) + y * this._listZoom(sc, m.sel);
     },
     // Anything that MEASURES or TOUCHES a row by id must bring it into the DOM first — the window only holds
     // the rows near the viewport. Jumps to the row's modelled position and re-windows SYNCHRONOUSLY: callers
@@ -8974,6 +9001,7 @@ document.addEventListener('alpine:init', () => {
     // --- Account & settings popup (corner gear). Sign-in/phone reuse the auth machine above; surfaces + theme persist locally. ---
     settingsOpen: false,
     online: navigator.onLine,         // gear status dot + account-row sub (listeners live on the popup markup)
+    synced: false,                   // only a successful server response confirms sync
     updateUrl: null,                  // Windows app only: a newer installer's download → gear arrow + "Update available" row
     desk: null,                       // Windows app only: the sticky note's Settings switches, { on, share } (desktop/main.cpp)
     setDesk(key, v) { this.desk[key] = v; desktopWindow('desk', key, v); },

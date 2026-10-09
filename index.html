@@ -1193,7 +1193,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </template>
       <template x-if="session &amp;&amp; openChatRow()">
       <div class="thread" x-ref="thread">
-        <div class="th-head flex items-center"><button type="button" class="th-back flex items-center" @click="chat.open = null"><svg class="ico" aria-hidden="true"><use href="#i-chev-l"/></svg>Chats</button><b x-text="chatPeer(openChatRow())"></b></div>
+        <div class="th-head flex items-center"><button type="button" class="th-back flex items-center" @click="openChat(null)"><svg class="ico" aria-hidden="true"><use href="#i-chev-l"/></svg>Chats</button><b x-text="chatPeer(openChatRow())"></b></div>
         <div class="msgs"><div class="msgs-in">
           <!-- own messages: tapping one (tabindex -1) or hovering shows Edit and Delete -->
           <template x-for="m in chat.msgs" :key="m.id"><div class="msg-row flex items-center" :class="{ me: m.user_id === _acct() }">
@@ -1220,10 +1220,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
      <div class="canvas-dots" @click="dotStripClick($event)" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }"
           x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), unread: s === 'social' &amp;&amp; chatUnread(), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView, today: clShowToday(), side: clSideOpen } : null })), surfaceIndex())"></div>
      <!-- Account & settings: a gear in the corner, apart from the dots (a door over the app, not a place in it).
-          Status dot only when signed in — accent = syncing fine, gray = offline. Top-right up-arrow: a Windows-app update is ready. -->
+          Status dot only when signed in — accent = last server call succeeded, gray = offline or not synced. Top-right up-arrow: a Windows-app update is ready. -->
      <button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">
        <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
-       <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online }"></span></template>
+       <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span></template>
        <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
      </button>
     </div><!-- /canvas -->
@@ -1302,7 +1302,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        step behind. Escape via the central escape() chain; backdrop click closes. Sign-in: email → OTP (magic link
        + 6-digit code from one email). No Automations section: none exist yet. -->
   <div class="settings" x-show="settingsOpen" x-cloak :inert="anyDialog()" @click.self="settingsOpen = false"
-       @online.window="online = true" @offline.window="online = false">
+       @online.window="online = true" @offline.window="online = false" @sync-status.window="synced = $event.detail">
     <div class="settings-card" role="dialog" aria-modal="true" aria-label="Account &amp; settings" @click.stop><div class="set-scroll" x-effect="settingsOpen && ($el.scrollTop = 0)">
       <h1>Account &amp; settings</h1>
       <template x-if="updateUrl">
@@ -1312,7 +1312,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div>
           <div class="set-acct flex items-center">
             <span class="set-ember rounded-full flex-none" aria-hidden="true"></span>
-            <span class="set-who min-w-0"><b class="truncate" x-text="chatName() || (session.user.email || '').split('@')[0]"></b><span class="truncate" x-text="(session.user.email || '') + (online ? ' &#183; synced' : ' &#183; offline')"></span></span>
+            <span class="set-who min-w-0"><b class="truncate" x-text="chatName() || (session.user.email || '').split('@')[0]"></b><span class="truncate" x-text="(session.user.email || '') + (!online ? ' &#183; offline' : synced ? ' &#183; synced' : ' &#183; not synced')"></span></span>
             <button type="button" class="set-out flex-none muted-12" @click="signOut()">Sign out</button>
           </div>
           <div class="set-form">
