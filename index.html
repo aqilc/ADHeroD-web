@@ -59,6 +59,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></symbol>
   <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
   <symbol id="i-file" viewBox="0 0 24 24"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86"/><rect x="7" y="10.75" width="10" height="2.5" rx="0.5" fill="#fff" stroke="none"/></symbol>
@@ -802,6 +803,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <button type="button" class="pop-item create" x-show="pickerQ.trim()" @click="createFilteredProj()">Create "<span x-text="pickerQ.trim()"></span>"</button>
             </div></template></template>
           </div>
+          <template x-if="narrow &amp;&amp; filesUrl &amp;&amp; session"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="attachFiles($event.target.files); $event.target.value = ''"></label></template>
           <div class="composer-btns flex gap-6">   <!-- one unit: crowded, it wraps under the project picker whole -->
             <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
             <div class="more-wrap inline-flex items-center" x-show="editing" @click.document.capture="pop === 'overflow' && outside($event, $el) && popAway('overflow', $event)">
@@ -1207,7 +1209,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-if="f.failed"><button type="button" class="retry" @click="_upload(f)">Retry</button></template>
             <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
         </template></div>
-        <div class="chat-comp flex items-end"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach files"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
+        <div class="chat-comp flex items-end"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
         <div class="chat-hint"><kbd>↵</kbd> send · <kbd>⇧</kbd><kbd>↵</kbd> new line · <kbd>↑</kbd> edit last</div>
       </div>
       </template>

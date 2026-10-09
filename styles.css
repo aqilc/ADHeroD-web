@@ -118,8 +118,9 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .chat-comp .send:disabled { opacity: .45; cursor: default; }
 .chat-hint { margin: var(--sp-6) 0 0 var(--sp-4); font-size: var(--fs-11); color: var(--muted); }
-.chat-comp .attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
-.chat-comp .attach .ico { width: 18px; height: 18px; }
+.attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
+.attach .ico { width: 18px; height: 18px; flex: none; }
+.composer-actions .attach { align-self: center; }
 /* Files: one chip per file, under a bubble's text, and above the composer while it uploads (the 2px bar is its progress). */
 .msg-file { gap: var(--sp-6); max-width: 100%; margin-top: var(--sp-6); padding: var(--sp-4) var(--sp-8); border: 0; border-radius: var(--r-6);
   background: var(--hover); color: var(--ink); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
@@ -2456,6 +2457,7 @@ textarea.inp { resize: vertical; }
 }
 
 @media (pointer: coarse) {
+  .attach { width: 44px; height: 44px; }
   .item { --row-pt: var(--sp-12); padding: var(--row-pt) var(--sp-8); }
   .check::before { content: ""; position: absolute; inset: -11px; }   /* ~40px hit area, same small circle */
   /* grow the row vertically, but keep the --gut left pad — a `14px` shorthand clobbered it and slid the
