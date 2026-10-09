@@ -16,7 +16,7 @@ const THEME_COLORS = Object.entries(DESIGN.themes).filter(([, t]) => t.family).m
   const family = id.replace('-light', ''), light = themeVars(family, 'light'), dark = themeVars(family, 'dark');
   return { id: family, label: t.family, preview: ['bg', 'panel', 'ink', 'muted', 'accent'].map(k => `--preview-${k}:light-dark(${light[k]},${dark[k]})`).join(';') };
 });
-const savedColorTheme = account => [localStorage.getItem('adherod.colorTheme'), account, 'hearth'].find(id => THEME_COLORS.some(t => t.id === id));
+const savedColorTheme = account => [localStorage.getItem('adherod.colorTheme'), account, 'graphite'].find(id => THEME_COLORS.some(t => t.id === id));
 const savedAppearance = () => ['light', 'dark'].includes(localStorage.getItem('adherod.theme')) ? localStorage.getItem('adherod.theme') : 'system';
 function applyTheme(mode, family) {
   const vars = scheme => _vars(themeVars(family, scheme));
@@ -182,6 +182,7 @@ let _appRaw = null;   // the component unproxied (init): visibleRows rebuilds on
 // _patchRows → visibleRows: { ids, drop, sort, key, v } = rebuild ONLY these rows of the memo keyed `key` (drop: roots leaving it; sort: parents whose children moved), once _rowV is `v`
 const GLIDE_ROWS = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head)';   // what _glideFrom moves
 const _push = new Map();   // task id → the Steps tick waiting for its re-rendered row (_stepTick)
+const _arrive = new Map();   // task id → user-create stagger slot, consumed before paint; unseen rows expire
 const _cele = new Map();   // task id → its running completion reward (_celebrate): its row holds its slot until it ends
 // A completion's ember burst: 7 to 9 particles around the check, each its own angle, reach, size and timing
 // (docs/ui/task-list.md §Completion reward). Rolled once per tick, so a re-rendered row replays the same burst.
@@ -643,7 +644,10 @@ document.addEventListener('alpine:init', () => {
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
       this._migrateNotes();       // not awaited: its per-row writes never hold up live sync
       setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
-      if (window.desktopWindow && !this.sticky) {   // the Windows app (desktop/main.ts); its overlay.js checks for updates
+      if (window.desktopWindow) addEventListener('storage', e => {   // the sticky and composer windows follow the app window's theme live: its write reaches them as this event
+        if (e.key === 'adherod.theme' || e.key === 'adherod.colorTheme') { this.colorTheme = savedColorTheme(this.store.theme()); this.setTheme(savedAppearance()); }
+      });
+      if (window.desktopWindow && !this.sticky && !window.desktopComposer) {   // the Windows app's main window (desktop/main.cpp); its overlay.js checks for updates
         this.desk = await desktopWindow('desk');
         const checkUpdate = async () => { this.updateUrl = await desktopUpdate(); };
         checkUpdate();
@@ -1947,6 +1951,17 @@ document.addEventListener('alpine:init', () => {
       if (id === this.focusId) { c.add('kbfocus'); _kbEl = el; }
       if (this.dragId && _dragIds?.has(id)) c.add('dragging');   // every carried row, not just the grabbed one
       if (id === _dropEl?.dataset.id) { c.add('drop-into'); _dropEl = el; }
+      const slot = _arrive.get(id);
+      if (slot != null && !c.contains('edit-hidden')) {
+        _arrive.delete(id);
+        if (this.celebrations !== 'off' && this.surface === 'lists') {
+          const delay = motion.gentle ? 0 : Math.min(slot, 6) * 60, opts = { duration: 400, delay, easing: DESIGN.ease.pop };   // requested arrival: a small, appreciable spring, 60ms stagger capped at 360ms
+          motion.go(null, el, { translate: ['0 var(--sp-6)', '0 0'] }, { ...opts, id: 'arrival' });
+          motion.go(null, el, { opacity: [0, 1] }, { ...opts, easing: DESIGN.ease.out });
+          motion.go(null, el.querySelector('.check'), { scale: [.6, 1] }, { ...opts, delay: delay + (motion.gentle ? 0 : 60) });   // the row's own tick follows by 60ms
+          motion.go(null, el, { backgroundColor: ['color-mix(in oklch, var(--accent) 12%, transparent)', 'transparent'] }, { ...opts, duration: 700, easing: DESIGN.ease.out });   // requested wash: a longer, faint tail
+        }
+      }
       _push.get(id)?.(el);
       const fx = _cele.get(id);
       if (fx && this.byId.get(id)?.completed_at) {
@@ -1995,9 +2010,11 @@ document.addEventListener('alpine:init', () => {
     renderRows(el, parts) {
       const prev = el._parts;
       if (prev === parts || (prev && prev.length === parts.length && parts.every((p, i) => p.html === prev[i].html))) return;
+      const before = _arrive.size && el.closest('.surface-lists') && this._rowTops();
       el._parts = parts; const made = this.morphRows(el, parts);
       if (made.length && el.closest('.surface-lists')) { queueMicrotask(() => { for (const n of made) this._stampRow(n); this.paintSel(); this._rehover(); }); this.fitRows(); }   // list rows only; a microtask reads the state subscribing no effect
       else if (made.length && el.closest('.cl-side')) this._fitSide(el.closest('.cl-side'), made);
+      if (before) queueMicrotask(() => this._glideFrom(before, false));
     },
     // Parses ONLY the rows whose html actually changed: a one-field save never does the work of a full rebuild.
     morphRows(container, parts) {
@@ -2457,6 +2474,7 @@ document.addEventListener('alpine:init', () => {
 
     resetDraft() {
       this.draft = emptyDraft(); this.subDraft = emptyDraft(); _nlpFocus = null; _dlAuto = '';
+      this.draftRestored = false;   // a blank draft restored nothing (the note's Esc clears its always-open line in place)
       this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.endPicking = false; this.tpop = false; this._calDn = null; this.calH = null;
       for (const t in PICKERS) this[PICKERS[t].key] = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this._noPillOnce = false;   // the un-chip→no-re-pill guard is per-session; never leak it across composer opens
@@ -2583,7 +2601,12 @@ document.addEventListener('alpine:init', () => {
     // open/close; rows a morph creates later are stamped by _stampRow.
     applyEditDom() {
       for (const el of document.querySelectorAll('.surface-lists .item.editing-row')) { el.classList.remove('editing-row'); el.style.height = ''; }
-      for (const el of document.querySelectorAll('.surface-lists .item.edit-hidden')) el.classList.remove('edit-hidden');
+      const before = !this.editing && _arrive.size && this._rowTops();
+      for (const el of document.querySelectorAll('.surface-lists .item.edit-hidden')) {
+        el.classList.remove('edit-hidden');
+        if (!this.editing && _arrive.has(el.dataset.id)) this._stampRow(el);
+      }
+      if (before) queueMicrotask(() => this._glideFrom(before, false));
       if (!this.editing) return;
       const sub = new Set([this.editing]);   // the edited subtree: only its rows take edit state, so only they get stamped
       for (const id of sub) for (const k of this.childTasks(id)) sub.add(k.id);   // a Set: a parent cycle ends the walk
@@ -5174,10 +5197,15 @@ document.addEventListener('alpine:init', () => {
         ...this.blocks.filter(b => b.location_id === id).map(b => op('block', b, 'location_id', null))];
     },
     _rowsForDelete(t, id, row) { const r = this._rowById(t, id) || row; return t === 'task' ? this._taskSubtreeRows(id) : r ? [JSON.parse(JSON.stringify(r))] : []; },
-    async _createRow(t, fields) { const r = this._res(t); return t === 'task' ? this._newTask(fields) : r.create ? r.create(fields) : r.add(fields); },
+    async _createRow(t, fields, arrival) { const r = this._res(t); return t === 'task' ? this._newTask(fields, arrival) : r.create ? r.create(fields) : r.add(fields); },
     // Every task create goes through here: the signed-in store can land the row but lose its links (`lost: ['links']`).
-    async _newTask(fields) {
-      const t = await this.store.tasks.create(fields); if (!t?.lost) return t;
+    async _newTask(fields, arrival) {
+      const t = await this.store.tasks.create(fields);
+      if (t && arrival != null) {   // Off and other surfaces are checked when the row stamps
+        _arrive.set(t.id, arrival);
+        setTimeout(() => _arrive.delete(t.id), 1000);   // another list or off-window: never reward a later visit
+      }
+      if (!t?.lost) return t;
       this.toast(`Saved “${t.content}” without its ${t.lost.map(k => k.replaceAll('_', ' ')).join(', ')}`);
       delete t.lost; return t;
     },
@@ -5381,7 +5409,7 @@ document.addEventListener('alpine:init', () => {
         return back && strip.length ? { kind: 'composite', target: op.target, ops: [back, ...strip] } : back;
       }
       if (op.kind === 'create') {
-        const row = await this._createRow(op.target, op.fields);
+        const row = await this._createRow(op.target, op.fields, op.arrival);
         if (op.target === 'task') this._indexNew(row);
         return row && { kind: 'remove', target: op.target, id: row.id };
       }
@@ -5854,12 +5882,13 @@ document.addEventListener('alpine:init', () => {
       clearTimeout(_draftT);
       if (close) { this._draftSid = crypto.randomUUID(); this._draftBase = this._draftSig(); this.closeComposer(true); }   // clean under a new identity: the collapse shows A and files nothing
       else {
-        this.resetDraft(); this._draftBase = this._draftSig(); this.draftRestored = false;
+        this.resetDraft(); this._draftBase = this._draftSig();
         this.setEditorText(''); this.setDescText('');   // now, not next tick: the next key is the next draft's
         // Rapid add never scrolls away (ux-small-things): the reader's place is the composer they're still typing in. A
         // sort files the new row anywhere — gliding to it, then the next key's caret-scroll yanking the list back, was
         // B4's spurious scroll. Only keep the whole composer in view (the row it adds may push it down).
-        this.$nextTick(() => { this.$refs.content?.focus({ preventScroll: true }); this._showComposer(); });
+        this.$refs.content?.focus({ preventScroll: true });   // now: deferred, it took the title back from a ↓ already pressed into the rows (Alpine holds $nextTick behind a starting transition)
+        this.$nextTick(() => this._showComposer());
       }
       // Created at the end of its siblings (the parent the store resolves), so it appears just above the composer.
       const pid = fields.parent_id !== undefined ? fields.parent_id : fields.project ? this.tasks.find(t => t.parent_id === null && t.content === fields.project && !t.archived_at)?.id : this.store.defaultProject();
@@ -5867,7 +5896,7 @@ document.addEventListener('alpine:init', () => {
       // the add reopens completed ancestors (resolver): journal their completion with it, as _saveSubs does
       const reopen = this._reopenIds(pid).map(x => ({ kind: 'update', target: 'task', id: x, after: { completed_at: this.byId.get(x).completed_at } }));
       if (sibs.length) fields.position = Math.max(...sibs.map(t => t.position ?? 0)) + 1;
-      const row = await this._newTask(fields);
+      const row = await this._newTask(fields, 0);
       if (!row) return this._addFailed(slot);
       // Whole or not at all, in order, stopping at the first failure: it takes the task back, and with it what landed (its date,
       // reminders, links go with it). The completion runs last — it sweeps the open blockers (pendingSweep), which a removal can't take back.
@@ -6236,8 +6265,9 @@ document.addEventListener('alpine:init', () => {
       const order = adds.length > 0 || subs.filter(s => !fresh(s)).some((s, i) => s.id !== kept[i]?.id);   // else positions stay as stored: untouched rows write nothing
       // a new subtask reopens this task and its completed ancestors: journaled as part of it, so ⌘Z completes them again
       const ops = adds.length ? this._reopenIds(id).map(r => ({ kind: 'update', target: 'task', id: r, after: { completed_at: null } })) : [], ticks = [];
+      let arrival = 0;
       subs.forEach((s, position) => {
-        if (fresh(s)) ops.push({ kind: 'create', target: 'task', fields: { ...s.fields, id: s.id, parent_id: id, position } });
+        if (fresh(s)) ops.push({ kind: 'create', target: 'task', arrival: arrival++, fields: { ...s.fields, id: s.id, parent_id: id, position } });
         else { const after = { ...s.patch, ...order && this.byId.get(s.id).position !== position && { position } }; if (Object.keys(after).length) ops.push({ kind: 'update', target: 'task', id: s.id, after }); }
         if (s.sd) ops.push(...this._schedParts(s.id, s.sd));
         if (s.done !== (was.get(s.id) ?? false)) ticks.push({ kind: 'complete', target: 'task', mode: 'forward', fwd: { id: s.id, done: s.done } });
@@ -6656,7 +6686,7 @@ document.addEventListener('alpine:init', () => {
       fields.content = (fields.content || '').trim(); if (!fields.content) return;
       this._reopenNow(parentId);
       // created at the TOP of its siblings (the stores' default: above every row), right under the "New subtask" ghost — mirrors the checklist ghost
-      const task = await this._newTask({ ...fields, parent_id: parentId });
+      const task = await this._newTask({ ...fields, parent_id: parentId }, 0);
       this._indexNew(task);
       await this.loadTasks();   // a failed create: reconciles the optimistic reopen
       return task;
@@ -6723,7 +6753,7 @@ document.addEventListener('alpine:init', () => {
           const sep = item.text.indexOf('::');
           const content = sep >= 0 ? item.text.slice(0, sep).trim() : item.text;
           const desc = sep >= 0 ? item.text.slice(sep + 2).trim() : null;
-          const task = await this._newTask({ content, parent_id: id, ...(desc ? { notes: desc } : {}) });
+          const task = await this._newTask({ content, parent_id: id, ...(desc ? { notes: desc } : {}) }, made.length);
           if (!task) throw 0;
           made.push(task.id);
         }
@@ -7131,13 +7161,13 @@ document.addEventListener('alpine:init', () => {
       queueMicrotask(() => this._glideFrom(before));
     },
     _rowTops() { return new Map([...document.querySelectorAll(GLIDE_ROWS)].map(el => [el.dataset.id || el, el.getBoundingClientRect().top])); },
-    _glideFrom(before) {
+    _glideFrom(before, enter = true) {
       const els = [...document.querySelectorAll(GLIDE_ROWS)], rects = els.map(el => el.getBoundingClientRect());   // all reads first: an animate() between two reads forces a layout each
       let dy = 0;   // a row with no before rides with the one above it
       for (const [i, el] of els.entries()) {
         const r = rects[i], from = before.get(el.dataset.id || el);
         if (from != null) dy = from - r.top;
-        if (r.bottom < 0 || r.top > innerHeight || (from != null && !dy)) continue;
+        if (r.bottom < 0 || r.top > innerHeight || (!enter && from == null) || (from != null && !dy) || el.getAnimations().some(a => a.id === 'arrival')) continue;
         motion.soften(el.animate({ translate: [`0 ${dy}px`, '0 0'], ...from == null && { opacity: [0, 1] } }, { duration: 200, easing: DESIGN.ease['in-out'] }));
       }
     },
@@ -8945,7 +8975,7 @@ document.addEventListener('alpine:init', () => {
     settingsOpen: false,
     online: navigator.onLine,         // gear status dot + account-row sub (listeners live on the popup markup)
     updateUrl: null,                  // Windows app only: a newer installer's download → gear arrow + "Update available" row
-    desk: null,                       // Windows app only: the sticky note's Settings switches, { on, share } (desktop/main.ts)
+    desk: null,                       // Windows app only: the sticky note's Settings switches, { on, share } (desktop/main.cpp)
     setDesk(key, v) { this.desk[key] = v; desktopWindow('desk', key, v); },
     theme: savedAppearance(),
     colorTheme: savedColorTheme(),

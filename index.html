@@ -6,6 +6,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ADHeroD</title>
 <link rel="stylesheet" href="./styles.css">
+<!-- Paint the saved palette while app.js loads; applyTheme replaces these tokens at boot. -->
+<script id="paint-palette">
+{
+// design.json canvas tokens; ui-lint checks every palette and appearance for drift.
+const palettes = {
+  "hearth": ["--bg:oklch(.97 .005 58);--ink:oklch(.18 .012 55);--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, oklch(.985 .012 60), var(--bg) 62%);--bg-foot:linear-gradient(0deg, color-mix(in srgb, var(--warm) 7%, var(--bg)), transparent 22%);--warm:#df6b12","--bg:#0e0b09;--ink:#f2e7da;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, #241a12 0%, #14100c 62%);--bg-foot:linear-gradient(0deg, color-mix(in srgb, var(--warm) 13%, var(--bg)), transparent 22%);--warm:#ff9448"],
+  "graphite": ["--bg:#E3E7ED;--ink:#20242B;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, #CCD9EF, var(--bg) 70%);--bg-foot:none","--bg:#15171A;--ink:#E7EAF0;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%);--bg-foot:none;--panel:#202328"],
+  "slate": ["--bg:#DCEBF1;--ink:#1B2B34;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, #BDDDE8, var(--bg) 70%);--bg-foot:none","--bg:#121B22;--ink:#E4EDF2;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%);--bg-foot:none;--panel:#1C2933"],
+  "chalk": ["--bg:#E4EDDF;--ink:#202B25;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, #CDDFC3, var(--bg) 70%);--bg-foot:none","--bg:#151B18;--ink:#E7EEE9;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%);--bg-foot:none;--panel:#212A25"],
+  "mist": ["--bg:#ECE2F2;--ink:#292536;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, #DDC9ED, var(--bg) 70%);--bg-foot:none","--bg:#19171F;--ink:#EEEAF4;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%);--bg-foot:none;--panel:#25222E"],
+  "onyx": ["--bg:#DADDE2;--ink:#22252B;--bg-wash:radial-gradient(ellipse 1000px 520px at 50% -80px, #C4CAD4, var(--bg) 70%);--bg-foot:none","--bg:#08090B;--ink:#F0F2F5;--bg-wash:linear-gradient(var(--bg), var(--bg));--bg-foot:none"]
+};
+const saved = localStorage.getItem('adherod.colorTheme');
+const family = Object.hasOwn(palettes, saved) ? saved : 'graphite';
+const appearance = localStorage.getItem('adherod.theme');
+const mode = ['light', 'dark'].includes(appearance) ? appearance : 'system';
+const vars = scheme => palettes[family][scheme === 'dark' ? 1 : 0];
+const tokens = document.createElement('style');
+tokens.id = 'design-tokens';
+tokens.textContent = `:root{${vars(mode === 'dark' ? 'dark' : 'light')}}` +
+  (mode === 'system' ? `@media (prefers-color-scheme: dark){:root{${vars('dark')}}}` : '');
+document.head.appendChild(tokens);
+if (mode !== 'system') document.documentElement.dataset.theme = mode;
+}
+</script>
 </head>
 <body>
 <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
@@ -1372,7 +1397,7 @@
             <button type="button" :class="{ on: celebrations === 'off' }" :aria-pressed="celebrations === 'off'" @click="setCelebrations('off')">Off</button>
           </div>
         </div>
-        <template x-if="desk">   <!-- the Windows app's desktop surfaces (desktop/main.ts); labels as the Mac app's -->
+        <template x-if="desk">   <!-- the Windows app's desktop surfaces (desktop/main.cpp); labels as the Mac app's -->
           <div>
             <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-tack"/></svg>Sticky
               <div class="seg">

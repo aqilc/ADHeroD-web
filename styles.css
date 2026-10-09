@@ -2331,7 +2331,7 @@ textarea.inp { resize: vertical; }
    ignores pointer events; only the cards are interactive, so their Undo/Redo buttons stay reachable. */
 #notif-stack { position: fixed; right: var(--sp-16); bottom: var(--sp-16); z-index: 60; display: flex; flex-direction: column;
   gap: var(--sp-8); align-items: flex-end; max-width: min(360px, calc(100vw - 32px)); pointer-events: none;
-  @media (min-width: 641px) { &.by-settings { max-width: min(360px, calc(100vw - 404px)); } } }   /* beside the open Settings card (12 + 360 + 16 gap + 16), never over it */
+  @media (min-width: 641px) { &.by-settings { max-width: min(360px, calc(100vw - 464px)); } } }   /* beside the open Settings card (12 + 420 + 16 gap + 16), never over it */
 .notif { pointer-events: auto; display: inline-flex; align-items: center; gap: var(--sp-12);
   padding: var(--sp-8) var(--sp-12); border-radius: var(--r); border: 1px solid var(--edge);
   background: var(--panel); color: var(--ink); box-shadow: var(--shadow); font-size: var(--fs-13);
@@ -2517,7 +2517,7 @@ textarea.inp { resize: vertical; }
   opacity: 1; transition: opacity .22s var(--ease-out);
   @starting-style { opacity: 0; } }
 .settings-card { position: absolute; left: var(--sp-12); bottom: 48px;   /* clears the 30px gear + its 10px inset */
-  background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow); width: 100%; max-width: 360px;
+  background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow); width: calc(100% - var(--sp-24)); max-width: 420px;   /* 420: no label or switch wraps ("Hide from screenshots and sharing", "Jump anywhere") */
   max-height: calc(100dvh - 64px); display: flex; flex-direction: column;
   h1 { margin: 0 0 var(--sp-4); font-size: var(--fs-22); }
   transform-origin: bottom left; transition: transform .22s var(--ease-out), opacity .22s var(--ease-out);
