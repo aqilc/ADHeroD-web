@@ -117,14 +117,14 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .chat-comp textarea { flex: 1; min-width: 0; max-height: 40vh; field-sizing: content; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-15); padding: var(--sp-2) var(--sp-4); }
 .chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .chat-comp .send:disabled { opacity: .45; cursor: default; }
-.chat-hint { margin: var(--sp-6) 0 0 var(--sp-4); font-size: var(--fs-11); color: var(--faint); }
+.chat-hint { margin: var(--sp-6) 0 0 var(--sp-4); font-size: var(--fs-11); color: var(--muted); }
 .chat-comp .attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
 .chat-comp .attach .ico { width: 18px; height: 18px; }
 /* Files: one chip per file, under a bubble's text, and above the composer while it uploads (the 2px bar is its progress). */
 .msg-file { gap: var(--sp-6); max-width: 100%; margin-top: var(--sp-6); padding: var(--sp-4) var(--sp-8); border: 0; border-radius: var(--r-6);
   background: var(--hover); color: var(--ink); font: inherit; font-size: var(--fs-13); text-align: left; cursor: pointer; }
 .msg-file .ico { flex: none; width: 14px; height: 14px; color: var(--muted); }
-.msg-file .fsz { flex: none; font-size: var(--fs-11); color: var(--faint); }
+.msg-file .fsz { flex: none; font-size: var(--fs-11); color: var(--muted); }
 .chat-pend { flex-wrap: wrap; gap: var(--sp-6); margin-bottom: var(--sp-6); }
 .msg-file.pend { position: relative; overflow: hidden; max-width: 240px; margin: 0; padding-right: var(--sp-2); cursor: default; }
 .msg-file.up { color: var(--muted); }
@@ -185,7 +185,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .cd-seg { display: inline-flex; padding: 2px; border-radius: var(--r-pill); touch-action: manipulation;
   background: color-mix(in srgb, var(--ink) 6%, transparent); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent); }
 .cd-segb { position: relative; width: 28px; height: 22px; border: 0; border-radius: var(--r-pill); background: none;
-  color: var(--faint); font-size: var(--fs-11); font-weight: 700; cursor: pointer; transition: color .14s var(--ease-out), background .14s var(--ease-out); }
+  color: var(--muted); font-size: var(--fs-11); font-weight: 700; cursor: pointer; transition: color .14s var(--ease-out), background .14s var(--ease-out); }
 .cd-segb::after { content: ''; position: absolute; inset: -9px -2px; }
 .cd-segb.on { background: var(--panel); box-shadow: var(--shadow-sm); color: var(--warm-ink); }
 /* Plan's actions after the views (D5): a 28×22 face on a 36×44 hit, pitched 36 so no two hits overlap
@@ -449,7 +449,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .row2.meta { flex-wrap: wrap; row-gap: var(--sp-2); }
 .row2.meta.l2-shrink .proj { flex: 0 1 auto; min-width: 0; }
 .row2.meta.l2-shrink .m.loc > span { max-width: 3.5rem; }
-.desc-line { font-size: var(--fs-12); color: var(--faint); }   /* prose ALWAYS owns its own line — never a ladder candidate, never on the meta line */
+.desc-line { font-size: var(--fs-12); color: var(--muted); }   /* prose ALWAYS owns its own line — never a ladder candidate, never on the meta line */
 .desc-line a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 /* bold stays in the faded family — one step above the desc's own text, never jumping to title-level ink */
 .desc-line strong { color: var(--muted); font-weight: 600; }
@@ -577,7 +577,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* title-first: no width cap, so a long title spans the whole row and truncates only when it alone overflows;
    the desc sits inline after it and, via its huge shrink factor, gives up width FIRST so a short title never shrinks for a long desc. */
 .chk-txt { font-size: var(--fs-13); color: var(--ink); flex: 0 1 auto; }
-.chk-desc { font-size: var(--fs-11); color: var(--faint); flex: 0 200 auto; }
+.chk-desc { font-size: var(--fs-11); color: var(--muted); flex: 0 200 auto; }
 .chk-row.done .chk-txt { color: var(--muted); text-decoration: line-through; }
 /* Steps row: title + chips shrink to line 1, the current step hangs under at title size, the text block raised
    off the check's centre (user: "move the task text up a little bit"). app.js _rowEst counts 18px − this rise. */
@@ -603,8 +603,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .pushing > .push-out { position: absolute; inset: 0 0 auto; pointer-events: none; &::before { content: none; } }   /* the old step, laid over the new; the rail stays the box's own */
 .pushing > .row-step { transform-origin: left top; }
 /* The step's ::desc, its own line well under the preview's size; the preview: the next open step, its node on the rail. */
-.step-desc { font-size: var(--fs-11); line-height: 14px; color: var(--faint); margin-top: 1px; }
-.step-next { position: relative; margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 16px; color: var(--faint); }
+.step-desc { font-size: var(--fs-11); line-height: 14px; color: var(--muted); margin-top: 1px; }
+.step-next { position: relative; margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 16px; color: var(--muted); }
 /* The rail (one 2px stroke for ring, lines and node; every line meets its circles): a stub from the row's top into the
    ring, lit orange once a step is done; the line from the ring down to the preview's node. --rail-x: the check's
    centre, left of the body (half the 18px check + the row's 10px gap). */
@@ -625,7 +625,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .check.walked::after { content: ''; position: absolute; left: calc(50% - 1px); bottom: 100%; width: 2px; height: var(--row-pt); background: var(--pc); }   /* the task's own colour: orange beside a Must's red clashed */
 /* clickable: reveals/re-hides the collapsed done items (B7). Button reset — it inherits the row's box, not the UA's. */
 .chk-more { padding: 1px 0 1px 24px; border: 0; background: none; cursor: pointer; text-align: left; }
-.chk-more-txt { font-size: var(--fs-11); color: var(--faint); }
+.chk-more-txt { font-size: var(--fs-11); color: var(--muted); }
 .chk-more:hover .chk-more-txt { color: var(--muted); }
 /* block hover: flat rect reads as the composer's source area */
 .item.inblock { background-color: var(--hover); border-radius: 0; }
@@ -694,9 +694,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   &.on { color: var(--accent); } }
 /* all-day lane mirrors the grid's gutter/column split so it reads as row 0 of the timeline */
 .peek-allday { flex: none; display: grid; grid-template-columns: 44px 1fr; align-items: stretch; margin: 0 var(--sp-8) var(--sp-6) 0; }
-.peek-ad-lbl { align-self: center; text-align: right; padding-right: 6px; font-size: 10px; color: var(--faint); }
+.peek-ad-lbl { align-self: center; text-align: right; padding-right: 6px; font-size: 10px; color: var(--muted); }
 .peek-ad-zone { min-height: 40px; gap: var(--sp-4); padding: var(--sp-4) var(--sp-6); border-radius: var(--r-8); background: var(--hover); }
-.peek-ad-hint { font-size: var(--fs-11); color: var(--faint); }
+.peek-ad-hint { font-size: var(--fs-11); color: var(--muted); }
 .peek-allday.hot .peek-ad-zone { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .peek-allday.hot .peek-ad-hint { color: var(--ink); }
 .peek-ad-chip { max-width: 120px; padding: 2px var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-12); color: var(--txt); background: color-mix(in srgb, var(--cc) 18%, transparent); }
@@ -749,7 +749,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   font-size: var(--fs-12); font-weight: 700; color: var(--muted); line-height: 15px; padding: 0 1px; }
 /* Project: colored # or backlog icon — semantic location, not an area */
 .proj { max-width: 7rem; font-size: var(--fs-12); color: var(--muted); white-space: nowrap; }
-.proj .proj-in { margin-right: 1px; color: var(--faint); }   /* "in <project>" — the word stays neutral; only icon+name take the project tint */
+.proj .proj-in { margin-right: 1px; color: var(--muted); }   /* "in <project>" — the word stays neutral; only icon+name take the project tint */
 .proj .proj-nm { overflow: hidden; text-overflow: ellipsis; }
 /* Named chip: glyph and name share ONE baseline, and align-self (above) puts it on the title's. 1.875px = 15px × 3/24 =
    the empty band under a 24-unit viewBox glyph: nudge the glyph down onto the baseline, and take the same
@@ -895,7 +895,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* 2A: an item shows in full, every line, at rest as while editing, so a focus never reflows it. */
 .entry.chk .entry-txt { white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }   /* editable-on-demand: plain-selectable until clicked, so a drag spans rows */
 .entry.chk div.entry-txt { min-height: 1lh; }   /* an EMPTY item's div must keep one line of height or it's unclickable */
-.entry.chk .entry-txt .chk-idesc { display: block; font-size: var(--fs-11); color: var(--faint); }   /* a note takes its own line, as on the row (5B) */
+.entry.chk .entry-txt .chk-idesc { display: block; font-size: var(--fs-11); color: var(--muted); }   /* a note takes its own line, as on the row (5B) */
 .entry.chk.done .entry-txt .chk-idesc { color: var(--muted); }
 /* the "new item" ghost is a textarea so it wraps and grows to fit a long item. */
 /* ceiling: field-sizing needs Chrome 123 / Safari+iOS 26.2 — below, the ghost stays one line (wrapped/pasted lines hidden, still saved); revisit if the iOS port targets <26.2 */
@@ -1087,7 +1087,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     .ico { width: 12px; height: 12px; flex: none; }
     &:hover { background: var(--hover); color: var(--p1); } }
   /* hint text dims everywhere in the card, not just the old ghosted state — it was silently unstyled in the phrase sentence */
-  .zhint { font-size: var(--fs-11); color: var(--faint); transition: color .15s var(--ease-out); }
+  .zhint { font-size: var(--fs-11); color: var(--muted); transition: color .15s var(--ease-out); }
 }
 .zone.oneoff { min-height: 0; flex-direction: column; }   /* constant-frame foot card: no rail; sentence, then the every… row */
 /* every… on its own line — the WHOLE line is the button */
@@ -1136,7 +1136,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     box-shadow: 0 0 0 1px var(--edge); cursor: pointer; padding: 0;
     &:hover { background: var(--hover); } }
   b { min-width: 10px; text-align: center; font-weight: 600; }
-  &.g { background: var(--hover); color: var(--muted); b { color: var(--faint); } button { color: var(--muted); } }
+  &.g { background: var(--hover); color: var(--muted); b { color: var(--muted); } button { color: var(--muted); } }
 }
 /* anchored time popover — one component, two anchors (Add-time row, [at ...] chip) */
 /* fixed + above .pop(z20): one instance serves every anchor, across teleported popups */
@@ -1169,7 +1169,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     &:hover { background: var(--hover); }
     &.on { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--warm-ink);
       .ico { color: inherit; } }
-    i { font-style: normal; font-size: var(--fs-11); color: var(--faint); }
+    i { font-style: normal; font-size: var(--fs-11); color: var(--muted); }
     &.on i { color: color-mix(in srgb, var(--accent) 55%, var(--muted)); }
     b { margin-left: auto; font-size: var(--fs-11); color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; } }
 }
@@ -1236,14 +1236,14 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* Location hybrid picker: sentence polarity + block-driven here-row + region chip rows (design: location-ui-explorations.html ★, deleted 79ae889; git history) */
 .pop.loc-pop { min-width: 232px; max-width: 264px; padding: var(--sp-6); }
 .lp-line { font-size: var(--fs-13); line-height: 1.45; color: var(--ink); padding: 0 var(--sp-4); margin: var(--sp-4) 0 var(--sp-8) 0; }   /* single-line: no flowing-sentence room needed */
-.lp-kbd { float: right; color: var(--faint); font-size: var(--fs-11); }
+.lp-kbd { float: right; color: var(--muted); font-size: var(--fs-11); }
 .lp-colon { color: var(--muted); margin-left: 1px; }
 .lp-here {
   display: flex; align-items: center; gap: var(--sp-8); width: 100%; padding: var(--sp-4) var(--sp-8);
   border: none; border-radius: var(--r-6); font-size: var(--fs-13); color: var(--ink); text-align: left;
   background: color-mix(in srgb, var(--q-today) 7%, transparent); cursor: pointer;
   .heredot { width: 7px; height: 7px; border-radius: 50%; background: var(--q-today); box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-today) 20%, transparent); flex: none; }
-  .sub { color: var(--faint); font-size: var(--fs-11); }   /* reserved slot: source/staleness text lands here later, no reflow */
+  .sub { color: var(--muted); font-size: var(--fs-11); }   /* reserved slot: source/staleness text lands here later, no reflow */
   .tick { margin-left: auto; width: 13px; height: 13px; color: var(--accent); flex: none; }
   &:hover { background: color-mix(in srgb, var(--q-today) 12%, transparent); }
 }
@@ -1457,7 +1457,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .trash-small:hover, .trash-chg:hover { background: var(--hover); }
 .trash-small .trash-kico { margin-top: 0; color: var(--faint); }
 .trash-small-n { font-size: var(--fs-12); font-weight: 500; color: var(--muted); }
-.trash-small-what { font-size: var(--fs-12); color: var(--faint); }
+.trash-small-what { font-size: var(--fs-12); color: var(--muted); }
 .trash-toggle { flex: none; font-size: var(--fs-11); color: var(--muted); padding-right: var(--sp-8); }
 .trash-chg { height: 28px; padding: 0 var(--sp-8) 0 calc(2 * var(--sp-16) - 1px); border-radius: var(--r-6); font-size: var(--fs-12); }   /* the task starts under the row titles */
 .trash-chg-task { color: var(--ink); flex: 0 1000 auto; min-width: 25%; }   /* the change is the news: the task truncates first */
@@ -1540,7 +1540,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .ac-ck { margin-right: var(--sp-6); pointer-events: none; }
 .ac-ck .check { width: 14px; height: 14px; border-width: 1.75px; }
 /* the project name is arbitrary user text — one line, or the row grows and the list turns into a paragraph */
-.ac-list .ac-row .rt { margin-left: auto; padding-left: var(--sp-8); color: var(--faint); font-variant-numeric: tabular-nums;
+.ac-list .ac-row .rt { margin-left: auto; padding-left: var(--sp-8); color: var(--muted); font-variant-numeric: tabular-nums;
   flex: none; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ac-list .ac-row.create { padding: var(--sp-4) var(--sp-8); white-space: nowrap; }
 
@@ -1563,7 +1563,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .app.tinted .list-search.open { background: color-mix(in srgb, var(--list-tint) 14%, var(--hover)); }
 /* Hearthsay sentence — the controls row reads as prose. Words are dotted-underline buttons; active filters grow into colored tokens with their own ×. */
 .lc-field { position: relative; }
-.ls-sent { flex-wrap: wrap; gap: var(--sp-4) 0; font-size: var(--fs-13); color: var(--faint); }
+.ls-sent { flex-wrap: wrap; gap: var(--sp-4) 0; font-size: var(--fs-13); color: var(--muted); }
 .ls-verb { flex: none; }
 .ls-word { border: none; background: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-6); font: inherit; font-size: var(--fs-13); font-weight: 600; color: var(--muted); cursor: pointer;
   text-decoration: underline dotted color-mix(in srgb, var(--muted) 45%, transparent); text-underline-offset: 4px; transition: background-color .12s, color .12s; }
@@ -1583,7 +1583,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .ls-tok .ls-x { padding: var(--sp-2) var(--sp-8) var(--sp-2) var(--sp-2); color: color-mix(in srgb, var(--tc) 55%, var(--muted));
   font-size: var(--fs-15); line-height: 1; opacity: .7; transition: opacity .15s var(--ease-out), color .15s var(--ease-out); }   /* always visible — × is the remove affordance (body click edits) */
 .ls-tok .ls-x:hover { color: var(--ink); opacity: 1; }
-.ls-more { text-decoration-line: none; font-weight: 500; color: var(--faint); }
+.ls-more { text-decoration-line: none; font-weight: 500; color: var(--muted); }
 /* clear-all: a subtle trash — barely-there until hovered */
 .ls-clear { width: 24px; height: 24px; border: none; background: none;
   color: var(--faint); opacity: .6; cursor: pointer; transition: background-color .15s var(--ease-out), color .15s var(--ease-out), opacity .15s var(--ease-out); }
@@ -1763,7 +1763,7 @@ textarea.inp { resize: vertical; }
 .cl-cd b { margin-right: 5px; font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums;
   font-size: calc(var(--fs-13) + var(--prox) * 6px); color: color-mix(in oklch, var(--muted), var(--gold) calc(var(--prox) * 100%)); }
 .cl-cd span { font-size: calc(var(--fs-11) + var(--prox) * 2px); font-weight: calc(500 + var(--prox) * 200); letter-spacing: 0;
-  color: color-mix(in oklch, var(--faint), var(--warm-ink) calc(var(--prox) * 100%)); }
+  color: color-mix(in oklch, var(--muted), var(--warm-ink) calc(var(--prox) * 100%)); }
 @media (hover: hover) and (pointer: fine) { .cl-period-btn.pick:hover { background: var(--hover); } }
 /* week mode: the row is the target, so the whole week lights on hover and the anchor week stays selected */
 .cal-day.hot { background: var(--hover); }
@@ -1780,7 +1780,8 @@ textarea.inp { resize: vertical; }
    else: Today gets an amber-tinted chip, the switcher and the glyph buttons stay neutral. */
 .cl-today { height: 30px; padding: 0 var(--sp-10); border-radius: var(--r); background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); font-size: var(--fs-13); font-weight: 600; cursor: pointer; }
 .cl-today:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-.cl-add { width: 30px; height: 30px; border-radius: var(--r); font-size: var(--fs-17); line-height: 1; }
+.cl-add { width: 30px; height: 30px; border-radius: var(--r);
+  .ico { width: 20px; height: 20px; } }   /* the glyphs match the weight of Today and the switcher beside them */
 /* segmented control: recessed track, RAISED selected segment (macOS) — deliberately not the shared accent
    fill, because a solid orange segment shouts louder than anything it's competing with on the page */
 .cl-switcher { position: relative; gap: 1px; }
@@ -1853,7 +1854,7 @@ textarea.inp { resize: vertical; }
   /* Tile vertically too: a full-spacer-height texture loses its rules on the ~100-year scroll surface. */
   background-size: calc(100% / 7) 1px, 100% var(--rowh, 100%);
   background-position: -1px -1px, 0 -1px; background-repeat: repeat, repeat-y; }
-.cl-wk { position: absolute; left: 0; right: 0; height: var(--rowh); display: grid; grid-template-columns: repeat(7, 1fr); }
+.cl-wk { position: absolute; left: 0; right: 0; height: var(--rowh); display: grid; grid-template-columns: repeat(7, 1fr); container-type: inline-size; }
 /* Cells paint NO background. They used to carry a translucent tint that the bar also carried, so the wash read
    the same through both; once the bar went transparent that tint became a visible step at the header's bottom
    edge. Transparent cells let the one --bg-wash run unbroken into the grid. */
@@ -1906,6 +1907,10 @@ textarea.inp { resize: vertical; }
 /* only the band's START carries the mark — a capsule on every segment would stripe the whole band */
 .cl-chip.cl-span-r::before, .cl-chip.cl-span-mid::before { display: none; }
 .cl-chip.cl-pad { visibility: hidden; }   /* holds a band's slot on a day it skips */
+/* Only the ink crosses day boundaries; the segment keeps its own drag/click area. The week still clips at its edge. */
+.cl-cell:has(.cl-span) { min-height: 0; overflow: visible; }   /* visible overflow must not restore the grid item's content-height floor on resize */
+.cl-chip.cl-span { overflow: visible; }
+.cl-span .cl-chip-t { position: relative; z-index: 1; pointer-events: none; margin-right: calc((1 - var(--cl-label-days, 1)) * 100cqw / 7 + var(--cl-label-cap, 0) * var(--sp-6)); }
 .cl-more { font-size: var(--fs-11); color: var(--muted); padding-left: var(--sp-4); }
 
 /* WEEK / DAY — each week is one snap page that fills the viewport (hours sized to fit) */
@@ -2222,7 +2227,7 @@ textarea.inp { resize: vertical; }
 .cl-ag-b { min-width: 0; }
 .cl-ag-n { display: block; font-size: var(--fs-15); line-height: 1.3; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-ag-d { display: block; font-size: var(--fs-11); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* one line: 52 is a row's MAX, the page fit counts on it */
-.cl-ag-none { padding: var(--sp-16) var(--sp-10); font-size: var(--fs-13); color: var(--faint); }
+.cl-ag-none { padding: var(--sp-16) var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
 /* rows light on hover, exactly like the panel's pill rows (C1c) — never filled at rest */
 @media (hover: hover) and (pointer: fine) { .cl-ag-row:not(.free):hover { background: var(--hover); } }
 .cl-ag-row:not(.free):active { transform: scale(.985); }                                    /* E1 press */
@@ -2230,8 +2235,8 @@ textarea.inp { resize: vertical; }
 /* an empty afternoon is information, so the holes are named — but quietly, they are not events */
 .cl-ag-row.free { min-height: 34px; cursor: default; }   /* 34, 52: CL_AG_FREE, CL_AG_ROW */
 .cl-ag-row.free .cl-ag-dot { background: none; }
-.cl-ag-row.free .cl-ag-n { font-size: var(--fs-12); color: var(--faint); }
-.cl-ag-row.free .cl-ag-t { color: var(--faint); font-weight: 400; }
+.cl-ag-row.free .cl-ag-n { font-size: var(--fs-12); color: var(--muted); }
+.cl-ag-row.free .cl-ag-t { color: var(--muted); font-weight: 400; }
 /* C4 — what has already happened recedes, in the list as well as on the rail */
 .cl-ag-row.past { opacity: .45; }
 /* The source dims in place while the drag image moves, as a dragged list row does (.item.dragging). It sits after
@@ -2259,7 +2264,7 @@ textarea.inp { resize: vertical; }
    with the rows (bold left caps read as three stacked panels) */
 .cl-side-sec { display: flex; align-items: center; gap: var(--sp-8); margin: var(--sp-16) 0 var(--sp-6); font-size: 9px; letter-spacing: .12em; }
 .cl-side-sec::before, .cl-side-sec::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
-.cl-side-hint { font-size: 9px; font-weight: 500; letter-spacing: .04em; text-transform: none; color: var(--faint); }
+.cl-side-hint { font-size: 9px; font-weight: 500; letter-spacing: .04em; text-transform: none; color: var(--muted); }
 .cl-side-hint::before { content: "· "; }
 .cl-side-sec.resched { color: var(--warm-ink); }   /* slipped wants attention, never the red that means a deadline */
 /* flat rows, no fold: the gutter shrinks to the row's own inset, and the bleed puts each check under "Needs a slot" */
@@ -2270,7 +2275,7 @@ textarea.inp { resize: vertical; }
 .drag-ghost > .item { background-color: var(--row-hov); }   /* the tray row's copy wears its grabbed (hover) pill */
 @media (pointer: fine) { .cl-side-list .item, .drag-ghost > .item { --row-pt: 5px; } }   /* D3: tighter, so more clears the fold; a touch row keeps its height */
 .cl-side-list .item.sel, .cl-side-list .item.editing { background: var(--hover); }
-.cl-side-empty { color: var(--faint); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
+.cl-side-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
 
 /* YEAR — 12 mini-months, heat-tinted days */
 /* Selected/active state — accent fill. The .on/.sel/.today hooks across pickers + calendar opt in here. */
@@ -2322,7 +2327,7 @@ textarea.inp { resize: vertical; }
 .blk-role-chip:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); }
 .blk-today-actions { display: flex; align-items: center; gap: var(--sp-8); }
 .blk-today-state { color: var(--muted); font-size: var(--fs-12); }
-.blk-today-lead { color: var(--faint); font-size: var(--fs-12); }
+.blk-today-lead { color: var(--muted); font-size: var(--fs-12); }
 .blk-override-note { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); padding: var(--sp-6) var(--sp-10); border-radius: var(--r-4); background: color-mix(in srgb, var(--accent) 8%, transparent); font-size: var(--fs-12); color: var(--muted); }
 
 /* a live drag reaches the scroller under these: the bottom edge zone is theirs to scroll */

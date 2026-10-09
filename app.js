@@ -757,16 +757,30 @@ document.addEventListener('alpine:init', () => {
         // zeroing past that stopped the runway growing ahead (T22). A jump after a pause divides by the pause. Budget: O(1) per event.
         // Mid-motion the runway is the last frame's length when that beats WIN_RUN: the next frame is as slow as the last, so a
         // 1s frame at 1px/ms must reach 1000px ahead, not 120 (scroll.e2e "fling", red under load). From rest (_winV 0) it stays WIN_RUN.
-        if (app) app.addEventListener('scroll', e => { const st = app.scrollTop, dt = e.timeStamp - _winAt; _winRun = _winV ? Math.max(WIN_RUN, dt) : WIN_RUN; _winV = (st - _winSt) / Math.max(1, dt); _winSt = st; _winAt = e.timeStamp;
-          this._reflow(); clearTimeout(_restT); _restT = setTimeout(() => { if (app.scrollTop === _winSt) { _win = new WeakMap(); _winV = 0; this._reflow(); } }, 150); }, { passive: true });
+        if (app) app.addEventListener('scroll', e => {
+          if (app._growGlide?.sizing) app._growGlide.scrollAt = e.timeStamp;
+          else this._scrollWindow(app, e.timeStamp);
+        }, { passive: true });
         document.fonts.ready.then(() => { _fitV++; _fitMemo.clear(); this._fitControls(); this._reflow(); });   // font-display: swap — a boot pass may have measured (and cached) fallback widths
       });
+    },
+    _scrollWindow(app, at) {
+      const st = app.scrollTop, dt = at - _winAt; _winRun = _winV ? Math.max(WIN_RUN, dt) : WIN_RUN; _winV = (st - _winSt) / Math.max(1, dt); _winSt = st; _winAt = at;
+      this._reflow(); clearTimeout(_restT); _restT = setTimeout(() => { if (app.scrollTop === _winSt) { _win = new WeakMap(); _winV = 0; this._reflow(); } }, 150);
     },
     // rAF-throttle, shared by both passes: a fling fires scroll far faster than a frame — undebounced, each
     // call forces a layout. The slot REMEMBERS a
     // re-window asked for while a fit-only frame was queued: dropping it left the rows a scroll landing in that
     // frame had asked for unbuilt until the next scroll — a blank viewport if there was none (B5).
-    fitRows(win) { _fitW ||= !!win; if (_fitQ) return; _fitQ = requestAnimationFrame(() => { try { if (_fitW) { _fitW = false; this._paintRows(); } } finally { _fitQ = 0; } this._fit(); }); },   // _fitQ held through the paint: its morph's fit is this frame's; a throw must not wedge it
+    fitRows(win) {
+      _fitW ||= !!win; if (_fitQ) return;
+      const fit = () => { try { if (_fitW) { _fitW = false; this._paintRows(); } } finally { _fitQ = 0; } this._fit(); };
+      _fitQ = requestAnimationFrame(() => {
+        const glide = this._listScroller()?._growGlide;
+        if (glide?.sizing) glide.fit = fit;
+        else fit();
+      });
+    },   // _fitQ held through the paint: its morph's fit is this frame's; a throw must not wedge it
     // Scroll/resize: re-window the DOM FIRST (rows only exist because we scrolled to them), then fit what
     // is now in it. One rAF for both — the fit has to read the rows the re-window just created.
     _reflow() { this.fitRows(true); },
@@ -856,7 +870,7 @@ document.addEventListener('alpine:init', () => {
       // squeeze that got the row here collapses them to icon pills. Both are writes; no read needed.
       for (const el of rows) this._chipMode(el);
       // Then blocker and file chips drop their names ONE at a time, the widest named first, so the row keeps the most names it has room for (soc-2 b).
-      const relRungs = batch => { while ((batch = batch.filter(el => !fits(el) && (el._relAt = this._relWidest(el)) >= 0)).length) for (const el of batch) this._relIcon(el, el._relAt); };   // READ, then WRITE
+      const relRungs = batch => { while ((batch = batch.filter(el => el.querySelector('.r1l .row-rel:not(.icon-only)') && !fits(el) && (el._relAt = this._relWidest(el)) >= 0)).length) for (const el of batch) this._relIcon(el, el._relAt); };   // READ, then WRITE
       relRungs(rows);
       const line2s = new Map();
       for (const sel of LADDER) {
@@ -866,10 +880,11 @@ document.addEventListener('alpine:init', () => {
         // Measured: at 390 "Water the plants" shed its chips, fitted, hit the hand-back and came back
         // clipped to "Water the…" — while at 320, where one rung was not enough, it read in full.
         const still = rows.filter(el => {                              // READ — one layout for the batch
+          if (!this._shedNode(el, sel)) return false;   // an absent rung buys no space; don't measure it
           const l2 = line2s.get(el);
           return !fits(el) || (l2 && l2.children.length === 1);
         });
-        if (!still.length) break;
+        if (!still.length) continue;
         for (const el of still) this._shed(el, sel, line2s);          // WRITE
       }
       // A SECOND LINE MUST EARN ITSELF. One lone item down there — a bare project chip, a single badge —
@@ -895,17 +910,17 @@ document.addEventListener('alpine:init', () => {
       }
       return l2s.length;
     },
-    // One rung's WRITE for one row: move `sel` onto line 2 (created on first use), in L2_ORDER. Pure writes, so
-    // _fit can REPLAY a cached outcome through it without measuring.
+    // Share eligibility with the writer: a rung that cannot move anything needs no title measurement.
+    _shedNode(el, sel) {
+      if (sel === '.m.dl' && (!el.querySelector('.badge') || el.querySelector('.step-block'))) return null;   // the sole time badge and Steps' deadline stay on line 1
+      return el.querySelector(sel === '.proj' ? '.proj:not(.proj-inbox)' : sel);   // a lone inbox glyph cannot earn a second line
+    },
+    // Pure writes in L2_ORDER, also replayed by _fit without measuring.
     _shed(el, sel, line2s) {
-      if (sel === '.m.dl' && !el.querySelector('.badge')) return;   // no scheduled time → the deadline IS it
-      // The default-project chip is a bare inbox GLYPH. Moving it frees ~20px and strands an icon
-      // alone on a line of its own, which reads like a bug — it is not a ladder candidate at all.
-      const n = el.querySelector(sel === '.proj' ? '.proj:not(.proj-inbox)' : sel); if (!n) return;
+      const n = this._shedNode(el, sel); if (!n) return;
       // b4c: a Steps row keeps ONE title line, so the step never reads as a task — what doesn't fit hides behind a "…"
       // listing it, never moving under the step. The deadline is exempt: the one red that means a consequence.
       if (el.querySelector('.step-block')) {
-        if (sel === '.m.dl') return;
         n.classList.add('shed-hid');
         (el._moved || (el._moved = [])).push({ n, home: n.parentElement, i: [...n.parentElement.children].indexOf(n), sel });
         const more = el.querySelector('.hid-more') || el.querySelector('.r1l').appendChild(Object.assign(document.createElement('span'), { className: 'hid-more', textContent: '…' }));
@@ -2589,9 +2604,9 @@ document.addEventListener('alpine:init', () => {
       else this._growOpen(() => this.$refs.grow, start);
       this.setEditorText(this.draft.content);
       this.setDescText(this.draft.notes);
-      // After Alpine's flush, not a $nextTick: Alpine holds those while the empty entries' ghost x-transition starts, and
-      // keys typed in the frames before focus landed were lost.
-      queueMicrotask(() => {
+      // Alpine's flush queues subtask hydration. Drain those writes before focus forces layout; still in this task,
+      // before another key can arrive (unlike $nextTick, which starting transitions hold for a frame).
+      queueMicrotask(() => queueMicrotask(() => {
         // A task that ALREADY has entries opens with the caret in its "new item" ghost — the next thing you do to
         // a list is add to it, not rename it. (Exactly one ghost renders in either non-empty case: sub or chk.)
         const kids = this.shownSubs().length, ghost = (kids || this.editing && this.draft.checklist.length) && this._ghostEl(kids ? 'sub' : 'chk');
@@ -2604,8 +2619,8 @@ document.addEventListener('alpine:init', () => {
         }
         if (this._inPanel()) return;   // the panel hosts it: hidden Lists' scroller isn't the open's to move
         if (!this._skipOpenScroll) this._showComposer();   // off-screen → glide composer into view
-        else { const sc = this._listScroller(); if (sc) this._glide(sc, sc.scrollTop, 420); }   // in-view: hold against grow-induced anchor drift
-      });
+        else { const sc = this._listScroller(); if (sc) this._glide(sc, sc.scrollTop, 420, this.$refs.grow); }   // in-view: hold against grow-induced anchor drift
+      }));
     },
     // ONE glide, aimed at the composer WHILE IT GROWS: a live target absorbs the growth instead of chasing it (two
     // browser animations racing over a growing element were the open/close stutter). No-op when it's already in view.
@@ -2622,7 +2637,7 @@ document.addEventListener('alpine:init', () => {
         // taller than the viewport → sit on its top; otherwise the start, clamped so it's all in. Absolute, never the live scrollTop
         // (the easing pulled back from it every frame, ±12px wobble) nor a bare start: one that hid it bounced the glide back there.
         return cr.height > H ? top : Math.min(top, lift > start + 16 ? lift : start);
-      }, 420);   // outlasts the 220ms grow, so the target is still live for the whole of it
+      }, 420, this.$refs.grow);   // outlasts the 220ms grow, so the target is still live for the whole of it
     },
     // Imperative edit styling (no list rebuild): crossfade height on the edited row + hide its subtree. Run on
     // open/close; rows a morph creates later are stamped by _stampRow.
@@ -3008,8 +3023,9 @@ document.addEventListener('alpine:init', () => {
       if (!sc._userArmed) { sc._userArmed = true; for (const ev of GLIDE_YIELD) sc.addEventListener(ev, () => { sc._userAt = performance.now(); }, { passive: true }); }
       return sc._userAt || 0;
     },
-    _glide(sc, to, ms = 340) {
+    _glide(sc, to, ms = 340, grow = null) {
       if (!sc) return; this._userAt(sc);   // arm the hand-wins listeners
+      sc._growGlide?.finish();
       const at = () => { const v = typeof to === 'function' ? to() : to; return Math.max(0, Math.min(sc.scrollHeight - sc.clientHeight, v)); };
       // Zero motion does NOT mean zero protection: grow/collapse still reflows layout and scroll anchoring
       // still drifts, so at scale 0 the glide JUMPS to the target immediately and then re-asserts the LIVE
@@ -3019,7 +3035,7 @@ document.addEventListener('alpine:init', () => {
       // keyed on the scroller: a second request SUPERSEDES the first (motion.run), re-easing from wherever we are
       const t0 = performance.now();
       let from = sc.scrollTop, mine = zero ? (sc.scrollTop = at()) : from;
-      motion.run(sc, now => {
+      const step = now => {
         if (sc._userAt > t0) return false;   // ...and a hand arriving mid-flight ends it on the spot
         // Someone ELSE moved the scroller. It is never a hand (that's the line above) — it is LAYOUT: a long
         // glide crosses rows that swap their ESTIMATED height for the real one as the window renders them,
@@ -3032,6 +3048,40 @@ document.addEventListener('alpine:init', () => {
         const p = Math.min(1, (now - t0) / ms);
         sc.scrollTop = mine = zero ? at() : from + (at() - from) * EASE_OUT(p);
         return p < 1;
+      };
+      if (!grow || zero) { motion.run(sc, step); return; }
+      // Height transitions are laid out AFTER rAF. Read/scroll in their ResizeObserver delivery,
+      // using the same frame timestamp, so the live target and easing see this frame's geometry once.
+      const state = sc._growGlide = { sizing: false, ended: null, now: t0, scrollAt: null, fit: null, finish: null };
+      const flush = () => {
+        if (state.scrollAt !== null) { const at = state.scrollAt; state.scrollAt = null; this._scrollWindow(sc, at); }
+        if (state.fit) { const fit = state.fit; state.fit = null; fit(); }
+      };
+      const transition = e => {
+        if (e.target !== grow || e.propertyName !== 'height') return;
+        state.sizing = true;
+        state.ended = e.type === 'transitionrun' ? null : document.timeline.currentTime;
+      };
+      const events = ['transitionrun', 'transitionend', 'transitioncancel'];
+      state.finish = () => {
+        observer.disconnect();
+        for (const type of events) grow.removeEventListener(type, transition);
+        state.sizing = false; delete sc._growGlide; flush();
+      };
+      const observer = new ResizeObserver(() => {
+        if (!state.sizing) return;
+        if (!step(state.now)) { state.finish(); motion.stop(sc); return; }
+        flush();
+        if (state.ended !== null) state.sizing = false;
+      });
+      observer.observe(grow);
+      for (const type of events) grow.addEventListener(type, transition);
+      motion.run(sc, now => {
+        state.now = now;
+        // Cancellation may leave the same size and deliver no ResizeObserver entry.
+        if (state.ended !== null && now > state.ended) { state.sizing = false; flush(); }
+        if (sc._userAt > t0 || !state.sizing && !step(now)) { state.finish(); return false; }
+        return true;
       });
     },
     // Is this row out of the reader's view? A WINDOWED list may not hold it at all, and "no element" means it
@@ -3359,6 +3409,8 @@ document.addEventListener('alpine:init', () => {
     // The ONE owner of teleported-pop placement + outside-close (every teleported pop binds these; fix positioning here, once)
     popStyle() { return 'position:fixed;left:' + this.popXY.left + 'px;top:' + this.popXY.top + 'px;bottom:auto'; },   // each sits in an x-if: shown = mounted
     // capture (index.html): a click that repaints its own target (a row's check) detaches it before bubbling, and Alpine's .outside skips detached targets
+    // @click.outside reads every listener's offsetWidth on each click (a forced layout); gate on open state first, then this
+    outside(e, el) { return e.target.isConnected && !el.contains(e.target); },
     popAway(name, e) {
       if (this.pop !== name || e.target.closest('.pop, .tpop')) return;
       this.pop = null;
@@ -3872,14 +3924,14 @@ document.addEventListener('alpine:init', () => {
     // --- Inline-pill editor (contenteditable title) ---
     // draft.content = the editor's TEXT nodes only (pills excluded), whitespace-collapsed. WYSIWYG: this
     // is the title verbatim; fields come only from pills (Task 3), never a submit-time re-parse.
-    syncTitle(composing) {
+    syncTitle(composing, track = true) {
       const el = this._nlpEl(), d = this._nlpDraft(); if (!el) return;
       if (!composing) this._pillDraw(el);   // an IME's text draws at compositionend
       const w = this._chipWalker(el); let text = '', n;
       while ((n = w.nextNode())) if (n.nodeType === 3) text += n.nodeValue;
       d.content = text.replace(/\s+/g, ' ').trim();
       const empty = !el.querySelector('.nlp-pill') && d.content === '';
-      this._nlpTrack(el);
+      if (track) this._nlpTrack(el);
       if (!_nlpFocus) this.titleEmpty = empty;   // titleEmpty is title-only placeholder state
       else if (_nlpFocus.ghost) this.subGhost = el.textContent.trim();   // ghost's active-state + submit-flush + autosave mirror
       if (empty && el.childNodes.length) {     // emptied (stray <br>/whitespace) → reset clean, caret to start
@@ -3970,7 +4022,7 @@ document.addEventListener('alpine:init', () => {
       if (frag) el.replaceChildren(frag);
       else el.innerHTML = this._descHtml(text);
       _liveOn = [];
-      queueMicrotask(() => this._descSize(el));   // opening: the composer shows in Alpine's flush
+      queueMicrotask(() => queueMicrotask(() => this._descSize(el)));   // after the flush AND its queued subtask writes
     },
     // Repaint every idle row's text from the draft (after undo/restore rewrote it wholesale).
     syncChkRows() { this.paintChk(document.querySelector('.composer-entries .entry-list > .entry.chk.ghost')?.parentElement, true); },
@@ -4024,9 +4076,10 @@ document.addEventListener('alpine:init', () => {
     // The tokens whose markers show: those the caret (each end of a selection) touches, inside one or at its edge on the
     // same line. Waits for a press's release: shown sooner, the markers would move the text out from under the pointer.
     liveReveal() {
-      const el = document.activeElement, s = getSelection();
       if (_press) return;
-      const on = el !== _opened && el?.matches('.composer :is(.desc, .content, .entry-txt)') && s.rangeCount ? this._liveToks(el, s.anchorNode, s.anchorOffset).concat(this._liveToks(el, s.focusNode, s.focusOffset)) : [];
+      const el = document.activeElement;
+      const s = el !== _opened && el?.matches('.composer :is(.desc, .content, .entry-txt)') && getSelection();
+      const on = s?.rangeCount ? this._liveToks(el, s.anchorNode, s.anchorOffset).concat(this._liveToks(el, s.focusNode, s.focusOffset)) : [];
       for (const t of _liveOn) if (!on.includes(t)) t.classList.remove('on');
       for (const t of on) t.classList.add('on');
       _liveOn = on;
@@ -4034,8 +4087,10 @@ document.addEventListener('alpine:init', () => {
     // A press past a line's end leaves the caret at its last visible spot, before the hidden markers that close the line
     // (a link's `](url)`): typing there would join the link's text. The end of a line means after them.
     _pastMarks() {
-      const el = document.activeElement, s = getSelection();
-      if (!el?.matches('.composer :is(.desc, .content, .entry-txt)') || !s.isCollapsed || s.focusNode.nodeType !== 3 || s.focusOffset < s.focusNode.length || !el.contains(s.focusNode)) return;
+      const el = document.activeElement;
+      if (!el?.matches('.composer :is(.desc, .content, .entry-txt)')) return;
+      const s = getSelection();
+      if (!s.isCollapsed || s.focusNode.nodeType !== 3 || s.focusOffset < s.focusNode.length || !el.contains(s.focusNode)) return;
       const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       let n, last = null;
       w.currentNode = s.focusNode;
@@ -6175,12 +6230,12 @@ document.addEventListener('alpine:init', () => {
       this.syncTitle();                     // mirrors subGhost for the ghost
     },
     // A row's DOM → a fresh draft (text + pills), leaving the engine aimed where it was.
-    _rowDraft(el, c) {
+    _rowDraft(el, c, track = true) {
       const prev = _nlpFocus, d = emptyDraft();
       d.goal_ids = [...(c?.goal_ids || [])];   // goals have no pill (R4) — carry the row's own, else a commit writes [] over them
       // No area fallback from the task: a row hydrated before its areas were set diffs [] vs [] (nothing written, see
       // _childPatch), while one the user un-chipped must write [] — the fallback made removing an area chip a no-op.
-      _nlpFocus = { el, draft: d, c }; this._recommitPills(PILL_KINDS); this.syncTitle(); _nlpFocus = prev;
+      _nlpFocus = { el, draft: d, c }; this._recommitPills(PILL_KINDS); this.syncTitle(false, track); _nlpFocus = prev;
       return d;
     },
     focusTitle() { _nlpFocus = null; },     // title regains the default target when it (re)gains focus
@@ -6241,8 +6296,7 @@ document.addEventListener('alpine:init', () => {
     hydrateSubEditor(el, c) {
       const prev = _nlpFocus;
       _nlpFocus = { el, draft: emptyDraft(), c };
-      el.textContent = '';
-      if (c.content) el.appendChild(document.createTextNode(c.content));
+      el.innerHTML = titleLive(c.content || '');
       const add = (kind, value) => { el.appendChild(this.makePill(kind, value, '')); this.commitPill(kind, value); };
       const min = c.est_minutes || 0;
       if (c.importance && c.importance !== 'none') add('imp', c.importance);
@@ -6255,7 +6309,8 @@ document.addEventListener('alpine:init', () => {
       if (c.location?.ids?.length) { const nm = this.locations.find(l => l.id === c.location.ids[0])?.name; if (nm) add('loc', (c.location.mode === 'except' ? 'away from ' : '') + nm); }   // the picked set scopes it, whatever `mode` says (rowLoc)
       _nlpFocus = prev;
       el._hist = null;   // history restarts at the stored row: ⌘Z must not bring back what the store replaced (a blur would write it over)
-      el._base = this._rowDraft(el, c); el._html = el.innerHTML;   // what the row showed as filled — a commit writes only what differs from it
+      // No caret/history read between hydration writes; focus initializes the editor history.
+      el._base = this._rowDraft(el, c, false); el._html = el.innerHTML;   // what the row showed as filled — a commit writes only what differs from it
     },
     // Rows keep their element across reloads → refresh each idle child editor's pills from the store. Only rows still as
     // filled, plus `id` (the row just saved or reverted): a row holding an unsaved or failed edit keeps it — a sibling's
@@ -7508,10 +7563,13 @@ document.addEventListener('alpine:init', () => {
             return { d, bands: items.filter(it => it.spanStart !== undefined), rest: items.filter(it => it.spanStart === undefined) };
           });
           // a multi-day band keeps one slot across the row (week's lanes); a day it skips holds a pad there, or a single-day item
-          const lane = new Map(this._clWeekBands(cols).map(b => [b.it.kind + b.it.id, b.row]));
+          const lane = new Map(this._clWeekBands(cols).map(b => [b.it.kind + b.it.id, b]));
           const days = cols.map(({ d, bands, rest }, i) => {
             const iso = isoDate(d), items = [];
-            for (const it of bands) items[lane.get(it.kind + it.id)] = it;
+            for (const it of bands) {
+              const band = lane.get(it.kind + it.id), labelDays = i === band.c0 ? band.len : 1;
+              items[band.row] = { ...it, labelDays, labelCap: labelDays > 1 && cols[i + labelDays - 1].bands.some(t => t.id === it.id && t.kind === it.kind && t.spanEnd) ? 1 : 0 };
+            }
             // phone (decision #65): tasks before daily items, and an overflowing day gives its third slot to "+N" — two-line chips don't fit 3 + "+N"
             const singles = narrow ? tasksFirst(rest) : [...rest];
             for (let k = 0; k < items.length; k++) items[k] ||= singles.shift() || { pad: true, kind: 'pad', id: k, title: '' };

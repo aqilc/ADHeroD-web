@@ -206,7 +206,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </template>
 
         <!-- unified filter menu: every fragment one click deep (replaces the 3 separate chip menus) -->
-        <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+        <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'add' && outside($event, $el) && (listMenu = null)">
           <!-- Include first: it answers "what is even in this list" before "which of them" (F12) -->
           <div class="pop-sub-head">Include</div>
           <button type="button" class="pop-item" @click="toggleShowCompleted()">
@@ -253,7 +253,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="ls-word ls-sortw" :class="{ on: sortBy !== 'manual' }" title="Sort order"
                   @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" aria-label="Sort order" aria-haspopup="menu" :aria-expanded="listMenu === 'sort'"
                   x-text="(qfFacets() >= 2 || (narrow && listSearchOpen)) ? (sortBy === 'manual' ? '⇅' : 'by ' + sortWord()) : sortWord()"></button>
-          <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.outside="listMenu = null">
+          <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'sort' && outside($event, $el) && (listMenu = null)">
             <div class="pop-sub-head">Sort by</div>
             <template x-for="o in [['manual','Manual','i-grip'],['due','Due date','i-cal'],['importance','Importance','i-prio'],['deadline','Deadline','i-clock'],['alpha','Alphabetical','i-list-check'],['created','Date added','i-cal']]" :key="o[0]">
               <button type="button" class="pop-item" @click="setSort(o[0])">
@@ -303,7 +303,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <button type="button" class="sel-act sel-complete inline-flex items-center gap-6" @click="selComplete()"><svg class="ico"><use href="#i-check"/></svg><span>Complete</span></button>
 
         <!-- Set priority — reuses the composer's importance chips -->
-        <div class="sel-field" @click.outside="selMenu === 'prio' && (selMenu = null)">
+        <div class="sel-field" @click.document="selMenu === 'prio' && outside($event, $el) && (selMenu = null)">
           <button type="button" class="sel-act sel-prio-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'prio'" @click.stop="selMenu = selMenu === 'prio' ? null : 'prio'"><svg class="ico"><use href="#i-prio"/></svg><span>Priority</span></button>
           <div class="pop lc-pop sel-prio-pop" x-show="selMenu === 'prio'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
             <template x-for="o in [['must','Must'],['focus','Focus'],['someday','Someday'],['none','None']]" :key="o[0]">
@@ -313,7 +313,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
 
         <!-- Shift relative due dates — the headline: moves every dated task together, keeping their spacing -->
-        <div class="sel-field" @click.outside="selMenu === 'due' && (selMenu = null)">
+        <div class="sel-field" @click.document="selMenu === 'due' && outside($event, $el) && (selMenu = null)">
           <button type="button" class="sel-act sel-due-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'due'" @click.stop="selMenu = selMenu === 'due' ? null : 'due'"><svg class="ico"><use href="#i-cal"/></svg><span>Shift date</span></button>
           <div class="pop lc-pop sel-due-pop" x-show="selMenu === 'due'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
             <div class="pop-sub-head">Shift due dates by</div>
@@ -324,7 +324,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
 
         <!-- Move to list / area — reuses the composer's project picker + the area list -->
-        <div class="sel-field" @click.outside="selMenu === 'move' && (selMenu = null)">
+        <div class="sel-field" @click.document="selMenu === 'move' && outside($event, $el) && (selMenu = null)">
           <button type="button" class="sel-act sel-move-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'move'" @click.stop="selMenu = (selMenu === 'move' ? null : 'move'); pickerQ = ''"><svg class="ico"><use href="#i-arrow"/></svg><span>Move</span></button>
           <template x-if="selMenu === 'move'"><div class="pop lc-pop lc-anim sel-move-pop">
             <input type="text" class="pop-input" placeholder="Move to a project…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
@@ -401,7 +401,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="sheet-x db-x flex-none inline-flex items-center justify-center" @click="draftRestored=false" aria-label="Dismiss notice (keep draft)" title="Dismiss (keep draft)"><svg class="ico"><use href="#i-x"/></svg></button>
         </div>
         </div>
-        <div class="area-autocomplete" x-cloak :style="'display:' + (areaPicker.open ? 'flex' : 'none') + '; left:' + areaPicker.left + 'px; top:' + areaPicker.top + 'px'" @click.outside="areaPicker.open = false">
+        <div class="area-autocomplete" x-cloak :style="'display:' + (areaPicker.open ? 'flex' : 'none') + '; left:' + areaPicker.left + 'px; top:' + areaPicker.top + 'px'" @click.document="areaPicker.open && outside($event, $el) && (areaPicker.open = false)">
           <template x-for="(t, i) in areaMatches()" :key="t.id">
             <button type="button" class="ac-row inline-flex items-center" :class="{ sel: i === areaPicker.sel }"
                     @click="pickPill('area', t.id)" @mouseenter="areaPicker.sel = i">
@@ -415,7 +415,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   @click="createAreaFromPicker()">Create "@<span x-text="areaPicker.frag"></span>"</button>
         </div>
         <!-- "#" and "at " open the same narrow list at the caret: typing is the shortcut, the list is the path. -->
-        <div class="area-autocomplete ac-list proj-autocomplete" x-cloak :style="'display:' + (projPicker.open ? 'flex' : 'none') + '; left:' + projPicker.left + 'px; top:' + projPicker.top + 'px'" @click.outside="projPicker.open = false">
+        <div class="area-autocomplete ac-list proj-autocomplete" x-cloak :style="'display:' + (projPicker.open ? 'flex' : 'none') + '; left:' + projPicker.left + 'px; top:' + projPicker.top + 'px'" @click.document="projPicker.open && outside($event, $el) && (projPicker.open = false)">
           <template x-for="(p, i) in projMatches()" :key="p.id">
             <button type="button" class="ac-row flex items-center" :class="{ sel: i === projPicker.sel }"
                     @click="pickPill('proj', p.content)" @mouseenter="projPicker.sel = i">
@@ -427,7 +427,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </template>
         </div>
         <!-- needs / needed by share this one list (never open together) -->
-        <div class="area-autocomplete ac-list link-autocomplete" x-cloak :style="'display:' + (linkPicker() ? 'flex' : 'none') + '; left:' + (linkPicker()?.left || 0) + 'px; top:' + (linkPicker()?.top || 0) + 'px'" @click.outside="needsPicker.open = nbyPicker.open = false">
+        <div class="area-autocomplete ac-list link-autocomplete" x-cloak :style="'display:' + (linkPicker() ? 'flex' : 'none') + '; left:' + (linkPicker()?.left || 0) + 'px; top:' + (linkPicker()?.top || 0) + 'px'" @click.document="linkPicker() && outside($event, $el) && (needsPicker.open = nbyPicker.open = false)">
           <template x-for="(r, i) in linkOptions()" :key="r.t.id">
             <!-- optional-chained: x-for re-evaluates a row's bindings on the frame the picker closes, when
                  linkPicker() is already null (Alpine Expression Error, harmless but printed) -->
@@ -439,7 +439,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </button>
           </template>
         </div>
-        <div class="area-autocomplete ac-list loc-autocomplete" x-cloak :style="'display:' + (locPicker.open ? 'flex' : 'none') + '; left:' + locPicker.left + 'px; top:' + locPicker.top + 'px'" @click.outside="locPicker.open = false">
+        <div class="area-autocomplete ac-list loc-autocomplete" x-cloak :style="'display:' + (locPicker.open ? 'flex' : 'none') + '; left:' + locPicker.left + 'px; top:' + locPicker.top + 'px'" @click.document="locPicker.open && outside($event, $el) && (locPicker.open = false)">
           <template x-for="(l, i) in locMatches()" :key="l.id">
             <button type="button" class="ac-row flex items-center" :class="{ sel: i === locPicker.sel }"
                     @click="pickPill('loc', l.name)" @mouseenter="locPicker.sel = i">
@@ -526,7 +526,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <template x-if="composer.open">
         <div class="composer-opts flex items-center gap-6">
           <!-- Importance (app-behavior flag, not a rank) -->
-          <div class="field" @click.outside.capture="popAway('imp', $event)">
+          <div class="field" @click.document.capture="pop === 'imp' && outside($event, $el) && popAway('imp', $event)">
             <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.importance !== 'none' }" aria-haspopup="menu" :aria-expanded="pop === 'imp'" @click="togglePop('imp', $el)">
               <svg class="ico"><use href="#i-prio"/></svg>
               <span x-text="impName(draft.importance, 'Importance')"></span>
@@ -541,7 +541,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div></template></template>
           </div>
           <!-- Due date -->
-          <div class="field" @click.outside.capture="popAway('due', $event)">
+          <div class="field" @click.document.capture="pop === 'due' && outside($event, $el) && popAway('due', $event)">
             <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.on || draft.recurrence || draft.deadline_at || draft.available_from, open: pop === 'due' }" aria-haspopup="dialog" :aria-expanded="pop === 'due'" @click="openDate('due', $el)">
               <svg class="ico"><use href="#i-cal"/></svg>
               <span x-text="dueLabel()"></span>
@@ -565,7 +565,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <div class="tx"><button type="button" @click="timeSet(''); tpop = false">no time</button></div>
           </div></template></template>
           <!-- Duration -->
-          <div class="field" @click.outside.capture="popAway('dur', $event)">
+          <div class="field" @click.document.capture="pop === 'dur' && outside($event, $el) && popAway('dur', $event)">
             <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: durMinNow() }" aria-haspopup="dialog" :aria-expanded="pop === 'dur'" @click="togglePop('dur', $el)">
               <svg class="ico"><use href="#i-clock"/></svg>
               <span x-text="durLabel()"></span>
@@ -587,7 +587,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- Reminders: the user's own voice. Severity is the lead icon's SHAPE; a self-repeating
                reminder shows the repeat switch instead, and tapping it pauses. -->
-          <div class="field" @click.outside.capture="popAway('rem', $event)">
+          <div class="field" @click.document.capture="pop === 'rem' && outside($event, $el) && popAway('rem', $event)">
             <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.reminders.length, open: pop === 'rem' }" aria-haspopup="dialog" :aria-expanded="pop === 'rem'" @click="togglePop('rem', $el)">
               <svg class="ico"><use href="#i-bell"/></svg>
               <span x-text="remLabel()"></span>
@@ -616,7 +616,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div></template></template>
           </div>
           <!-- Area multi-select -->
-          <div class="field" @click.outside.capture="popAway('area', $event)">
+          <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
             <button type="button" class="chip chip-area inline-flex items-center gap-6" :class="{ set: draft.areas.length }" @click="togglePop('area', $el)">
               <svg class="ico"><use href="#i-tag-tag"/></svg>
               <span x-text="areaLabel()"></span>
@@ -631,7 +631,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div></template></template>
           </div>
           <!-- Location constraint -->
-          <div class="field" x-show="locations.length" @click.outside.capture="popAway('loc', $event)">
+          <div class="field" x-show="locations.length" @click.document.capture="pop === 'loc' && outside($event, $el) && popAway('loc', $event)">
             <button type="button" class="chip chip-loc inline-flex items-center gap-6" :class="{ set: locPolarity() !== 'any' }" @click="openLoc($el)">
               <svg class="ico"><use :href="locPolarity() === 'except' ? '#i-pin-off' : '#i-pin'"/></svg>
               <span x-text="locChipLabel()"></span>
@@ -676,7 +676,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div></template></template>
           </div>
           <!-- Relations (edit only) -->
-          <div class="field" x-show="editing" @click.outside.capture="popAway('rel', $event)">
+          <div class="field" x-show="editing" @click.document.capture="pop === 'rel' && outside($event, $el) && popAway('rel', $event)">
             <button type="button" class="chip chip-rel inline-flex items-center gap-6" :class="{ set: editingTask()?.blocked_by?.length }" @click="togglePop('rel', $el); pickerQ = ''" :disabled="!editing">
               <svg class="ico"><use href="#i-link"/></svg>
               <span>Relations</span>
@@ -778,7 +778,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <!-- ── Composer actions + completed section + Peek Pane ── -->
         <div class="composer-actions flex gap-6">
           <!-- left: project location picker (Todoist-style, bottom-left); actions stay right -->
-          <div class="field loc" @click.outside.capture="popAway('proj', $event)">
+          <div class="field loc" @click.document.capture="pop === 'proj' && outside($event, $el) && popAway('proj', $event)">
             <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
               <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="hash" x-show="!pickIsDefault()">#</span><span x-text="draft.project || defaultProjName() || 'Project'"></span>
             </button>
@@ -804,7 +804,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <div class="composer-btns flex gap-6">   <!-- one unit: crowded, it wraps under the project picker whole -->
             <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
-            <div class="more-wrap inline-flex items-center" x-show="editing" @click.outside.capture="popAway('overflow', $event)">
+            <div class="more-wrap inline-flex items-center" x-show="editing" @click.document.capture="pop === 'overflow' && outside($event, $el) && popAway('overflow', $event)">
               <button type="button" class="more-btn inline-flex items-center" @click="togglePop('overflow', $el)" title="More actions" aria-haspopup="menu" :aria-expanded="pop === 'overflow'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
               <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :style="popStyle()">
                 <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
@@ -924,7 +924,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- Overlaid top chrome: month/period label + controls, translucent over the scrolling calendar -->
       <div class="cl-bar flex items-center" @wheel.passive="onCalTitleWheel($event)">
         <!-- in day/week the title IS the date picker; a hover background is the whole affordance -->
-        <h2 class="cl-period grow min-w-0 flex" @click.outside.capture="popAway('clnav', $event)">
+        <h2 class="cl-period grow min-w-0 flex" @click.document.capture="pop === 'clnav' && outside($event, $el) && popAway('clnav', $event)">
           <button type="button" class="cl-period-btn" :class="{ pick: clView === 'day' || clView === 'week' }" @click="clOpenDatePop($el)"><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></button>
           <!-- A2·B: what's COMING rides the title's line — part of the date you're looking at, not one more control -->
           <span class="cl-cds flex flex-wrap grow"><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
@@ -944,7 +944,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button class="cl-seg inline-flex items-center justify-center" data-sk="Day / week / month" :data-sk-key="v[0]" :class="{ sel: clView === v }" @click="clSetView(v)" :title="v[0].toUpperCase()+v.slice(1)" :aria-label="v[0].toUpperCase()+v.slice(1)" x-text="v[0].toUpperCase()"></button>
           </template>
         </div>
-        <button class="cl-add inline-flex items-center justify-center" @click="clNewEvent()" title="New event">＋</button>
+        <button class="cl-add inline-flex items-center justify-center" @click="clNewEvent()" title="New event"><svg class="ico"><use href="#i-plus"/></svg></button>
         <button class="cl-add cl-tray-btn inline-flex items-center justify-center" :class="{ on: clSideOpen }" @click="clSideOpen = !clSideOpen" title="Task panel (this view's tasks and unscheduled)"><svg class="ico" viewBox="0 0 24 24"><use href="#i-panel-r"/></svg></button>
       </div>
       </template>
@@ -996,7 +996,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                     <!-- a chip has NO click of its own: it is part of its day, so the click is the day's (the side panel
                          it used to open covered the very day you were looking at), and no Tab stop either. Drag and the checkbox still work. -->
                     <template x-for="(it, ix) in c.items.slice(0, c.shown)" :key="it.kind+it.id+ix">
-                      <div class="cl-chip flex items-center min-w-0" :class="it.pad ? 'cl-span cl-pad' : clChipCls(it)" :draggable="!it.pad && !!_dndKind(it.kind)" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id, it.start)" @dragend="clDragEndSchedule()" :style="'--cc:' + clItemColor(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><span x-html="clCheckHtml(it)" @click.stop="clToggleTask(it.id)"></span></template><template x-if="it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" x-text="it.spanStart === false && !c.first ? '' : it.title"></span></div>
+                      <div class="cl-chip flex items-center min-w-0" :class="it.pad ? 'cl-span cl-pad' : clChipCls(it)" :draggable="!it.pad && !!_dndKind(it.kind)" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id, it.start)" @dragend="clDragEndSchedule()" :style="'--cc:' + clItemColor(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><span x-html="clCheckHtml(it)" @click.stop="clToggleTask(it.id)"></span></template><template x-if="it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" :style="'--cl-label-days:' + (it.labelDays || 1) + ';--cl-label-cap:' + (it.labelCap || 0)" x-text="it.spanStart === false && !c.first ? '' : it.title"></span></div>
                     </template>
                     <div class="cl-more" x-show="c.more" x-text="'+' + c.more"></div>
                   </div>
