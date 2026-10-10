@@ -1672,7 +1672,7 @@ document.addEventListener('alpine:init', () => {
       for (const r of roots) walk(r, 0);
       if (this.sticky) {   // the sticky note: every open task, flat, as the Mac note (wOrder, N11 user 08-17) — today, overdue, later, undated; then when, importance
         const pm = this._placedMap(), today = this._nowDay, k = new Map();
-        out = out.filter(r => placeable(r.t) && (filtering ? this.rowPass(r.t) : r.t.task_type !== 'note'));   // a note is never done: only a search shows it
+        out = out.filter(r => placeable(r.t) && (!(r.t.completed_at || r.t.archived_at) || _cele.has(r.t.id)) && (filtering ? this.rowPass(r.t) : r.t.task_type !== 'note'));   // flat, so a done subtask the tree keeps inline would read as an open task; a note is never done: only a search shows it
         for (const r of out) { const w = this.whenOf(r.t, pm) || '', d = w.slice(0, 10); r.depth = 0; k.set(r, [!w ? 3 : d === today ? 0 : d < today ? 1 : 2, w, impRank(r.t.importance)]); }
         out.sort((a, b) => { const x = k.get(a), y = k.get(b); return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || x[2] - y[2]; });
         _secMemo = []; _visKey = key; return this._linkRows(out, done);
@@ -3218,7 +3218,7 @@ document.addEventListener('alpine:init', () => {
     // `routed` bounds the hop to ONE: a task with no row anywhere in Lists (a completed one while the done lens
     // is off) would otherwise re-navigate forever and hang the page.
     editTask(t, ev, routed) {
-      if (this.sticky) return desktopWindow('openTask', t.id);   // the note is too small for the composer: the app window opens it
+      if (this.sticky) return desktopWindow('openTask', t.id);   // the note is too small for the composer: the global composer's window opens it
       if (!routed && this.goToTask(t)) return queueMicrotask(() => this.editTask(t, null, true));   // the row has to exist before it can be measured and covered: after Alpine's flush, not a $nextTick — the palette's closing transition holds that a frame, and keys typed in it reached the page
       _jumped = !ev;   // the in-place rule is for a row the reader TAPPED; a palette/keyboard open lifts the whole composer in (B3)
       // ev.currentTarget is the list (<ul>); resolve the actual row by id
@@ -7559,7 +7559,13 @@ document.addEventListener('alpine:init', () => {
           const ws = this._weekDate(idx);
           const cols = Array.from({ length: 7 }, (_, i) => {
             const d = new Date(ws); d.setDate(d.getDate() + i);
-            const items = byDay[isoDate(d)] || [];
+            const iso = isoDate(d), items = (byDay[iso] || []).map(it => {
+              if (it.allDay || !it.end) return it;
+              const start = it.start.slice(0, 10), end = new Date(it.end.slice(0, 10) + 'T00:00');
+              if (it.end.endsWith('T00:00')) end.setDate(end.getDate() - 1);
+              const last = isoDate(end);
+              return last > start ? { ...it, spanStart: iso === start, spanEnd: iso === last } : it;
+            });
             return { d, bands: items.filter(it => it.spanStart !== undefined), rest: items.filter(it => it.spanStart === undefined) };
           });
           // a multi-day band keeps one slot across the row (week's lanes); a day it skips holds a pad there, or a single-day item

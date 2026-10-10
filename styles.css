@@ -840,10 +840,6 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     font-size: var(--fs-12); color: var(--muted); font-weight: 500; border: 1px solid var(--edge);
     border-radius: var(--r-8); background: var(--panel);
     &:hover { border-color: var(--muted); }
-    /* 1B: an unset pill keeps its place and word but drops its box and dims its icon, so the eye lands on what's set. Its word
-       stays --muted: --faint text fails contrast (layout-rules G6). An open pop's pill keeps its box. */
-    &:not(.set, [aria-expanded="true"]) { border-color: transparent; background: none; .ico { color: var(--faint); }
-      &:hover { border-color: transparent; background: var(--hover); .ico { color: inherit; } } }
     &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }   /* owns the open pop */
     &.set { color: var(--ink); } }
   .ico { width: 15px; height: 15px; flex: none; }
