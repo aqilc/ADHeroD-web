@@ -168,9 +168,9 @@ export const areaChipHtml = ({ name, icon, color }) => html`<span class="area" s
 export const areaOptHtml = ({ name, icon }, on) => html`${raw(on ? '<svg class="tick ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : '')}${raw(
   icon ? `<svg class="ico"><use href="#${esc(icon)}"/></svg>` : '')}<span>${name}</span>`;
 
-// Shared proj chip — used by both rowBodyHtml (full row) and minimal task lines; the name is a task title, rendered as one. tintAttr is a style="…" attribute string or ''.
-export const projChipHtml = (name, isDefault, tintAttr = '') => (name || isDefault)
-  ? `<span class="proj${isDefault ? ' proj-inbox' : ''} inline-flex items-center gap-2 min-w-0 flex-none"${tintAttr}>${isDefault
+// Shared proj chip — used by both rowBodyHtml (full row) and minimal task lines; the name is a task title, rendered as one.
+export const projChipHtml = (name, isDefault) => (name || isDefault)
+  ? `<span class="proj${isDefault ? ' proj-inbox' : ''} inline-flex items-center gap-2 min-w-0 flex-none">${isDefault
     ? `<svg class="proj-ico ico flex-none"><use href="#i-backlog"/></svg>`
     : `<span class="proj-in flex-none">in</span><span class="proj-nm">${mdTitle(name)}</span>`}</span>`
   : '';
@@ -215,11 +215,9 @@ export const rowBodyHtml = (r, opts = {}) => {
   // Goals are DELIBERATELY not drawn in the list row — parked until the goals rework, and the dead
   // `.goal`/`.goals-chips` chrome went with them (the empty-string placeholder and mkRow's per-row
   // goalsForTask() went with them too — it was computed for every row of every render, consumed by nothing).
-  // Tint whole chip (icon + text) with project color, faded; color is inherited CSS property so outer span suffices.
-  const projTint = r.projColor ? ` style="${esc(r.projColor)};opacity:.55"` : '';
   // `proj-inbox` marks the icon-only default-project chip: it is a bare glyph, so the overflow ladder is
   // forbidden from moving it to line 2 (an icon alone on its own line reads as a bug). → app.js _ladder
-  const proj = showProj ? projChipHtml(r.projName, r.isDefaultProj, projTint) : '';
+  const proj = showProj ? projChipHtml(r.projName, r.isDefaultProj) : '';
   // Every badge in the row's right cluster is the same shape — muted icon + value. Only the modifier class,
   // the glyph and the text differ, so they are one builder rather than six near-identical template literals.
   const m = (on, icon, text, cls = '', attr = '') => on
@@ -265,10 +263,10 @@ export const rowBodyHtml = (r, opts = {}) => {
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
   const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
   // Steps: the current step hangs under the (smaller) title at title size, its ::desc on a line of its own, then the
-  // next open step on the rail — its node ticks it (app.js onRowClick).
-  const step = r.step ? `<div class="step-block" style="--pc:${esc(r.pc)}"><div class="row-step"><span class="chk-txt">${chkMd(r.step.txt)}</span></div>${r.step.desc ? `<div class="step-desc truncate">${chkMd(r.step.desc)}</div>` : ''}${r.next
+  // next open step on the rail — its node ticks it (app.js onRowClick). It stands in for the task's description, which stays in the composer.
+  const step = r.step && !done ? `<div class="step-block" style="--pc:${esc(r.pc)}"><div class="row-step"><span class="chk-txt">${chkMd(r.step.txt)}</span></div>${r.step.desc ? `<div class="step-desc truncate">${chkMd(r.step.desc)}</div>` : ''}${r.next
     ? `<div class="step-next flex items-center" data-ci="${r.next.ci}"><span class="chk-rect step-node" role="checkbox" aria-checked="false" aria-label="Tick the next step"></span><span class="step-next-txt truncate min-w-0">${chkMd(r.next.txt)}</span></div>` : ''}</div>` : '';
-  return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step}${desc}${chk}</div>`;
+  return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;
 };
 
 // data-ridx on box = focus index; data-more="kind:id" on ··· button
@@ -283,6 +281,7 @@ export const rollerBoxHtml = (it) => {
     : `<span class="rl-ic"${it.color ? ` style="color:${esc(it.color)}"` : ''}><svg class="ico"><use href="#${esc(it.icon || 'i-circle')}"/></svg></span>`;
   const cnt = (it.count ?? '') !== '' ? `<span class="rl-cnt">${esc(it.count)}</span>` : '';
   const more = it.kind === 'loc' ? '' : it.kind === 'arch' ? `<svg class="ico rl-chev${it.open ? ' open' : ''}"><use href="#i-chev-d"/></svg>`   // 'Manage locations' has no per-item menu; the Archived row folds
+    : it.kind === 'backlog' ? '<span class="rl-more" aria-hidden="true" style="visibility:hidden">&#8943;</span>'   // no menu, but the ⋯'s footprint keeps its count in Archived's column
     : `<button type="button" class="rl-more" data-more="${it.kind}:${it.id ?? ''}">&#8943;</button>`;
   // The rail has no drag, so these arrows ARE the ordering control — they sit beside the ⋯ instead of inside it
   // because reordering is a repeated one-press-per-step action, and a menu round-trip per step kills that.
@@ -303,7 +302,7 @@ export const rollerBoxHtml = (it) => {
 // P4/P8): "T" only while today is out of view, the task panel, and ＋ new task (held: new event, D8) — `data-act`, dotStripClick.
 const segHtml = (seg) => !seg ? '' : `<span class="cd-seg">${seg.views.map(v =>
   `<button type="button" data-v="${esc(v)}" data-sk="Day / week / month" data-sk-key="${esc(v[0])}" class="cd-segb${v === seg.cur ? ' on' : ''}" aria-label="${esc(v)} view" aria-pressed="${v === seg.cur}">${esc(v[0].toUpperCase())}</button>`).join('')}</span>`
-  + `<button type="button" data-act="today" class="cd-act cd-today" aria-label="Today"${seg.today ? '' : ' style="visibility:hidden"'}>T</button>`   // keeps its slot: toggling it never re-centres the strip
+  + `<button type="button" data-act="today" class="cd-act cd-today" aria-label="Today">T</button>`
   + `<button type="button" data-act="side" class="cd-act${seg.side ? ' on' : ''}" aria-label="Task panel" aria-pressed="${!!seg.side}"><svg class="ico cd-ico" aria-hidden="true"><use href="#i-panel-r"/></svg></button>`
   + '<button type="button" data-act="add" data-sk="New task" class="cd-act" aria-label="New task (hold for event)" title="New task (hold for event)">＋</button>';
 

@@ -114,10 +114,15 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .msg-acts .ico, .chat-editing .ico { width: 16px; height: 16px; }
 .chat-editing { justify-content: space-between; margin-bottom: var(--sp-4); padding-left: var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
 .chat-comp { gap: var(--sp-6); padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-10); border: 1px solid var(--edge-hi); border-radius: var(--r); background: var(--panel); }
+.chat-input { position: relative; display: flex; flex: 1; min-width: 0; }
 .chat-comp textarea { flex: 1; min-width: 0; max-height: 40vh; field-sizing: content; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-15); padding: var(--sp-2) var(--sp-4); }
 .chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .chat-comp .send:disabled { opacity: .45; cursor: default; }
-.chat-hint { margin: var(--sp-6) 0 0 var(--sp-4); font-size: var(--fs-11); color: var(--muted); }
+.chat-comp textarea::placeholder { color: transparent; }
+.chat-placeholder { position: absolute; inset: 0; display: flex; align-items: baseline; gap: var(--sp-8); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-15); color: var(--muted); white-space: nowrap; pointer-events: none; }
+.chat-prompt { flex: none; }
+.chat-keys { min-width: 0; overflow: hidden; font-size: var(--fs-11); color: var(--faint); }
+.chat-keys kbd { color: inherit; border: 0; padding: 0; margin: 0; }
 .attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
 .attach .ico { width: 18px; height: 18px; flex: none; }
 .composer-actions .attach { align-self: center; }
@@ -141,13 +146,13 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   .social > * { grid-area: 1 / 1; }   /* stacked: a swipe back slides the thread off the chats */
   /* an open thread is the whole screen: no switcher (soc-2e); ‹ Chats, Back and a swipe right lead back */
   .social.in-thread { padding-bottom: var(--sp-12); }
-  :root:has(.surface-social:not([inert]) .social.in-thread) :is(.canvas-dots, .settings-gear) { display: none; }
+  .canvas.in-thread > :is(.canvas-dots, .settings-gear) { display: none; }
   .social h1 { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
   .social.in-thread:not(.back) .soc-list, .social:not(.in-thread) .thread { display: none; }
   .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) var(--sp-12); }   /* full bleed, so it slides as a page */
   .social.back .thread { background: var(--bg-wash), var(--bg); box-shadow: var(--shadow-sm); }
   .th-back { display: flex; }
-  .chat-hint { display: none; }
+  .chat-keys { display: none; }
 }
 .canvas-track.dragging { transition: none; }
 /* A key cuts what a click or swipe animates (ui-build G9). --slide also times the leaving surface's content-visibility hold.
@@ -197,6 +202,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .cd-act .cd-ico { color: inherit; }
 .cd-act.on { background: var(--hover); color: var(--ink); }   /* a toggled panel is state, not "now" (as .cl-tray-btn.on) */
 .cd-today { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); font-size: var(--fs-11); font-weight: 700; }   /* .cd-segb face in .cl-today's colours (Android NavToday) */
+.no-today .cd-today { visibility: hidden; }   /* keeps its slot: toggling it never re-centres the strip; a class, so a day turn doesn't rewrite the strip's html */
 
 /* ---- Overview deck: zoom-out grid of one skeleton per surface (real titles filled in) ---- */
 .overview { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-16); padding: var(--sp-24); background: color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter: blur(6px); opacity: 1; transition: opacity .2s var(--ease-out); }
@@ -204,7 +210,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .ov-grid { display: flex; flex-wrap: wrap; gap: var(--sp-16); justify-content: center; align-items: center; max-width: 880px; transform: scale(1); transition: transform .26s var(--ease-out); }
 @starting-style { .ov-grid { transform: scale(.96); } }
 .ov-card { width: 200px; height: 150px; display: flex; flex-direction: column; gap: var(--sp-8); padding: var(--sp-12); text-align: left; background: var(--panel); border: 1.5px solid transparent; border-radius: var(--r); box-shadow: var(--shadow-sm); cursor: pointer; transition: border-color .15s ease, transform .15s var(--ease-out), box-shadow .15s ease; }
-@media (hover: hover) and (pointer: fine) { .ov-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); } }
+@media (any-hover: hover) and (any-pointer: fine) { .ov-card:hover:where(:not(.touch *)) { transform: translateY(-2px); box-shadow: var(--shadow); } }
 .ov-card.sel { border-color: var(--accent); box-shadow: var(--shadow); }
 .ov-head { display: flex; align-items: center; gap: var(--sp-6); font-weight: 600; font-size: var(--fs-13); color: var(--ink); }
 .ov-head .pick-ico { color: var(--muted); }
@@ -390,7 +396,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .item.cele .check.done::after { animation: cele-tick 800ms var(--ease-pop) both; }
 .item.cele.full .check::before { content: ""; position: absolute; inset: -2.25px; border-radius: 50%; border: 2px solid var(--warm); opacity: .55; pointer-events: none;
   animation: cele-pulse 800ms var(--ease-pop) both, cele-fade 800ms var(--ease-in-out) both; }   /* bright while it springs out, then fades */
-.item.cele.leave { animation: cele-out 200ms var(--ease-out) both; }
+.item.leave { animation: cele-out 200ms var(--ease-out) both; }
 .check .ember { position: absolute; left: 50%; top: 50%; pointer-events: none; }
 .check .ember i { position: absolute; width: var(--s); height: var(--s); margin: calc(var(--s) / -2); border-radius: 50%; background: var(--accent);
   animation: cele-ember var(--t) var(--ease-pop) both, cele-fade calc(var(--t) * .35) var(--ease-in-out) var(--f) both; }
@@ -542,7 +548,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-list .chk-txt { box-sizing: content-box; padding-top: 3px; margin: -1px 0 -2px; }
 .chk-list .chk-txt:empty { margin-right: calc(-1 * var(--sp-8)); }   /* an item that is only a detail: the detail starts where text would (gap-8) */
 .chk-list .chk-txt:empty::before { content: "\200b"; }   /* …and still has a line: the row's baseline and height */
-.chk-row > .chk-rect:not(.plain):is(:hover, :has(+ .chk-txt:hover)) { border-color: var(--muted); }   /* what a click ticks — the box OR its text — lights the box */
+.chk-row > .chk-rect:not(.plain, .done):is(:hover, :has(+ .chk-txt:hover)) { border-color: var(--muted); }   /* what a click ticks — the box OR its text — lights the open box */
 /* uncheckable list: the box becomes a plain bullet — same footprint, no interaction */
 .chk-rect.plain { border-color: transparent; background: none; pointer-events: none; cursor: default; }
 .chk-rect.plain::after { content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 2px; border-radius: 1px; background: var(--muted); }   /* DASH (gallery pick P2, 2026-08-13) — encloses nothing, so nothing reads as fillable */
@@ -550,31 +556,20 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
    2026-08-13). Inert (a note isn't asking to be done); checkHtml never gives it .done, so a completed note
    keeps the mark unchanged (no amber fill, no tick). */
 .check.note { border: 0; background: none; cursor: default; pointer-events: none; }
-.check.note .ico { width: 125%; height: 125%; flex: none; color: var(--muted); }   /* 1.25x the slot: the solid tack inks ~0.85 of the ring, which reads as the same size (user 10-07: never bigger than the checkbox) */
-/* Composer type toggle (#104): the draft's type in front, the other mark larger and faint behind it, on the same centre.
-   A swap circles each a full turn round its own side (--mx); the sides mirror, so the two always pass opposite each other,
-   and hovering the peek runs it part-way down that path. z-index is an integer, so it flips halfway, where they're furthest apart. */
+.check.note .ico { width: 120%; height: 120%; flex: none; color: var(--muted); }   /* 1.2x the slot (user 10-12); never bigger than the checkbox (10-07) */
+/* Composer type toggle (#104): the draft's type in front, the other mark small under it, behind its panel disc; a click
+   on it swaps them at once. At rest the peek's ink stays 1px clear of that disc: a merely touching disc edge eats a ring's stroke. */
 .type-tog { position: relative; flex: none; width: 18px; height: 18px;
-  /* 24px hit box (G5) that scales with its mark; the 18px panel disc hides whatever is behind the front mark */
-  > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; --a: 0deg; --s: 1; --mx: 4.5px; z-index: 1;
-    transform: translateX(var(--mx)) rotate(var(--a)) translateX(calc(-1 * var(--mx))) rotate(calc(-1 * var(--a))) scale(var(--s));
-    transition: transform .26s var(--ease-in-out), opacity .26s var(--ease-in-out), z-index .26s var(--ease-in-out); }
-  > :last-child { --mx: -4.5px; }   /* the tack circles on the side away from the title */
+  > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; z-index: 1; }   /* 24px hit box (G5) */
   > button:disabled { cursor: default; }
-  &.note > button { --a: 360deg; }
-  &:not(.note) > :last-child, &.note > :first-child { --s: 1.5; opacity: .35; z-index: 0; }
-  @media (hover: hover) and (pointer: fine) { &:not(.note) > :last-child:hover { --a: 60deg; } &.note > :first-child:hover { --a: 300deg; }
-    &:not(.note) > :last-child:hover, &.note > :first-child:hover { --s: 1.8; opacity: .5; } }
-  /* touch: no hover, so the front takes the 46px column above its ring's foot and the peek the column below it. Only the ::after
-     takes a finger: the buttons' boxes and the row check's own slop overlap the peek's mark, and a disabled front has none.
-     The peek's insets sit in its 1.5x box. */
-  @media (pointer: coarse) { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -15px -11px 3px; pointer-events: auto; }
-    &:not(.note) > :last-child::after, &.note > :first-child::after { inset: 18px -3px -25px; } }
+  &:not(.note) > :last-child, &.note > :first-child { translate: 4px 15px; z-index: 0; .check { scale: .55; } }
+  /* touch: each mark gets the row check's 40px column, split where the two meet. Only the ::after takes a finger: the
+     buttons' boxes and the row check's own slop overlap the peek's mark, and a disabled front has none */
+  :where(.touch) & { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -11px -11px -1px; pointer-events: auto; }
+    &:not(.note) > :last-child::after, &.note > :first-child::after { inset: 1px -7px -23px -15px; } }
 }
-@media (prefers-reduced-motion: reduce) { .type-tog :is(button, .check) { transition: none; } .type-tog > button { animation: tt-fade .15s var(--ease-out); } .type-tog.note > button { animation-name: tt-fade-b; } }   /* a fresh name restarts the fade on each swap */
-@keyframes tt-fade { from { opacity: 0; } }
-@keyframes tt-fade-b { from { opacity: 0; } }
-.chk-rect.done { background: var(--accent); border-color: var(--accent); --ck: 12.1px; --ck-y: .5px; }
+.chk-rect.done:not(:where(.steps *)) { border-color: transparent; background: none; transition: none; --ck: var(--sp-16); --ck-y: 0;
+  &::after { inset: calc(-1 * var(--sp-2)); background: var(--accent); } }
 /* title-first: no width cap, so a long title spans the whole row and truncates only when it alone overflows;
    the desc sits inline after it and, via its huge shrink factor, gives up width FIRST so a short title never shrinks for a long desc. */
 .chk-txt { font-size: var(--fs-13); color: var(--ink); flex: 0 1 auto; }
@@ -597,7 +592,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .hid-more { flex: none; font-size: var(--fs-11); line-height: 13px; color: var(--muted); padding: 0 var(--sp-6); border-radius: var(--r-pill); background: var(--hover); }
 @property --p { syntax: '<number>'; inherits: true; initial-value: 0; }   /* typed, so the pie sweeps */
 .step-node.done { background: var(--pc); border-color: var(--pc); --ck: 7px; }
-.step-node.lit { background: var(--pc); border-color: var(--pc); }
+.step-node.lit { border-color: var(--pc); transition-property: background-color; }   /* the pop lights the ring immediately, without .chk-rect's border fade */
 /* _stepTick: the rail fills down to the next node in the task's colour (motion.fill), then the step pushes (motion.push) */
 .rail-fill { position: absolute; left: calc(var(--rail-x) - 1px); width: 2px; top: var(--rail-top, 4px); bottom: 13px; background: var(--pc); transform-origin: top; }
 .pushing { clip-path: inset(0 -100vw); }   /* clips only above and below: the rail and its nodes sit left of the box */
@@ -613,8 +608,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   &:has(> .step-next)::before { content: ''; position: absolute; left: calc(var(--rail-x) - 1px); width: 2px; top: var(--rail-top, 4px); bottom: 13px; background: color-mix(in srgb, var(--faint) 60%, transparent); } }
 .step-node { position: absolute; cursor: pointer; left: calc(var(--rail-x) - 5px); width: 10px; height: 10px; border: 2px solid color-mix(in srgb, var(--faint) 70%, transparent); border-radius: 50%;
   &::before { content: ''; position: absolute; inset: -9px; border-radius: 50%; }   /* a 24px fine-pointer target */ }
-@media (hover: hover) and (pointer: fine) { .step-node:hover { border-color: var(--pc); background: color-mix(in srgb, var(--pc) 15%, transparent); } }
-@media (pointer: coarse) { .step-node::before { inset: -17px; } }   /* 44px */
+@media (any-hover: hover) and (any-pointer: fine) { .step-node:hover:where(:not(.touch *)) { border-color: var(--pc); background: color-mix(in srgb, var(--pc) 15%, transparent); } }
+:where(.touch) { .step-node::before { inset: -17px; } }   /* 44px */
 /* I6, the part-dashed ring (Tabler "progress"): the right half a solid stroke, the left half four dashes. Inside it,
    inset 2px clear of the dashes, the pie fills by steps done (user: "the half circle stroke solid like in that icon"). */
 .check.steps { border-color: transparent; padding: var(--sp-2); background: conic-gradient(var(--pc) calc(var(--p) * 1%), transparent 0) content-box;
@@ -647,6 +642,13 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* into = no gap: the parent gets a solid accent box (a slot is dashed) and a bar at its child indent says it nests */
 .item.drop-into { background-color: color-mix(in srgb, var(--accent) 13%, transparent); outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: -2px; border-radius: var(--r-8);
   &::after { content: ''; position: absolute; left: calc(var(--gut) + (var(--d, 0) + 1) * 22px); right: var(--sp-10); bottom: var(--sp-4); height: 2px; border-radius: 1px; background: var(--accent); } }
+/* past MAX_DEPTH: the rest's tint, the box and the slot under it turn danger red, and the drag card says why (a drop there is refused) */
+.item:is(.drop-dwell, .drop-into).drop-deep { background-color: color-mix(in srgb, var(--danger) 13%, transparent); }
+.item.sorting.drop-deep { background-color: color-mix(in srgb, var(--danger) 13%, var(--panel)); }   /* the lifted row (touch): opaque, it floats over the list */
+.item.drop-into.drop-deep { outline-color: color-mix(in srgb, var(--danger) 70%, transparent); &::after { display: none; } }
+.item.drop-ghost.deep { border-color: color-mix(in srgb, var(--danger) 55%, transparent); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.drag-ghost:not(.deep) .badge.deep { display: none; }
+.drag-ghost .badge.deep { flex: none; color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); }
 /* keyboard-focused row (j/k/↑↓) — a soft accent ring, distinct from hover */
 .item.kbfocus { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: -2px; border-radius: var(--r-8); }
 /* Move-rail: fixed left-edge panel, slides in while a task row is dragged; drop = reassign project/area */
@@ -661,7 +663,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   transition: background-color .12s var(--ease-out), box-shadow .12s var(--ease-out); }
 .mr-target .ico { width: 15px; height: 15px; color: var(--cc); flex: none; }
 .mr-target .mr-name { max-width: 168px; }
-@media (hover: hover) and (pointer: fine) { .mr-target:hover { background: var(--hover); } }
+@media (any-hover: hover) and (any-pointer: fine) { .mr-target:hover:where(:not(.touch *)) { background: var(--hover); } }
 .mr-target.hot { background: color-mix(in srgb, var(--cc) 22%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--cc) 55%, transparent); }
 /* Drag ghost: custom follow-cursor element; full task row appearance, compacts over .peek drop zone */
 .drag-ghost { position: fixed; top: 0; left: 0; z-index: 9999; pointer-events: none; will-change: transform; }
@@ -748,9 +750,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .rolled .areas .area ~ .area ~ .area ~ .area { display: none; }
 .rolled .areas::after { content: "…"; display: inline-flex; align-items: center;
   font-size: var(--fs-12); font-weight: 700; color: var(--muted); line-height: 15px; padding: 0 1px; }
-/* Project: colored # or backlog icon — semantic location, not an area */
-.proj { max-width: 7rem; font-size: var(--fs-12); color: var(--muted); white-space: nowrap; }
-.proj .proj-in { margin-right: 1px; color: var(--muted); }   /* "in <project>" — the word stays neutral; only icon+name take the project tint */
+/* Project: "in", name and inbox glyph share one muted fade. */
+.proj { max-width: 7rem; font-size: var(--fs-12); color: var(--muted); opacity: .55; white-space: nowrap; }
+.proj .proj-in { margin-right: 1px; }
 .proj .proj-nm { overflow: hidden; text-overflow: ellipsis; }
 /* Named chip: glyph and name share ONE baseline, and align-self (above) puts it on the title's. 1.875px = 15px × 3/24 =
    the empty band under a 24-unit viewBox glyph: nudge the glyph down onto the baseline, and take the same
@@ -815,12 +817,15 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .composer-grow.clip { overflow: hidden; height: 0; }
 /* padding+margin animate concurrently with height (not gated on settle); target measured as-if-grown so it doesn't jump */
 .composer-grow.grown .composer-card { padding-top: 14px; padding-bottom: var(--sp-12); margin: var(--sp-8) 0 var(--sp-12); }
+:where(html:not(.touch, .composer-win)) .composer-grow.grown .composer-card { padding-bottom: var(--sp-8); margin-bottom: calc(var(--sp-24) * 2); }   /* the bar's icons sit as far from the foot as the checkbox from the top; room for the action row under the card (8 gap + 28 row + 12) */
+/* the page dims a little while the composer is open (user 10-10: "not a lot"); it fades with the grow's opacity */
+.composer-grow::before { content: ""; position: fixed; inset: -100vmax; z-index: -1; pointer-events: none; background: light-dark(rgb(0 0 0 / .03), rgb(0 0 0 / .16)); }
 .composer-card {
   /* left pad = the row's --gut check rail (app.js sets `padding-left:calc(var(--gut) + depth*22px)` per row), so the
      composer's checkbox lands exactly on the list's — the edit flow crossfades the two and any offset jumps */
   display: flex; align-items: flex-start; gap: var(--sp-12); padding: var(--sp-8) 14px var(--sp-12) var(--gut); margin: 0;
-  position: relative; border-radius: var(--r-8); background: var(--panel); transition: padding .18s ease, margin .18s ease;
-  box-shadow: var(--shadow-pop), inset 0 0 0 1px var(--edge);   /* depth from the pop-shadow; hairline inner edge (subtle --edge, not the harsher --faint) */
+  position: relative; border-radius: var(--r-lg); background: var(--panel); transition: padding .18s ease, margin .18s ease;
+  box-shadow: var(--shadow);   /* no border, a soft shadow (user 10-10) */
   .composer-body { position: relative; }
   .content { border: none; background: none; padding: 0; font-size: var(--fs-15); line-height: 18px;
     min-height: 18px; outline: none; white-space: pre-wrap; word-break: break-word; cursor: text; }
@@ -833,17 +838,27 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     font-family: inherit; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.4em;
     &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
 }
+/* One line at the card's foot (comp-1 A): set values first with a filled icon in their colour (--cc) and their value,
+   unset ones as bare icons on the right. Importance and size are icons only. The inline margin lines the first and last
+   icons up with the title and the card's right edge. */
 .composer-opts {
-  flex-wrap: wrap; margin: var(--sp-8) 0 0;
+  flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-8) 0 0;
+  :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-6));   /* touch keeps its order: the phone wasn't part of the pick */
+    &::after { content: ""; flex: 1; order: -1; }
+    .field:has(> .chip.set) { order: -1; } }
   .field { position: relative; }
-  .chip { height: 30px; padding: 0 var(--sp-10);
-    font-size: var(--fs-12); color: var(--muted); font-weight: 500; border: 1px solid var(--edge);
-    border-radius: var(--r-8); background: var(--panel);
-    &:hover { border-color: var(--muted); }
-    &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }   /* owns the open pop */
-    &.set { color: var(--ink); } }
-  .ico { width: 15px; height: 15px; flex: none; }
+  .chip { height: 28px; padding: 0 var(--sp-6); gap: var(--sp-8); border: none; border-radius: var(--r-6); background: none;
+    font-size: var(--fs-13); color: var(--muted); font-weight: 500;
+    &:hover { background: var(--hover); color: var(--ink); }
+    &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* owns the open pop */
+    &.set { color: var(--ink); .ico { color: var(--cc); } }
+    :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; }   /* touch keeps words: its row scrolls */
+    &.down .ico { rotate: 180deg; } }   /* Someday: the chevrons point down */
+  .chip-rem { --cc: var(--accent); }
+  .chip-loc { --cc: var(--hint-location); }
+  .ico { width: 16px; height: 16px; flex: none; }   /* 16 + the 8 gap: a value starts where the entries' text does */
 }
+.knock { fill: var(--panel); } path.knock { stroke: var(--panel); }   /* the -fill glyphs' cut-outs take the card colour; top level: a <use> clone matches against the sprite, not its host */
 /* Composer inline entries (Things-style): subtask/checklist rows + grayed ghost row */
 .entry-list { gap: 1px; }
 .entry { display: flex; align-items: flex-start; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative; font-size: 14px;
@@ -873,8 +888,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
        is non-scrolling → the pill's real text baseline is used, and text-overflow still caps it at 12rem. */
     .nlp-pill { vertical-align: baseline; margin: 0 3px; overflow: clip; } }   /* hydrated fields have no separating space → give pills a clear gap */
 }
-@media (hover: hover) and (pointer: fine) { .entry:hover .entry-grip { opacity: .5; } }
-@media (hover: none) { .entry .entry-grip { display: none; } }   /* a finger holds the row itself (sortable.js) — no grip, too small */
+@media (any-hover: hover) and (any-pointer: fine) { .entry:hover:where(:not(.touch *)) .entry-grip { opacity: .5; } }
+:where(.touch) { .entry .entry-grip { display: none; } }   /* a finger holds the row itself (sortable.js) — no grip, too small */
 /* Ghost "new entry": gray+dashed at rest → ink+solid as typed; reverses on backtrack. */
 .entry.ghost {
   .entry-txt { color: var(--muted); transition: color .15s ease; &::placeholder { color: var(--muted); } }
@@ -882,11 +897,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   &.active .entry-txt { color: var(--ink); }
   &.active .ghost-check { border-style: solid; border-color: var(--muted); }
 }
-/* checklist buckets: ghost (DOM-first) → open (default order 0) → done. Only done needs an order override to sink;
-   the ghost leads by DOM position, so freshly-added items (which unshift to the top) share the top just below it. */
-.entry.chk.done { order: 2; }
-/* Ghost-as-find: matches wash + float via the same flex-order lane done rows sink through.
-   AFTER .done so a done match floats too (equal specificity — order in the sheet decides). */
+/* checklistRows owns the buckets and holds ticks in place until release; CSS only floats find hits. */
 .entry.chk.chk-hit { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: var(--r-6); order: -1; }
 .entry-list > .entry.ghost { order: -3; }   /* the input outranks floating hits — but only in the LIST (the empty state's ghost·OR·ghost trio keeps its DOM order) */
 /* 2A: an item shows in full, every line, at rest as while editing, so a focus never reflows it. */
@@ -930,9 +941,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); } }   /* six dashes: a border:dashed draws a "C" this small */
   > .ghost.active .chk-rect { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--faint) 70%, transparent); &::after { display: none; } }   /* typed: solid, like every ghost check */
   .cur .chk-rect { border-width: 1px; box-shadow: inset 0 0 0 2px var(--accent); }
-  @media (hover: hover) and (pointer: fine) {   /* hover previews the tick: an open node lights, a done one goes hollow */
-    > .entry.chk:not(.ghost) .chk-rect:hover { box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--panel)) padding-box; }
-    > .entry.chk.done .chk-rect:hover { background: var(--panel) padding-box; } }
+  @media (any-hover: hover) and (any-pointer: fine) {   /* hover previews the tick: an open node lights, a done one goes hollow */
+    > .entry.chk:not(.ghost) .chk-rect:hover:where(:not(.touch *)) { box-shadow: inset 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--panel)) padding-box; }
+    > .entry.chk.done .chk-rect:hover:where(:not(.touch *)) { background: var(--panel) padding-box; } }
   > .entry.chk:not(.done, .cur, .ghost) .entry-txt { color: var(--muted); }
 }
 /* Trash = hover overlay: absolute (no layout space) so every item — and the ghost, which has no trash — shows the SAME
@@ -941,15 +952,15 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .entry.chk .entry-del, .code-copy { position: absolute; right: 0; top: 0; height: calc(1.35 * 14px + 2 * var(--sp-4)); padding: 0 var(--sp-4) 0 var(--sp-24);
   background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-16)); opacity: 0; transition: opacity .15s var(--ease-out);
   &:focus { opacity: 1; } }   /* higher specificity than the base .entry-del:focus reveal — must restate it or keyboard focus never shows the × */
-@media (hover: hover) and (pointer: fine) { .entry.chk:hover .entry-del, .md-code:hover > .code-copy { opacity: 1; } }
+@media (any-hover: hover) and (any-pointer: fine) { .entry.chk:hover:where(:not(.touch *)) .entry-del, .md-code:hover:where(:not(.touch *)) > .code-copy { opacity: 1; } }
 .composer .md-code-short > .code-copy { left: 100%; right: auto; padding: 0 var(--sp-4); background: none; }   /* beside, so a click on the code reaches editing */
 .entry.chk .entry-txt .md-code { max-width: calc(100% - var(--sp-24) - 14px - var(--sp-4)); }   /* its Copy clears the × (a row's first line can be the code) */
 code:has(> .code-copy) { display: inline-block; position: relative; cursor: text; user-select: text; --row-bg: var(--bg); }
 :is(.title, .desc-line, .chk-txt, .chk-desc):has(code) { text-overflow: clip; } /* ellipsis hides an entire inline-block, even with room for its first characters */
 :is(.title, .desc-line) code { --row-bg: var(--hover); }
 code > .code-copy { position: sticky; display: inline-flex; vertical-align: middle; height: var(--fs-11); margin-left: calc(-1 * (var(--fs-11) + var(--sp-4))); padding: 0 0 0 var(--sp-4); border-radius: inherit; background: linear-gradient(to right, transparent, var(--row-bg) var(--sp-4)); .ico { width: var(--fs-11); height: var(--fs-11); } }
-@media (hover: hover) and (pointer: fine) { code:hover > .code-copy { opacity: 1; } }
-@media (hover: none) { .code-copy { opacity: 1; } code > .code-copy { margin-left: 0; } }   /* always shown on touch: it takes its own room after the text instead of covering the end */
+@media (any-hover: hover) and (any-pointer: fine) { code:hover:where(:not(.touch *)) > .code-copy { opacity: 1; } }
+:where(.touch) { .code-copy { opacity: 1; } code > .code-copy { margin-left: 0; } }   /* always shown on touch: it takes its own room after the text instead of covering the end */
 /* a cross-row drag-select tints the rows it spans — what ⌘C will copy (chkCopy kicks in at ≥2 rows) */
 .entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 13%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--accent) 13%, var(--panel)); }
 /* small round check for subtask entries (smaller than the row .check) */
@@ -1001,7 +1012,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* min-width == max-width: the pop is FIXED at the width it has always rendered at. The one-off sentence used
    to push it there; once R2 cut that sentence to two clauses, width fell to the content (the month header),
    so paging months twitched the pop and the type-ahead placeholder truncated mid-word. */
-.pop.cal { min-width: 280px; max-width: 280px; gap: 1px; max-height: min(840px, calc(100vh - var(--kb, 0px) - var(--sp-16))); overflow-y: auto; > * { flex: none; } }
+.pop.cal { min-width: 280px; max-width: 280px; gap: 1px; max-height: min(840px, calc(100vh - var(--kb) - var(--sp-16))); overflow-y: auto; > * { flex: none; } }
 .cal-type {
   width: 100%; padding: var(--sp-6) var(--sp-8) var(--sp-8); border: none; border-bottom: 1px solid var(--edge);
   background: none; color: var(--ink); font-size: 14px; margin-bottom: var(--sp-4);
@@ -1263,11 +1274,6 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   border: none; border-top: 1px solid var(--hair); background: none; color: var(--muted); font-size: var(--fs-12); cursor: pointer; text-align: left;
   .ico { width: 12px; height: 12px; flex: none; }
   &:hover { color: var(--ink); } }
-/* Chip that requires a selection pulses its border when save is attempted without a value */
-/* Deadline red register — softened p1 border + ink when deadline is set (precedent: .chip.required) */
-.chip.dl.set { border-color: color-mix(in srgb, var(--deadline) 38%, var(--edge)); color: color-mix(in srgb, var(--deadline) 66%, var(--ink)); }
-.chip.dl.set .ico { color: var(--deadline); }
-.chip.required { border-color: var(--p1); color: var(--p1); animation: req-pulse .35s ease 2; }
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
 /* 1.5px border on all buttons (transparent for filled) — action-row siblings stay pixel-equal height */
@@ -1290,6 +1296,17 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .more-wrap { position: relative; }
   .more-btn .ico { width: 17px; height: 17px; fill: currentColor; stroke: none; }   /* solid dots — the global .ico fill:none would otherwise render them as outlines */
 }
+/* Desktop: the project and the task's actions sit outside, under the card (user 10-10); Enter or ⌘Enter saves, Esc and
+   a click outside close. Its left lines the project's icon up with the card's checkbox, its right the card's last icon.
+   Anchored to .composer-body, which the # and @ pickers position against, so it can't move to the card. The Windows
+   composer window is the card alone, so it keeps them inside. */
+:where(html:not(.touch, .composer-win)) .composer-actions { position: absolute; top: calc(100% + var(--sp-8) + var(--sp-8)); left: calc(-18px - var(--sp-12) - var(--sp-2)); right: calc(-1 * var(--sp-6));
+  height: 28px; margin: 0; padding: 0; border: none; align-items: center;
+  :is(.ghost, .primary) { display: none; }
+  .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }
+  :is(.del-btn, .overview-btn, .more-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--hover); } .ico { width: 16px; height: 16px; } }
+  .proj-pick-ico { width: 16px; height: 16px; }   /* the checkbox's size, on its x */
+  .composer-btns { gap: var(--sp-2); } }
 /* Composer parent (project) chip caps long names. The areas chip shares the truncation (but no cap — it
    sizes to its label when there's room): squished into the Plan side panel its label wrapped to a second
    line and spilled out of the 30px pill. min-width:0 is what lets the label shrink and ellipsize instead. */
@@ -1657,7 +1674,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
    so sharing those classes would let this hidden popover shadow the composer's pickers for querySelector-based tests) */
 .sel-prio-pop { flex-direction: row; gap: var(--sp-6); width: max-content; }
 .sel-due-pop { min-width: 168px; }
-.sel-move-pop { min-width: 230px; max-height: 300px; overflow-y: auto; @starting-style { opacity: 0; transform: scale(.96); } }   /* x-if, not x-show: hidden, its project list re-rendered on every task reload. So it enters here and closes instantly */
+.sel-move-pop, .merge-pop { min-width: 230px; max-height: 300px; overflow-y: auto; @starting-style { opacity: 0; transform: scale(.96); } }   /* x-if, not x-show: hidden, its project list re-rendered on every task reload. So it enters here and closes instantly */
 .sel-anim { transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); }
 .sel-hide { opacity: 0; transform: translateY(-6px); }
 .sel-show { opacity: 1; transform: translateY(0); }
@@ -1761,7 +1778,7 @@ textarea.inp { resize: vertical; }
   font-size: calc(var(--fs-13) + var(--prox) * 6px); color: color-mix(in oklch, var(--muted), var(--gold) calc(var(--prox) * 100%)); }
 .cl-cd span { font-size: calc(var(--fs-11) + var(--prox) * 2px); font-weight: calc(500 + var(--prox) * 200); letter-spacing: 0;
   color: color-mix(in oklch, var(--muted), var(--warm-ink) calc(var(--prox) * 100%)); }
-@media (hover: hover) and (pointer: fine) { .cl-period-btn.pick:hover { background: var(--hover); } }
+@media (any-hover: hover) and (any-pointer: fine) { .cl-period-btn.pick:hover:where(:not(.touch *)) { background: var(--hover); } }
 /* week mode: the row is the target, so the whole week lights on hover and the anchor week stays selected */
 .cal-day.hot { background: var(--hover); }
 .cal.cal-wk .cal-day.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); box-shadow: none; }   /* while scrolling, the flying .at-bar overlay title is the heading (instant swap; same month, same slot) */
@@ -1824,7 +1841,7 @@ textarea.inp { resize: vertical; }
 .cl-wh-n { all: unset; field-sizing: content; box-sizing: border-box; min-width: 2ch; max-width: 100%; text-overflow: ellipsis; cursor: text; }
 .cl-wh-n::placeholder { color: inherit; opacity: 1; }
 .cl-wh-n:focus::placeholder { opacity: .45; }
-@media (hover: hover) { .cl-wh-n:hover { text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; } }
+@media (any-hover: hover) { .cl-wh-n:hover:where(:not(.touch *)) { text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; } }
 .cl-wh:not(.today) > .cl-wh-n:not(:placeholder-shown) { color: var(--warm-ink); }
 .cl-wh-d { flex: none; font-size: var(--fs-11); font-weight: 600; letter-spacing: .07em; color: var(--ink); font-variant-numeric: tabular-nums; }   /* same metric as the weekday beside it — only ink separates them, so week and month heads read identically */
 /* Today is a FILLED plate carrying the whole cell — weekday and date together, text inverted onto it. An
@@ -2034,7 +2051,7 @@ textarea.inp { resize: vertical; }
 .cl-blk-stop:active { transform: scale(.97); }
 .cl-block.is-running:hover .cl-blk-tick, .cl-block.is-running:has(.cl-blk-stop:focus-visible) .cl-blk-tick { opacity: 0; }
 /* touch: a ≥32px tap reaching up-left from the corner (the band clips anything past its own edges) */
-@media (hover: none) { .cl-blk-stop { opacity: 1; } .cl-blk-stop::after { content: ""; position: absolute; right: -4px; bottom: -2px; width: max(100%, 40px); height: 32px; }
+:where(.touch) { .cl-blk-stop { opacity: 1; } .cl-blk-stop::after { content: ""; position: absolute; right: -4px; bottom: -2px; width: max(100%, 40px); height: 32px; }
   .cl-block.is-running .cl-blk-tick { opacity: 0; } .cl-block.is-open .cl-blk-stop::after { top: -2px; bottom: auto; } }
 /* "⌘Z undo stop" under a just-stopped band, above the elapsed wash */
 .cl-stop-hint { position: absolute; left: var(--sp-6); z-index: 6; margin-top: 2px; font-size: var(--fs-11); color: var(--muted); white-space: nowrap; pointer-events: none; }
@@ -2226,7 +2243,7 @@ textarea.inp { resize: vertical; }
 .cl-ag-d { display: block; font-size: var(--fs-11); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* one line: 52 is a row's MAX, the page fit counts on it */
 .cl-ag-none { padding: var(--sp-16) var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
 /* rows light on hover, exactly like the panel's pill rows (C1c) — never filled at rest */
-@media (hover: hover) and (pointer: fine) { .cl-ag-row:not(.free):hover { background: var(--hover); } }
+@media (any-hover: hover) and (any-pointer: fine) { .cl-ag-row:not(.free):hover:where(:not(.touch *)) { background: var(--hover); } }
 .cl-ag-row:not(.free):active { transform: scale(.985); }                                    /* E1 press */
 .cl-ag-row.done .cl-ag-n { text-decoration: line-through; color: var(--muted); }
 /* an empty afternoon is information, so the holes are named — but quietly, they are not events */
@@ -2270,7 +2287,7 @@ textarea.inp { resize: vertical; }
    turned the tray into a stack of grey slabs, which is exactly the heaviness C2 set out to remove. */
 .cl-side-list .item, .drag-ghost > .item { border-radius: var(--r); --row-hov: color-mix(in srgb, var(--hover) 60%, var(--accent) 8%); }
 .drag-ghost > .item { background-color: var(--row-hov); }   /* the tray row's copy wears its grabbed (hover) pill */
-@media (pointer: fine) { .cl-side-list .item, .drag-ghost > .item { --row-pt: 5px; } }   /* D3: tighter, so more clears the fold; a touch row keeps its height */
+@media (any-pointer: fine) { :where(:root:not(.touch)) .cl-side-list .item, :where(:root:not(.touch)) .drag-ghost > .item { --row-pt: 5px; } }   /* D3: tighter, so more clears the fold; a touch row keeps its height */
 .cl-side-list .item.sel, .cl-side-list .item.editing { background: var(--hover); }
 .cl-side-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
 
@@ -2328,7 +2345,7 @@ textarea.inp { resize: vertical; }
 .blk-override-note { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-8); padding: var(--sp-6) var(--sp-10); border-radius: var(--r-4); background: color-mix(in srgb, var(--accent) 8%, transparent); font-size: var(--fs-12); color: var(--muted); }
 
 /* a live drag reaches the scroller under these: the bottom edge zone is theirs to scroll */
-:root:has(.item.dragging, .cl-lift) :is(.canvas-dots, .notif) { pointer-events: none; }
+body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: none; }
 /* Bottom-right notification stack — calm floating cards (deletes/edits) that never block input. The stack
    ignores pointer events; only the cards are interactive, so their Undo/Redo buttons stay reachable. */
 #notif-stack { position: fixed; right: var(--sp-16); bottom: var(--sp-16); z-index: 60; display: flex; flex-direction: column;
@@ -2365,7 +2382,7 @@ textarea.inp { resize: vertical; }
 
 /* --- Mobile layout --- */
 @media (max-width: 640px) {
-  .app { max-width: none; padding: var(--sp-16) 14px 100px; }
+  .app { --pad-x: 14px; max-width: none; padding: var(--sp-16) var(--pad-x) 100px; }
   .topbar { align-items: center; margin-top: var(--sp-16); }
   .list { margin: 0 -8px; }
   /* The ghost row bleeds exactly as far as the list it stands in for. Its desktop bleed is -18px/+28px
@@ -2406,6 +2423,7 @@ textarea.inp { resize: vertical; }
   #notif-stack { left: var(--sp-12); right: var(--sp-12); max-width: none; align-items: stretch;
     bottom: calc(var(--foot) + var(--sp-6) + env(safe-area-inset-bottom, 0px)); }
   .cl-mband, .cl-mtitle { font-size: 25px; left: 10px; }
+  .touch .cl-dnum { font-size: var(--fs-13); }
   /* Month chips (decision #65, B): the day's full width, ring and flag inline, the title wrapping on whole words. */
   .cl-chips { margin-inline: calc(var(--sp-2) - var(--sp-6)); }
   .cl-chip:not(.cl-span) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; text-overflow: ellipsis; line-height: 1.1; padding: 0 0 0 var(--sp-8); }
@@ -2452,9 +2470,11 @@ textarea.inp { resize: vertical; }
   .composer-btns { gap: var(--sp-6); }   /* editing's five actions fit 286px only at this gap */
 }
 
-@media (pointer: coarse) {
+/* Hardware detection also covers Samsung's fine/hover media report. */
+:where(.touch) {
   .attach { width: 44px; height: 44px; }
   .item { --row-pt: var(--sp-12); padding: var(--row-pt) var(--sp-8); }
+  .row-chev.boxed { left: calc(var(--gut) + var(--d, 0) * (var(--sp-20) + var(--sp-2)) - var(--sp-20)); }
   .check::before { content: ""; position: absolute; inset: -11px; }   /* ~40px hit area, same small circle */
   /* grow the row vertically, but keep the --gut left pad — a `14px` shorthand clobbered it and slid the
      ghost check 4px off the real checkboxes on touch, on top of the bleed mismatch fixed above. */
@@ -2467,24 +2487,26 @@ textarea.inp { resize: vertical; }
 
 /* A phone row draws no fold chevron (#37a: a still hold folds it, app.js initListSort) and keeps no gutter for one: the
    gutter shrinks to the list's 8px bleed, so the check sits on the heading's column. A section head's chevron has
-   no gutter left to hang in, so it leads its label. */
-@media (max-width: 640px) and (pointer: coarse) {
-  .surface-lists { --gut: var(--sp-8); }
-  .surface-lists .row-chev { display: none; }
-  .surface-lists .sec-chev { margin-left: 0; }
+   no gutter left to hang in, so it leads its label. Touch hardware gates this: Samsung reports pointer:fine. */
+@media (max-width: 640px) {
+  .touch .surface-lists { --gut: var(--sp-8); }
+  .touch .surface-lists .row-chev { display: none; }
+  .touch .surface-lists .sec-chev { margin-left: 0; }
 }
 
 /* #37d: with the soft keyboard up (app.js sets html.kb + --kb), the chips and Save stick to its top whenever the
    composer runs under it — one block, so no chip can slide under the Save bar. Sticky insets count from inside
    .app's 100px bottom padding. Docked, the chips keep to one line that scrolls sideways, so the dock leaves the
    title room. The shadow + clip paint the panel edge to edge: what scrolls beneath never shows through. */
+@property --kb { syntax: '<length>'; inherits: false; initial-value: 0px; }   /* keyboard() sets both on their readers only */
+@property --dock { syntax: '<length>'; inherits: false; initial-value: 0px; }
 .composer-dock { display: contents; }
-@media (max-width: 640px) and (pointer: coarse) {
-  .kb .composer-dock { display: flex; flex-direction: column; gap: var(--sp-8); position: sticky; bottom: calc(var(--kb) - 100px); z-index: 1;
+@media (max-width: 640px) {
+  .touch.kb .composer-dock { display: flex; flex-direction: column; gap: var(--sp-8); position: sticky; bottom: calc(var(--kb) - 100px); z-index: 1;
     padding-bottom: var(--sp-8); background: var(--panel); box-shadow: 0 0 0 100vmax var(--panel); clip-path: inset(0 -100vmax); }
-  .kb .composer-opts { flex-wrap: nowrap; overflow-x: auto; > * { flex: none; } }
+  .touch.kb .composer-opts { flex-wrap: nowrap; overflow-x: auto; > .field { flex: none; } }   /* `> *` would restyle the whole page per keyboard toggle */
   /* The browser's caret reveal knows neither the keyboard nor the dock: pad them out, and give the list room to lift its end. */
-  .kb .app { scroll-padding-bottom: calc(var(--kb) + var(--dock)); &::after { content: ''; display: block; height: var(--kb); } }
+  .touch.kb .app { scroll-padding-bottom: calc(var(--kb) + var(--dock)); &::after { content: ''; display: block; height: var(--kb); } }
 }
 
 /* --- Keyboard hints ---
@@ -2494,10 +2516,52 @@ textarea.inp { resize: vertical; }
    is the one honest signal that a keyboard/mouse is present.
    :has() rather than `kbd` alone — the chip's wrapper carries margin-left:auto, so hiding only the kbd
    would leave an empty span still pushing the row. Sibling .set-sub holds real text and must stay. */
-@media (pointer: coarse) and (any-hover: none) {
+@media (any-pointer: coarse) and (any-hover: none) {
   .ov-hint, .palette-foot, .set-sec-keys, .set-sub:has(kbd), .cl-stop-hint { display: none; }
 }
 
+/* ---- Jot bar (docs/ui/mobile-design-baseline.md §8): Lists on a phone, behind the adherod.bar trial ----
+   It takes the dot strip's band (so --foot grows to it) and the gear moves to the header. Plan and Social keep the
+   strip: Plan's views and actions ride it. Typing hides it: the composer docks over the keyboard on its own (#37d). */
+.jot-bar, .topbar .settings-gear { display: none; }
+.jot-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: var(--foot); gap: var(--sp-6);
+  padding: 0 var(--sp-10) env(safe-area-inset-bottom, 0px); background: var(--panel); border-top: 1px solid var(--hair); }
+.jb-field { flex: 1; height: 44px; gap: var(--sp-10); padding: 0 var(--sp-6); border-radius: var(--r-lg); background: var(--hover); }
+.jb-dest { flex: none; max-width: 50%; height: 32px; gap: var(--sp-6); padding: 0 var(--sp-10) 0 var(--sp-8); border: 0; border-radius: var(--r);
+  background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); font: inherit; font-size: var(--fs-13); font-weight: 600; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-touch-callout: none;   /* held (P-A): the finger slides the menu, not the page */
+  .ico { width: 15px; height: 15px; flex: none; color: var(--muted); } }
+.jb-lists { top: auto; bottom: calc(100% + var(--sp-4)); left: var(--sp-10); width: 270px; border-radius: var(--r-lg); box-shadow: var(--shadow-pop); transform-origin: var(--sp-24) 100%;
+  transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); @starting-style { opacity: 0; transform: scale(.95); }
+  .pop-item { min-height: 44px; gap: var(--sp-12); padding: 0 var(--sp-10); font-size: var(--fs-15); &.hot { background: var(--hover); } &.on { color: var(--accent); } }
+  .pop-item .ico { width: 18px; height: 18px; }
+  .more { margin-top: var(--sp-6); border-top: 1px solid var(--hair); border-radius: 0; color: var(--muted); } }
+.jot-bar:has(> .jb-lists) { z-index: 61; }   /* held lists sit over the toasts standing on the bar */
+@media (prefers-reduced-motion: reduce) { .jb-lists { @starting-style { transform: none; } } }   /* fades, doesn't grow */
+.jb-jot { flex: 1; align-self: stretch; padding: 0; border: 0; background: none; color: var(--faint); font: inherit; font-size: var(--fs-15); text-align: left; cursor: text; }
+.jb-ico { flex: none; width: 44px; height: 44px; border: 0; border-radius: var(--r); background: none; color: var(--muted); cursor: pointer;
+  .ico { width: 20px; height: 20px; flex: none; }
+  &.cd-new::before { left: calc(50% + var(--sp-4)); box-shadow: 0 0 0 2px var(--panel); } }
+@media (max-width: 640px) {
+  html:has(.canvas.bar-on) { --foot: 72px; }
+  .canvas.bar-on > :is(.canvas-dots, .settings-gear) { display: none; }
+  .canvas.bar-on > .jot-bar { display: flex; }
+  .kb .canvas.bar-on > .jot-bar { display: none; }
+  .bar-on .topbar .settings-gear { display: flex; position: static; flex: none; }
+  /* G-A: a 60px header that stays on top, clear at rest (the glow runs from y=0); once rows scroll under it, it frosts */
+  .bar-on .app { padding-top: 0; scroll-padding-top: 60px; container-type: scroll-state; }   /* the header's height (_seenTop); a state, not a scroll-driven animation: the motion dial zeroes those */
+  .bar-on .topbar { position: sticky; top: 0; z-index: 8; height: 60px; margin: 0 calc(-1 * var(--pad-x)) var(--sp-8); padding: var(--sp-6) var(--pad-x) 0;   /* z 8: over a row's composer (7) */
+    transition: background-color .2s var(--ease-out), backdrop-filter .2s var(--ease-out);
+    h1 { font-size: var(--fs-22); } }
+  @container scroll-state(scrollable: top) { .bar-on .topbar { background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(16px); } }
+  /* A new task opens over the bar and rides the keyboard; the dock sticks to the host's own bottom. */
+  .canvas.bar-on > .jb-host.open { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: var(--kb); z-index: 6; max-height: calc(100% - var(--kb) - var(--sp-24));
+    overflow-y: auto; margin: 0; padding: var(--sp-8) var(--sp-8) 0; background: var(--panel); border-top: 1px solid var(--hair); }
+  .touch.kb .jb-host .composer-dock { bottom: 0; }
+  .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4); }   /* the card keeps its height; Go to scrolls */
+  .jb-go .palette-row { min-height: 44px; }
+}
+.jb-host { display: none; }
 /* ---- Account & settings: corner gear + popup ---- */
 /* The gear — calm idiom: faint hover fill, no border, no glow; clearly apart from the centered dot strip */
 .settings-gear { position: absolute; left: var(--sp-12); bottom: 10px; z-index: 5;   /* sits higher than the dot strip (4px) */
@@ -2601,7 +2665,7 @@ html[data-theme="dark"] { color-scheme: dark; }
 /* Areas cluster (Threads): usage-weighted pills + ghost create chip in the composer area popover.
    Scoped under .area-cluster so the goal popover's shared .area-grid/.area-opt stay untouched. */
 .area-cluster .area-opt { transition: transform .15s var(--ease-out); }
-@media (hover: hover) and (pointer: fine) { .area-cluster .area-opt:hover { transform: scale(1.03); } }
+@media (any-hover: hover) and (any-pointer: fine) { .area-cluster .area-opt:hover:where(:not(.touch *)) { transform: scale(1.03); } }
 .area-cluster .area-opt.s1 { font-size: var(--fs-15); padding: var(--sp-6) var(--sp-12); }
 .area-cluster .area-opt.s3 { font-size: var(--fs-11); padding: var(--sp-2) var(--sp-6); opacity: .75; }
 .area-ghost { border: 1px dashed var(--edge-hi); padding: var(--sp-4) var(--sp-8); cursor: text;

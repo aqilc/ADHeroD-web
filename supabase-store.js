@@ -150,17 +150,15 @@ export function createSupabaseStore(client) {
     if (_idxDirty || (locs !== _idxLocs && (locs.length || _idxLocs.length))) { _cIdx = buildSearchDocs(_cTasks, _cAreas, _cDef, locs); _idxLocs = locs; _idxDirty = false; }
   };
 
-  // Realtime: our own writes echo back through the channel — track their ids for ~2s and skip the refetch they trigger.
-  // ceiling: another device's change to a row this one wrote under 2s ago is skipped too — match echoes by updated_at if a
-  // user reports a remote edit that only shows after a reload.
+  // Realtime: cached DB timestamps suppress own-write echoes and stale events.
   let _channel = null, _onChange = null, _applyT = null, _needFull = false, _dropped = false;
-  const _echo = new Map(), _pendRefetch = new Set(), _pendDrop = new Set();   // _echo: id → its expiry timer; area ids share it (uuids don't collide with task ids)
-  const markEcho = (...ids) => { for (const id of ids) if (id) { clearTimeout(_echo.get(id)); _echo.set(id, setTimeout(() => _echo.delete(id), 2000)); } };
+  let _retryDelay = 2000;
+  const _pendRefetch = new Set(), _pendDrop = new Set();
   // ── Warm caches for the side lists ────────────────────────────────────────
   // tasks and areas have had one since the start; these seven re-read the whole table on EVERY list(), which
   // is why a "narrow" reload was still a round-trip. One collection gives them the same contract: the first
-  // list() fetches, every later one is free, our own writes patch the row in place (and mark the echo so the
-  // realtime bounce is a no-op), and a remote change patches from its payload — no refetch either way.
+  // list() fetches, every later one is free, our own writes patch the row and its DB timestamp
+  // (so the realtime bounce is a no-op), and a remote change patches from its payload — no refetch either way.
   function collection(table, { order, hydrate = r => r, boot = false } = {}) {   // boot: bootstrap primes it, so a refill under one must win over its answer
     let rows = null, gen = 0;   // null = cold · gen: bumped by invalidate or a write while cold, so a list answering after one is dropped
     const cmp = order ? (a, b) => { const x = a[order] ?? 0, y = b[order] ?? 0; return x < y ? -1 : x > y ? 1 : 0; } : null;
@@ -184,8 +182,8 @@ export function createSupabaseStore(client) {
       cached() { return rows || []; },    // sync peek for render-time reads (runFilter); warm after the app's first list()
       invalidate() { rows = null; gen++; _cacheV++; },      // a payload with no id, or a bulk write with no single row to patch
       put, drop,
-      mine(row) { if (!row) return null; markEcho(row.id); return put(row); },   // our write: patch + suppress the echo
-      mineDrop(id) { markEcho(id); drop(id); return true; },
+      mine(row) { if (!row) return null; return put(row); },   // our write: patch + suppress the echo
+      mineDrop(id) { drop(id); return true; },
       // ── The writes every side list does identically. Only the row's own columns differ, so callers pass
       // just those; user scoping and the cache patch belong to the collection, the timestamps to the DB (default now(), set_updated_at).
       async insert(row) {
@@ -212,9 +210,13 @@ export function createSupabaseStore(client) {
       },
       async reorder(ids) {
         const uid = await userId();
-        const res = await Promise.all(ids.map((id, i) => { markEcho(id); return client.from(table).update({ position: i }).eq('id', id).eq('user_id', uid); }));
-        this.invalidate();   // a bulk position rewrite is not one row to patch
-        return !res.some(r => r.error);
+        const res = await Promise.all(ids.map((id, i) => client.from(table).update({ position: i }).eq('id', id).eq('user_id', uid).select('id, position, updated_at')));
+        if (res.some(r => r.error)) { this.invalidate(); return false; }   // some writes may have landed
+        const got = new Map(res.flatMap(r => r.data ?? []).map(r => [r.id, r]));
+        if (rows) { rows = rows.map(r => got.has(r.id) ? { ...r, ...got.get(r.id) } : r); if (cmp) rows.sort(cmp); }
+        else gen++;
+        _cacheV++;
+        return true;
       },
       // Next free `position`, read from the table (not the cache — it may be cold).
       async nextPos() {
@@ -240,16 +242,28 @@ export function createSupabaseStore(client) {
   const taskUpdate = async (id, uid, payload) => Object.keys(payload).length ? client.from('tasks').update(payload).eq('id', id).eq('user_id', uid) : { error: null };
   // Debounce a burst of remote task events, then patch ONLY the touched rows (bounded refetch with the relations embed) —
   // never a full-table scan. Full refetch is the fallback for a payload with no id.
-  const scheduleApply = () => { clearTimeout(_applyT); _applyT = setTimeout(async () => {
-    if (_needFull) { _pendRefetch.clear(); _pendDrop.clear(); try { await fetchAllTasks(); } catch { return; } _needFull = false; }   // failed: the next change retries
+  const scheduleApply = (delay = 250) => { clearTimeout(_applyT); _applyT = setTimeout(async () => {
+    _applyT = null;
+    const before = _cTasks;
+    let ok = true;
+    if (_needFull) {
+      _pendRefetch.clear(); _pendDrop.clear(); _needFull = false;
+      try { await fetchAllTasks(); } catch { _needFull = true; ok = false; }
+    }
     else {
       const drop = [..._pendDrop], refetch = [..._pendRefetch].filter(id => !_pendDrop.has(id));
       _pendDrop.clear(); _pendRefetch.clear();
       if (drop.length) dropTasks(drop);
-      await refreshTasks(refetch);
+      ok = await refreshTasks(refetch);
+      if (!ok) for (const id of refetch) _pendRefetch.add(id);
     }
-    _onChange?.('task');
-  }, 250); };
+    if (ok) _retryDelay = 2000;
+    else {
+      if (!_applyT) scheduleApply(_retryDelay);   // an event arriving during the read already scheduled an earlier pass
+      _retryDelay = Math.min(_retryDelay * 2, 60000);
+    }
+    if (_cTasks !== before) _onChange?.('task');
+  }, delay); };
 
   async function getSettings() {
     const uid = await userId();
@@ -314,7 +328,6 @@ export function createSupabaseStore(client) {
   }
   // one write over many rows (our own: its echo is suppressed); the columns it returns, as the DB stored them, patch the cache — no read
   async function patchTasks(uid, ids, upd) {
-    markEcho(...ids);
     const { data } = await client.from('tasks').update(upd).in('id', ids).eq('user_id', uid).select(['id', 'updated_at', ...Object.keys(upd)].join());
     const got = new Map((data ?? []).map(r => [r.id, r]));
     if (got.size) { _cTasks = _cTasks.map(t => got.has(t.id) ? { ...t, ...got.get(t.id) } : t); rebuildIdx(); }
@@ -345,7 +358,7 @@ export function createSupabaseStore(client) {
     const uid = await userId();
     const pos = _cAreas.length ? Math.max(..._cAreas.map(a => a.position ?? 0)) + 1 : 0;
     const { data, error } = await client.from('areas').insert({ user_id: uid, name: nm, color: color ?? null, icon: null, position: pos, favorite: false }).select().single();
-    if (data) { markEcho(data.id); _cAreas = [..._cAreas, data]; rebuildIdx(); return data; }
+    if (data) { _cAreas = [..._cAreas, data]; rebuildIdx(); return data; }
     if (error) {
       const { data: found } = await client.from('areas').select('*').eq('user_id', uid).eq('name', nm).limit(1).maybeSingle();
       if (found) { if (!_cAreas.some(a => a.id === found.id)) { _cAreas = [..._cAreas, found]; rebuildIdx(); } return found; }
@@ -452,7 +465,6 @@ export function createSupabaseStore(client) {
         const ts = new Date().toISOString(), out = rows.map(dehydrateTask), ids = rows.map(t => t.id);
         const tasks = out.map(({ row }, i) => ({ id: ids[i], user_id: uid, created_at: rows[i].created_at ?? ts, ...row }));
         // one statement: every row lands or none does, so a failure leaves the Bin entry whole
-        markEcho(...ids);
         const { data, error } = await client.from('tasks').upsert(tasks, { onConflict: 'id', ignoreDuplicates: true }).select('id');
         if (error) return false;
         // after every row, as an edge can point at a later one; an edge to a task deleted since can't come back, and a live row keeps its own
@@ -472,7 +484,7 @@ export function createSupabaseStore(client) {
       if (table === 'reminders' && !(rows = rows.filter(r => !(r.kind === 'user' && !r.paused && Date.parse(r.at + 'Z') < Date.now() - 936e5))).length) return true;
       const cols = { events: eventCols, blocks: blockCols }[table] ?? (r => r);   // the rows come from the app's lists
       const put = await upsertLive(kind, table, rows.map(r => ({ ...cols(r), user_id: uid })), 'id', live);   // a row whose parent went since stays out
-      if (put?.length) { markEcho(...put.map(r => r.id)); COLL[table]?.invalidate(); if (table === 'areas') { _areasLoaded = false; _cacheV++; } }   // a restore is a bulk re-insert — refetch once, don't patch N rows
+      if (put?.length) { COLL[table]?.invalidate(); if (table === 'areas') { _areasLoaded = false; _cacheV++; } }   // a restore is a bulk re-insert — refetch once, don't patch N rows
       return !!put;
     },
     filters: {
@@ -590,7 +602,6 @@ export function createSupabaseStore(client) {
             position, completed_at: null, archived_at: null, completions: [], recurrence: rec }).row;
           const { error } = await client.from('tasks').insert({ id, user_id: uid, ...row });
           if (error) return null;
-          markEcho(id);
           const lost = [], linked = [fields.blocked_by?.length && await setRelationType(id, uid, 'needs', fields.blocked_by), fields.relates?.length && await setRelationType(id, uid, 'relates', fields.relates)];
           if (linked.includes(false)) lost.push('links');   // ceiling: a failed stale-edge delete reads as lost though the links landed — split setRelationType's result if users see it
           await refreshTasks([id, ...fields.relates ?? []]); await reopenAncestors(id, uid);   // the partners setRelationType mirrored onto
@@ -619,7 +630,6 @@ export function createSupabaseStore(client) {
           // edges in task_relations first: native realtime hears only tasks (Sync.kt TABLES), so the one UPDATE after them
           // (a bare touch when only links changed) makes its refetch see them. Replaced per-type when the key is present.
           const links = 'blocked_by' in fields || 'relates' in fields;
-          markEcho(id);
           const rels = (!('blocked_by' in fields) || await setRelationType(id, uid, 'needs', fields.blocked_by ?? []))
             && (!('relates' in fields) || await setRelationType(id, uid, 'relates', fields.relates ?? []));
           const { error } = await taskUpdate(id, uid, links && !Object.keys(upd).length ? { updated_at: new Date().toISOString() } : upd);
@@ -640,7 +650,7 @@ export function createSupabaseStore(client) {
         const uid = await userId(), flip = t => (t?.checklist || []).some(c => c.id === itemId) && t.checklist.map(c => c.id === itemId ? { ...c, done } : c);
         // only over the row as read: another device's edit since (the cache can miss it) matches nothing, so the flip goes
         // into the stored list — one read, and only then
-        const put = t => { markEcho(id); return client.from('tasks').update({ checklist: flip(t) }).eq('id', id).eq('user_id', uid).eq('updated_at', t.updated_at).select('updated_at'); };
+        const put = t => client.from('tasks').update({ checklist: flip(t) }).eq('id', id).eq('user_id', uid).eq('updated_at', t.updated_at).select('updated_at');
         let t = _cTasks.find(x => x.id === id); if (!flip(t)) return false;
         let res = await put(t);
         if (!res.error && !res.data?.length) { t = await this.get(id).catch(() => null); if (!flip(t)) return false; res = await put(t); }
@@ -652,7 +662,6 @@ export function createSupabaseStore(client) {
 
       async reorder(orderedIds, at = orderedIds.map((_, i) => i)) {   // at: each id's position
         const uid = await userId();
-        markEcho(...orderedIds);
         const results = await Promise.all(orderedIds.map((id, i) => client.from('tasks').update({ position: at[i] }).eq('id', id).eq('user_id', uid).select('id, updated_at')));
         if (results.some(r => r.error)) { await refreshTasks(orderedIds); return false; }   // earlier writes may have succeeded; show the server's actual order
         const pos = new Map(orderedIds.map((id, i) => [id, at[i]])), stamps = new Map(results.flatMap(r => r.data ?? []).map(r => [r.id, r.updated_at]));   // positions known, stamps returned → patch the cache, no read
@@ -671,7 +680,6 @@ export function createSupabaseStore(client) {
           const ts = new Date().toISOString();
           const { error } = await client.from('tasks').update({ parent_id: parentId ?? null, position: toIndex }).eq('id', id).eq('user_id', uid);
           if (error) return null;
-          markEcho(id);
           const task = await readBack(id, { parent_id: parentId ?? null, position: toIndex });
           try {   // landed: a follow-up can't fail it
             await reopenAncestors(id, uid);
@@ -701,7 +709,7 @@ export function createSupabaseStore(client) {
           }
           const def = (await settings()).default_project_id;
           if (targetId && groups.some(([root]) => root === def)) await patchSettings({ default_project_id: targetId });
-          const gone = groups.flatMap(([, g]) => [...g]); markEcho(...gone, ...kids);
+          const gone = groups.flatMap(([, g]) => [...g]);
           // The ids ride the URL: groups pack into DELETEs of ≤URL_IDS, a group never split —
           // its rows go whole or not at all. ceiling: one group past ~200 ids fails whole — an RPC taking uuid[] once a project that big fails to delete
           for (let i = 0, batch = []; i < groups.length; i++) {
@@ -734,7 +742,6 @@ export function createSupabaseStore(client) {
           const plan = rs => completionPatches(rs, id, ts, def, placedMap(placed)), def = (await settings()).default_project_id, patches = plan(rows);
           const only = v => [...patches].filter(([, p]) => Object.keys(p).length === 1 && p.completed_at === v).map(([x]) => x), closes = only(ts), opens = only(null);
           const rest = [...patches].filter(([x]) => !closes.includes(x) && !opens.includes(x));
-          markEcho(...patches.keys());
           // A rest patch rewrites columns (checklist, recurrence) from the row as read: only over that row, as setChecklistItem.
           // Another device's edit since (the cache can miss it) matches nothing, so the patch is remade from one fresh read.
           const put = (x, p, at) => client.from('tasks').update(p).eq('id', x).eq('user_id', uid).eq('updated_at', at).select('id');
@@ -753,7 +760,6 @@ export function createSupabaseStore(client) {
           await refreshTasks([...patches.keys()]);   // a part that failed: the cache shows what did land
           if (res.some(r => r.error || r.data?.length === 0)) return false;
         } else {
-          markEcho(id);
           const { error } = await client.from('tasks').update({ completed_at: null }).eq('id', id).eq('user_id', uid);
           await refreshTasks([id]); if (error) return false;
           await reopenAncestors(id, uid);
@@ -761,7 +767,7 @@ export function createSupabaseStore(client) {
         return true;
       },
 
-      // Archive: a task that can't be completed anymore. Non-destructive — pauses recurrence; echo-marked.
+      // Archive: a task that can't be completed anymore. Non-destructive — pauses recurrence.
       // Excluded from sweeps/parent-walks (see store.js). ids: one id, or a cascade's set at one instant — all or none.
       async setArchived(ids, val) {
         const uid = await userId(), ts = new Date().toISOString(), list = [ids].flat(), at = val ? ts : null;
@@ -771,7 +777,6 @@ export function createSupabaseStore(client) {
         const was = byId.get(list[0]).archived_at, held = (q, back) => val !== !!back ? q.is('archived_at', null) : q.eq('archived_at', back ? ts : was);
         const repeats = val ? list.filter(x => recActive(byId.get(x).recurrence)) : [], plain = list.filter(x => !repeats.includes(x));
         const put = (x, upd, back) => held(client.from('tasks').update(upd).eq('id', x).eq('user_id', uid), back).select('id');
-        markEcho(...list);
         // ceiling: one URL holds ~150 ids — a cascade past that splits into requests; chunk it once a project that big archives
         const res = await Promise.all([...plain.length ? [held(client.from('tasks').update({ archived_at: at }).in('id', plain).eq('user_id', uid)).select('id')] : [],
           ...repeats.map(x => put(x, { archived_at: at, recurrence: pauseRecurrence(byId.get(x).recurrence) }))]);   // pause, never destroy
@@ -784,7 +789,7 @@ export function createSupabaseStore(client) {
       },
       async link(id, otherId, type) {
         if (id === otherId) return false;
-        const uid = await userId(); markEcho(id, otherId);
+        const uid = await userId();
         if (type === 'relates') {
           const rs = await Promise.all([
             client.from('task_relations').upsert({ task_id: id, related_id: otherId, type: 'relates', user_id: uid }, { onConflict: 'task_id,related_id,type' }),
@@ -799,7 +804,7 @@ export function createSupabaseStore(client) {
       },
 
       async unlink(id, otherId, type) {
-        const uid = await userId(); markEcho(id, otherId);
+        const uid = await userId();
         if (type === 'relates') {
           const [r1, r2] = await Promise.all([
             client.from('task_relations').delete().eq('task_id', id).eq('related_id', otherId).eq('type', 'relates').eq('user_id', uid),
@@ -827,20 +832,18 @@ export function createSupabaseStore(client) {
         const uid = await userId();
         if (!Object.keys(fields).length) return _cAreas.find(a => a.id === id) ?? null;   // nothing to write (an empty PATCH returns no row)
         const { data } = await client.from('areas').update(fields).eq('id', id).eq('user_id', uid).select().single();
-        if (data) { markEcho(id); _cAreas = _cAreas.map(a => a.id === id ? data : a); rebuildIdx(); }
+        if (data) { _cAreas = _cAreas.map(a => a.id === id ? data : a); rebuildIdx(); }
         return data ?? null;
       },
       async reorder(orderedIds) {
         const uid = await userId();
-        markEcho(...orderedIds);
-        const res = await Promise.all(orderedIds.map((id, i) => client.from('areas').update({ position: i }).eq('id', id).eq('user_id', uid)));
+        const res = await Promise.all(orderedIds.map((id, i) => client.from('areas').update({ position: i }).eq('id', id).eq('user_id', uid).select('id, position, updated_at')));
         if (res.some(r => r.error)) { _areasLoaded = false; _cacheV++; return false; }   // some may have landed: the next list() reads the real order
-        const pos = new Map(orderedIds.map((id, i) => [id, i]));
-        _cAreas = _cAreas.map(a => pos.has(a.id) ? { ...a, position: pos.get(a.id) } : a); rebuildIdx();
+        const got = new Map(res.flatMap(r => r.data ?? []).map(r => [r.id, r]));
+        _cAreas = _cAreas.map(a => got.has(a.id) ? { ...a, ...got.get(a.id) } : a); rebuildIdx();
         return true;
       },
       async remove(id) {
-        markEcho(id);
         const { error } = await client.rpc('delete_area', { p_id: id });   // scrubs tasks.area_ids + blocks.area_ids, then deletes
         if (!error) { _cTasks = _cTasks.map(t => t.area_ids?.includes(id) ? { ...t, area_ids: t.area_ids.filter(a => a !== id) } : t); _cAreas = _cAreas.filter(a => a.id !== id); rebuildIdx(); COLL.blocks.invalidate(); }
         return !error;
@@ -863,36 +866,59 @@ export function createSupabaseStore(client) {
     },
 
     // ONE channel over every user-scoped table: tasks refetch the changed rows, every other list patches its cache from
-    // the payload. onChange(kind) names the list to re-read; own-write echoes are dropped via _echo.
+    // the payload. onChange(kind) names the list to re-read; own-write echoes are matched by updated_at.
     subscribe(onChange) {
       _onChange = onChange ?? null;
       if (typeof client.channel !== 'function') return;
       userId().then(uid => {
         if (!uid) return;
+        let hiddenAt = document.visibilityState === 'hidden' ? Date.now() : null, lastRepull = -Infinity;
+        const repull = (force = false) => {
+          const now = Date.now();
+          if (!force && now - lastRepull < 250) return;   // coalesce visibility/socket recovery; online retries even a recent failed pull
+          lastRepull = now;
+          for (const c of Object.values(COLL)) c.invalidate();
+          _loaded = _areasLoaded = false;
+          _onChange?.('all');   // no loader owns 'all' → the app falls back to reloadAll()
+        };
+        window.addEventListener('online', () => repull(true));
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+          // ceiling: re-pull after 30s hidden; revisit if shorter absences leave missed edits.
+          if (document.visibilityState === 'visible' && hiddenAt !== null && Date.now() - hiddenAt >= 30000) repull();
+          hiddenAt = null;
+        });
         const rowId = p => p?.new?.id ?? p?.old?.id;
         const isDel = p => (p.eventType || p.type) === 'DELETE';
+        const stamp = at => at?.replace('Z', '+00:00');   // DB stamps are UTC; keep microseconds (Date.parse truncates them).
+        const current = (p, rows) => !isDel(p) && p.new?.updated_at && rows.some(r => r.id === p.new.id && stamp(r.updated_at) >= stamp(p.new.updated_at));
         const on = (table, cb) => { _channel = _channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${uid}` }, cb); };
         _channel = client.channel('tasks-sync');
+        let systemErrorLogged = false;
+        _channel.on('system', {}, p => {
+          if (p.status !== 'error' || systemErrorLogged) return;
+          systemErrorLogged = true;
+          console.error('[sb] realtime subscription failed', p.message);
+        });
         on('tasks', p => {
           const rid = rowId(p);
-          if (rid && _echo.has(rid)) return;   // our own write echoing back — the cache is already current
+          if (current(p, _cTasks)) return;
           if (!rid) _needFull = true;          // payload gap → fall back to a full refetch
           else if (isDel(p)) _pendDrop.add(rid);
           else _pendRefetch.add(rid);
           scheduleApply();
         });
         // A relation write never touches the tasks ROW, so the tasks listener above cannot see it — refetch
-        // both ends (blocked_by/relates are derived from this junction).
+        // both ends, including our echoes: the cache holds derived links, not the junction timestamps.
         on('task_relations', p => {
-          const r = p?.new ?? p?.old;
-          if (!r) { _needFull = true; return scheduleApply(); }
-          if (_echo.has(r.task_id)) return;
+          const r = isDel(p) ? p?.old : p?.new ?? p?.old;
+          if (!r?.task_id && !r?.related_id) { _needFull = true; return scheduleApply(); }
           _pendRefetch.add(r.task_id); _pendRefetch.add(r.related_id);
           scheduleApply();
         });
         on('areas', p => {
           const rid = rowId(p);
-          if (rid && _echo.has(rid)) return;   // own area write echoing back — cache already current
+          if (current(p, _cAreas)) return;
           if (!rid) { client.from('areas').select('*').order('position').then(({ data }) => { if (data) { _cAreas = data; rebuildIdx(); _onChange?.('area'); } }); return; }
           if (isDel(p)) _cAreas = _cAreas.filter(a => a.id !== rid);   // patch the single row from the payload — no refetch
           else _cAreas = _cAreas.some(a => a.id === rid) ? _cAreas.map(a => a.id === rid ? p.new : a) : [..._cAreas, p.new];
@@ -904,22 +930,17 @@ export function createSupabaseStore(client) {
           const c = COLL[table];
           on(table, p => {
             const rid = rowId(p);
-            if (rid && _echo.has(rid)) return;    // our own write — the cache is already current
+            if (current(p, c.cached())) return;
             if (!rid) c.invalidate(); else if (isDel(p)) c.drop(rid); else c.put(p.new);
             _onChange?.(kind);
           });
         }
-        // Realtime is NOT a replay log: a channel that drops (sleep, tunnel, flaky wifi) resumes from NOW, so
-        // anything that changed while we were gone is simply missing. A re-SUBSCRIBE after a drop therefore
-        // means "you may have missed something" — drop every cache and ask for ONE re-pull. This is the only
-        // scheduled reload in the app; there is no polling timer anywhere.
+        // Realtime never replays missed events: reconnects and browser returns share one re-pull.
         _channel.subscribe(status => {
           if (status === 'SUBSCRIBED') {
             if (!_dropped) return;               // first connect — bootstrap already left us current
             _dropped = false;
-            for (const c of Object.values(COLL)) c.invalidate();
-            _loaded = _areasLoaded = false;      // tasks/areas too: nothing may serve a pre-gap row
-            _onChange?.('all');                  // no loader owns 'all' → the app falls back to reloadAll()
+            repull();
           } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') _dropped = true;
         });
       });

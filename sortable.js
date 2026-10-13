@@ -49,8 +49,9 @@ export function targetIndex(centers, from, draggedCenter) {
 
 const SHIFT = 'transform 180ms var(--ease-out)';
 export const DWELL = 500;   // ms a pointer rests on a target to act on it: Peek edge-hold paging, a drag's "into"
-const noPan = e => e.preventDefault();
 export let sorting = false;   // an item is held/dragged — the surface swipe reads this instead of walking the DOM per move
+let held = false;   // a finger holds an item: its guard's touchmove listener stops the pan
+const guarded = new WeakSet();
 
 // makeSortable(container, { itemSel, handleSel?, scopeSel?, touchOnly?, onCommit(from,to,scope,items,into,cut), enabled?(), fixed?(), pinned?(to,items,from,far), refused?(), onHold?(item), lift?(item,x0) → undo, span?(to,items) → last, above?(to,items,from) → to, redirect?(to,items,from,far) → b|null, far?(x), preview?(item,to,items,into,cut), dwell?(item,done) → ok })
 // scopeSel confines a drag to items inside the grabbed item's nearest scopeSel (e.g. one task's checklist) so one
@@ -65,6 +66,18 @@ export let sorting = false;   // an item is held/dragged — the surface swipe r
 // dwell(item, false) → may nest: as the finger enters an item's middle (null: none); dwell(item, true) after DWELL there → true makes it `into`.
 export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnly, onCommit, enabled, fixed, pinned, refused, onHold, lift, span, above, redirect, preview, dwell, far }) {
   let st = null;
+  // From first use, not from the press: Chrome's compositor sees a listener added mid-touch only a frame later, and a finger's
+  // pre-hold wobble lands first and makes the whole touch unblockable (the drag then pans away). On the scroller's parent: Chrome never
+  // blocks a pan for a listener on or inside the scroller, and only pans over that parent wait.
+  // ceiling: a pan there waits on the main thread for its first touchmove; revisit if phone traces show a late scroll start.
+  let guard = container;
+  while (guard && !guarded.has(guard)) guard = guard.parentElement;   // a guarded ancestor already covers it: no style walk (a composer open mounts one)
+  if (!guard) {
+    guard = container;
+    while (guard.parentElement && !/auto|scroll/.test(getComputedStyle(guard).overflowY)) guard = guard.parentElement;
+    guard = guard.parentElement ?? guard;
+    guarded.add(guard); guard.addEventListener('touchmove', e => { if (held) e.preventDefault(); }, { passive: false });
+  }
   const THRESH = 4, HOLD = 300, SLOP = 8;   // HOLD is real ms: motion.t would zero it under reduced motion
 
   container.addEventListener('pointerdown', e => {
@@ -89,15 +102,13 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
 
   function begin() {
     if (!st.item.checkVisibility() || st.item.closest('[inert]')) return onUp();   // its list left the screen (inert: still drawn through its slide out)
+    held = true;
     const still = () => { if (!onHold) return onUp(); st.still = true; st.item.classList.add('sorting'); };   // nothing to reorder: lifted only to be let go
     if (fixed?.()) return still();
     const unlift = lift?.(st.item, st.x0);   // before measuring: it may take rows out of the list
     const items = [...st.scope.querySelectorAll(itemSel)], from = items.indexOf(st.item);
     if (from < 0 || items.length < 2) { unlift?.(); return from < 0 ? onUp() : still(); }   // alone, its subtree aside
     Object.assign(st, { items, from, to: from, dragging: true, unlift }); sorting = true; container.style.userSelect = 'none';
-    // A held item owns the finger: no pan under it. Only while held (Chrome re-hit-tests the first touchmove), so a
-    // plain scroll never waits on the main thread; on the document, as Chrome's per-element region missed the composer.
-    if (st.hold) document.addEventListener('touchmove', noPan, { passive: false, signal: st.ac.signal });
     const rects = st.items.map(el => el.getBoundingClientRect());
     st.rects = rects; st.centers = rects.map(r => r.top + r.height / 2);
     st.h = Math.abs(st.centers[1] - st.centers[0]);
@@ -212,7 +223,7 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
 
   function onUp(e) {
     if (!st || (e && e.pointerId !== st.pid)) return;   // nor does its lift end it
-    const s = st; st = null; sorting = false;
+    const s = st; st = null; sorting = held = false;
     s.ac.abort(); s.mo?.disconnect(); clearTimeout(s.hold); clearTimeout(s.dwell); motion.stop(container); s.unlift?.();
     if (s.dragging || !s.hold) container.style.userSelect = '';
     if (s.still) s.item.classList.remove('sorting');

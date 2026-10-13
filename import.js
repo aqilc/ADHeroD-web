@@ -2,6 +2,7 @@
 // Both paths end in the SAME shape: { items, problems }. A payload with ANY problem imports NOTHING;
 // the caller renders `problems` and refuses. Guessing at a malformed import is worse than refusing it.
 import { localStamp, IMPORTANCE } from './nlp.js';
+import { MAX_DEPTH } from './store.js';
 
 // ─── shared ────────────────────────────────────────────────────────────────────────────────────────
 // Round-trip, not just Date.parse: "2026-02-31" parses fine and silently rolls over to March 3.
@@ -166,7 +167,6 @@ const SEVERITY = ['gentle', 'ping', 'alarm'];
 const LOC_MODE = ['any', 'only', 'except'];
 const ANCHOR = ['deadline', 'start', 'due'];
 const TYPE = ['task', 'note'];
-const MAX_DEPTH = 4;
 
 const TOP_KEYS = ['adherod', 'lists', 'areas', 'tasks'];
 const TASK_KEYS = ['id', 'title', 'type', 'notes', 'importance', 'minutes', 'list', 'areas', 'checklist', 'subtasks',
@@ -383,7 +383,7 @@ Rules the validator enforces:
 - "importance" is one of: must, focus, none, someday.
 - "minutes" is a whole number (how long the task takes).
 - "on" is when I plan to DO it: { "date": "YYYY-MM-DD", "time": "HH:MM" } (time optional). "deadline" is a hard due date; "window_from" is the earliest it can start. Do not invent a deadline that my material does not actually state.
-- "subtasks" nests tasks (4 levels deep at most). "checklist" is a flat list of strings for trivial steps.
+- "subtasks" nests tasks (${MAX_DEPTH} levels deep at most). "checklist" is a flat list of strings for trivial steps.
 - "needs" lists the "id"s of tasks that must be done first. Ids are yours to make up, unique inside this block, and must refer to tasks in this same block. Dependencies must not form a loop.
 - "repeat" is { "freq": "day"|"week"|"month"|"year", "interval": 1, ... } with optional "weekdays" (0=Sunday..6), "month_day", "nth" (1-5 or -1 for last, with "freq":"month" and a single weekday, e.g. the 3rd Thursday), "months" (1-12), and one ending: "count" OR "until".
 - "reminders" is a list of either { "anchor": "deadline"|"start"|"due", "offset": minutes-before-as-a-negative-number } or { "at": "YYYY-MM-DDTHH:MM" } for an exact moment, each optionally with "severity": "gentle"|"ping"|"alarm". An "at" must be in the future.

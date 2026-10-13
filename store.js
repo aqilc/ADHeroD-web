@@ -5,7 +5,7 @@ import { nextTs } from './recovery.js';
 import { inNotes } from './predicates.js';
 
 // Max nesting depth (root = 1; Backlog counts as a level). Shared by store guards + app.js drag guards.
-export const MAX_DEPTH = 4;
+export const MAX_DEPTH = 6;
 // Legacy storage/undo/bin payloads: explicit overview wins, including false.
 export const overviewFields = fields => {
   if (!('sidebar' in fields)) return fields;

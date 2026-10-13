@@ -111,6 +111,9 @@ const WD_LEAD = '^(next\\s+week\\s+|next\\s+)?(tues|weds|thurs?|sun|mon|tue|wed|
 const WD_WORD = new RegExp(WD_LEAD + '\\b'), WD_WHOLE = new RegExp(WD_LEAD + '[.,]?$');
 // a weekday beside an explicit date ("sat oct 3", "oct 3 sat") is absorbed; the date wins
 const WD_PRE = '(?:(?:' + WD_ALT + ')\\.?,?\\s+)', WD_SUF = '(?:,?\\s+(?:' + WD_ALT + ')\\b)?', ORD = '(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)';
+const MON_DAY = WD_PRE + '?' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?' + WD_SUF, DAY_MON = WD_PRE + '?(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?' + WD_SUF;
+// Every regex is built once: V8 drops a per-call RegExp's compiled code at each major GC, so the next typed space recompiled them all (~29ms at 6x CPU).
+const MON_DAY_ALL = new RegExp('^' + MON_DAY + '$'), DAY_MON_ALL = new RegExp('^' + DAY_MON + '$'), ORD_ALL = new RegExp('^' + WD_PRE + '?' + ORD + '$');
 // no year: rolls to next year if already past. A day the month lacks ("feb 30") rolls over in Date → null.
 function monthDayIso(mi, day, year, now) {
   if (mi < 0) return null;
@@ -140,11 +143,11 @@ export function parseDate(s, now = new Date(), whole = false) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
   const rel = low.match(/^(?:in\s+)?(\d+)\s*d(?:ays?)?$/);
   if (rel) { const d = midnight(now); d.setDate(d.getDate() + +rel[1]); return isoDate(d); }
-  let mn = low.match(new RegExp('^' + WD_PRE + '?' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?' + WD_SUF + '$'));
+  let mn = low.match(MON_DAY_ALL);
   if (mn) return monthDayIso(monthIdx(mn[1]), +mn[2], mn[3] && +mn[3], now);
-  mn = low.match(new RegExp('^' + WD_PRE + '?(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?' + WD_SUF + '$'));
+  mn = low.match(DAY_MON_ALL);
   if (mn) return monthDayIso(monthIdx(mn[2]), +mn[1], mn[3] && +mn[3], now);
-  mn = low.match(new RegExp('^' + WD_PRE + '?' + ORD + '$'));
+  mn = low.match(ORD_ALL);
   if (mn) return nextDayIso(+mn[1], now);
   // weekday name: bare = nearest upcoming; "next <wd>" / "next week <wd>" / "<wd> next week" = that day NEXT week
   const wd = low.match(whole ? WD_WHOLE : WD_WORD);
@@ -173,13 +176,15 @@ const WD_PROSE = /^(?:sat|sun|wed)$/i, TIME_RE = '(?:\\d{1,2}(?::\\d{2})?\\s*' +
 // a bare "at 5" is the next 5 o'clock between 7am and 10pm (#103)
 const AT_HOUR = 'at\\s+(1[0-2]|[1-9])\\b(?![:.]\\d)';
 const TIME_AFTER = new RegExp('^\\.?\\s+(?:(?:at\\s+)?' + TIME_RE + '|' + AT_HOUR + ')', 'i'), TIME_BEFORE = new RegExp(TIME_RE + '\\s*$', 'i');
+const AT_HOUR_END = new RegExp('\\s' + AT_HOUR + '$', 'i'), AT_HOUR_ANY = new RegExp('\\s' + AT_HOUR, 'i');
+const MERIDIEM_TIME = new RegExp('\\b(\\d{1,2})(?::(\\d{2}))?\\s*' + MERIDIEM), MERIDIEM_AT = new RegExp('(?:\\bat\\s+)?\\b\\d{1,2}(?::\\d{2})?\\s*' + MERIDIEM, 'i');
 function atHour(h, laterDay, now) {
   const hours = [+h % 12, +h % 12 + 12].filter(x => x >= 7 && x <= 22).map(x => String(x).padStart(2, '0') + ':00');
   return laterDay ? hours[0] : hours.reduce((a, b) => nextTimeAt(b, now) < nextTimeAt(a, now) ? b : a);   // a later day: its first
 }
 function parseTime(s) {
   const low = (s || '').toLowerCase();
-  let m = low.match(new RegExp('\\b(\\d{1,2})(?::(\\d{2}))?\\s*' + MERIDIEM));
+  let m = low.match(MERIDIEM_TIME);
   if (m) { let h = +m[1] % 12; if (m[3] === 'p') h += 12; return String(h).padStart(2, '0') + ':' + (m[2] || '00'); }
   m = low.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
   return m ? String(+m[1]).padStart(2, '0') + ':' + m[2] : '';
@@ -190,7 +195,7 @@ export function parseDateText(s, now = new Date(), whole = false) {
   s = (s || '').trim();
   const time = parseTime(s);
   const dateStr = time
-    ? s.replace(new RegExp('(?:\\bat\\s+)?\\b\\d{1,2}(?::\\d{2})?\\s*' + MERIDIEM, 'i'), '').replace(/(?:\bat\s+)?\b(?:[01]?\d|2[0-3]):[0-5]\d\b/i, '').trim()   // "fri at 5pm" → date "fri"
+    ? s.replace(MERIDIEM_AT, '').replace(/(?:\bat\s+)?\b(?:[01]?\d|2[0-3]):[0-5]\d\b/i, '').trim()   // "fri at 5pm" → date "fri"
     : s;
   let iso = dateStr ? parseDate(dateStr, now, whole) : null;
   const bare = !iso && !!time;
@@ -211,12 +216,14 @@ const REC_AT = '\\s+at\\s+(–|\\d{1,2}(?::\\d{2})?\\s*[ap]m|(?:[01]?\\d|2[0-3])
 // until-tail is bounded (≤3 comma-free words + an optional ", <year>") so a following clause still binds.
 const REC_END = '(?:\\s*,\\s*|\\s+for\\s+)(\\d+|∞)\\s+times?|\\s+x(\\d+)|(?:\\s*,\\s*|\\s+)(?:until|ending)\\s+(never|[^\\s,]+(?:\\s+[^\\s,]+){0,2}(?:,\\s*\\d{4})?)';
 const REC_FULL = '\\severy(!?)(?:\\s+(' + REC_RULE + '))?(?:' + REC_ON + ')?(?:' + REC_AT + ')?((?:' + REC_END + ')*)(?=\\s|$)';
+const REC_END_ALL = new RegExp(REC_END, 'gi'), REC_DAYS_ALL = new RegExp(REC_DAY_RE, 'g'), REC_DAY_LEAD = new RegExp('^' + REC_DAY_RE);
+const REC_ONE = new RegExp(REC_FULL, 'i'), REC_EACH = new RegExp(REC_FULL, 'gi');
 // End clauses may co-occur and repeat; `ends` is single-valued, so the LAST clause with a real value wins
 // (reading order) — "∞ times"/"ending never" are placeholders, so a printed "3 times, ending never" survives.
 // Returns the prose it could NOT resolve, to hand back to the title as the sibling `only`/`by` matchers do.
 function applyEnds(rec, tail, now) {
   let rest = '';
-  for (const [raw, count, xCount, until] of (tail || '').matchAll(new RegExp(REC_END, 'gi'))) {
+  for (const [raw, count, xCount, until] of (tail || '').matchAll(REC_END_ALL)) {
     if (count === '∞' || /^never$/i.test(until || '')) continue;
     if (count || xCount) rec.ends = { count: +(count || xCount) };
     else { const d = parseDate(until.trim(), now, true); if (d) rec.ends = { date: d }; else rest += raw; }
@@ -228,9 +235,9 @@ function buildRecurrence(bang, rule, on, at, tail, now) {
   const rec = { freq: 'day', interval: 1, from_completion: !!bang, ends: null, done_count: 0 };
   const body = (rule || '').toLowerCase().replace(/^other\s+/, ''), other = body.length < (rule || '').length;   // "every other" = every 2
   const n = body.match(/^(\d+)/), interval = n ? +n[1] : other ? 2 : 1;
-  const wdays = t => (t.match(new RegExp(REC_DAY_RE, 'g')) || []).map(d => DAYS.indexOf(d.slice(0, 3)));
+  const wdays = t => (t.match(REC_DAYS_ALL) || []).map(d => DAYS.indexOf(d.slice(0, 3)));
   if (/weekday/.test(body)) Object.assign(rec, { freq: 'week', weekdays: [1, 2, 3, 4, 5] });
-  else if (new RegExp('^' + REC_DAY_RE).test(body)) Object.assign(rec, { freq: 'week', weekdays: wdays(body), interval });
+  else if (REC_DAY_LEAD.test(body)) Object.assign(rec, { freq: 'week', weekdays: wdays(body), interval });
   else if (/days?$/.test(body)) Object.assign(rec, { freq: 'day', interval });
   else if (/weeks?$/.test(body)) Object.assign(rec, { freq: 'week', interval });
   else if (/months?$/.test(body)) Object.assign(rec, { freq: 'month', interval });
@@ -243,9 +250,23 @@ function buildRecurrence(bang, rule, on, at, tail, now) {
   return { rec, rest: applyEnds(rec, tail, now) };
 }
 export function parseRecurrence(s, now = new Date()) {
-  const m = (' ' + (s || '') + ' ').match(new RegExp(REC_FULL, 'i'));
+  const m = (' ' + (s || '') + ' ').match(REC_ONE);
   return m ? buildRecurrence(m[1], m[2], m[3], m[4], m[5], now).rec ?? null : null;
 }
+
+const DPRE = '(?:on\\s+)?';   // "on" is filler before a date; by/due are the DEADLINE register (§11), matched earlier
+const TPRE = '(?:at\\s+)?';   // ... and "at" before a time
+const re = (body, flags = 'gi') => new RegExp('\\s' + body + '\\b', flags);
+const Q_ISO = re(DPRE + '(\\d{4}-\\d{2}-\\d{2})'), Q_MON_DAY = re(DPRE + MON_DAY), Q_DAY_MON = re(DPRE + DAY_MON);
+const Q_ORD = re('(?:on\\s+' + WD_PRE + '?|' + WD_PRE + ')' + ORD), Q_SLASH = re(DPRE + '(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{2,4}))?');
+const Q_DUE = re(DPRE + '(' + [...V.dueToday, ...V.dueTomorrow, ...V.dueYesterday].sort((a, b) => b.length - a.length).join('|') + ')');
+const Q_WKND = re(DPRE + '(next\\s+)?(?:' + V.weekend.map(w => w.replace(' ', '\\s+')).sort((a, b) => b.length - a.length).join('|') + ')');
+const Q_NEXT_WEEK_WD = re(DPRE + '(?:next\\s+week\\s+(' + WD_ALT + ')|(' + WD_ALT + ')\\s+next\\s+week)');
+const Q_THIS_WEEK = new RegExp('\\s(?:' + V.thisWeek.map(w => w.replace(' ', '\\s+')).join('|') + ')\\b', 'gi');
+const Q_NEXT_WEEK = new RegExp('\\s(?:' + V.nextWeek.map(w => w.replace(' ', '\\s+')).join('|') + ')\\b', 'gi');
+const Q_WD = new RegExp('\\s((?:on|this)\\s+(?:coming\\s+)?|coming\\s+)?(next\\s+)?(' + WD_ALT + ')(?:,(?=\\s)|\\b)', 'gi');
+const Q_NOON = re(TPRE + '(noon|midnight)'), Q_MERIDIEM = new RegExp('\\s' + TPRE + '(\\d{1,2})(?::(\\d{2}))?\\s*' + MERIDIEM, 'gi'), Q_CLOCK = re(TPRE + '([01]?\\d|2[0-3]):([0-5]\\d)');
+let locKey, locNot, locAt;   // the places' regexes, rebuilt only when the list changes
 
 // hybrid tokenizer: classifyToken asks it whether a span is exactly one token. `locations` (the places already in use) guards
 // "at <name>" — only a known place pills, so "Meet Sam at 5pm" never invents one.
@@ -253,9 +274,6 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   let s = ' ' + (raw || '') + ' ';
   const o = { importance: null, dueIso: null, dueFromIso: null, deadlineIso: null, dueTime: '', durMin: null, project: null, areas: [], recurrence: null, location: null, locationExcept: false };
   const setTime = (h, m) => o.dueTime = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-  const DPRE = '(?:on\\s+)?';   // "on" is filler before a date; by/due are the DEADLINE register (§11), matched earlier
-  const TPRE = '(?:at\\s+)?';   // ... and "at" before a time
-  const re = (body, flags = 'gi') => new RegExp('\\s' + body + '\\b', flags);
 
   // importance flag (app-behavior, not a rank): ! = focus, !! = must, ~ = someday
   s = s.replace(/\s(!{1,2}|~)(?=\s|$)/g, (_, t) => (o.importance = t === '~' ? 'someday' : t === '!!' ? 'must' : 'focus', ' '));
@@ -274,7 +292,7 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   });
 
   // consumed before dates so "every monday" is a rule, not a dueIso
-  s = s.replace(new RegExp(REC_FULL, 'gi'), (_m, bang, rule, on, at, tail) => {
+  s = s.replace(REC_EACH, (_m, bang, rule, on, at, tail) => {
     const { rec, rest } = buildRecurrence(bang, rule, on, at, tail, now);
     if (!rec) return _m;
     o.recurrence = rec;
@@ -304,48 +322,43 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   // Marked dates wall (§11): by/due/^ join the deadline keyword; until/till/before read as by. Consumed before due-date matchers so
   // the keyword's date isn't also taken as a due date; a non-date tail leaves the text untouched.
   s = s.replace(/\s(?:(?:deadline|ddl|dl|by|due|until|till|before)\s+|\^\s*)(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
-    const at = dateStr.match(new RegExp('\\s' + AT_HOUR + '$', 'i'));   // "by fri at 5"
+    const at = dateStr.match(AT_HOUR_END);   // "by fri at 5"
     const parsed = parseDateText(at ? dateStr.slice(0, at.index) : dateStr.trim(), now, true);   // "deadline fri 5pm" keeps the hour (F16)
     const iso = parsed.iso, time = at ? atHour(at[1], iso > isoDate(now), now) : parsed.time;
     if (!iso) return m;                 // not a date → leave the text untouched
     o.deadlineIso = iso + (time ? 'T' + time : ''); return ' ';
   });
 
-  s = s.replace(re(DPRE + '(\\d{4}-\\d{2}-\\d{2})'), (_, iso) => (o.dueIso = iso, ' '));
-  s = s.replace(re(DPRE + WD_PRE + '?' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?' + WD_SUF),
-    (m, mon, day, yr) => { const iso = monthDayIso(monthIdx(mon), +day, yr && +yr, now); return iso ? (o.dueIso = iso, ' ') : m; });
-  s = s.replace(re(DPRE + WD_PRE + '?(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?' + WD_SUF),
-    (m, day, mon, yr) => { const iso = monthDayIso(monthIdx(mon), +day, yr && +yr, now); return iso ? (o.dueIso = iso, ' ') : m; });
+  s = s.replace(Q_ISO, (_, iso) => (o.dueIso = iso, ' '));
+  s = s.replace(Q_MON_DAY, (m, mon, day, yr) => { const iso = monthDayIso(monthIdx(mon), +day, yr && +yr, now); return iso ? (o.dueIso = iso, ' ') : m; });
+  s = s.replace(Q_DAY_MON, (m, day, mon, yr) => { const iso = monthDayIso(monthIdx(mon), +day, yr && +yr, now); return iso ? (o.dueIso = iso, ' ') : m; });
   // a bare ordinal is prose ("my 12th birthday"): it needs "on" or a weekday
-  s = s.replace(re('(?:on\\s+' + WD_PRE + '?|' + WD_PRE + ')' + ORD), (m, day) => { const iso = nextDayIso(+day, now); return iso ? (o.dueIso = iso, ' ') : m; });
-  s = s.replace(re(DPRE + '(\\d{1,2})\\/(\\d{1,2})(?:\\/(\\d{2,4}))?'), (m, a, b, y) => {
+  s = s.replace(Q_ORD, (m, day) => { const iso = nextDayIso(+day, now); return iso ? (o.dueIso = iso, ' ') : m; });
+  s = s.replace(Q_SLASH, (m, a, b, y) => {
     let yr = y ? +y : now.getFullYear(); if (yr < 100) yr += 2000;
     const d = new Date(yr, +a - 1, +b);
     if (d.getDate() !== +b || d.getMonth() !== +a - 1) return m;   // "2/30", "31/12" stay title
     o.dueIso = isoDate(d); return ' ';
   });
 
-  const DUE_WORDS = [...V.dueToday, ...V.dueTomorrow, ...V.dueYesterday].sort((a, b) => b.length - a.length);
-  s = s.replace(re(DPRE + '(' + DUE_WORDS.join('|') + ')'), (_, w) => {
+  s = s.replace(Q_DUE, (_, w) => {
     const lw = w.toLowerCase();
     const key = V.dueYesterday.includes(lw) ? 'yesterday' : V.dueTomorrow.includes(lw) ? 'tomorrow' : 'today';
     if (key === 'yesterday') return (o.dueIso = quickDate('yesterday', now), ' ');   // past point — open-start
     const r = quickRange(key, now);
     return (o.dueFromIso = r.from, o.dueIso = r.to, ' ');
   });
-  const WKND_RE = V.weekend.map(w => w.replace(' ', '\\s+')).sort((a, b) => b.length - a.length).join('|');
-  s = s.replace(re(DPRE + '(next\\s+)?(?:' + WKND_RE + ')'), (_, nx) => {
+  s = s.replace(Q_WKND, (_, nx) => {
     if (nx) return (o.dueFromIso = isoDate(nextWeekDate(6, now)), o.dueIso = isoDate(nextWeekDate(0, now)), ' ');   // next week's Sat–Sun, as "next sat"
     const r = quickRange('weekend', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' ');
   });
   // parsed as ONE unit (before bare "next week" / bare weekday)
-  s = s.replace(re(DPRE + '(?:next\\s+week\\s+(' + WD_ALT + ')|(' + WD_ALT + ')\\s+next\\s+week)'), (_, w, w2) =>
+  s = s.replace(Q_NEXT_WEEK_WD, (_, w, w2) =>
     (o.dueIso = o.dueFromIso = isoDate(nextWeekDate(DAYS.indexOf((w || w2).slice(0, 3).toLowerCase()), now)), ' '));
-  const THISWK_RE = V.thisWeek.map(w => w.replace(' ', '\\s+')).join('|');
-  s = s.replace(new RegExp('\\s(?:' + THISWK_RE + ')\\b', 'gi'), () => { const r = quickRange('thisweek', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' '); });
-  s = s.replace(new RegExp('\\s(?:' + V.nextWeek.map(w => w.replace(' ', '\\s+')).join('|') + ')\\b', 'gi'), () => { const r = quickRange('nextweek', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' '); });
+  s = s.replace(Q_THIS_WEEK, () => { const r = quickRange('thisweek', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' '); });
+  s = s.replace(Q_NEXT_WEEK, () => { const r = quickRange('nextweek', now); return (o.dueFromIso = r.from, o.dueIso = r.to, ' '); });
   const dated = !!o.dueIso;
-  s = s.replace(new RegExp('\\s((?:on|this)\\s+(?:coming\\s+)?|coming\\s+)?(next\\s+)?(' + WD_ALT + ')(?:,(?=\\s)|\\b)', 'gi'), (m, pre, nx, w, at, str) => {
+  s = s.replace(Q_WD, (m, pre, nx, w, at, str) => {
     if (dated) return !pre && !nx && WD_PROSE.test(w) ? m : ' ';   // an explicit date already won: the weekday word is absorbed, never overwrites it
     if (!pre && !nx && WD_PROSE.test(w) && !TIME_AFTER.test(str.slice(at + m.length)) && !TIME_BEFORE.test(str.slice(0, at))) return m;
     const t = DAYS.indexOf(w.slice(0, 3).toLowerCase());
@@ -357,12 +370,12 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   s = s.replace(/\s(\d+)\s*(?:h|hr|hrs|hours?)(?:\s*(\d+)\s*(?:m|min|mins|minutes?))?\b/gi, (_, h, m) => (o.durMin = +h * 60 + (m ? +m : 0), ' '));
   s = s.replace(/\s(\d+)\s*(?:m|min|mins|minutes?)\b/gi, (_, m) => (o.durMin == null && (o.durMin = +m), ' '));
 
-  s = s.replace(re(TPRE + '(noon|midnight)'), (_, w) => (setTime(/mid/i.test(w) ? 0 : 12, 0), ' '));
-  s = s.replace(new RegExp('\\s' + TPRE + '(\\d{1,2})(?::(\\d{2}))?\\s*' + MERIDIEM, 'gi'), (_, h, m, ap) => {
+  s = s.replace(Q_NOON, (_, w) => (setTime(/mid/i.test(w) ? 0 : 12, 0), ' '));
+  s = s.replace(Q_MERIDIEM, (_, h, m, ap) => {
     h = +h % 12; if (/p/i.test(ap)) h += 12; setTime(h, m ? +m : 0); return ' ';
   });
-  s = s.replace(re(TPRE + '([01]?\\d|2[0-3]):([0-5]\\d)'), (_, h, m) => (setTime(+h, +m), ' '));
-  s = s.replace(new RegExp('\\s' + AT_HOUR, 'i'), (_, h) => (o.dueTime = atHour(h, o.dueIso > isoDate(now), now), ' '));
+  s = s.replace(Q_CLOCK, (_, h, m) => (setTime(+h, +m), ' '));
+  s = s.replace(AT_HOUR_ANY, (_, h) => (o.dueTime = atHour(h, o.dueIso > isoDate(now), now), ' '));
   // the popover shows `at <time>` INSIDE the repeat sentence — so a time with a rule and no one-off date
   // rides the RULE (matches applyDateText). A one-off date present ("friday at 5pm every week") keeps its time.
   if (o.recurrence && o.dueTime && !o.dueIso) { o.recurrence.at = o.dueTime; o.dueTime = ''; }
@@ -371,10 +384,11 @@ export function parseQuick(raw, now = new Date(), locations = []) {
     const byLen = [...locations].sort((a, b) => b.length - a.length);
     const alt = byLen.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
     const found = name => byLen.find(n => n.toLowerCase() === name.toLowerCase()) || name;
+    if (alt !== locKey) { locKey = alt; locNot = new RegExp('\\s(?:not\\s+at|away\\s+from)\\s+(' + alt + ')(?=\\s|$)', 'i'); locAt = new RegExp('\\sat\\s+(' + alt + ')(?=\\s|$)', 'i'); }
     // negation first ("not at X" / "away from X" are synonyms), then plain "at X"
-    s = s.replace(new RegExp('\\s(?:not\\s+at|away\\s+from)\\s+(' + alt + ')(?=\\s|$)', 'i'), (_m, name) =>
+    s = s.replace(locNot, (_m, name) =>
       (o.location = found(name), o.locationExcept = true, ' '));
-    if (!o.location) s = s.replace(new RegExp('\\sat\\s+(' + alt + ')(?=\\s|$)', 'i'), (_m, name) =>
+    if (!o.location) s = s.replace(locAt, (_m, name) =>
       (o.location = found(name), ' '));
   }
 

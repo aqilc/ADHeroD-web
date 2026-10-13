@@ -5,6 +5,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ADHeroD</title>
+<!-- Phone size catches Samsung's fine-pointer report; large screens with a mouse keep desktop controls. -->
+<script>if (navigator.maxTouchPoints > 0 && (Math.min(screen.width, screen.height) < 600 || !matchMedia('(any-pointer: fine)').matches)) document.documentElement.classList.add('touch');</script>
 <link rel="stylesheet" href="./styles.css">
 <!-- Paint the saved palette while app.js loads; applyTheme replaces these tokens at boot. -->
 <script id="paint-palette">
@@ -77,6 +79,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-tag-dumbbell" viewBox="0 0 24 24"><path d="M3 10v4M21 10v4"/><path d="M6.5 7v10M17.5 7v10M6.5 12h11"/></symbol>
   <symbol id="i-tag-plane" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+  <!-- set-value fills (composer chips): knock-outs take the card's panel colour -->
+  <symbol id="i-cal-fill" viewBox="0 0 24 24"><rect width="18" height="17" x="3" y="4.5" rx="2.5" fill="currentColor"/><path d="M8 2.5v3"/><path d="M16 2.5v3"/><path d="M3 10h18" class="knock"/></symbol>
+  <symbol id="i-sun-fill" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
+  <symbol id="i-sofa-fill" viewBox="0 0 24 24"><path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3z" fill="currentColor"/><path d="M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z" fill="currentColor"/><path d="M4 18v2"/><path d="M20 18v2"/></symbol>
+  <symbol id="i-arrow-fill" viewBox="0 0 24 24"><path d="M4 9.5h8V5l8 7-8 7v-4.5H4z" fill="currentColor"/></symbol>
+  <symbol id="i-flag-fill" viewBox="0 0 24 24"><path d="M4 22V15"/><path d="M4 15.5V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.5z" fill="currentColor"/></symbol>
+  <symbol id="i-tag-fill" viewBox="0 0 24 24"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l7.29-7.29a1 1 0 0 0 0-1.41L12 2z" fill="currentColor"/><circle cx="7" cy="7" r="1.6" stroke="none" class="knock"/></symbol>
+  <symbol id="i-pin-fill" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z" fill="currentColor"/><circle cx="12" cy="10" r="2.5" stroke="none" class="knock"/></symbol>
   <symbol id="i-bell-fill" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" fill="currentColor"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
   <symbol id="i-bell-alarm" viewBox="0 0 24 24"><path d="M17 9a5 5 0 0 0-10 0c0 5.8-2.5 7.5-2.5 7.5h15S17 14.8 17 9" fill="currentColor"/><path d="M13.4 19.6a2 2 0 0 1-2.8 0"/><path d="M19.6 3.6a8 8 0 0 1 2.2 4.2M2.2 7.8a8 8 0 0 1 2.2-4.2"/></symbol>
   <symbol id="i-tag-bell" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
@@ -140,9 +150,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <div id="shell" :inert="modalOpen()">
 
 
-    <div class="canvas" x-ref="canvas"
-         @pointerdown="canvasDown($event)" @pointermove="canvasMove($event)" @pointerup="canvasUp($event)" @pointercancel="canvasUp($event)"
-         @wheel.passive="onCanvasWheel($event)">
+    <div class="canvas" x-ref="canvas" :class="{ 'in-thread': surface === 'social' && !!chat.open, 'bar-on': bar && surface === 'lists' }"
+         @pointerdown="canvasDown($event)" @pointermove="canvasMove($event)" @pointerup="canvasUp($event)" @pointercancel="canvasUp($event)">
      <div class="canvas-track" x-ref="track" :class="{ dragging }" :style="`transform: translateX(-${surfaceIndex() * 100}%)`">
 
       <!-- Lists surface: task-list views (All/Backlog/projects/areas/filters); project-picker lives in the overview roller -->
@@ -153,6 +162,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="topbar-title min-w-0">
         <h1 x-text="navHeading()"></h1>
       </div>
+      <template x-if="bar"><button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">   <!-- the jot bar's: the canvas gear's twin, in the header (styles.css › jot bar) -->
+        <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
+        <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span></template>
+        <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
+      </button></template>
     </div>
 
     <!-- ── List controls: search, sentence, menus ── -->
@@ -167,7 +181,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- search rests as a bare icon; the input unfolds on click, `/` or ⌘F and collapses when empty on blur -->
       <div class="list-search flex items-center flex-none min-w-0" :class="{ open: listSearchOpen || listQ }">
         <button type="button" class="ls-searchbtn inline-flex items-center justify-center" :title="'Search (/ or ' + keyTip('<kbd>⌘</kbd><kbd>f</kbd>', mod) + ')'" aria-label="Search tasks" data-sk="Search tasks"
-                @click="listSearchOpen = true; $nextTick(() => $refs.listSearch.focus())">
+                @click="listSearchOpen = true; $nextTick(() => listSearchOpen && $refs.listSearch.focus())">
           <svg class="ico"><use href="#i-search"/></svg>
         </button>
         <input type="search" placeholder="Search tasks" x-ref="listSearch" x-model="listQ" :tabindex="listSearchOpen || listQ ? 0 : -1"
@@ -365,7 +379,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
       <!-- drop ghost: flex order (rows i*2); left edge = landing depth (shallower = outdent vs reorder) -->
       <template x-if="ghostStyle()">
-        <li class="item drop-ghost" :style="ghostStyle()"></li>
+        <li class="item drop-ghost" :class="{ deep: taskDropHint?.mode === 'deep' }" :style="ghostStyle()"></li>
       </template>
 
       <!-- ── Composer: title, pills, relations, entries ── -->
@@ -374,7 +388,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); _pillThen(() => submitAndClose()); }">
         <div class="composer-grow" x-ref="grow" x-effect="persistDraft(true)" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
         <form class="composer-card" @submit.prevent="_pillThen(() => submitComposer())">
-        <!-- type toggle (#104): the draft's type in front, the other peeking from under it; click the peek to swap -->
+        <!-- type toggle (#104): the draft's type in the check slot, the other under it; click that one to swap -->
         <span class="type-tog" :class="{ note: typeFront(true) }">
           <button type="button" x-html="compCheckHtml(false)" @click="typeTap(false)" :aria-label="typeLabel(false)" :disabled="typeFront(false) && !editing"
             :role="typeFront(false) && editing ? 'checkbox' : null" x-effect="typeFront(false) && editing ? $el.setAttribute('aria-checked', !!editingTask()?.completed_at) : $el.removeAttribute('aria-checked')"></button>
@@ -419,7 +433,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="area-autocomplete ac-list proj-autocomplete" x-cloak :style="'display:' + (projPicker.open ? 'flex' : 'none') + '; left:' + projPicker.left + 'px; top:' + projPicker.top + 'px'" @click.document="projPicker.open && outside($event, $el) && (projPicker.open = false)">
           <template x-for="(p, i) in projMatches()" :key="p.id">
             <button type="button" class="ac-row flex items-center" :class="{ sel: i === projPicker.sel }"
-                    @click="pickPill('proj', p.content)" @mouseenter="projPicker.sel = i">
+                    @click="pickPill('proj', p.id)" @mouseenter="projPicker.sel = i">
               <svg class="ico" :style="p.color ? 'color:' + p.color : ''"><use :href="isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'"/></svg><span class="nm" x-text="p.content"></span>
             </button>
           </template>
@@ -489,21 +503,21 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </template>
             <!-- the checklist ghost holding typing stays (below the subtasks) when one lands: re-created, it would drop the caret -->
             <template x-if="!draft.checklist.length && (!shownSubs().length || chkGhost)">
-              <div class="contents">   <!-- empty state: subtask (edit-only) OR checklist OR steps. Picking Steps is typing its first step: no switch anywhere -->
+              <div class="contents">   <!-- empty state: subtask (edit-only) OR steps OR checklist; steps lead (user 10-13: "make the user think of first steps"). Picking Steps is typing its first step: no switch anywhere -->
                 <span class="entry-or" x-show="!!editing && !subGhost.length && !chkGhost.length" x-transition.opacity.duration.150ms>OR</span>
-                <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && chkSteps())" x-transition.opacity.duration.150ms>
-                  <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
-                  <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" @input="setTaskType(null)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="setTaskType(null); chkPaste($event)" @keydown.stop></textarea>
-                </div>
-                <span class="entry-or" x-show="!subGhost.length && !chkGhost.length && !typeFront(true)" x-transition.opacity.duration.150ms>OR</span>
                 <div class="entry chk ghost step-ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && !chkSteps()) && !typeFront(true)" x-transition.opacity.duration.150ms>
                   <span class="ghost-check"></span>
                   <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="First step" x-model="chkGhost" @input="setTaskType('steps')" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="setTaskType('steps'); chkPaste($event)" @keydown.stop></textarea>
                 </div>
+                <span class="entry-or" x-show="!subGhost.length && !chkGhost.length && !typeFront(true)" x-transition.opacity.duration.150ms>OR</span>
+                <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && chkSteps())" x-transition.opacity.duration.150ms>
+                  <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
+                  <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" @input="setTaskType(null)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="setTaskType(null); chkPaste($event)" @keydown.stop></textarea>
+                </div>
               </div>
             </template>
           </div>
-          <!-- ghost first (in DOM AND on screen) → open items → done items (done sink via CSS order). Ghost-first DOM = Tab from the description lands on the "new item" box before the existing rows. -->
+          <!-- ghost first (in DOM AND on screen) → open items → done items (checklistRows sorts after hold release). Ghost-first DOM = Tab from the description lands on the "new item" box before the existing rows. -->
           <!-- shown whenever it holds anything, subtasks or not: a checklist beside subtasks (a drag in, a sync, a convert landing under a reopened draft) is never hidden -->
           <template x-if="draft.checklist.length">
             <!-- grip only while editing a SAVED task: a not-yet-created task has no order worth preserving -->
@@ -512,7 +526,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                  @pointerdown="chkRowEv($event)" @pointerup="chkRowEv($event)" @beforeinput="chkRowEv($event)" @input="chkRowEv($event)" @compositionend="chkRowEv($event)" @keydown="chkRowEv($event)" @paste="chkRowEv($event)" @click="chkRowEv($event)">
               <div class="entry chk ghost" :class="{ active: chkGhost.length }">
                 <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
-                <textarea class="entry-txt chk-ghost-ta" rows="1" :placeholder="chkSteps() ? 'Add step' : 'New checklist item'" x-model="chkGhost" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
+                <textarea class="entry-txt chk-ghost-ta" rows="1" :placeholder="chkSteps() ? 'Add step' : 'New checklist item'" x-model="chkGhost" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="chkGhostEsc($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
               </div>
               <!-- The ghost doubles as find: matches float to the top + highlight (display only — stored order
                    untouched, nothing hidden); grips drop while the order is temporary. Enter still adds. -->
@@ -525,10 +539,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
              ~200 fewer listeners) and each picker pays its own mount the first time it is opened -->
         <div class="composer-dock">   <!-- chips + actions: one block, so a phone can dock them above the keyboard (styles .composer-dock) -->
         <template x-if="composer.open">
-        <div class="composer-opts flex items-center gap-6">
+        <div class="composer-opts flex items-center">
           <!-- Importance (app-behavior flag, not a rank) -->
           <div class="field" @click.document.capture="pop === 'imp' && outside($event, $el) && popAway('imp', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.importance !== 'none' }" aria-haspopup="menu" :aria-expanded="pop === 'imp'" @click="togglePop('imp', $el)">
+            <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: draft.importance !== 'none', down: draft.importance === 'someday' }" :style="'--cc:' + pc(draft.importance)" :title="impName(draft.importance, 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'imp'" @click="togglePop('imp', $el)">
               <svg class="ico"><use href="#i-prio"/></svg>
               <span x-text="impName(draft.importance, 'Importance')"></span>
             </button>
@@ -543,8 +557,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- Due date -->
           <div class="field" @click.document.capture="pop === 'due' && outside($event, $el) && popAway('due', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.on || draft.recurrence || draft.deadline_at || draft.available_from, open: pop === 'due' }" aria-haspopup="dialog" :aria-expanded="pop === 'due'" @click="openDate('due', $el)">
-              <svg class="ico"><use href="#i-cal"/></svg>
+            <button type="button" class="chip chip-due inline-flex items-center" :class="{ set: draft.on || draft.recurrence || draft.deadline_at || draft.available_from, open: pop === 'due' }" :style="'--cc:' + dueLook()[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'due'" @click="openDate('due', $el)">
+              <svg class="ico"><use :href="'#' + dueLook()[0]"/></svg>
               <span x-text="dueLabel()"></span>
               <svg class="ico rep-on" x-show="draft.recurrence" title="Repeats"><use :href="repRules().some(r => r.from_completion) ? '#i-repeat-done' : '#i-repeat'"/></svg>
             </button>
@@ -567,8 +581,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div></template></template>
           <!-- Duration -->
           <div class="field" @click.document.capture="pop === 'dur' && outside($event, $el) && popAway('dur', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: durMinNow() }" aria-haspopup="dialog" :aria-expanded="pop === 'dur'" @click="togglePop('dur', $el)">
-              <svg class="ico"><use href="#i-clock"/></svg>
+            <button type="button" class="chip chip-dur inline-flex items-center" :class="{ set: durMinNow() }" :title="durLabel()" aria-haspopup="dialog" :aria-expanded="pop === 'dur'" @click="togglePop('dur', $el)">
+              <svg class="ico"><use :href="sizeNow() ? '#i-size-' + sizeNow() : '#i-clock'"/></svg>
               <span x-text="durLabel()"></span>
             </button>
             <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :style="popStyle()">
@@ -589,8 +603,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <!-- Reminders: the user's own voice. Severity is the lead icon's SHAPE; a self-repeating
                reminder shows the repeat switch instead, and tapping it pauses. -->
           <div class="field" @click.document.capture="pop === 'rem' && outside($event, $el) && popAway('rem', $event)">
-            <button type="button" class="chip inline-flex items-center gap-6" :class="{ set: draft.reminders.length, open: pop === 'rem' }" aria-haspopup="dialog" :aria-expanded="pop === 'rem'" @click="togglePop('rem', $el)">
-              <svg class="ico"><use href="#i-bell"/></svg>
+            <button type="button" class="chip chip-rem inline-flex items-center" :class="{ set: draft.reminders.length, open: pop === 'rem' }" title="Remind" aria-haspopup="dialog" :aria-expanded="pop === 'rem'" @click="togglePop('rem', $el)">
+              <svg class="ico"><use :href="draft.reminders.length ? '#i-bell-fill' : '#i-bell'"/></svg>
               <span x-text="remLabel()"></span>
             </button>
             <template x-if="pop === 'rem'"><template x-teleport="body"><div class="pop rem-pop" x-cloak :style="popStyle()">
@@ -618,8 +632,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- Area multi-select -->
           <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
-            <button type="button" class="chip chip-area inline-flex items-center gap-6" :class="{ set: draft.areas.length }" @click="togglePop('area', $el)">
-              <svg class="ico"><use href="#i-tag-tag"/></svg>
+            <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :style="'--cc:' + (areaObjs(draft.areas)[0]?.color || 'var(--ink)')" title="Areas" @click="togglePop('area', $el)">
+              <svg class="ico"><use :href="draft.areas.length ? '#i-tag-fill' : '#i-tag-tag'"/></svg>
               <span x-text="areaLabel()"></span>
             </button>
             <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :style="popStyle()">
@@ -633,8 +647,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- Location constraint -->
           <div class="field" x-show="locations.length" @click.document.capture="pop === 'loc' && outside($event, $el) && popAway('loc', $event)">
-            <button type="button" class="chip chip-loc inline-flex items-center gap-6" :class="{ set: locPolarity() !== 'any' }" @click="openLoc($el)">
-              <svg class="ico"><use :href="locPolarity() === 'except' ? '#i-pin-off' : '#i-pin'"/></svg>
+            <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locPolarity() !== 'any' }" title="Place" @click="openLoc($el)">
+              <svg class="ico"><use :href="{ except: '#i-pin-off', any: '#i-pin' }[locPolarity()] || '#i-pin-fill'"/></svg>
               <span x-text="locChipLabel()"></span>
             </button>
             <!-- Hybrid picker: sentence polarity ("do this [at]:") + block-driven here-row + region chip rows -->
@@ -666,7 +680,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                     </template>
                     <button type="button" class="lp-more" x-show="row.more > 0" @click="locExpandRegion(row.region)" x-text="'+' + row.more + ' more'"></button>
                     <button type="button" class="lp-more" x-show="row.open" @click="locExpandRegion(row.region)">less</button>
-                    <button type="button" class="lp-new" x-show="locNew !== row.region" @click="locNew = row.region; $nextTick(() => $refs.lpNewInput?.focus())">＋ place</button>
+                    <button type="button" class="lp-new" x-show="locNew !== row.region" @click="locNew = row.region; $nextTick(() => locNew === row.region && $refs.lpNewInput?.focus())">＋ place</button>
                     <template x-if="locNew === row.region">
                       <span class="lp-new"><input x-ref="lpNewInput" placeholder="name…" @keydown.enter.prevent="createPlaceInline(row.region, $event.target.value)" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span>
                     </template>
@@ -678,7 +692,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- Relations (edit only) -->
           <div class="field" x-show="editing" @click.document.capture="pop === 'rel' && outside($event, $el) && popAway('rel', $event)">
-            <button type="button" class="chip chip-rel inline-flex items-center gap-6" :class="{ set: editingTask()?.blocked_by?.length }" @click="togglePop('rel', $el); pickerQ = ''" :disabled="!editing">
+            <button type="button" class="chip chip-rel inline-flex items-center" :class="{ set: editingTask()?.blocked_by?.length }" title="Relations" @click="togglePop('rel', $el); pickerQ = ''" :disabled="!editing">
               <svg class="ico"><use href="#i-link"/></svg>
               <span>Relations</span>
             </button>
@@ -1066,31 +1080,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <template x-for="col in pg.cols" :key="'ag'+col.iso">
                   <div class="cl-agwrap" :data-iso="col.iso" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
                     <div class="cl-rail">
-                      <template x-for="(b, ix) in col.blocks" :key="'rb'+b.id+ix">
-                        <div class="cl-rail-blk" :style="'top:'+b.topPct+'%;height:'+clBandH(b, b.hPct)+'%;--cc:'+(b.color || 'var(--accent)')" :title="b.title"></div>
-                      </template>
-                      <template x-for="(p, ix) in col.timed" :key="'rs'+p.it.kind+p.it.id+ix">
-                        <div class="cl-rail-seg" :class="p.it.kind" :style="'top:'+p.topPct+'%;height:'+p.hPct+'%;--cc:'+clItemColor(p.it)"></div>
-                      </template>
+                      <div x-html="clRailHtml(pg.key, col)"></div>
                       <div class="cl-elapsed" :style="col.past ? 'height:100%' : clNowAt(col, 'height')"></div>
                       <div class="cl-now" :style="clNowAt(col, 'top')"></div>
                     </div>
+                    <!-- rows are html parts (clAgParts), their events delegated here: per-row bindings cost most of a page build -->
                     <!-- x-if flips a frame before clBlocks() recomputes on a view switch, so never assume agenda -->
-                    <div class="cl-agenda" :class="'tier-' + (col.agenda?.h > _clDayH() - 20 ? 'compact' : 'full')">
-                      <template x-for="(r, ix) in (col.agenda?.rows || [])" :key="r.key">
-                        <div class="cl-ag-row" :class="(r.free ? 'free' : r.it.kind + (r.mark ? ' mark' : '') + clTaskState(r.it)) + (!r.allday && r.min + r.mins <= (col.past ? 1440 : col.today ? clNowMin() : 0) ? ' past' : '')" :tabindex="r.free ? -1 : 0" :draggable="!r.free && !!_dndKind(r.it.kind)" :style="'--i:' + ix + ';--cc:' + (r.free ? 'var(--muted)' : clItemColor(r.it))" @dragstart.stop="r.free || clDragStart($event, _dndKind(r.it.kind), r.it.id, r.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click="r.free || (r.it.kind === 'task-block' ? clOpenTaskSide(r.it.id) : clItemClick(r.it))">
-                          <span class="cl-ag-t" x-text="r.allday ? 'All day' : clAgTime(r.min)"></span>
-                          <span class="cl-ag-m">
-                            <template x-if="!r.free && r.it.kind === 'task-block'"><span x-html="clCheckHtml(r.it,'cl-evt-check')" @click.stop="clToggleTask(r.it.id)"></span></template>
-                            <template x-if="!r.free && r.it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template>
-                            <template x-if="r.free || (r.it.kind !== 'task-block' && r.it.kind !== 'task-deadline')"><span class="cl-ag-dot"></span></template>
-                          </span>
-                          <span class="cl-ag-b"><span class="cl-ag-n" x-text="r.free ? durFmt(r.mins) + ' free' : r.it.title"></span><span class="cl-ag-d" x-text="r.free ? '' : clAgSub(r)"></span></span>
-                        </div>
-                      </template>
-                      <div class="cl-ag-none" x-show="!col.agenda?.rows.length">Nothing scheduled</div>
-                      <template x-if="col.cleared"><div class="cl-cleared"><span class="cl-cleared-t" x-text="col.cleared.label"></span></div></template>
-                    </div>
+                    <div class="cl-agenda" :class="'tier-' + (col.agenda?.h > _clDayH() - 20 ? 'compact' : 'full')" x-effect="renderRows($el, clAgParts(pg.key, col))"
+                         @click="clAgClick($event, col)" @dragstart="clAgDrag($event, col)" @dragend="$event.target.closest('.cl-ag-row') && clDragEndSchedule()" @keydown="clKeyActivate($event, $event.target.closest('.cl-ag-row'))"></div>
                   </div>
                 </template>
               </div>
@@ -1209,8 +1206,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-if="f.failed"><button type="button" class="retry" @click="_upload(f)">Retry</button></template>
             <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
         </template></div>
-        <div class="chat-comp flex items-end"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
-        <div class="chat-hint"><kbd>↵</kbd> send · <kbd>⇧</kbd><kbd>↵</kbd> new line · <kbd>↑</kbd> edit last</div>
+        <div class="chat-comp flex items-end"><div class="chat-input"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><div class="chat-placeholder" x-show="!chat.draft" aria-hidden="true"><span class="chat-prompt" x-text="'Message ' + chatPeer(openChatRow())"></span><span class="chat-keys"><kbd>↵</kbd> send · <kbd>⇧</kbd><kbd>↵</kbd> new line · <kbd>↑</kbd> edit last</span></div></div><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
       </div>
       </template>
     </div>
@@ -1219,8 +1215,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
      </div><!-- /canvas-track -->
     <!-- ── Canvas dots + settings + overview deck + nav popovers ── -->
-     <div class="canvas-dots" @click="dotStripClick($event)" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }"
-          x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), unread: s === 'social' &amp;&amp; chatUnread(), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView, today: clShowToday(), side: clSideOpen } : null })), surfaceIndex())"></div>
+     <div class="canvas-dots" :class="clShowToday() ? '' : 'no-today'" @click="dotStripClick($event)" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }"
+          x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), unread: s === 'social' &amp;&amp; chatUnread(), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView, side: clSideOpen } : null })), surfaceIndex())"></div>
      <!-- Account & settings: a gear in the corner, apart from the dots (a door over the app, not a place in it).
           Status dot only when signed in — accent = last server call succeeded, gray = offline or not synced. Top-right up-arrow: a Windows-app update is ready. -->
      <button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">
@@ -1228,13 +1224,37 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span></template>
        <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
      </button>
+     <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists on a phone, behind the adherod.bar trial. The chip names the list a task lands in and opens the overview, as the current dot does. -->
+     <template x-if="bar"><div class="jot-bar items-center" @pointermove="holdMove($event)" @pointerup="holdUp()" @pointercancel="listHold = null">
+       <template x-if="listHold"><div class="pop jb-lists" role="menu">   <!-- P-A: held up from the chip -->
+         <div class="pop-scrim" @click="listHold = null"></div>
+         <template x-for="(r, i) in holdRows()" :key="r.type + ':' + r.id">
+           <button type="button" class="pop-item" role="menuitem" :data-hold="i" :class="{ hot: listHold.hot === i, on: r.type === navSel.type &amp;&amp; r.id === navSel.id, more: r.type === 'more' }" @click="holdPick(r)"><svg class="ico" aria-hidden="true"><use :href="'#' + r.icon"/></svg><span class="truncate" x-text="r.label"></span></button>
+         </template>
+       </div></template>
+       <div class="jb-field flex items-center min-w-0">
+         <button type="button" class="jb-dest inline-flex items-center min-w-0" data-sk="Overview" @click="openOverview()" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }" @contextmenu.prevent :aria-label="navHeading() + ', open menu'" aria-haspopup="dialog"><svg class="ico" aria-hidden="true"><use href="#i-all"/></svg><span class="truncate" x-text="navHeading()"></span></button>
+         <button type="button" class="jb-jot min-w-0" data-sk="New task" @click="quickAdd()">Jot something</button>
+       </div>
+       <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Plan" @click="goSurface('plan')" aria-label="Plan"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg></button>
+       <button type="button" class="jb-ico flex items-center justify-center" :class="{ 'cd-new': chatUnread() }" data-sk="Go to Social" @click="goSurface('social')" :aria-label="chatUnread() ? 'Social, new messages' : 'Social'"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></button>
+     </div></template>
+     <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar() }">   <!-- a new task's composer, over the bar (relocateComposer) -->
+      <li class="jb-go" x-show="jotRows().length" @mousedown.prevent>   <!-- a tap keeps the keyboard up -->
+        <template x-for="r in jotRows()" :key="r.type + ':' + r.id">
+          <button type="button" class="palette-row task-line" @click="pickJot(r)" x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r)) : searchJumpHTML(r)"></button>
+        </template>
+        <div class="palette-section" x-show="!draft.content">Go to</div>
+      </li>
+    </ul></template>
     </div><!-- /canvas -->
 
   </div><!-- .shell -->
 
-  <!-- Overview deck: zoom-out to the Lists roller + Plan card as skeleton mockups w/ real titles. Open via the dots, `o`, or pinch. -->
+  <!-- Overview deck: zoom-out to the Lists roller + Plan card as skeleton mockups w/ real titles. Open via the dots, `o`, or pinch.
+       A backdrop click closes it only when the press began there: a drag-select in the rename field that ends outside clicks the common ancestor. -->
   <template x-if="overview">
-  <div class="overview" :inert="modalOpen()" @click="if (!$event.target.closest('[data-ridx], [data-more], [data-add], .ov-card')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
+  <div class="overview" :inert="modalOpen()" @pointerdown="$el._down = $event.target" @click="if ($event.target === $el._down && !$event.target.closest('[data-ridx], [data-more], [data-add], .ov-card')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
     <div id="ov-stage">
     <!-- Lists picker: a center-focused roller on the left of the deck; the cards keep their size (not cramped) -->
     <div class="ov-roller" :class="{ sel: ovSel === 0 }" @mouseenter="ovSel = 0">
@@ -1268,10 +1288,22 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })" x-text="navPopProj().favorite ? '&#9733; Unfavorite' : '&#9734; Favorite'"></button>
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { overview: false }, 'Hidden from Overview')">Hide from Overview</button>
         <button class="nav-pop-item" @click.stop="archive(navPopProj().id, !navPopProj().archived_at); navPop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="navPopProj().archived_at ? 'Unarchive' : 'Archive'"></span></button>
+        <button class="nav-pop-item" @click.stop="startMerge(navPopProj().id)"><svg class="ico"><use href="#i-arrow"/></svg>Merge into&#x2026;</button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
         <div class="nav-pop-sep"></div>
         <button class="nav-pop-item del" @click="startDeleteProject(navPopProj().id)">Delete&#x2026;</button>
+      </div>
+    </template>
+    <template x-if="overview && navPop?.type === 'merge'">
+      <div class="nav-pop rl-pop merge-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
+        <input type="text" class="pop-input" placeholder="Merge into a project…" x-model="pickerQ" @keydown.enter.prevent="mergeTargets()[0] && mergeProject(navPop.id, mergeTargets()[0])">
+        <template x-for="p in mergeTargets()" :key="p.id">
+          <button type="button" class="pop-item proj-row" @click="mergeProject(navPop.id, p)">
+            <svg class="hash-ico ico" :style="p.color ? 'color:' + p.color : ''"><use :href="isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'"/></svg>
+            <span :style="p.color ? 'color:' + p.color + ';opacity:.75' : ''" x-text="projectPath(p)"></span>
+          </button>
+        </template>
       </div>
     </template>
     <template x-if="overview && navPopArea()">
@@ -1308,7 +1340,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <div class="settings-card" role="dialog" aria-modal="true" aria-label="Account &amp; settings" @click.stop><div class="set-scroll" x-effect="settingsOpen && ($el.scrollTop = 0)">
       <h1>Account &amp; settings</h1>
       <template x-if="updateUrl">
-        <button type="button" class="set-row set-rowbtn set-update flex items-center gap-10" @click="desktopWindow('open', updateUrl)"><svg class="ico set-ico"><use href="#i-repeat"/></svg>Update available<span class="set-sub muted-12">Download</span></button>
+        <button type="button" class="set-row set-rowbtn set-update flex items-center gap-10" @click="await desktopApplyUpdate(updateUrl)"><svg class="ico set-ico"><use href="#i-repeat"/></svg>Restart to update</button>
       </template>
       <template x-if="session">
         <div>
@@ -1318,7 +1350,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" class="set-out flex-none muted-12" @click="signOut()">Sign out</button>
           </div>
           <div class="set-form">
-            <button type="button" class="set-alt muted-12" x-show="!setNameOpen" @click="setNameOpen = true; setNameVal = chatName(); $nextTick(() => $refs.setNameInput.focus())">Set name</button>
+            <button type="button" class="set-alt muted-12" x-show="!setNameOpen" @click="setNameOpen = true; setNameVal = chatName(); $nextTick(() => setNameOpen && $refs.setNameInput.focus())">Set name</button>
             <form class="flex-col gap-8" x-show="setNameOpen" @submit.prevent="saveName()">
               <input class="inp" x-ref="setNameInput" x-model="setNameVal" placeholder="Your name" autocomplete="name" maxlength="40">
               <div class="set-actions flex items-center gap-8">
@@ -1328,7 +1360,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </form>
           </div>
           <div class="set-form set-pass">
-            <button type="button" class="set-alt muted-12" x-show="!setPassOpen" @click="setPassOpen=true;$nextTick(()=>$refs.setPassInput.focus())">Set password</button>
+            <button type="button" class="set-alt muted-12" x-show="!setPassOpen" @click="setPassOpen=true;$nextTick(()=>setPassOpen && $refs.setPassInput.focus())">Set password</button>
             <form class="flex-col gap-8" x-show="setPassOpen" @submit.prevent="setPassword()">
               <p class="set-msg muted-12" :class="{err:setPassErr}" x-text="setPassErr" :style="setPassErr?'':'display:none'"></p>
               <input class="inp" type="password" x-ref="setPassInput" x-model="setPassVal" placeholder="New password" autocomplete="new-password">
@@ -1613,7 +1645,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
       <div class="palette-empty" x-show="palette.q.trim() && !searchResults().length">No matches for “<span x-text="palette.q.trim()"></span>”</div>
       <div class="palette-foot flex muted-11">
-        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span x-show="isFilterQuery(palette.q)"><kbd x-text="mod"></kbd><kbd>s</kbd> save as filter</span><span><kbd>esc</kbd> close</span>
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span :style="{ opacity: isFilterQuery(palette.q) ? 1 : .45 }"><kbd x-text="mod"></kbd><kbd>s</kbd> save as filter</span><span><kbd>esc</kbd> close</span>
       </div>
     </div>
 

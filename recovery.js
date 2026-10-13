@@ -1,6 +1,8 @@
 // Pure recovery logic: journal shape + sync-safe staleness. No DOM, no store, no side effects.
 export const JOURNAL_MAX = 200, JOURNAL_MAX_AGE_MS = 30 * 864e5;
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);   // deep-equal for field values
+// an instant reads back in the server's format (written "…Z", stored "…+00:00"): the same instant is the same value
+const same = (k, a, b) => eq(a, b) || k.endsWith('_at') && typeof a === 'string' && typeof b === 'string' && Date.parse(a) === Date.parse(b);
 
 // Keep only the fields whose current live value still equals what we last wrote (`expect`).
 // A field changed underneath (by another device or a later edit) is dropped → never clobbered.
@@ -9,7 +11,7 @@ export function guardedFields(target, currentRow, expect) {
   const out = {};
   for (const k in target) {
     if (k === 'attachments' && k in expect && currentRow?.id) out[k] = byMember(currentRow?.[k] ?? [], target[k] ?? [], expect[k] ?? []);
-    else if (!(k in expect) || eq(currentRow?.[k], expect[k])) out[k] = target[k];
+    else if (!(k in expect) || same(k, currentRow?.[k], expect[k])) out[k] = target[k];
   }
   return out;
 }
