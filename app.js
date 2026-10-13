@@ -4782,6 +4782,7 @@ document.addEventListener('alpine:init', () => {
           const nextBase = landed ? { ...JSON.parse(JSON.stringify(draft)), ...!placed && { on: saveBase.on, dueTime: saveBase.dueTime, recurrence: saveBase.recurrence }, reminders: saveBase.reminders,
             subs: subbed ? draft.subs.map(s => ({ id: s.id, done: s.done })) : saveBase.subs, subMoves: {} } : saveBase;
           if (kept) await this._applyDraftLinks(editId, draft, j);
+          if (kept) for (const s of draft.subs) if (s.links && this.byId.has(s.id)) await this._applyDraftLinks(s.id, { content: this.byId.get(s.id).content, ...s.links }, j);
           // a new subtask: an add's Bin row, so a ⌘Z puts it in the Bin (a deleted one has its own, _saveSubs)
           // kept with no journal ops: nothing the task row changed (signed in, an empty write stamps nothing), still said. A move re-labels this card below
           const saveCard = j.length ? this._pushOps('Saved task', 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added }) : kept ? this.notify('Saved task') : null;
@@ -6534,7 +6535,7 @@ document.addEventListener('alpine:init', () => {
       const el = this._ghostEl('sub');
       // Rebuild the sub-draft from the ghost's DOM — covers Save, where focus may never have entered the row.
       if (el) this.focusSubEditor(el, null);
-      const d = this.subDraft, s = { id: crypto.randomUUID(), add: true, done: false, html: el?.innerHTML || '', fields: this._subFields(d), sd: { on: d.on, dueTime: d.dueTime, recurrence: d.recurrence } };
+      const d = this.subDraft, s = { id: crypto.randomUUID(), add: true, done: false, html: el?.innerHTML || '', fields: this._subFields(d), sd: { on: d.on, dueTime: d.dueTime, recurrence: d.recurrence }, links: this._subLinks(d) };
       s.text = s.fields.content;
       if (!s.text && el?.textContent.trim()) { this.toast('Add a title to the subtask'); this._focusEntry(el); return false; }
       this.subGhost = '';
@@ -6587,12 +6588,14 @@ document.addEventListener('alpine:init', () => {
     _snapSub(el, c, s, done) {
       const d = this._rowDraft(el, c || s), f = this._subFields(d), b = el._base;
       if (!f.content) { if (done && el._was) { el.innerHTML = el._was; this._snapSub(el, c, s); } return; }
-      const sd = { on: d.on, dueTime: d.dueTime, recurrence: d.recurrence };
+      const sd = { on: d.on, dueTime: d.dueTime, recurrence: d.recurrence }, links = this._subLinks(d);
       // A restored new row can land while it is being edited: keep its edits for the update path too.
-      if (!b) return Object.assign(s, { html: el.innerHTML, text: f.content, patch: { ...s.patch, ...this._childPatch(f, s.fields || {}) }, fields: f, sd });
+      if (!b) return Object.assign(s, { html: el.innerHTML, text: f.content, patch: { ...s.patch, ...this._childPatch(f, s.fields || {}) }, fields: f, sd, links });
       const patch = this._childPatch(f, this._subFields(b)), moved = d.on !== b.on || d.dueTime !== b.dueTime, edited = moved || Object.keys(patch).length > 0;
-      Object.assign(s, { html: edited ? el.innerHTML : undefined, text: edited ? f.content : undefined, patch: edited ? patch : undefined, sd: moved ? sd : undefined });
+      Object.assign(s, { html: edited ? el.innerHTML : undefined, text: edited ? f.content : undefined, patch: edited ? patch : undefined, sd: moved ? sd : undefined, links });
     },
+    // a row's typed "needs …" / "needed by …": hydrateSubEditor shows no stored links, so these are only new ones, linked by the save
+    _subLinks(d) { return d.needs.length || d.neededBy.length ? { needs: [...d.needs], neededBy: [...d.neededBy] } : undefined; },
     // The draft's rows as ONE part of the save: creates first, then edits, moves and ticks, deletes last. All or nothing:
     // a failed part takes back what landed, so the stored subtasks stay as they were and the draft comes back.
     async _saveSubs(id, draft, base, j, drops) {
