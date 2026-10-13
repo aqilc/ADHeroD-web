@@ -731,6 +731,12 @@ document.addEventListener('alpine:init', () => {
       }, true);
       document.addEventListener('click', e => { const a = _linkPress && !_linkPress.moved && e.target.closest('a.dm-link'); if (a) { e.preventDefault(); _linkCard = _linkPress; this.linkUrl = a.href; this.togglePop('link', a); } });
       document.addEventListener('mouseup', () => { _press = null; this._pastMarks(); this.liveReveal(); }, true);
+      // A click on blank page closes the composer, like Esc. Only when it is the top overlay at the PRESS (a pop or dialog
+      // closes first, on that same click), and only on a click, so a touch scroll or a selection dragged out keeps it.
+      const inside = '.composer, .pop, .jot-bar, .jb-host, .item, button, a, input, textarea, select, label, [role], [contenteditable]';
+      let outPress = false;
+      document.addEventListener('pointerdown', e => { outPress = OVERLAYS.find(([open]) => open(this)) === OVERLAYS.at(-1) && !e.target.closest?.(inside); }, true);
+      document.addEventListener('click', e => { if (outPress && !e.target.closest?.(inside) && this.composer.open) this.closeComposer(); outPress = false; });
       document.addEventListener('selectionchange', () => this.liveReveal());
       document.addEventListener('mousemove', e => {
         if (!_linkPress || !(e.buttons & 1) || !_linkPress.moved && Math.hypot(e.clientX - _linkPress.x, e.clientY - _linkPress.y) < 4) return;
