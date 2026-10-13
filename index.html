@@ -1295,9 +1295,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   </div><!-- .shell -->
 
   <!-- Overview deck: zoom-out to the Lists roller + Plan card as skeleton mockups w/ real titles. Open via the dots, `o`, or pinch.
-       A backdrop click closes it only when the press began there: a drag-select in the rename field that ends outside clicks the common ancestor. -->
+       A backdrop click closes it only when the press began there: a drag-select in the rename field that ends outside clicks the common ancestor.
+       .nav-pop: a popup row's patch closes the popup mid-click, tearing down its @click.stop, so the click reaches here. -->
   <template x-if="overview">
-  <div class="overview" :inert="modalOpen()" @pointerdown="$el._down = $event.target" @click="if ($event.target === $el._down && !$event.target.closest('[data-ridx], [data-more], [data-add], .ov-card')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
+  <div class="overview" :inert="modalOpen()" @pointerdown="$el._down = $event.target" @click="if ($event.target === $el._down && !$event.target.closest('[data-ridx], [data-more], [data-add], .ov-card, .nav-pop')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
     <div id="ov-stage">
     <!-- Lists picker: a center-focused roller on the left of the deck; the cards keep their size (not cramped) -->
     <div class="ov-roller" :class="{ sel: ovSel === 0 }" @mouseenter="ovSel = 0">
@@ -1327,20 +1328,20 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- Nav settings popovers live OUTSIDE the roller so its overflow (and the overview's backdrop-filter containing block) can't clip them; positioned via navPopXY (viewport coords). -->
     <template x-if="overview && navPopProj()">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
-        <button class="nav-pop-item" @click.stop="startRename(navPopProj().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
-        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })" x-text="navPopProj().favorite ? '&#9733; Unfavorite' : '&#9734; Favorite'"></button>
-        <button class="nav-pop-item" @click="patchTask(navPopProj().id, { overview: false }, 'Hidden from Overview')">Hide from Overview</button>
-        <button class="nav-pop-item" @click.stop="archive(navPopProj().id, !navPopProj().archived_at); navPop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="navPopProj().archived_at ? 'Unarchive' : 'Archive'"></span></button>
-        <button class="nav-pop-item" @click.stop="startDeleteProject(navPopProj().id, true)"><svg class="ico"><use href="#i-arrow"/></svg>Merge into&#x2026;</button>
+        <button class="pop-item" @click.stop="startRename(navPopProj().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
+        <button class="pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })"><svg class="ico"><use href="#i-tag-star"/></svg>Favorite<template x-if="navPopProj().favorite"><svg class="tick ico"><use href="#i-check"/></svg></template></button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
         <div class="nav-pop-sep"></div>
-        <button class="nav-pop-item del" @click="startDeleteProject(navPopProj().id)">Delete&#x2026;</button>
+        <button class="pop-item" @click="patchTask(navPopProj().id, { overview: false }, 'Hidden from Overview')"><svg class="ico"><use href="#i-overview"/></svg>Hide from Overview</button>
+        <button class="pop-item" @click.stop="archive(navPopProj().id, !navPopProj().archived_at); navPop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="navPopProj().archived_at ? 'Unarchive' : 'Archive'"></span></button>
+        <button class="pop-item" @click.stop="startDeleteProject(navPopProj().id, true)"><svg class="ico"><use href="#i-arrow"/></svg>Merge into&#x2026;</button>
+        <button class="pop-item del" @click="startDeleteProject(navPopProj().id)"><svg class="ico"><use href="#i-trash"/></svg>Delete&#x2026;</button>
       </div>
     </template>
     <template x-if="overview && navPopArea()">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
-        <button class="nav-pop-item" @click.stop="startRename(navPopArea().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
+        <button class="pop-item" @click.stop="startRename(navPopArea().id)"><svg class="ico"><use href="#i-edit"/></svg>Rename</button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchArea(navPopArea().id, { color: v }))" x-html="swatchRow(navPopArea().color, areaDefault)"></div>
         <div class="nav-pop-label">Icon</div>
@@ -1351,7 +1352,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </template>
         </div>
         <div class="nav-pop-sep"></div>
-        <button class="nav-pop-item del" @click="deleteArea(navPopArea().id)">Delete</button>
+        <button class="pop-item del" @click="deleteArea(navPopArea().id)"><svg class="ico"><use href="#i-trash"/></svg>Delete</button>
       </div>
     </template>
     <template x-if="overview && navRename">

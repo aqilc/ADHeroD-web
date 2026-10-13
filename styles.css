@@ -261,8 +261,6 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .rl-mvb .ico { width: 11px; height: 11px; flex: none; margin-top: -1px; }
 .rl-mvb:first-child .ico { transform: rotate(180deg); margin: -1px 0 0; }
 .nav-pop.rl-pop { position: fixed; }                      /* two classes → beats the later `.nav-pop{position:absolute}`; fixed = escapes the roller's overflow clip via navPopXY */
-.nav-pop-item .ico { width: 15px; height: 15px; flex: none; }   /* explicit sizing — un-sized .ico in the popover inflated the row */
-/* .nav-pop/.nav-pop-item appearance: see Popover shell block below. */
 .nav-pop-sep { border-top: 1px solid var(--hair); margin: var(--sp-2) 0; }
 .rl-icon-none { font-size: var(--fs-11); color: var(--muted); }
 /* Color swatch row — 7-column grid (no-color/default + 13 colors = two even rows) */
@@ -989,11 +987,11 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .pop-sub-head, .rem-sug-head { padding: var(--sp-6) var(--sp-4) var(--sp-2); }
 .nav-pop { top: 100%; left: var(--sp-8); z-index: 30; min-width: 184px; }
 .pop-item .ico { width: 15px; height: 15px; flex: none; color: var(--muted); }   /* explicit sizing — an un-sized .ico has no viewBox height and inflates the row */
-.pop-item, .nav-pop-item { display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left;
+.pop-item { display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left;
   padding: var(--sp-6) var(--sp-8); border: none; background: none; border-radius: var(--r-6); color: var(--ink); font-size: var(--fs-13);
   &:hover { background: var(--hover); }
   &.clear { color: var(--muted); }
-  &.del { color: var(--p1); }
+  &.del, &.del .ico { color: var(--p1); }
   .tick { margin-left: auto; color: var(--accent); } }
 :is(.pop, .pick-list) .pop-input { padding: var(--sp-8) var(--sp-8); margin: var(--sp-2) 0 var(--sp-4); border: 1px solid var(--edge);
   border-radius: var(--r-6); background: var(--panel); color: var(--ink); font-size: var(--fs-13); width: 100%;
@@ -1229,8 +1227,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &:hover { background: var(--hover); color: var(--ink); } }
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 /* light shell: r8, hairline, soft shadow; 28px rows at r4 (concentric: 8 − 4 inset) */
-.pop:is(.proj-pop, .rem-pop, .cal) { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
-:is(.proj-pop, .pick-list) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
+.pop:is(.proj-pop, .rem-pop, .cal), .nav-pop.rl-pop { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
+:is(.proj-pop, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
 .proj-row { gap: var(--sp-8); }
