@@ -1001,7 +1001,7 @@ document.addEventListener('alpine:init', () => {
       let l2 = line2s.get(el);
       if (!l2) {
         l2 = document.createElement('div');
-        l2.className = 'row2 meta flex items-center gap-8 min-w-0';
+        l2.className = 'row2 meta flex items-center gap-8 min-w-0' + (this.sticky ? ' shed-hid' : '');   // the note keeps one line a task: what sheds goes, and the lone-item hand-back below still applies
         el.querySelector('.row1').after(l2);
         line2s.set(el, l2);
       }
@@ -2511,18 +2511,6 @@ document.addEventListener('alpine:init', () => {
     // The nav settings popover renders at the overview level (not inside the clipping roller) — resolve its entity here.
     navPopProj() { return this.navPop?.type === 'proj' ? this.byId.get(this.navPop.id) : null; },
     navPopArea() { return this.navPop?.type === 'area' ? this.areas.find(l => l.id === this.navPop.id) : null; },
-    startMerge(id) { this.navPop = { type: 'merge', id }; this.pickerQ = ''; this.$nextTick(() => this.navPop?.type === 'merge' && document.querySelector('.merge-pop .pop-input')?.focus()); },
-    mergeTargets() { const own = new Set(descendantIds(this.tasks, this.navPop.id)); return this.filteredProjects().filter(p => !own.has(p.id)); },
-    // Every task in the project moves in after the target's own, THEN the emptied project is archived, never deleted: one composite,
-    // so a failed part takes back what landed (both projects as they were) and one ⌘Z undoes the whole merge
-    async mergeProject(id, into) {
-      const src = this.byId.get(id), base = Math.max(-1, ...this.childTasks(into.id).map(t => t.position ?? 0));
-      this.navPop = null;
-      if (!src) return;
-      const ops = this.childTasks(id).map((t, i) => ({ kind: 'move', target: 'task', id: t.id, after: { parent: into.id, pos: base + 1 + i } }));
-      ops.push({ kind: 'update', target: 'task', id, after: { archived_at: new Date().toISOString() } });
-      if (await this.perform(`Merged ${src.content} into ${into.content}`, { kind: 'composite', target: 'task', ops }, { bin: true }) && this.navSel.id === id) this.setNav('project', into.id);
-    },
     // Ghost text doubles as find (uFuzzy, same matcher as the pickers): .chk-hit floats matches via
     // flex order (the lane done rows sink through) — no DOM moves, stored order untouched, nothing hidden.
     chkFind() {   // memo per (query, list length): item id → match ranges (null = hit without range info)
@@ -2551,58 +2539,36 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
     descendantCount(id) { return id ? descendantIds(this.tasks, id).length - 1 : 0; },   // tasks INSIDE (excl. the project itself)
-    delTargets() {
-      if (!this.delAsk) return [];
-      const excl = new Set(descendantIds(this.tasks, this.delAsk.id)), def = this.store.defaultProject();
-      if (this.delAsk.kind === 'project') return this.tasks.filter(p => !excl.has(p.id) && this.hasChildren(p.id));
-      return this.tasks.filter(p => !excl.has(p.id) && (p.id === def || p.overview || this.hasChildren(p.id)));
+    delTargets() { return this.delAsk ? this.filteredProjects(this.delAsk.id) : []; },
+    // the dialog's default, always a row it lists: the parent, else the default project, else its first
+    _delDefault(id) { const list = this.filteredProjects(id), parent = this.byId.get(id)?.parent_id; return (list.find(p => p.id === parent) ?? list.find(p => p.id === this.store.defaultProject()) ?? list[0])?.id ?? null; },
+    enterDel() { const top = this.pickerQ.trim() ? this.delTargets()[0] : this.byId.get(this.delAsk.target); if (top) { this.delAsk.target = top.id; this.confirmDelete(); } },   // Enter takes the top match, as the composer's picker does
+    // Merge into… and Delete… open the one project dialog; a merge is a delete that moves its tasks, so it offers no "Delete them too"
+    startDeleteProject(id, merge = false) {
+      this.navPop = null; this.pickerQ = '';
+      this.delAsk = { kind: 'project', id, merge, mode: 'move', target: this._delDefault(id), name: this.projName(id), count: this.descendantCount(id) };
+      this.$nextTick(() => document.querySelector('.dialog .pick-list .pop-input')?.focus());
     },
-    startDeleteProject(id) {
-      this.navPop = null;
-      const project = this.byId.get(id);
-      const excl = new Set(descendantIds(this.tasks, id));
-      const candidates = this.tasks.filter(x => !excl.has(x.id));
-      const parentInList = project && project.parent_id && candidates.find(x => x.id === project.parent_id);
-      this.delAsk = { kind: 'project', id, mode: 'move', target: parentInList ? project.parent_id : (candidates[0]?.id) || null, name: this.projName(id), count: this.descendantCount(id) };
-    },
-    // Shared by confirmDelete's "move" mode (both project and task): store.tasks.remove(id,
-    // target) reparents id's DIRECT children onto target, then removes id — one call, not move+delete. Build the
-    // journal entry by hand (a composite of "reinsert id" + "move each child back"): this call's DB-level
-    // atomicity must not be split across two ops.
-    async _deleteReparent(label, id, target) {
-      const row = this.byId.get(id); if (!row) return false;
-      const taskRow = JSON.parse(JSON.stringify(row)), refs = this._taskRefs([taskRow]);
-      const kids = this.tasks.filter(t => t.parent_id === id).map(c => ({ id: c.id, parent: c.parent_id ?? null, pos: c.position }));
-      const fx = this._fxSnap([...this._chain(row.parent_id), ...this._chain(target)]);   // the ancestors this remove auto-completes, the target's it reopens: undo puts both back
-      const settled = await this._binAhead(label, { kind: 'delete', target: 'task', id }, [taskRow]);   // its children move, not go
-      if (!settled) return false;
-      const ok = await this.store.tasks.remove(id, target);
-      await this._reloadAfter({ kind: 'reinsert', target: 'task' });   // the deleted-from lists, not reloadAll: its rAF races the composer close
-      // signed in, the move and the DELETE are two requests: a failure may follow a move that landed — journal what did
-      const gone = ok || !this.byId.has(id), moved = ok ? kids : kids.filter(k => this.byId.get(k.id)?.parent_id === target);
-      settled();   // the entry below holds what landed
-      if (!gone && !moved.length) { this.toast(`Failed saving “${label}”. Try again?`); return false; }
-      const entry = { kind: 'composite', target: 'task', _fxCapture: fx, ops: [
-        ...gone ? [{ kind: 'reinsert', target: 'task', id, rows: [taskRow], ...refs }] : [],
-        ...moved.map(k => ({ kind: 'move', target: 'task', id: k.id, after: { parent: k.parent, pos: k.pos } })),
-      ] };
-      this._finalizeFx(entry); this._pushEntry(label, entry, { bin: gone, silent: !ok });
-      if (!ok) this.toast(`“${label}” didn’t fully save. The list shows what’s saved`);
-      return ok;
+    // Merge, and a delete's "Move them": every child moves in after the target's own, THEN the emptied row goes to the Bin.
+    // One composite: a failed part takes back what landed, and one ⌘Z brings the whole thing back.
+    _moveInto(label, id, into) {
+      const base = Math.max(-1, ...this.childTasks(into).map(t => t.position ?? 0));
+      const moves = this.childTasks(id).map((t, i) => ({ kind: 'move', target: 'task', id: t.id, after: { parent: into, pos: base + 1 + i } }));
+      return this.perform(label, { kind: 'composite', target: 'task', ops: [...moves, { kind: 'delete', target: 'task', id }] });
     },
     async confirmDelete() {
       const info = this.delAsk, d = this.draft;
       this.delAsk = null;
       if (!info || (info.mode === 'move' && !info.target)) return;
       if (info.kind === 'project') {
-        const onIt = this.navSel.type === 'project' && descendantIds(this.tasks, info.id).includes(this.navSel.id);
-        const ok = info.mode === 'delete' ? await this.perform('Deleted project + tasks', { target: 'task', kind: 'delete', id: info.id })
-          : !this.byId.get(info.id) || await this._deleteReparent('Deleted project', info.id, info.target);
-        if (ok && onIt) this.setNav('all');   // a failed delete keeps the user on the project
+        const all = info.mode === 'delete', onIt = this.navSel.type === 'project' && (all ? descendantIds(this.tasks, info.id) : [info.id]).includes(this.navSel.id);   // a moved subproject stays
+        const ok = all ? await this.perform('Deleted project + tasks', { target: 'task', kind: 'delete', id: info.id })
+          : !this.byId.get(info.id) || await this._moveInto(info.merge ? `Merged ${info.name} into ${this.projName(info.target)}` : 'Deleted project', info.id, info.target);
+        if (ok && onIt) this.setNav(...all ? ['all'] : ['project', info.target]);   // a failed delete keeps the user on the project
       } else if (info.source === 'child') { const s = this.editing && d.subs.find(x => x.id === info.id); if (s) this.removeChild(s, info.mode === 'move' ? info.target : null); }
       else {
         const ok = info.mode === 'delete' ? await this.perform('Deleted task', { target: 'task', kind: 'delete', id: info.id })
-          : await this._deleteReparent('Deleted task, moved subtasks', info.id, info.target);
+          : await this._moveInto('Deleted task, moved subtasks', info.id, info.target);
         if (ok && info.source === 'editing' && this._live(d)) this.closeComposer(true);   // a failed delete keeps the composer and its edits
       }
     },
@@ -2874,7 +2840,7 @@ document.addEventListener('alpine:init', () => {
     // A Done root from a subproject names it inside the project view (even grouped); a row of the viewed project itself doesn't.
     rowBody(r, opts) {
       const subDone = this.navSel.type === 'project' && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== this.navSel.id;
-      return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...opts });
+      return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...(this.sticky && { proj: false, checklist: false, desc: false }), ...opts });   // the note draws one line a task (user: "constrain tasks to single lines"); a Steps row keeps its step
     },
     // body is inert x-html — delegate here; editTask measures .item
     onRowClick(r, e) {
@@ -3322,7 +3288,8 @@ document.addEventListener('alpine:init', () => {
     askDeleteTask(id, source) {
       if (!this.hasChildren(id)) return false;
       const task = this.byId.get(id); if (!task) return false;
-      this.delAsk = { kind: 'task', id, source, mode: 'move', target: (task.parent_id && this.byId.has(task.parent_id)) ? task.parent_id : this.store.defaultProject(), name: task.content || '', count: descendantIds(this.tasks, id).length - 1 };
+      this.pickerQ = '';
+      this.delAsk = { kind: 'task', id, source, mode: 'move', target: this._delDefault(id), name: task.content || '', count: descendantIds(this.tasks, id).length - 1 };
       return true;
     },
     closeComposer(saved = false) {   // → a promise of the collapse's end (a save times its reveal off it)
@@ -3751,15 +3718,24 @@ document.addEventListener('alpine:init', () => {
     },
     // Projects you can file under: overview projects (even empty) and any parent task; minus the default.
     // Overview projects first (stable within groups); task-projects (tasks acting as containers) trail.
-    filteredProjects() {
+    // own: the row being filed (the delete dialog's), whose subtree can't take it.
+    filteredProjects(own = this.editing) {
       const def = this.store.defaultProject();
       // pool per _relIdx (data × editing): a keystroke reuses its haystack; the copy keeps the sort off the cached pool (an empty query returns it as is)
-      const idx = this._relIdx();
-      if (!idx.projs) { const own = new Set(this.editing ? descendantIds(this.tasks, this.editing) : []), shelved = this._shelved();   // filing a task under its own subtree is a cycle the store refuses
-        idx.projs = this.tasks.filter(t => !own.has(t.id) && !shelved.has(t.id) && (t.id === def || t.overview || this.hasChildren(t.id))); }
+      const idx = own === this.editing ? this._relIdx() : {};
+      if (!idx.projs) { const mine = new Set(own ? descendantIds(this.tasks, own) : []), shelved = this._shelved();   // filing a task under its own subtree is a cycle the store refuses
+        idx.projs = this.tasks.filter(t => !mine.has(t.id) && !shelved.has(t.id) && (t.id === def || t.overview || this.hasChildren(t.id))); }
       return [...this.pickerMatches(idx.projs)].sort((a, b) => (b.overview === true || b.id === def ? 1 : 0) - (a.overview === true || a.id === def ? 1 : 0));
     },
     taskProj(p) { return !p.overview && p.id !== this.store.defaultProject(); },   // container task, not an overview project
+    // The project picker's rows, ticked at sel: task-projects read as the TASKS they are (checkbox + title + areas), the rest as # rows
+    projRowsHtml(list, sel) {
+      return list.map(p => { const tick = p.id === sel ? '<svg class="tick ico"><use href="#i-check"/></svg>' : '', tint = p.color ? `color:${escHtml(p.color)}` : '';
+        return this.taskProj(p) ? `<button type="button" class="pop-item task-line" data-pid="${p.id}">${this.taskLine(p)}${tick}</button>`
+          : `<button type="button" class="pop-item proj-row" data-pid="${p.id}"><svg class="hash-ico ico" style="${tint}"><use href="${this.isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'}"/></svg>`
+            + `<span style="${tint && tint + ';opacity:.75'}">${escHtml(this.projectPath(p))}</span>${tick}</button>`; }).join('');
+    },
+    pidOf(e) { return this.byId.get(e.target.closest('[data-pid]')?.dataset.pid); },
     pickProject(project) { this.draft.project_id = project.id; this.draft.project = project.content; this.projRequired = false; this.pickerQ = ''; this.pop = null; },
     defaultProjName() {
       const id = this.store.defaultProject();
@@ -4122,8 +4098,9 @@ document.addEventListener('alpine:init', () => {
     // date a filled calendar, a deadline alone a flag. Never red for a placement, even a past one.
     dueLook() {
       const d = this.draft, on = d.on?.slice(0, 10), s = on && this._sugs().find(s => s.iso === on);
-      if (s) return ['i-' + s.icon + '-fill', `var(--q-${s.key})`];
-      if (on || d.recurrence || d.available_from) return ['i-cal-fill', 'var(--muted)'];
+      const bar = this._inBar();   // KA: the jot bar's chip keeps the calendar outline, in the day's colour
+      if (s) return [bar ? 'i-cal' : 'i-' + s.icon + '-fill', `var(--q-${s.key})`];
+      if (on || d.recurrence || d.available_from) return [bar ? 'i-cal' : 'i-cal-fill', 'var(--muted)'];
       return d.deadline_at ? ['i-flag-fill', 'var(--deadline)'] : ['i-cal', 'var(--muted)'];
     },
     calSugApply(iso) { this.draft.on = iso; this.dreg = 'on'; this.pop = null; },
@@ -4138,7 +4115,8 @@ document.addEventListener('alpine:init', () => {
       // Both registers read on the one chip, each in its own voice: a placement is a plain date ("Fri 12"),
       // a wall keeps "by"/the window. Never "by" for an intention.
       const dl = this.draft.deadline_at, f = this.draft.available_from, parts = [];
-      if (this.draft.on) parts.push(this.fmt(this.draft.on) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : ''));
+      const on = this.draft.on?.slice(0, 10);   // KA: the jot bar names the day as its title's pill does, tomorrow in full
+      if (on) parts.push((!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : ''));
       if (f && dl && f.slice(0, 10) === dl.slice(0, 10)) parts.push('only ' + this.fmt(dl.slice(0, 10)));   // one-day world-window — walled on both sides
       else if (f && dl) parts.push(this.fmt(f.slice(0, 10)) + ' – ' + this.fmt(dl.slice(0, 10)));   // the window; its end IS the deadline
       else if (dl) parts.push('by ' + this.fmt(dl.slice(0, 10)) + (timeOf(dl) ? ' ' + this.fmtTime(timeOf(dl)) : ''));

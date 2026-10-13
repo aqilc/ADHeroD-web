@@ -288,8 +288,9 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .nav-pop-label { padding: var(--sp-4) var(--sp-8) var(--sp-2); }
 /* Shared dialog bits (used by the delete-project modal and any custom-content dialog). */
 .dialog-sub { font-size: var(--fs-13); color: var(--muted); margin: var(--sp-6) 0 var(--sp-12); }
-/* layout only — appearance comes from the shared .inp/.ev-field/.dialog-select rule */
-.dialog-select { width: 100%; margin-bottom: var(--sp-12); }
+/* the dialog's project picker: the composer's # list, set in the dialog's flow */
+.pick-list { display: flex; flex-direction: column; padding: var(--sp-4); margin-bottom: var(--sp-12); border: 1px solid var(--hair); border-radius: var(--r-8);
+  > div { max-height: 220px; overflow-y: auto; } }
 
 /* ---- App content (right pane) ---- */
 /* full-width padding (not max-width+margin) so margin-area wheel events scroll natively, not via JS */
@@ -994,7 +995,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.clear { color: var(--muted); }
   &.del { color: var(--p1); }
   .tick { margin-left: auto; color: var(--accent); } }
-.pop .pop-input { padding: var(--sp-8) var(--sp-8); margin: var(--sp-2) 0 var(--sp-4); border: 1px solid var(--edge);
+:is(.pop, .pick-list) .pop-input { padding: var(--sp-8) var(--sp-8); margin: var(--sp-2) 0 var(--sp-4); border: 1px solid var(--edge);
   border-radius: var(--r-6); background: var(--panel); color: var(--ink); font-size: var(--fs-13); width: 100%;
   &::placeholder { color: var(--muted); } }
 /* Priority: horizontal row of color-tinted chips */
@@ -1229,7 +1230,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 /* light shell: r8, hairline, soft shadow; 28px rows at r4 (concentric: 8 − 4 inset) */
 .pop:is(.proj-pop, .rem-pop, .cal) { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
-.proj-pop .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
+:is(.proj-pop, .pick-list) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
 .proj-row { gap: var(--sp-8); }
@@ -1679,7 +1680,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
    so sharing those classes would let this hidden popover shadow the composer's pickers for querySelector-based tests) */
 .sel-prio-pop { flex-direction: row; gap: var(--sp-6); width: max-content; }
 .sel-due-pop { min-width: 168px; }
-.sel-move-pop, .merge-pop { min-width: 230px; max-height: 300px; overflow-y: auto; @starting-style { opacity: 0; transform: scale(.96); } }   /* x-if, not x-show: hidden, its project list re-rendered on every task reload. So it enters here and closes instantly */
+.sel-move-pop { min-width: 230px; max-height: 300px; overflow-y: auto; @starting-style { opacity: 0; transform: scale(.96); } }   /* x-if, not x-show: hidden, its project list re-rendered on every task reload. So it enters here and closes instantly */
 .sel-anim { transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); }
 .sel-hide { opacity: 0; transform: translateY(-6px); }
 .sel-show { opacity: 1; transform: translateY(0); }
@@ -1720,18 +1721,18 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .loc-region-head:focus { outline: none; color: var(--accent); }
 .fe-title { font-family: var(--font-display); font-weight: 600; font-size: var(--fs-22); }
 .loc-empty { color: var(--muted); font-size: var(--fs-13); margin: 14px 0; }
-/* Dialog inputs: flat 1px border, ring-only focus; .ev-field + .dialog-select alias .inp.
+/* Dialog inputs: flat 1px border, ring-only focus; .ev-field aliases .inp.
    No filled wells. (.field is taken — composer property-control wrapper.) */
-.inp, .ev-field, .dialog-select {
+.inp, .ev-field {
   border: 1px solid var(--edge); border-radius: var(--r-6); padding: var(--sp-6) var(--sp-8); min-height: 32px;
   background: var(--panel); color: var(--ink); font-family: inherit; font-size: var(--fs-13); box-sizing: border-box;
 }
-.inp:focus, .ev-field:focus, .dialog-select:focus, .chat-comp:focus-within {
+.inp:focus, .ev-field:focus, .chat-comp:focus-within {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .inp::placeholder, .ev-field::placeholder { color: var(--muted); }
 /* Native chevron follows color-scheme without an embedded fixed-color SVG. */
-select.inp, select.ev-field, .dialog-select {
+select.inp, select.ev-field {
   appearance: auto; padding-right: var(--sp-24); cursor: pointer;
 }
 .inp.grow { flex: 1; min-width: 0; }
@@ -2617,6 +2618,30 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .canvas > .jb-host.open { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: var(--kb); z-index: 6; max-height: calc(100% - var(--kb) - var(--sp-24));
     overflow-y: auto; margin: 0; padding: var(--sp-8) var(--sp-8) 0; background: var(--panel); border-top: 1px solid var(--hair); }
   .touch.kb .jb-host .composer-dock { bottom: 0; }
+  /* KA (droid-9, user 10-12 "KA looks great!"): the bar's new task is one sheet, [project][title] on one line, then the set
+     values, the bare icons, ··· and a square go; the task/note toggle and Attach are in ··· */
+  .bar-on .canvas > .jb-host.open { padding: var(--sp-8) 0 0; border: 0; border-radius: var(--r-18) var(--r-18) 0 0; box-shadow: var(--shadow-pop); }
+  .bar-on .jb-host .composer-card { padding: 0 var(--sp-8) var(--sp-6) var(--sp-10); margin: 0; border-radius: 0; background: none; box-shadow: none; }
+  .bar-on .jb-host:not(.editing) .type-tog, .bar-on .jb-host .attach { display: none; }   /* a jotted task, on for its steps, keeps its done check */
+  .bar-on .jb-host .composer-body { flex-flow: row wrap; align-items: center; gap: 0;
+    &::before { content: ""; flex-basis: 100%; }   /* the break under the title line */
+    > .composer-titlerow { order: -1; flex: 1; min-width: 0; min-height: 44px; align-items: center; padding: 0 var(--sp-6) 0 0; } > :is(.desc, .composer-entries) { flex-basis: 100%; }
+    .content, .content-hint { font-size: var(--fs-16); } }
+  .bar-on .jb-host .composer-dock { display: contents; }
+  .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
+    .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
+    :is(.composer-actions .field.loc, .desc, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
+  .bar-on .jb-host .composer-actions .field.loc { order: -2; max-width: 150px; margin-right: var(--sp-10); }
+  .bar-on .jb-host .proj-pick { height: 34px; padding: 0 var(--sp-10) 0 var(--sp-8); border-radius: var(--r); font-size: var(--fs-14); font-weight: 600; color: var(--ink); gap: var(--sp-6);
+    .proj-pick-ico { width: 15px; } }
+  .bar-on .jb-host .composer-opts { height: 48px; min-width: 38px; padding-right: 0;   /* never 0 wide: it would fit beside the line break */
+    mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* clear of a glyph at rest */
+    &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
+    .chip { height: 40px; width: 38px; padding: 0; justify-content: center; .ico { width: 19px; height: 19px; } }
+    .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
+    .field:has(> .chip-notes:not(.set)) { order: 1; } }   /* KA: the steps icon last */
+  .bar-on .jb-host .composer-actions .more-btn { width: 38px; .ico { rotate: 90deg; } }   /* KA: ··· */
+  .bar-on .jb-host .composer-actions .primary { margin-left: var(--sp-4); border-radius: var(--r-12); }
   .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4); }   /* the card keeps its height; Go to scrolls */
   .jb-go .palette-row { min-height: 44px; }
 }

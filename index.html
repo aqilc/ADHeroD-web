@@ -344,12 +344,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-if="selMenu === 'move'"><div class="pop lc-pop lc-anim sel-move-pop">
             <input type="text" class="pop-input" placeholder="Move to a project…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
             <div class="pop-sub-head">Project</div>
-            <template x-for="p in filteredProjects()" :key="p.id">
-              <button type="button" class="pop-item proj-row" @click="selMoveToProject(p)">
-                <svg class="hash-ico ico" :style="p.color ? 'color:' + p.color : ''"><use :href="isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'"/></svg>
-                <span :style="p.color ? 'color:' + p.color + ';opacity:.75' : ''" x-text="projectPath(p)"></span>
-              </button>
-            </template>
+            <div class="contents" x-html="projRowsHtml(filteredProjects())" @click="pidOf($event) && selMoveToProject(pidOf($event))"></div>
             <template x-if="areas.length">
               <div>
                 <div class="pop-sub-head">Add area</div>
@@ -804,21 +799,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </button>
             <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="enterProj()" @keydown.stop="$event.key === 'Escape' && escape()">
-              <template x-for="p in filteredProjects()" :key="p.id">
-                <div>
-                  <!-- task-projects read as the TASKS they are (checkbox + title + areas); overview projects keep the # row -->
-                  <template x-if="taskProj(p)">
-                    <button type="button" class="pop-item task-line" :class="{ sel: draft.project_id === p.id }" @click="pickProject(p)" x-html="taskLine(p)"></button>
-                  </template>
-                  <template x-if="!taskProj(p)">
-                    <button type="button" class="pop-item proj-row" :class="{ sel: draft.project_id === p.id }" @click="pickProject(p)">
-                      <svg class="hash-ico ico" :style="p.color ? 'color:' + p.color : ''"><use :href="isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'"/></svg>
-                      <span :style="p.color ? 'color:' + p.color + ';opacity:.75' : ''" x-text="projectPath(p)"></span>
-                      <svg class="tick ico" x-show="draft.project_id === p.id"><use href="#i-check"/></svg>
-                    </button>
-                  </template>
-                </div>
-              </template>
+              <div class="contents" x-html="projRowsHtml(filteredProjects(), draft.project_id)" @click="pidOf($event) && pickProject(pidOf($event))"></div>
               <button type="button" class="pop-item create" x-show="pickerQ.trim()" @click="createFilteredProj()">Create "<span x-text="pickerQ.trim()"></span>"</button>
             </div></template></template>
           </div>
@@ -830,6 +811,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
                 <!-- phone: the dock's hidden chips and buttons (9A), anchored on the ··· they came from -->
                 <template x-if="phoneDock()"><div class="contents">
+                  <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; !editing" @click="pop = null; typeTap(!typeFront(true))"><span x-html="compCheckHtml(!typeFront(true))"></span><span x-text="typeLabel(!typeFront(true))"></span></button>
+                  <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; filesUrl &amp;&amp; session" @click="pop = null; document.querySelector('.jb-host .attach input')?.click()"><svg class="ico"><use href="#i-clip"/></svg>Attach file</button>
                   <button type="button" class="pop-item" x-show="!durMinNow()" @click="togglePop('dur', document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-clock"/></svg>Size</button>
                   <button type="button" class="pop-item" x-show="locations.length && locPolarity() === 'any'" @click="openLoc(document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-pin"/></svg>Place</button>
                   <button type="button" class="pop-item" x-show="editing && !editingTask()?.blocked_by?.length" @click="togglePop('rel', document.querySelector('.composer .more-btn')); pickerQ = ''"><svg class="ico"><use href="#i-link"/></svg>Relations</button>
@@ -1299,7 +1282,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
          </div></template>
        </div>
      </div></template>
-     <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar() }">   <!-- a new task's composer, over the bar (relocateComposer) -->
+     <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar(), editing }">   <!-- a new task's composer, over the bar (relocateComposer) -->
       <li class="jb-go" x-show="jotRows().length" @mousedown.prevent>   <!-- a tap keeps the keyboard up -->
         <template x-for="r in jotRows()" :key="r.type + ':' + r.id">
           <button type="button" class="palette-row task-line" @click="pickJot(r)" x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r)) : searchJumpHTML(r)"></button>
@@ -1348,22 +1331,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { favorite: !navPopProj().favorite })" x-text="navPopProj().favorite ? '&#9733; Unfavorite' : '&#9734; Favorite'"></button>
         <button class="nav-pop-item" @click="patchTask(navPopProj().id, { overview: false }, 'Hidden from Overview')">Hide from Overview</button>
         <button class="nav-pop-item" @click.stop="archive(navPopProj().id, !navPopProj().archived_at); navPop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="navPopProj().archived_at ? 'Unarchive' : 'Archive'"></span></button>
-        <button class="nav-pop-item" @click.stop="startMerge(navPopProj().id)"><svg class="ico"><use href="#i-arrow"/></svg>Merge into&#x2026;</button>
+        <button class="nav-pop-item" @click.stop="startDeleteProject(navPopProj().id, true)"><svg class="ico"><use href="#i-arrow"/></svg>Merge into&#x2026;</button>
         <div class="nav-pop-label">Color</div>
         <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
         <div class="nav-pop-sep"></div>
         <button class="nav-pop-item del" @click="startDeleteProject(navPopProj().id)">Delete&#x2026;</button>
-      </div>
-    </template>
-    <template x-if="overview && navPop?.type === 'merge'">
-      <div class="nav-pop rl-pop merge-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
-        <input type="text" class="pop-input" placeholder="Merge into a project…" x-model="pickerQ" @keydown.enter.prevent="mergeTargets()[0] && mergeProject(navPop.id, mergeTargets()[0])">
-        <template x-for="p in mergeTargets()" :key="p.id">
-          <button type="button" class="pop-item proj-row" @click="mergeProject(navPop.id, p)">
-            <svg class="hash-ico ico" :style="p.color ? 'color:' + p.color : ''"><use :href="isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'"/></svg>
-            <span :style="p.color ? 'color:' + p.color + ';opacity:.75' : ''" x-text="projectPath(p)"></span>
-          </button>
-        </template>
       </div>
     </template>
     <template x-if="overview && navPopArea()">
@@ -1874,25 +1846,26 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div x-html="evActionsHtml('blockEdit')"></div>
     </div></template>
 
-    <!-- Delete-project / delete-task-with-subtasks: one dialog parameterized on kind -->
-    <div class="dialog" role="dialog" aria-modal="true" aria-label="Delete" :class="{'del-sub-dialog': delAsk?.kind==='task'}" @click.stop x-show="delAsk" x-cloak>
-      <p><b>Delete "<span x-text="delAsk?.name"></span>"?</b></p>
-      <p class="dialog-sub">It <span x-text="delAsk?.kind==='project'?'holds':'has'"></span> <b x-text="delAsk?.count"></b> <span x-text="delAsk?.kind==='project'?'task':'subtask'"></span><span x-show="delAsk?.count!==1">s</span>. What should happen to them?</p>
-      <div class="seg">
+    <!-- Delete-project / delete-task-with-subtasks / merge-project: one dialog parameterized on kind (a merge is a delete that moves its tasks) -->
+    <div class="dialog" role="dialog" aria-modal="true" :aria-label="delAsk?.merge ? 'Merge' : 'Delete'" :class="{'del-sub-dialog': delAsk?.kind==='task'}" @click.stop x-show="delAsk" x-cloak>
+      <p><b><span x-text="delAsk?.merge ? 'Merge' : 'Delete'"></span> "<span x-text="delAsk?.name"></span>"?</b></p>
+      <p class="dialog-sub" x-show="!delAsk?.merge">It <span x-text="delAsk?.kind==='project'?'holds':'has'"></span> <b x-text="delAsk?.count"></b> <span x-text="delAsk?.kind==='project'?'task':'subtask'"></span><span x-show="delAsk?.count!==1">s</span>. What should happen to them?</p>
+      <div class="seg" x-show="!delAsk?.merge">
         <button type="button" :class="{ on: delAsk?.mode==='move' }" @click="delAsk.mode='move'">Move them</button>
         <button type="button" :class="{ on: delAsk?.mode==='delete' }" @click="delAsk.mode='delete'">Delete them too</button>
       </div>
       <template x-if="delAsk?.mode==='move'">
         <div>
           <label class="section-label" x-text="delAsk?.kind==='project'?'Move tasks to':'Move subtasks to'"></label>
-          <select class="dialog-select" :value="delAsk?.target" @change="delAsk.target=$event.target.value">
-            <template x-for="p in delTargets()" :key="p.id"><option :value="p.id" x-text="p.content"></option></template>
-          </select>
+          <div class="pick-list">
+            <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="enterDel()">
+            <div x-html="projRowsHtml(delTargets(), delAsk?.target)" @click="pidOf($event) && (delAsk.target = pidOf($event).id)"></div>
+          </div>
         </div>
       </template>
       <div class="dialog-actions flex items-center gap-8">
         <button class="ghost" @click="delAsk=null">Cancel</button>
-        <button class="danger" @click="confirmDelete()" x-text="delAsk?.mode==='delete'?'Delete all':(delAsk?.kind==='project'?'Delete project':'Delete task')"></button>
+        <button :class="delAsk?.merge ? 'primary' : 'danger'" @click="confirmDelete()" x-text="delAsk?.merge ? 'Merge' : delAsk?.mode==='delete'?'Delete all':(delAsk?.kind==='project'?'Delete project':'Delete task')"></button>
       </div>
     </div>
 

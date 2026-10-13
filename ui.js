@@ -251,7 +251,7 @@ export const rowBodyHtml = (r, opts = {}) => {
     if (head.slice(0, m.index).trim()) lead = head.slice(0, m.index);
     break;
   }
-  const desc = t.notes ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(lead, { inline: true, copy: true })}</span></div>` : '';
+  const desc = t.notes && opts.desc !== false ? `<div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate">${md(lead, { inline: true, copy: true })}</span></div>` : '';
   // Checklist items pre-split (text::desc) in mkRow; fall back for callers that pass a bare row.
   const cl = r.chk || (t.checklist || []).map(chkParts);
   // Display-only sort: done below open (stable); data-ci = original index so toggling never reorders the stored array.
