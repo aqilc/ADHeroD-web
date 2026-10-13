@@ -1933,11 +1933,12 @@ textarea.inp { resize: vertical; }
    the same through both; once the bar went transparent that tint became a visible step at the header's bottom
    edge. Transparent cells let the one --bg-wash run unbroken into the grid. */
 .cl-cell { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; overflow: hidden; padding: var(--sp-4) var(--sp-6); cursor: pointer; transition: opacity .3s ease; }
-.cl-date span { transition: color .3s ease, opacity .3s ease; }  /* animate the out-of-month day-number fade as the focused month changes (not gated → tweens both directions) */
+.cl-date span { transition: color .3s ease, opacity .3s ease; }  /* animate the out-of-month day-number fade as the focused month changes (both ways at rest; a fast glide skips it, below) */
 /* The dim is gated on .cl-fast, NOT .cl-scrolling: it returns as soon as the glide slows to a crawl, while the
    month band/title text (.cl-scrolling) holds until the scroll fully stops — the dim lands first, then the text. */
 .calendar:not(.cl-fast) .cl-cell[data-out="1"] .cl-date span { color: var(--faint); font-weight: 400; }  /* idle: strongly fade the day number for days outside the focused month (Apple) */
 .calendar:not(.cl-fast) .cl-cell[data-out="1"] .cl-chips { opacity: .5; }  /* and quiet their events too, so the focused month reads clearly */
+.calendar.cl-fast .cl-chips, .calendar.cl-fast .cl-date span { transition: none; }  /* ~330 fades, mostly off screen, were a phone glide's worst frames */
 /* Weekends read in INK, not fill. Shading whole columns striped the grid vertically and made the lattice
    louder than the content. */
 .cl-cell.weekend .cl-dnum { color: var(--muted); }

@@ -1021,7 +1021,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <div class="cl-mband overlay" :style="{ top: b.top + 'px' }"><span x-text="clSplitTitle(b.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(b.name)[1]"></span></div>
           </template>
           <template x-for="wk in clWeeks()" :key="wk.key">
-            <div class="cl-wk" :style="'top:calc(var(--rowh) * ' + wk.key + ')' + ((clVT && clView === 'month' && wk.key === clAnchorIdx()) ? ';view-transition-name:cl-active-week' : '')" @click="clOpenWeekRow(wk.key)">
+            <div class="cl-wk" x-detach :style="'top:calc(var(--rowh) * ' + wk.key + ')' + ((clVT && clView === 'month' && wk.key === clAnchorIdx()) ? ';view-transition-name:cl-active-week' : '')" @click="clOpenWeekRow(wk.key)">
               <template x-for="c in wk.days" :key="c.iso">
                 <!-- out-of-month is a data ATTRIBUTE, not a class: clFocusYM flips at every month boundary (~4-7× a
                      fling) and Alpine's :class path clears and re-adds, so all ~190 cells rewrote their class twice

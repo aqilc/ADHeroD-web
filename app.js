@@ -196,7 +196,7 @@ const STEP_FLOOR = 160;   // a Steps row's title gives way first, down to this; 
 // Bigger margin costs rendered rows 1:1; 600px is ~15 rows each side. The window is rebuilt only once fewer than
 // WIN_KEEP px remain past an edge (see _winOf), plus WIN_RUN ms of travel ahead of a fling.
 const WIN_MARGIN = 600, WIN_KEEP = 200, WIN_RUN = 120, SEC_H = 30;   // SEC_H: section-head height until one has actually been measured
-let _winSt = 0, _winAt = 0, _winV = 0, _winRun = WIN_RUN, _win = new WeakMap(), _restT = 0;   // the last scroll event's scrollTop, timeStamp, velocity (px/ms), runway (ms) · the kept window per list model { s, e } · the at-rest re-grow timer
+let _winSt = 0, _winAt = 0, _winV = 0, _winD = 0, _winRun = WIN_RUN, _win = new WeakMap(), _restT = 0;   // the last scroll event's scrollTop, timeStamp, velocity (px/ms), travel (px), runway (ms) · the kept window per list model { s, e } · the at-rest re-grow timer
 let _model = null;                    // { rows, ent:[{id,order,h,mk,d,html,r}], ix:Map(id→i), total } — the flat <li> sequence
 let _doneModel = null;                // the Done list's, the same shape, memoised on completedRows()
 let _chkHeld = null, _chkHeldT = 0, _chkOut = null, _chkDraftList = null;   // a checklist whose ticks show in place: app._holdChk
@@ -403,6 +403,10 @@ window.addEventListener('unhandledrejection', e => { if (e.reason?.isFromCancell
 
 // ── Alpine component: state + every surface (to end of file) ──
 document.addEventListener('alpine:init', () => {
+  // x-detach: an x-for row leaves the page BEFORE its nested cells and chips tear down, so they come out of a detached
+  // tree instead of one live removal each (four phone month swipes at 4x CPU: ~175 ms of nested `remove` -> ~3 ms).
+  // ceiling: Alpine 3.15.12's destroyTree runs the root's cleanups before its children's; if an upgrade flips that, the nested removes go live again (app.perf "phone month" goes red).
+  Alpine.directive('detach', (el, _, { cleanup }) => cleanup(() => el.remove()));
   // x-text as Alpine's, minus the rewrite of an unchanged value: a binding reading the rows (the empty copy, the Done
   // count) re-runs on every tick, and replacing even a hidden text node cost the tick ~1.1 est-ms of its ~5 at 1k.
   // ceiling: replaces Alpine 3.15.12's x-text — re-diff it on an Alpine upgrade.
@@ -822,7 +826,7 @@ document.addEventListener('alpine:init', () => {
       });
     },
     _scrollWindow(app, at) {
-      const st = app.scrollTop, dt = at - _winAt; _winRun = _winV ? Math.max(WIN_RUN, dt) : WIN_RUN; _winV = (st - _winSt) / Math.max(1, dt); _winSt = st; _winAt = at;
+      const st = app.scrollTop, dt = at - _winAt; _winRun = _winV ? Math.max(WIN_RUN, dt) : WIN_RUN; _winD = st - _winSt; _winV = _winD / Math.max(1, dt); _winSt = st; _winAt = at;
       this._reflow();
       if (_restT) return;   // one timer per pause, not a clear + set per event: it re-arms until 150ms pass with no scroll event
       const rest = () => {
@@ -839,7 +843,7 @@ document.addEventListener('alpine:init', () => {
     // frame had asked for unbuilt until the next scroll — a blank viewport if there was none (B5).
     fitRows(win) {
       _fitW ||= !!win; if (_fitQ) return;
-      const fit = () => { try { if (_fitW) { _fitW = false; this._paintRows(); } } finally { _fitQ = 0; } this._fit(); };
+      const fit = () => { try { if (_fitW) { _fitW = false; this._paintRows(); } } finally { _fitQ = 0; } this._fit(); if (_fitW) this.fitRows(); };   // a re-window the paint asked for (a window move's runway) is next frame's
       _fitQ = requestAnimationFrame(() => {
         const glide = this._listScroller()?._growGlide;
         if (glide?.sizing) glide.fit = fit;
@@ -2009,7 +2013,19 @@ document.addEventListener('alpine:init', () => {
       // changes the list's DOM pays a fixed style/layout/PrePaint bill however few rows it moved (~35ms of
       // PrePaint alone at 16× CPU), so sliding every frame paid it every frame; this pays it every ~400px.
       let kept = _win.get(m);
-      if (!(kept && kept.s <= need.s && kept.e >= need.e)) _win.set(m, kept = box(WIN_MARGIN));
+      if (kept?.part || !(kept && kept.s <= need.s && kept.e >= need.e)) {
+        const full = box(WIN_MARGIN);
+        // A move builds what lands on screen before the next frame, keeping what it holds of the new window; the runway is the
+        // next frame's, aimed where the scroll is by then. Both at once put ~16 rows' style and layout into one fling frame.
+        // Reach: the last event's travel (a fling's first event after a pause has no speed yet), or two 60Hz frames at speed (one late frame).
+        if (kept && !kept.part) {
+          const r = Math.min(2 * WIN_MARGIN, Math.max(Math.abs(_winD), Math.abs(_winV) * 33)) / z, on = span(o - (_winV < 0 ? r : 0) - E.lead, o + H + (_winV > 0 ? r : 0));
+          const s = Math.max(kept.s, full.s), e = Math.min(kept.e, full.e);
+          kept = s < e ? { s: Math.min(s, on.s), e: Math.max(e, on.e), part: true } : { ...on, part: true };
+          this.fitRows(true);
+        } else kept = full;
+        _win.set(m, kept);
+      }
       const { s, e } = kept;
       let y = 0, top = 0;
       for (let i = 0; i <= e; i++) { if (i === s) top = y - (s > k ? x : 0); if (i < e) y += h(i); }
@@ -7776,7 +7792,7 @@ document.addEventListener('alpine:init', () => {
     _clAt(dir = 0, live = this.clScrolling) {
       const a = this._clDate();
       if (this.clView === 'month') {
-        const ym = (live ? this._clFocusAt(this._clMTo ?? _clMTop) : a.getFullYear() * 12 + a.getMonth()) + dir, y = Math.floor(ym / 12), m = ym % 12;
+        const ym = (live || this._clMDue ? this._clFocusAt(this._clMTo ?? _clMTop) : a.getFullYear() * 12 + a.getMonth()) + dir, y = Math.floor(ym / 12), m = ym % 12;
         return new Date(y, m, Math.min(this._clMPick(), new Date(y, m + 1, 0).getDate()));
       }
       const at = live ? this._periodDate(motion.running('clTween') ? Math.floor(this._clTo) : this.clPos.idx) : a;
@@ -7843,7 +7859,7 @@ document.addEventListener('alpine:init', () => {
     clSetView(v, instant, frac) {   // frac: the hour to open at (_clScrollToPeriod)
       this._clSaveName();
       if (this.clView === 'month') this._clMAnchor(); else this.clAnchor = isoDate(this._clAt());   // a picked week/day sets clAnchor after
-      if (this.clScrolling) { clearTimeout(_clScrollT); this._clMSettle(); }   // the switch is the land: left running, a month scroll's flag read the new view's period as live
+      if (this.clScrolling || this._clMDue) { clearTimeout(_clScrollT); this._clMSettle(); }   // the switch is the land: left running, a month scroll's flag read the new view's period as live
       this._clWeekDropped = null;   // the week hour a phone width dropped; any switch, the user's or the width's, settles the view: widening restores nothing
       if (v === 'week' && this.narrow) v = 'day';
       // reset zoom to fit, never to 0 — a zero hour height makes clPeriodH 0, and a divide by it has no position
@@ -8046,16 +8062,19 @@ document.addEventListener('alpine:init', () => {
       // style+layout every scroll frame. (No rAF coalescing — scroll already fires once per frame, and the titles
       // must move THIS frame.)
       const y = e.target.scrollTop, topIdx = Math.max(0, Math.floor(y / (this.clRowH || 1)));
-      this.clVisStart = Math.max(0, topIdx - CL_BUFFER);
+      const start = Math.max(0, topIdx - CL_BUFFER), moved = start !== this.clVisStart;
+      this.clVisStart = start;
       _clMTop = y;
       const zt = this.clZoneTitles();    // ONE layout pass, shared by the heading and the positioner — same rule as _clSetPos
       this._clScrollState(y, zt);
       this._clPositionZone(zt);   // sync: place the over-header titles THIS frame (reactive :style lags a frame → teleports on fast scroll)
+      if (moved) queueMicrotask(() => this._clPositionZone(zt));   // a title the move lists is created in Alpine's flush after this handler: place it before the paint
       const t = performance.now();
       // our OWN settle glide: it still virtualizes, but it is not a gesture — re-lighting the chrome here is a flicker.
       // It still POSTPONES the settle: a ↓/Today step inside this window otherwise let a pending week-snap fire
-      // mid-step and round it back to where it started.
-      if (t < (this._clMGlide || 0)) { clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this._clMSettle(), motion.t(600)); return; }
+      // mid-step and round it back to where it started. Not live, yet clAnchor lags this scroll until that settle (a wheel's
+      // scroll landing just after one reads as ours too), so _clMDue has _clAt step from the month in view.
+      if (t < (this._clMGlide || 0)) { this._clMDue = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this._clMSettle(), motion.t(600)); return; }
       // TWO chrome states landing at different moments: the out-of-month DIM comes back as soon as the glide
       // slows to a crawl, the month band/title text holds until the scroll has STOPPED. Both are ONE-WAY per
       // scroll session (only _clMSettle re-arms them), because every rate gate we tried strobed — a decaying
@@ -8085,7 +8104,7 @@ document.addEventListener('alpine:init', () => {
     // OURSELVES. CSS scroll-snap can only do this by arresting the fling mid-flight (it cut a 2400px trackpad
     // fling to 9px); doing it here, after the scroll has stopped, keeps the momentum free AND lands flush.
     _clMSettle() {
-      this.clScrolling = false; this.clFast = false; this.clDimYM = this.clFocusYM; this._clMRest = true; this._clMDone = false;
+      this.clScrolling = this._clMDue = false; this.clFast = false; this.clDimYM = this.clFocusYM; this._clMRest = true; this._clMDone = false;
       if (this.clView === 'month') { this._clMAnchor(0, true); this._clTabInView(); }
       this._clMFlush();
     },
