@@ -1233,7 +1233,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-if="f.failed"><button type="button" class="retry" @click="_upload(f)">Retry</button></template>
             <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
         </template></div>
-        <div class="chat-comp flex items-end"><div class="chat-input"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><div class="chat-placeholder" x-show="!chat.draft" aria-hidden="true"><span class="chat-prompt" x-text="'Message ' + chatPeer(openChatRow())"></span><span class="chat-keys"><kbd>↵</kbd> send · <kbd>⇧</kbd><kbd>↵</kbd> new line · <kbd>↑</kbd> edit last</span></div></div><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
+        <div class="chat-comp flex items-end"><div class="chat-input"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><div class="chat-placeholder" x-show="!chat.draft" aria-hidden="true"><span class="chat-prompt" x-text="'Message ' + chatPeer(openChatRow())"></span><span class="chat-keys flex"><span><kbd>↵</kbd> send</span><span><kbd>⇧</kbd><kbd>↵</kbd> new line</span><span><kbd>↑</kbd> edit last</span></span></div></div><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
       </div>
       </template>
     </div>
@@ -1491,22 +1491,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" :class="{ on: celebrations === 'off' }" :aria-pressed="celebrations === 'off'" @click="setCelebrations('off')">Off</button>
           </div>
         </div>
-        <template x-if="desk">   <!-- the Windows app's desktop surfaces (desktop/main.cpp); labels as the Mac app's -->
-          <div>
-            <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-tack"/></svg>Sticky
-              <div class="seg">
-                <button type="button" :class="{ on: desk.on }" :aria-pressed="desk.on" @click="setDesk('on', true)">On</button>
-                <button type="button" :class="{ on: !desk.on }" :aria-pressed="!desk.on" @click="setDesk('on', false)">Off</button>
-              </div>
-            </div>
-            <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-lock"/></svg>Hide from screenshots and sharing
-              <div class="seg">
-                <button type="button" :class="{ on: !desk.share }" :aria-pressed="!desk.share" @click="setDesk('share', false)">On</button>
-                <button type="button" :class="{ on: desk.share }" :aria-pressed="desk.share" @click="setDesk('share', true)">Off</button>
-              </div>
-            </div>
-          </div>
-        </template>
       </div>
       <!-- starter shortcuts: teach the power path by keeping it visible (full sheet stays on ?) -->
       <div class="set-sec set-sec-keys"><span class="section-label">Keyboard</span>
@@ -1529,6 +1513,23 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <button type="button" class="set-row set-rowbtn set-trash flex items-center gap-10" @click="settingsOpen = false; trashOpen = true"><svg class="ico set-ico"><use href="#i-trash"/></svg>Bin<span class="set-sub muted-12"><kbd>b</kbd></span></button>
         <button type="button" class="set-row set-rowbtn set-danger flex items-center gap-10" @click="resetLocalData()"><svg class="ico set-ico"><use href="#i-alert"/></svg>Delete local data<span class="set-sub muted-12">wipe this device &amp; start fresh</span></button>
       </div>
+      <template x-if="desk">   <!-- the Windows app's desktop surfaces (desktop/main.cpp); labels as the Mac app's -->
+        <div class="set-sec"><span class="section-label">Windows</span>
+          <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-tack"/></svg>Sticky
+            <div class="seg">
+              <button type="button" :class="{ on: desk.on }" :aria-pressed="desk.on" @click="setDesk('on', true)">On</button>
+              <button type="button" :class="{ on: !desk.on }" :aria-pressed="!desk.on" @click="setDesk('on', false)">Off</button>
+            </div>
+          </div>
+          <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-lock"/></svg>Hide from screenshots and sharing
+            <div class="seg">
+              <button type="button" :class="{ on: !desk.share }" :aria-pressed="!desk.share" @click="setDesk('share', false)">On</button>
+              <button type="button" :class="{ on: desk.share }" :aria-pressed="desk.share" @click="setDesk('share', true)">Off</button>
+            </div>
+          </div>
+          <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="desktopWindow('quit')"><svg class="ico set-ico"><use href="#i-x"/></svg>Quit ADHeroD</button>   <!-- the tray's and the note's menus have it too -->
+        </div>
+      </template>
     </div></div>
   </div>
 
@@ -1777,6 +1778,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- Event editor (calendar) -->
     <template x-if="eventEdit"><div class="dialog event-editor" role="dialog" aria-modal="true" aria-label="Event" @click.stop>
       <div x-html="evWhenHtml('eventEdit', 'New event')"></div>
+      <div class="ev-row flex"><textarea class="inp grow" rows="3" placeholder="Description" aria-label="Description" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea></div>
       <div class="section-label ev-color-label">Color</div>
       <div class="ev-row ev-colors flex flex-wrap items-center gap-8" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div>
       <div class="ev-row flex items-center"><label class="ev-allday ev-countdown inline-flex items-center gap-6"><input type="checkbox" :checked="eventEdit.countdown" @change="eventEdit.countdown = $event.target.checked"> Count down to this</label></div>

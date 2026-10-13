@@ -113,6 +113,7 @@ export function parseICS(text) {
     else if (name === 'DTEND') cur.end = icsWhen(value, params);
     else if (name === 'DURATION') cur.durMin = icsDuration(value);
     else if (name === 'SUMMARY') cur.title = icsUnescape(value);
+    else if (name === 'DESCRIPTION') cur.notes = icsUnescape(value);
     else if (name === 'UID') cur.uid = value;
     else if (name === 'RRULE') cur.rrule.push(value);
     else if (name === 'EXDATE') cur.exdates.push(...value.split(',').map(v => icsWhen(v, params).iso.slice(0, 10)));
@@ -134,7 +135,7 @@ function finishEvent(e, items, problems) {
   // An all-day end is EXCLUSIVE in ICS but INCLUSIVE here — via DTEND *or* DURATION, so a one-day
   // event stays one day instead of spilling into tomorrow. Never let it land before the start.
   if (ends && e.start.allDay) ends = maxIso(addDaysIso(ends.slice(0, 10), -1), e.start.iso);
-  const item = { kind: 'event', title: e.title || 'Untitled', starts_at: e.start.iso, ends_at: ends ?? e.start.iso, all_day: e.start.allDay, external_id: e.uid ?? null, seq: e.seq ?? null, modified: e.modified ?? null };
+  const item = { kind: 'event', title: e.title || 'Untitled', notes: e.notes || null, starts_at: e.start.iso, ends_at: ends ?? e.start.iso, all_day: e.start.allDay, external_id: e.uid ?? null, seq: e.seq ?? null, modified: e.modified ?? null };
 
   if (e.rrule.length) {
     const { rule, problem: p } = ruleFromRRULE(e.rrule[0], path);

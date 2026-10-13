@@ -116,16 +116,15 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .msg-acts button:hover, .chat-editing button:hover { background: var(--hover); color: var(--ink); }
 .msg-acts .ico, .chat-editing .ico { width: 16px; height: 16px; }
 .chat-editing { justify-content: space-between; margin-bottom: var(--sp-4); padding-left: var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
-.chat-comp { gap: var(--sp-6); padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-10); border: 1px solid var(--edge-hi); border-radius: var(--r); background: var(--panel); }
+.chat-comp { gap: var(--sp-6); padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-10); border: 1px solid var(--edge); border-radius: var(--r); background: var(--panel); }
 .chat-input { position: relative; display: flex; flex: 1; min-width: 0; }
 .chat-comp textarea { flex: 1; min-width: 0; max-height: 40vh; field-sizing: content; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-15); padding: var(--sp-2) var(--sp-4); }
 .chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .chat-comp .send:disabled { opacity: .45; cursor: default; }
 .chat-comp textarea::placeholder { color: transparent; }
-.chat-placeholder { position: absolute; inset: 0; display: flex; align-items: baseline; gap: var(--sp-8); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-15); color: var(--muted); white-space: nowrap; pointer-events: none; }
+.chat-placeholder { position: absolute; inset: 0; display: flex; align-items: baseline; gap: var(--sp-8); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-15); color: var(--faint); white-space: nowrap; pointer-events: none; }
 .chat-prompt { flex: none; }
-.chat-keys { min-width: 0; overflow: hidden; font-size: var(--fs-11); color: var(--faint); }
-.chat-keys kbd { color: inherit; border: 0; padding: 0; margin: 0; }
+.chat-keys { min-width: 0; overflow: hidden; gap: var(--sp-16); font-size: var(--fs-11); }   /* .palette-foot's hint row */
 .attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
 .attach .ico { width: 18px; height: 18px; flex: none; }
 .composer-actions .attach { align-self: center; }
@@ -519,20 +518,18 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .row-rel.icon-only .row-rel-name, .row-rel-n, .row-rel.rel-hid { display: none; }   /* names drop one chip at a time (app.js _relIcon) */
 .row-rel.rolled .row-rel-n { display: inline; }   /* >3 of a kind, all icons: its first chip stands for them, with the count */
 .rels-pop { .rel-chip-remove { flex: none; width: 28px; height: 28px; justify-content: center; border-radius: var(--r-6); } .rel-chip-remove .ico { width: 15px; height: 15px; } }
-.nlp-pill { font-size: var(--fs-12); line-height: 18px; font-weight: 500;   /* a tint of its hue, the text the hue pulled to the ink: the bar's colour for the same fact */
-  background: light-dark(color-mix(in oklab, var(--rc, var(--muted)) 14%, transparent), color-mix(in oklab, var(--rc, var(--muted)) 22%, transparent));
-  color: light-dark(oklch(from var(--rc, var(--muted)) min(l, .5) c h), oklch(from var(--rc, var(--muted)) max(l, .86) c h));
-  border-radius: var(--r-4); padding: 0 var(--sp-4); margin: 0 1px; white-space: nowrap; user-select: none;
+.nlp-pill { font-size: var(--fs-13); line-height: 16px; color: var(--ink);
+  background: color-mix(in srgb, var(--rc, var(--muted)) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--rc, var(--muted)) 35%, transparent);
+  border-radius: var(--r-6); padding: 0 var(--sp-6); margin: 0 1px; white-space: nowrap; user-select: none;
   /* a pill carrying another task's TITLE is arbitrary-length text — cap it or it wraps the title onto a second line */
   display: inline-block; max-width: 12rem; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
 .nlp-pill[data-kind="imp"]  { --rc: var(--p1); }
-.nlp-pill[data-kind="imp"][data-value="focus"] { --rc: var(--p2); color: light-dark(oklch(.56 .15 64), oklch(.88 .15 90)); }   /* yellow as text reads amber */
-.nlp-pill[data-kind="imp"][data-value="someday"] { --rc: var(--p3); }
-.nlp-pill[data-kind="date"] { --rc: var(--accent-vivid); }   /* a named day gets its date-pop colour inline (makePill) */
+.nlp-pill[data-kind="date"] { --rc: var(--accent); }
 .nlp-pill[data-kind="dur"]  { --rc: var(--hint-duration); }
 .nlp-pill[data-kind="proj"] { --rc: var(--hint-project); }
 .nlp-pill[data-kind="area"]  { --rc: var(--hint-area); }
-.nlp-pill[data-kind="rec"]  { --rc: var(--accent-vivid); }
+.nlp-pill[data-kind="rec"]  { --rc: var(--hint-recurrence); }
 .nlp-pill[data-kind="deadline"] { --rc: var(--deadline); }
 .nlp-pill[data-kind="loc"]  { --rc: var(--hint-location); }
 .nlp-pill[data-kind="needs"] { --rc: var(--accent); }
@@ -757,8 +754,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .rolled .areas .area ~ .area ~ .area ~ .area { display: none; }
 .rolled .areas::after { content: "…"; display: inline-flex; align-items: center;
   font-size: var(--fs-12); font-weight: 700; color: var(--muted); line-height: 15px; padding: 0 1px; }
-/* Project: "in", name and inbox glyph share one muted fade. */
-.proj { max-width: 7rem; font-size: var(--fs-12); color: var(--muted); opacity: .55; white-space: nowrap; }
+/* Project: "in", name and inbox glyph share one ink, a step darker than the muted description line under the title. */
+.proj { max-width: 7rem; font-size: var(--fs-12); color: color-mix(in oklch, var(--muted), var(--ink) 40%); white-space: nowrap; }
 .proj .proj-in { margin-right: 1px; }
 .proj .proj-nm { overflow: hidden; text-overflow: ellipsis; }
 /* Named chip: glyph and name share ONE baseline, and align-self (above) puts it on the title's. 1.875px = 15px × 3/24 =
@@ -824,10 +821,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .composer-grow.clip { overflow: hidden; height: 0; }
 /* padding+margin animate concurrently with height (not gated on settle); target measured as-if-grown so it doesn't jump */
 .composer-grow.grown .composer-card { padding-top: 14px; padding-bottom: var(--sp-12); margin: var(--sp-8) 0 var(--sp-12); }
-/* 16 from every corner: the check top-left, the bar's first icon bottom-left on the check's x, its last bottom-right (the
-   foot's 10 + the chip's 6). The card gives up 2px on the left so the check keeps the list's x; room under it for the outside row. */
-:where(html:not(.touch, .composer-win)) .composer-grow.grown .composer-card { margin-left: var(--sp-2); padding: var(--sp-16) var(--sp-16) var(--sp-10);
-  margin-bottom: calc(var(--sp-8) + var(--ctl) + var(--sp-12)); }
+:where(html:not(.touch, .composer-win)) .composer-grow.grown .composer-card { padding-bottom: var(--sp-8); margin-bottom: calc(var(--sp-24) * 2); }   /* the bar's icons sit as far from the foot as the checkbox from the top; room for the action row under the card (8 gap + 28 row + 12) */
 /* the page dims a little while the composer is open (user 10-10: "not a lot"); it fades with the grow's opacity */
 .composer-grow::before { content: ""; position: fixed; inset: -100vmax; z-index: -1; pointer-events: none; background: light-dark(rgb(0 0 0 / .03), rgb(0 0 0 / .16)); }
 .composer-card {
@@ -842,71 +836,41 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   /* ghost hint is absolute over a 1-line field, clipped to that line: a pill that doesn't fit wraps out of view whole,
      never cut mid-word (phone drops "every week") or spilling onto Description */
   .content-hint { left: 0; right: 0; top: 0; flex-wrap: wrap; height: 18px;
-    font-size: var(--fs-15); line-height: 18px; white-space: nowrap; color: var(--muted); user-select: none; overflow: hidden;
-    .nlp-pill { flex: none; } }
-  .content-hint .nlp-pill:first-child { --rc: var(--q-tomorrow); }   /* its "tomorrow" wears the date pop's colour, as a typed one does */
-  .desc { border: none; background: none; padding: 0; font-size: var(--fs-13); width: 100%; outline: none; color: color-mix(in oklab, var(--ink) 82%, var(--panel));
+    font-size: var(--fs-15); line-height: 18px; white-space: nowrap; color: var(--muted); opacity: .55; user-select: none; overflow: hidden;
+    .nlp-pill { opacity: .85; flex: none; } }
+  .desc { border: none; background: none; padding: 0; font-size: var(--fs-13); width: 100%; outline: none;
     font-family: inherit; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.4em;
     &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
-}
-/* Desktop type: a 20px line for every text row, on a 2/6 rhythm (touch keeps its sizes: the phone dock) */
-:where(html:not(.touch)) .composer-card {
-  .composer-titlerow { margin-top: -1px; }   /* the 20px title line centred on the 18px check */
-  .composer-body { gap: 0; }
-  .content, .content-hint { line-height: 20px; min-height: 20px; font-weight: 500; letter-spacing: -.01em; }
-  .content-hint { height: 20px; font-weight: 400; }
-  .desc { margin-top: var(--sp-2); line-height: 20px; min-height: 20px; }
-  .composer-rels, .composer-entries { margin-top: var(--sp-6); }
-}
-/* Composer steps: neutrals from the ink over the card, so faint sits below --muted in every family (Onyx sets them equal) */
-.composer {
-  --chk-col: calc(18px + var(--sp-12));   /* the check and its gap: title x minus the card's content edge */
-  --c-faint: color-mix(in oklab, var(--ink) 38%, var(--panel));
-  --c-hover: light-dark(color-mix(in oklab, var(--ink) 6%, transparent), color-mix(in oklab, var(--ink) 7%, transparent));
-  --c-hover-bg: light-dark(color-mix(in oklab, var(--ink) 6%, var(--panel)), color-mix(in oklab, var(--ink) 7%, var(--panel)));   /* opaque, for a row's trash fade */
-  --c-band: color-mix(in oklab, var(--c-hover) 50%, transparent);
-  --c-sel: light-dark(color-mix(in oklab, var(--accent-vivid) 13%, transparent), color-mix(in oklab, var(--accent-vivid) 22%, transparent));
 }
 /* One line at the card's foot (comp-1 A): set values first with a filled icon in their colour (--cc) and their value,
    unset ones as bare icons on the right. Importance and size are icons only. The inline margin lines the first and last
    icons up with the title and the card's right edge. */
 .composer-opts {
   flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-8) 0 0;
-  :where(html:not(.touch)) & {   /* touch keeps its order: the phone wasn't part of the pick */
+  :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-6));   /* touch keeps its order: the phone wasn't part of the pick */
     &::after { content: ""; flex: 1; order: -1; }
     .field:has(> .chip.set) { order: -1; } }
   .field { position: relative; }
   .chip { height: 28px; padding: 0 var(--sp-6); gap: var(--sp-8); border: none; border-radius: var(--r-6); background: none;
     font-size: var(--fs-13); color: var(--muted); font-weight: 500;
-    &:hover { background: var(--c-hover); color: var(--ink); }
+    &:hover { background: var(--hover); color: var(--ink); }
     &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* owns the open pop */
-    &.set { color: var(--ink);
-      .ico { color: var(--cc); filter: drop-shadow(0 0 4px light-dark(transparent, color-mix(in oklab, var(--cc) 40%, transparent))); }   /* dark: a soft glow of its own colour */
-      &:hover { background: color-mix(in oklab, var(--cc) 13%, transparent); } }
+    &.set { color: var(--ink); .ico { color: var(--cc); } }
     :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; }   /* touch keeps words: its row scrolls */
     &.down .ico { rotate: 180deg; } }   /* Someday: the chevrons point down */
-  .chip-rem { --cc: var(--accent-vivid); }
+  .chip-rem { --cc: var(--accent); }
   .chip-loc { --cc: var(--hint-location); }
-  .chip-dur.set { --cc: var(--hint-duration); .ico { fill: color-mix(in oklab, currentColor 30%, transparent); } }   /* an outline glyph gets a tinted body */
-  .chip-area.set .ico { color: light-dark(oklch(from var(--cc) clamp(.58, l, .8) max(c, .15) h), oklch(from var(--cc) clamp(.72, l + .08, .9) max(c, .14) h)); }   /* a user's area colour at the hues' strength */
-  .ico { width: 16px; height: 16px; flex: none; }
-  /* Desktop: 26px chips, 14px icons on a 30px pitch, so icon-only chips fall on the check, title and entry columns; the first
-     icon centres on the check and a set value starts on the title's x (14 icon + 14 gap) */
-  :where(html:not(.touch)) & { margin: var(--sp-4) calc(-1 * var(--sp-6)) 0 calc(-1 * (var(--chk-col) + var(--sp-4))); gap: var(--sp-4);
-    .chip { height: var(--ctl); gap: var(--sp-14); font-size: var(--fs-12); font-weight: 600; font-variant-numeric: tabular-nums; }
-    .ico { width: 14px; height: 14px; }
-    .chip.set .ico { stroke-width: 2.25; }
-    .chip-imp.set .ico { stroke-width: 3.25; } }   /* chevrons can't fill: they go bold */
+  .ico { width: 16px; height: 16px; flex: none; }   /* 16 + the 8 gap: a value starts where the entries' text does */
 }
 .knock { fill: var(--panel); } path.knock { stroke: var(--panel); }   /* the -fill glyphs' cut-outs take the card colour; top level: a <use> clone matches against the sprite, not its host */
 /* Composer inline entries (Things-style): subtask/checklist rows + grayed ghost row */
 .entry-list { gap: 1px; }
-.entry { --ep: var(--sp-4); display: flex; align-items: flex-start; gap: var(--sp-8); padding: var(--ep) 0; position: relative; font-size: 14px;
+.entry { display: flex; align-items: flex-start; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative; font-size: 14px;
   /* multiline entries: box, grip, chevron and trash anchor to the FIRST text line, never the row middle (1lh = the text's line box: the row carries its font size) */
   > :is(.chk-rect, .ghost-check, .entry-chk) { margin-top: calc((1lh - 16px) / 2); }
   .entry-chk { display: flex; }
   /* grip lives in the empty gutter LEFT of the entry (absolute → no reflow); revealed on hover */
-  .entry-grip { position: absolute; left: -16px; top: 0; bottom: 0; width: 14px; display: flex; align-items: flex-start; padding-top: calc(var(--ep) + (1lh - 14px) / 2); justify-content: center;
+  .entry-grip { position: absolute; left: -16px; top: 0; bottom: 0; width: 14px; display: flex; align-items: flex-start; padding-top: calc(var(--sp-4) + (1lh - 14px) / 2); justify-content: center;
     color: var(--faint); cursor: grab; opacity: 0; touch-action: none; transition: opacity .15s ease;
     .ico { width: 14px; height: 14px; fill: currentColor; stroke: none; } &:active { cursor: grabbing; } }
   .entry-txt { flex: 1; min-width: 0; border: none; background: none; font: inherit;
@@ -916,7 +880,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     .ico { width: 14px; height: 14px; }
     &:focus { opacity: 1; color: var(--p1); } }   /* reveal + redden when tab-focused, like row-hover */
   &:hover .entry-del { opacity: .6; }
-  &.done .entry-txt { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--c-faint); }
+  &.done .entry-txt { color: var(--muted); text-decoration: line-through; }
   /* horizontal chevron → opens the subtask in the composer */
   .entry-kids { display: flex; align-items: center; height: 1lh; border: none; background: none; padding: 0 var(--sp-2); flex: none; color: var(--muted); cursor: pointer;
     .ico { width: 13px; height: 13px; } &:hover { color: var(--ink); } }
@@ -959,10 +923,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* Zebra: bands follow the VISUAL order counted from the BOTTOM (adds unshift at the top, so every existing row keeps
    its band); find-hits float away (order:-1) with their own highlight, so the rest alternate among themselves. CSS,
    not a per-row :class — deriving each row's parity from a fresh sort was O(n²) on opening a long checklist. */
-.entry-list > .entry.chk:where(:nth-last-child(even of .entry.chk:not(.ghost, .chk-hit))) { background: var(--c-band); border-radius: var(--r-6);
-  --row-bg: color-mix(in oklab, var(--c-hover-bg) 50%, var(--panel)); }
-@media (any-hover: hover) and (any-pointer: fine) { .entry-list > .entry.chk:not(.ghost, .chk-hit, .chk-sel):hover:where(:not(.touch *)) { background: var(--c-hover); border-radius: var(--r-6);
-  --row-bg: var(--c-hover-bg); } }
+.entry-list > .entry.chk:where(:nth-last-child(even of .entry.chk:not(.ghost, .chk-hit))) { background: color-mix(in srgb, var(--faint) 20%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--faint) 20%, var(--panel)); }
 /* Steps (docs/ui/task-list.md §Steps): stored order, no zebra, the ghost last. One unbroken rail threads the nodes and
    meets each ring (a node's 3px border is transparent; its padding box hides the line): done filled, the walked path
    orange up to the current step's accent ring, later ones hollow with muted text, the ghost a dashed node. Each node hits a 24px circle. */
@@ -971,12 +932,12 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   > .entry.ghost { order: 1; }
   > .entry.chk:not(.ghost, .chk-hit, .chk-sel) { background: none; --row-bg: var(--panel); }
   --rail: color-mix(in srgb, var(--faint) 35%, var(--panel));   /* opaque: a translucent line seams where two entries' segments meet */
-  > .entry.chk::before { content: ''; position: absolute; left: calc(var(--sp-6) + 7px + var(--box-m, 0px)); top: 0; bottom: -2px; width: 2px; background: var(--rail); }
-  > .ghost + .entry.chk::before { top: calc(var(--ep) + .5lh); }
-  > .ghost::before { bottom: auto; height: calc(var(--ep) + .5lh); }
+  > .entry.chk::before { content: ''; position: absolute; left: calc(var(--sp-6) + 7px); top: 0; bottom: -2px; width: 2px; background: var(--rail); }
+  > .ghost + .entry.chk::before { top: calc(var(--sp-4) + .5lh); }
+  > .ghost::before { bottom: auto; height: calc(var(--sp-4) + .5lh); }
   > .ghost:last-child::before { display: none; }   /* no steps yet: nothing above the ghost */
   > .entry.chk.done::before { background: var(--accent); }
-  > .entry.chk.cur::before { background: linear-gradient(var(--accent) 0 calc(var(--ep) + .5lh), var(--rail) 0); }
+  > .entry.chk.cur::before { background: linear-gradient(var(--accent) 0 calc(var(--sp-4) + .5lh), var(--rail) 0); }
   .chk-rect { border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--faint) 70%, transparent); }
   .chk-rect::before { content: ''; position: absolute; inset: calc(50% - 12px); border-radius: 50%; }
   .chk-rect.done { background: var(--accent) padding-box; box-shadow: none; &::after { display: none; } }
@@ -1005,23 +966,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 @media (any-hover: hover) and (any-pointer: fine) { code:hover:where(:not(.touch *)) > .code-copy { opacity: 1; } }
 :where(.touch) { .code-copy { opacity: 1; } code > .code-copy { margin-left: 0; } }   /* always shown on touch: it takes its own room after the text instead of covering the end */
 /* a cross-row drag-select tints the rows it spans — what ⌘C will copy (chkCopy kicks in at ≥2 rows) */
-.entry.chk.chk-sel { background: var(--c-sel); border-radius: var(--r-6);
-  --row-bg: light-dark(color-mix(in oklab, var(--accent-vivid) 13%, var(--panel)), color-mix(in oklab, var(--accent-vivid) 22%, var(--panel))); }
-.composer {
-  .ghost-check:not(.plain) { border-color: var(--c-faint); }
-  .entry-list:not(.steps) .chk-rect:not(.done, .plain) { border-color: var(--c-faint); }
-  .chk-rect.done:not(:where(.steps *))::after { background: var(--accent-vivid); }
-}
-/* Desktop entries: 13/20 on 24px rows; the box in the check's 18px slot + 12, so entry text sits a column right of the title */
-:where(html:not(.touch)) .composer {
-  .entry { --ep: var(--sp-2); --box-m: 1px; font-size: var(--fs-13); line-height: 20px; gap: var(--sp-12);
-    > :is(.chk-rect, .ghost-check, .entry-chk) { margin-inline: var(--box-m); } }
-  .entry.chk textarea.entry-txt { line-height: 20px; }
-  .entry.chk .entry-del { height: 24px; }
-  .entry-list > .entry.chk:not(.ghost) { contain-intrinsic-block-size: auto 20px; }
-  .entry.chk .entry-txt .chk-idesc { line-height: 16px; }   /* 11/16: a note line keeps the 4px rhythm */
-  .entry-empty { padding: var(--sp-2) 0; }
-}
+.entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 13%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--accent) 13%, var(--panel)); }
 /* small round check for subtask entries (smaller than the row .check) */
 .check.sm { width: 16px; height: 16px; border-width: 2px; }
 .ghost-check { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px dashed var(--faint); }
@@ -1029,7 +974,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* empty state: up to three ghosts with an OR between each */
 .entry-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
   .entry { flex: 0 1 auto; min-width: 0; padding: 0; }   /* together from the left at their own width; shrinks so a long typed line wraps */
-  .entry-or { font-size: var(--fs-11); font-weight: 600; color: var(--c-faint); letter-spacing: .06em; flex: none; }
+  .entry-or { font-size: var(--fs-11); font-weight: 600; color: var(--muted); letter-spacing: .04em; flex: none; }
 }
 /* three ghosts can't share a phone-width line (a wrap strands an OR at a line's end): they stack, each OR centred between */
 .composer-entries { container-type: inline-size; }
@@ -1360,12 +1305,12 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
    a click outside close. Its left lines the project's icon up with the card's checkbox, its right the card's last icon.
    Anchored to .composer-body, which the # and @ pickers position against, so it can't move to the card. The Windows
    composer window is the card alone, so it keeps them inside. */
-:where(html:not(.touch, .composer-win)) .composer-actions { position: absolute; top: calc(100% + var(--sp-10) + var(--sp-8)); left: calc(-1 * var(--chk-col)); right: calc(-1 * var(--sp-6));
-  height: var(--ctl); margin: 0; padding: 0; border: none; align-items: center;
+:where(html:not(.touch, .composer-win)) .composer-actions { position: absolute; top: calc(100% + var(--sp-8) + var(--sp-8)); left: calc(-18px - var(--sp-12) - var(--sp-2)); right: calc(-1 * var(--sp-6));
+  height: 28px; margin: 0; padding: 0; border: none; align-items: center;
   :is(.ghost, .primary) { display: none; }
-  .proj-pick { height: var(--ctl); align-items: center; gap: var(--sp-14); font-size: var(--fs-13); font-weight: 600; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }   /* its name on the title's x; 13, as --muted at 12 fails dark contrast */
-  :is(.del-btn, .overview-btn, .more-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--c-hover); } .ico { width: 14px; height: 14px; } }
-  .proj-pick-ico { width: 14px; height: 14px; }   /* centred on the checkbox, like the bar's first icon */
+  .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }
+  :is(.del-btn, .overview-btn, .more-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--hover); } .ico { width: 16px; height: 16px; } }
+  .proj-pick-ico { width: 16px; height: 16px; }   /* the checkbox's size, on its x */
   .composer-btns { gap: var(--sp-2); } }
 /* Composer parent (project) chip caps long names. The areas chip shares the truncation (but no cap — it
    sizes to its label when there's room): squished into the Plan side panel its label wrapped to a second
@@ -1781,7 +1726,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   border: 1px solid var(--edge); border-radius: var(--r-6); padding: var(--sp-6) var(--sp-8); min-height: 32px;
   background: var(--panel); color: var(--ink); font-family: inherit; font-size: var(--fs-13); box-sizing: border-box;
 }
-.inp:focus, .ev-field:focus, .dialog-select:focus {
+.inp:focus, .ev-field:focus, .dialog-select:focus, .chat-comp:focus-within {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
 }
 .inp::placeholder, .ev-field::placeholder { color: var(--muted); }
@@ -2349,7 +2294,7 @@ textarea.inp { resize: vertical; }
 .cl-side-list .item, .drag-ghost > .item { border-radius: var(--r); --row-hov: color-mix(in srgb, var(--hover) 60%, var(--accent) 8%); }
 .drag-ghost > .item { background-color: var(--row-hov); }   /* the tray row's copy wears its grabbed (hover) pill */
 @media (any-pointer: fine) { :where(:root:not(.touch)) .cl-side-list .item, :where(:root:not(.touch)) .drag-ghost > .item { --row-pt: 5px; } }   /* D3: tighter, so more clears the fold; a touch row keeps its height */
-.cl-side-list .item.sel, .cl-side-list .item.editing { background: var(--hover); }
+.cl-side-list .item.sel { background: var(--hover); }
 .cl-side-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
 
 /* YEAR — 12 mini-months, heat-tinted days */
@@ -2570,7 +2515,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   /* 9A: one row from the card's left edge: the project, the set values then bare icons (sideways when crowded, under a
      fade), ··· and the go button. Cancel goes (a tap outside closes); the unset Size, Place and Relations, Show in
      Overview and Delete move into ···; the description and entries sit behind the Steps and notes chip (app.js notesHidden). */
-  .touch .composer-dock { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-8) 0 0 calc(-1 * var(--chk-col)); }   /* back over the check and its gap: the card's left edge */
+  .touch .composer-dock { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-8) 0 0 calc(-18px - var(--sp-12)); }   /* back over the 18px check and its gap: the card's left edge */
   .touch :is(.composer-actions, .composer-btns) { display: contents; }
   .touch .composer-actions :is(.ghost, .overview-btn, .del-btn) { display: none; }
   .touch .composer-actions .field.loc { order: -1; flex: 0 1 auto; max-width: 50%; margin: 0; }

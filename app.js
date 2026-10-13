@@ -4119,11 +4119,11 @@ document.addEventListener('alpine:init', () => {
       return this._sugs().filter(s => { if (s.iso === on || seen.has(s.iso)) return false; seen.add(s.iso); return true; }).map(s => ({ ...s, hint: hint(s.iso, s.long) }));
     },
     // The date chip's [icon, colour]: a day a suggestion names wears that row's filled icon and colour, any other set
-    // date a filled calendar in the theme's colour, a deadline alone a flag. Never red for a placement, even a past one.
+    // date a filled calendar, a deadline alone a flag. Never red for a placement, even a past one.
     dueLook() {
       const d = this.draft, on = d.on?.slice(0, 10), s = on && this._sugs().find(s => s.iso === on);
       if (s) return ['i-' + s.icon + '-fill', `var(--q-${s.key})`];
-      if (on || d.recurrence || d.available_from) return ['i-cal-fill', 'var(--accent-vivid)'];
+      if (on || d.recurrence || d.available_from) return ['i-cal-fill', 'var(--muted)'];
       return d.deadline_at ? ['i-flag-fill', 'var(--deadline)'] : ['i-cal', 'var(--muted)'];
     },
     calSugApply(iso) { this.draft.on = iso; this.dreg = 'on'; this.pop = null; },
@@ -4486,8 +4486,6 @@ document.addEventListener('alpine:init', () => {
       pill.className = 'nlp-pill inline-flex items-center'; pill.dataset.kind = kind;
       pill.dataset.value = PILL_SPEC[kind].json ? JSON.stringify(value) : String(value);
       pill.dataset.token = token; pill.contentEditable = 'false'; pill.textContent = PILL_SPEC[kind].label(this, value);
-      const sug = kind === 'date' && value.iso && this._sugs().find(s => s.iso === value.iso.slice(0, 10)), hue = sug ? `var(--q-${sug.key})` : kind === 'area' && this.areaById(value)?.color;
-      if (hue) pill.style.setProperty('--rc', hue);   // a named day wears its date-pop colour, as the bar's date chip does; an area its own
       // A repeat multi chip adds nothing, so it shares its twin's pre-chip list: its own would hold the twin's value.
       const q = `.nlp-pill[data-kind="${kind}"][data-value="${CSS.escape(pill.dataset.value)}"]`, twin = PILL_SPEC[kind].multi && (this._nlpEl()?.querySelector(q) || frag?.querySelector(q));
       pill.dataset.prior = twin ? twin.dataset.prior : JSON.stringify(this._fieldSnapshot(kind));   // field value BEFORE this chip — restored on backspace (non-destructive)
@@ -4721,7 +4719,11 @@ document.addEventListener('alpine:init', () => {
       r.setStart(p.node, Math.min(p.at, p.node.textContent.length)); r.collapse(true);
       const rect = r.getBoundingClientRect(), base = body.getBoundingClientRect();
       p.left = rect.left - base.left; p.top = rect.bottom - base.top + 4;
-      requestAnimationFrame(() => this.clampX(document.querySelector(sel)));
+      requestAnimationFrame(() => {
+        const el = document.querySelector(sel);
+        this.clampX(el);
+        if (el?.dataset.pos === 'up') p.top = rect.top - base.top - 4 - el.offsetHeight;   // above its trigger, as a data-pos="up" pop opens
+      });
     },
     // Re-derive the trigger position/fragment as the user types; close when the trigger text is gone.
     _refreshPicker(p, sp, sel) {
@@ -4825,6 +4827,12 @@ document.addEventListener('alpine:init', () => {
           const wasDone = draft.savedAt && draft.savedAt === before.updated_at ? draft.wasDone : !!(before.checklist?.length && before.checklist.every(c => c.done));
           // The edit and the completion it triggers land as ONE entry; an edit that landed stays undoable though its completion failed.
           const j = [], opts = { ops: j, fail: null }, drops = [];   // the failure branch below says it, once
+          // a save that may finish the task (every subtask or checklist item ticked) rewards it as the list's tick does: the
+          // subtasks it ticks and the task, or the task alone for a checklist. Each start keeps only what finished.
+          const ticked = draft.subs.filter(s => !this.byId.get(s.id)?.completed_at), all = list => list.length && list.every(x => x.done);
+          const finishing = !before.completed_at && this.celebrations !== 'off' && (draft.subs.length ? ticked.length && all(draft.subs) : all(draft.checklist));
+          const rewarded = finishing ? ticked.map(s => _rowMap.get(s.id)).filter(Boolean) : [];
+          const starts = (rewarded.length ? rewarded : finishing ? [_rowMap.get(editId)].filter(Boolean) : []).map(r => this._celebrate(r, true));
           let updated;
           const landed = await this._journalRowChange('Saved task', 'task', editId, async () => updated = await this.store.tasks.update(editId, fields), opts);
           const cl = updated?.checklist || [], done = cl.length > 0 && cl.every(c => c.done);
@@ -4844,6 +4852,7 @@ document.addEventListener('alpine:init', () => {
           // kept with no journal ops: nothing the task row changed (signed in, an empty write stamps nothing), still said. A move re-labels this card below
           const saveCard = j.length ? this._pushOps('Saved task', 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added }) : kept ? this.notify('Saved task') : null;
           for (const drop of drops) drop();
+          for (const start of starts) start();
           save.base = nextBase;
           if (_draftFrom === sid) _saveBase = nextBase;   // the open draft continues this one (reopened mid-save): after every await, any reopen
           if (!kept) {
@@ -4869,13 +4878,16 @@ document.addEventListener('alpine:init', () => {
             this._viewFree().then(() => this.$nextTick(() => { this._setCheckPending(editId, false); this._flashSaved(editId); }));   // the row re-renders as the collapse ends
             // A save never scrolls (composer.md §STAY rule, tweak-2): a row the SAVE moved off-screen gets a card whose Show
             // carries the reader to it. A tall row you had scrolled past is off-screen too, so only a move counts. Judged once
-            // the save has landed AND the collapse settled (a signed-in save outlasts it). Lists only: Plan's panel has no list to show.
-            closed.then(() => requestAnimationFrame(() => { const a = at();
+            // the save has landed AND the collapse settled (a signed-in save outlasts it), and after any reward has let the row go.
+            // Lists only: Plan's panel has no list to show.
+            const judge = () => { if (_cele.has(editId)) return requestAnimationFrame(judge);
+              const a = at();
               if (this.surface !== 'lists' || a[0] === at0[0] && (a[1] === at0[1] || a[2] === at0[2]) || !this._rowAway(editId)) return;
               const msg = a[0] && !at0[0] ? 'Moved to Done' : this._modelTop(editId) < sc.scrollTop + this._seenTop(sc) ? 'Moved up the list' : 'Moved down the list';
               const show = { label: 'Show', fn: () => this._landOn(editId) }, card = this.notifs.find(n => n.id === saveCard && !n.leaving);
               if (card) Object.assign(card, { msg, actions: [...card.actions, show] });   // one save, one card: its Undo beside Show
-              else this.notify(msg, { actions: [show] }); }));
+              else this.notify(msg, { actions: [show] }); };
+            closed.then(() => requestAnimationFrame(judge));
           }
           return true;
         });
@@ -7357,7 +7369,7 @@ document.addEventListener('alpine:init', () => {
       const byKey = Map.groupBy((this.events || []).filter(e => e.external_id), e => e.external_id), taken = new Set(), ops = [], refresh = [];
       const pick = (key, ok = () => true) => byKey.get(key)?.find(e => !taken.has(e.id) && ok(e));
       for (const it of items) {
-        const key = it.external_id, fields = { title: it.title, starts_at: it.starts_at, ends_at: it.ends_at, all_day: it.all_day, recurrence: it.recurrence ?? null, ics_seq: it.seq ?? null, external_id: key ?? null };
+        const key = it.external_id, fields = { title: it.title, starts_at: it.starts_at, ends_at: it.ends_at, all_day: it.all_day, recurrence: it.recurrence ?? null, ics_seq: it.seq ?? null, external_id: key ?? null, ...it.notes && { notes: it.notes } };   // a calendar without a description never clears notes typed here
         // rows imported before uid#rid keys hold the bare UID on the series AND its moved occurrences: the series is the one that
         // repeats. A refresh writes the new key, so they migrate in place. ceiling: two legacy moved rows of one series pair up in list order.
         const prev = key && (pick(key, e => !e.recurrence === !it.recurrence) || pick(key) || it.detached_from && pick(key.split('#')[0], e => !e.recurrence));
@@ -8946,11 +8958,11 @@ document.addEventListener('alpine:init', () => {
     clOpenDay(iso) { this.clSetView('day'); this.clAnchor = iso; },
     // --- Event editor (create / edit / delete) ---
     clNewEvent(date) {
-      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, countdown: false };
+      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, countdown: false, notes: '' };
     },
     clEditEvent(id) {
       const e = this.events.find(x => x.id === id); if (!e) return;
-      this.eventEdit = { id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi: e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10), all_day: !!e.all_day, color: e.color || null, countdown: !!e.countdown };
+      this.eventEdit = { id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi: e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10), all_day: !!e.all_day, color: e.color || null, countdown: !!e.countdown, notes: e.notes ?? '' };
     },
     clItemClick(it) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { const t = this.byId.get(id); if (t) this.toggle(t); },
@@ -8997,7 +9009,7 @@ document.addEventListener('alpine:init', () => {
     _toggleIn(arr, v) { const i = arr.indexOf(v); i < 0 ? arr.push(v) : arr.splice(i, 1); },
     async clSaveEvent() {
       const e = this.eventEdit; if (!e) return;
-      const fields = { title: e.title.trim() || 'Untitled', all_day: e.all_day, color: e.color || null, countdown: e.countdown, ...this._evRange(e) };
+      const fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, ...this._evRange(e) };
       if (fields.ends_at <= fields.starts_at && e.multi && !e.all_day) return this.toast('The end is before the start');   // stored as typed it would collapse the event
       // a failed write keeps the editor and its edits
       let id = e.id;
@@ -9257,11 +9269,11 @@ document.addEventListener('alpine:init', () => {
     // keep the last rows and read no task, so a Lists edit wakes nothing; showing re-runs this.
     clSideRows(kind) {
       const side = _clSideOut[kind]; if (!this.clSideVisible() || this._clHidden()) return side.rows;
-      const res = kind === 'res', clock = res ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV;   // the tick: re-list for the timed deadlines it left uncached
+      const res = kind === 'res', clock = res ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, ed = this.editing, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV + '|' + ed;   // the tick: re-list for the timed deadlines it left uncached
       if (side.key === key) return side.rows;
       if (_clSideV !== this._rowV) { for (const s of Object.values(_clSideOut)) s.html.clear(); _clSideV = this._rowV; }   // not only patches since: any row may differ
       if (side.clock !== clock) side.html.clear();   // rows read the clock (due and deadline badges)
-      return Object.assign(side, { key, clock, rows: this._clRowsHtml(res ? this.clReschedule() : this.clUnscheduled(), side.html) }).rows;
+      return Object.assign(side, { key, clock, rows: this._clRowsHtml((res ? this.clReschedule() : this.clUnscheduled()).filter(t => t.id !== ed), side.html) }).rows;   // the edited task is the composer's, as on Lists: its row ticked too completed it behind a composer left open
     },
     clRowClick(e) { const el = e.target.closest?.('.item'); const t = el && this.byId.get(el.dataset.id); if (t) this.onRowClick({ t }, e); },
     clSideDragStart(e) { const el = e.target.closest?.('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
