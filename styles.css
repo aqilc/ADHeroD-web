@@ -967,8 +967,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .ghost-check { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px dashed var(--faint); }
 .entry.chk:not(.step-ghost) .ghost-check { border-radius: var(--r-4); }   /* a step's ghost stays round, like the rail's nodes */
 /* empty state: up to three ghosts with an OR between each */
-.entry-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-6); padding: var(--sp-4) 0;
-  .entry { flex: 1 1 108px; min-width: 0; padding: 0; }   /* small min-basis: stay inline when there's room, wrap (not clip) when the composer is squished */
+.entry-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
+  .entry { flex: 0 1 auto; min-width: 0; padding: 0; }   /* together from the left at their own width; shrinks so a long typed line wraps */
   .entry-or { font-size: var(--fs-11); font-weight: 600; color: var(--muted); letter-spacing: .04em; flex: none; }
 }
 /* three ghosts can't share a phone-width line (a wrap strands an OR at a line's end): they stack, each OR centred between */
@@ -2542,10 +2542,10 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .ico { width: 20px; height: 20px; flex: none; }
   &.cd-new::before { left: calc(50% + var(--sp-4)); box-shadow: 0 0 0 2px var(--panel); } }
 @media (max-width: 640px) {
-  html:has(.canvas.bar-on) { --foot: 72px; }
-  .canvas.bar-on > :is(.canvas-dots, .settings-gear) { display: none; }
-  .canvas.bar-on > .jot-bar { display: flex; }
-  .kb .canvas.bar-on > .jot-bar { display: none; }
+  .bar-on { --foot: 72px; }   /* on the app root, not html:has(): that re-matched <html> on every DOM write */
+  .bar-on .canvas > :is(.canvas-dots, .settings-gear) { display: none; }
+  .bar-on .canvas > .jot-bar { display: flex; }
+  .kb .bar-on .canvas > .jot-bar { display: none; }
   .bar-on .topbar .settings-gear { display: flex; position: static; flex: none; }
   /* G-A: a 60px header that stays on top, clear at rest (the glow runs from y=0); once rows scroll under it, it frosts */
   .bar-on .app { padding-top: 0; scroll-padding-top: 60px; container-type: scroll-state; }   /* the header's height (_seenTop); a state, not a scroll-driven animation: the motion dial zeroes those */
@@ -2554,7 +2554,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     h1 { font-size: var(--fs-22); } }
   @container scroll-state(scrollable: top) { .bar-on .topbar { background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(16px); } }
   /* A new task opens over the bar and rides the keyboard; the dock sticks to the host's own bottom. */
-  .canvas.bar-on > .jb-host.open { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: var(--kb); z-index: 6; max-height: calc(100% - var(--kb) - var(--sp-24));
+  .bar-on .canvas > .jb-host.open { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: var(--kb); z-index: 6; max-height: calc(100% - var(--kb) - var(--sp-24));
     overflow-y: auto; margin: 0; padding: var(--sp-8) var(--sp-8) 0; background: var(--panel); border-top: 1px solid var(--hair); }
   .touch.kb .jb-host .composer-dock { bottom: 0; }
   .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4); }   /* the card keeps its height; Go to scrolls */

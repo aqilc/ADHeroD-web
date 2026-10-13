@@ -3118,7 +3118,7 @@ document.addEventListener('alpine:init', () => {
     // How much of the scroller the reader SEES: the nav strip covers its bottom --foot band, and a phone's soft
     // keyboard the visual viewport's. Landing a composer "in view" under either left its footer hidden (B3).
     _seenH(sc) {
-      const top = sc.getBoundingClientRect().top, foot = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--foot')) || 0;
+      const top = sc.getBoundingClientRect().top, foot = parseFloat(getComputedStyle(sc).getPropertyValue('--foot')) || 0;
       return Math.min(sc.clientHeight - foot, visualViewport.offsetTop + visualViewport.height - top);
     },
     // --- The ONE scroll animation in the app ---

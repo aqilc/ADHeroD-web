@@ -133,7 +133,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1-.24-.27-.39-.62-.39-1 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8.5" r="1"/></symbol>
 </defs></svg>
 <!-- ── Root Alpine wrapper + shell + topbar ── -->
-<div x-data="adherod" x-cloak :class="{ 'no-breathe': !nowBreathe, kbd }"
+<div x-data="adherod" x-cloak :class="{ 'no-breathe': !nowBreathe, kbd, 'bar-on': bar && surface === 'lists' }"
      @click.capture="copyCode($event)"
      @keydown.capture="codeKey($event)"
      @wheel.capture.passive="kbd = false"
@@ -150,7 +150,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <div id="shell" :inert="modalOpen()">
 
 
-    <div class="canvas" x-ref="canvas" :class="{ 'in-thread': surface === 'social' && !!chat.open, 'bar-on': bar && surface === 'lists' }"
+    <div class="canvas" x-ref="canvas" :class="{ 'in-thread': surface === 'social' && !!chat.open }"
          @pointerdown="canvasDown($event)" @pointermove="canvasMove($event)" @pointerup="canvasUp($event)" @pointercancel="canvasUp($event)">
      <div class="canvas-track" x-ref="track" :class="{ dragging }" :style="`transform: translateX(-${surfaceIndex() * 100}%)`">
 
