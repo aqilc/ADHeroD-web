@@ -296,6 +296,7 @@ function pillValue(kind, raw) { const sp = PILL_SPEC[kind]; return sp.json ? JSO
 // Every overlay, topmost first: [open?, close, dialog?]. escape() and Back (popstate) close the first open one;
 // anyDialog/closeDialogs (the shared backdrop) read the dialog rows. Anything that stacks ON TOP of the overview
 // (dialogs, the roller ⋯ popover) closes first; the overview only when nothing is layered above it.
+const COMPOSER_LAYER = [c => c.composer.open && !c._closingComposer, c => c.closeComposer()];   // a collapsing composer is already closed
 const OVERLAYS = [
   [c => c.shortcutsOpen, c => c.shortcutsOpen = false, 1], [c => c.trashOpen, c => c.trashOpen = false, 1],
   [c => c.palette.open, c => c.palette.open = false, 1], [c => c.confirm, c => c.confirmNo(), 1],
@@ -311,8 +312,8 @@ const OVERLAYS = [
   [c => c.selMenu, c => c.selMenu = null],   // an open edit-bar sub-menu closes before the selection itself
   [c => c.sel.length, c => c.clearSel()],    // active multi-select clears (before the lower list states)
   [c => c.overview, c => c.closeOverview()],
+  COMPOSER_LAYER,   // one over a thread's field (Add as a task) closes before the thread
   [c => c.phoneThread(), c => c.openChat(null)],   // Back (the system's edge swipe) returns to the chats
-  [c => c.composer.open && !c._closingComposer, c => c.closeComposer()],   // a collapsing composer is already closed
 ];
 // Completion-relevant fields for undo/redo fx diff (_apply's task complete/move/remove).
 const FX_FIELDS = (t, pos) => ({ completed_at: t.completed_at ?? null, recur_from: t.recur_from ?? null, completions: t.completions, recurrence: t.recurrence, checklist: t.checklist ?? null, ...pos && { position: t.position ?? null } });
@@ -474,6 +475,7 @@ document.addEventListener('alpine:init', () => {
     _clMRest: true,         // month scroll at rest until a sample says otherwise (clFast = !_clMRest)
     bar: BAR,   // the jot bar replaces Lists' dot strip on a phone
     jotted: null,   // the task the bar just added, open for its steps (S1)
+    fromChat: null,   // { id, text }: the thread whose words the open composer took (Add as a task)
     notesOpen: false,   // phone: the description and entries show, behind the Steps and notes chip (9A)
     listHold: null,   // { hot, x, y, moved }: the lists held up from the bar's chip (P-A)
     viewSheet: false,   // Plan's views and actions, risen from the bar's day chip (droid-10)
@@ -740,7 +742,7 @@ document.addEventListener('alpine:init', () => {
       // closes first, on that same click), and only on a click, so a touch scroll or a selection dragged out keeps it.
       const inside = '.composer, .pop, .jot-bar, .jb-host, .item, button, a, input, textarea, select, label, [role], [contenteditable]';
       let outPress = false;
-      document.addEventListener('pointerdown', e => { outPress = OVERLAYS.find(([open]) => open(this)) === OVERLAYS.at(-1) && !e.target.closest?.(inside); }, true);
+      document.addEventListener('pointerdown', e => { outPress = OVERLAYS.find(([open]) => open(this)) === COMPOSER_LAYER && !e.target.closest?.(inside); }, true);
       document.addEventListener('click', e => { if (outPress && !e.target.closest?.(inside) && this.composer.open) this.closeComposer(); outPress = false; });
       document.addEventListener('selectionchange', () => this.liveReveal());
       document.addEventListener('mousemove', e => {
@@ -2796,6 +2798,20 @@ document.addEventListener('alpine:init', () => {
       if (this.surface !== 'lists' && this.navSel.type === 'filter') this.setNav('all');   // unseen, the filter can't promise the new task shows
       this.goSurface('lists'); this.startAdd();
     },
+    // droid-12: a thread's words open the bar's composer over its field, chipped as if typed there. Enter files them where a jot lands.
+    addAsTask() {
+      const text = this.chat.draft, segs = tokenizeAll(text.replace(/\s*[\r\n]+\s*/g, ' ').trim(), new Date(), this.locNames());
+      for (const seg of segs) if (seg.kind === 'proj' || seg.kind === 'area') delete seg.kind;   // a chat's #word or @name stays words: no list or area made from it
+      this._endDraft(); this.editing = null; _editPin = null; this.resetDraft(); this._initDraftSafety();
+      if (this.draftRestored) {   // a jot left unsaved goes to the Bin, not under the chat's words
+        if (!this._inBin(this._draftSig())) this._pushDraftBin(this._draftKey());
+        this.discardDraft();
+      }
+      this.fromChat = { id: this.chat.open, text };
+      this.openComposer();
+      this.insertSegments(segs);   // no area chip: it lands now, in this task
+      this._draftBase = this._draftSig();   // untouched, a cancel keeps nothing: the words are still the chat's
+    },
     startAdd() {
       this._endDraft(); this.editing = null; _editPin = null; this.resetDraft();
       if (this.navSel.type === 'area') this.draft.areas = [this.navSel.id];   // lands in the area view it's added from, on its visible chip
@@ -3296,7 +3312,7 @@ document.addEventListener('alpine:init', () => {
     closeComposer(saved = false) {   // → a promise of the collapse's end (a save times its reveal off it)
       if (this.sticky) return Promise.resolve();   // the sticky note's add line never closes (Esc, an outside click)
       if (this.composer.open && this._closingComposer) return;   // already closing (⌘Enter's save closes itself): a 2nd close would file the edit as a Draft
-      this.pop = null;
+      this.pop = null; this.fromChat = null;
       this._endDraft(saved);
       if (this.$refs.composer?.contains(document.activeElement)) document.activeElement.blur();   // a key during the collapse must not type into the closing draft
       this.draftRestored = false;
@@ -3359,7 +3375,7 @@ document.addEventListener('alpine:init', () => {
     },
     _subsOf(id) { return this.childTasks(id).map(c => ({ id: c.id, done: !!c.completed_at })); },   // a draft's subtask rows as stored
     _inPanel() { return this.surface === 'plan' && this.clSideVisible(); },   // the calendar's panel hosts the composer itself
-    _inBar() { return this.bar && this.narrow && this.surface === 'lists' && (!this.editing || this.editing === this.jotted); },   // …and the jot bar a new task, then its steps
+    _inBar() { return this.bar && this.narrow && (this.surface === 'lists' || this.phoneThread()) && (!this.editing || this.editing === this.jotted); },   // …and the jot bar a new task, then its steps
     // The composer IS a row in the visible list, so a task the current view doesn't hold (another project, a
     // filtered-out one, opened from Now/search/a subtask chevron) had nothing to sit on and landed in a broken
     // spot. Navigate to a view that holds it; returns true when it moved, so the caller re-opens next tick.
@@ -3528,7 +3544,7 @@ document.addEventListener('alpine:init', () => {
     // 1A: over the bar's new task, where to go while nothing is typed, then what the words already match. Enter still adds.
     // Nearest the field first (they stack upward, in reach of the thumb; what doesn't fit scrolls).
     jotRows() {
-      if (!this.composer.open || this.editing || !this._inBar()) return [];
+      if (!this.composer.open || this.editing || !this._inBar() || this.fromChat) return [];
       const q = this.draft.content, go = (id, title, icon, tag = '') => ({ kind: 'cmd', type: 'command', id, title, icon, tag });
       if (q) return [go('add', `Add "${q}"`, 'i-plus'), ...this.searchResults(q).slice(0, 4)];
       const lists = this.store.search('', 50).filter(r => r.type === 'project').slice(0, 2).map(r => ({ ...r, obj: this.byId.get(r.id) })).filter(r => r.obj);
@@ -4087,11 +4103,11 @@ document.addEventListener('alpine:init', () => {
       return this._sugs().filter(s => { if (s.iso === on || seen.has(s.iso)) return false; seen.add(s.iso); return true; }).map(s => ({ ...s, hint: hint(s.iso, s.long) }));
     },
     // The date chip's [icon, colour]: a day a suggestion names wears that row's filled icon and colour, any other set
-    // date a filled calendar, a deadline alone a flag. Never red for a placement, even a past one.
+    // date a filled calendar in the theme's colour, a deadline alone a flag. Never red for a placement, even a past one.
     dueLook() {
       const d = this.draft, on = d.on?.slice(0, 10), s = on && this._sugs().find(s => s.iso === on);
       if (s) return ['i-' + s.icon + '-fill', `var(--q-${s.key})`];
-      if (on || d.recurrence || d.available_from) return ['i-cal-fill', 'var(--muted)'];
+      if (on || d.recurrence || d.available_from) return ['i-cal-fill', 'var(--accent-vivid)'];
       return d.deadline_at ? ['i-flag-fill', 'var(--deadline)'] : ['i-cal', 'var(--muted)'];
     },
     calSugApply(iso) { this.draft.on = iso; this.dreg = 'on'; this.pop = null; },
@@ -4454,6 +4470,8 @@ document.addEventListener('alpine:init', () => {
       pill.className = 'nlp-pill inline-flex items-center'; pill.dataset.kind = kind;
       pill.dataset.value = PILL_SPEC[kind].json ? JSON.stringify(value) : String(value);
       pill.dataset.token = token; pill.contentEditable = 'false'; pill.textContent = PILL_SPEC[kind].label(this, value);
+      const sug = kind === 'date' && value.iso && this._sugs().find(s => s.iso === value.iso.slice(0, 10)), hue = sug ? `var(--q-${sug.key})` : kind === 'area' && this.areaById(value)?.color;
+      if (hue) pill.style.setProperty('--rc', hue);   // a named day wears its date-pop colour, as the bar's date chip does; an area its own
       // A repeat multi chip adds nothing, so it shares its twin's pre-chip list: its own would hold the twin's value.
       const q = `.nlp-pill[data-kind="${kind}"][data-value="${CSS.escape(pill.dataset.value)}"]`, twin = PILL_SPEC[kind].multi && (this._nlpEl()?.querySelector(q) || frag?.querySelector(q));
       pill.dataset.prior = twin ? twin.dataset.prior : JSON.stringify(this._fieldSnapshot(kind));   // field value BEFORE this chip — restored on backspace (non-destructive)
@@ -5409,10 +5427,11 @@ document.addEventListener('alpine:init', () => {
     },
     // Through the pending slot, so the open restores the draft with its own sid. The pending draft it displaces is
     // binned first, unless the Bin already holds it.
+    _inBin(sig) { return this.journal.some(e => e.kind === 'draft' && e.bin && !e.restored && this._draftSig(e.payload) === sig); },
     _reopenDraft(payload) {
       this._endDraft();   // an open composer's draft first — the map below must hold its last <300ms of typing
       const t = payload.editing && this.byId.get(payload.editing), key = t ? t.id : this._newKey(), m = this._pendingMap(), p = m[key], s = p && this._draftSig(p);
-      if (s && s !== this._draftSig(payload) && !this.journal.some(e => e.kind === 'draft' && e.bin && !e.restored && this._draftSig(e.payload) === s)) this._pushDraftBin(key, p);
+      if (s && s !== this._draftSig(payload) && !this._inBin(s)) this._pushDraftBin(key, p);
       const out = this._newKey(null);
       if (m[out]?.sid === payload.sid) delete m[out];   // handed over: a save clears only `key`, so the signed-out slot would resurrect it
       m[key] = payload; this._writePending(m); _handoff = { key, payload };   // in memory too: the write can fail
@@ -6204,6 +6223,7 @@ document.addEventListener('alpine:init', () => {
     filterMatchCount() { return this.filterMatches().length; },
 
     async addTask(close) {
+      const chat = this.fromChat; close ||= !!chat;   // a chat's task closes back to the chat
       const d = this.draft, sid = this._draftSid, fields = this.draftFields(d), key = 'save:' + sid, jot = !close && this._inBar();   // held: the press hands the composer on below
       // One save = one slot: the draft moves to save:<sid> before the composer lets go of it. Refused (storage full: toasted),
       // the add still runs and the in-memory slot carries a failure back — only a reload mid-save loses it
@@ -6258,6 +6278,11 @@ document.addEventListener('alpine:init', () => {
       this._finalizeFx(entry); this._pushEntry('Added task', entry, { bin: true, restored: true, silent: true });
       this._clearPending(key, sid);   // landed: its slot and Bin rows are spent; the composer is the next draft's
       _lastAdded = id;
+      if (chat) {   // filed: the words leave the chat, unless they changed meanwhile
+        const c = this.chat.open === chat.id ? this.chat : this.chat.drafts[chat.id];
+        if (c?.draft === chat.text) c.draft = '';
+        this.notify('Added task', { actions: [this._cardStep(-1, this.journal.at(-1).id)] });
+      }
       if (jot && this.composer.open && !this.editing && this._draftSig() === this._draftBase) this.editTask(this.byId.get(id), null, 'jot');   // S1: the bar stays on it for its steps
       if (this.sticky) {   // the note marks where the row landed, or toasts its Undo when it's out of view (Mac contract)
         // judged as it lands (the reload drew the row): a $nextTick can run after the next key has filtered it out

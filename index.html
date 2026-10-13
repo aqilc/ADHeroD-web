@@ -1283,6 +1283,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
            <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot something</button>
          </div>
        </div>
+       <template x-if="phoneThread() &amp;&amp; chat.draft.trim() &amp;&amp; !chat.editing &amp;&amp; !composer.open"><div class="pop jb-lists jb-sheet" @mousedown.prevent>   <!-- droid-12: a thread's words, as a task (a tap keeps the keyboard up) -->
+         <button type="button" class="pop-item" @click="addAsTask()"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>Add as a task<span class="pick-tag">Backlog</span></button>
+       </div></template>
        <div class="jb-el" :class="{ on: surface === 'social' }">
          <button type="button" class="jb-ico flex items-center justify-center" :class="{ 'cd-new': chatUnread() }" data-sk="Go to Social" @click="goSurface('social')" :aria-label="chatUnread() ? 'Social, new messages' : 'Social'" :inert="surface === 'social'"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></button>
          <template x-if="!phoneThread()"><div class="jb-field flex items-center" :inert="surface !== 'social'">
