@@ -396,10 +396,13 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 @keyframes checkSpin { to { transform: rotate(360deg); } }
 /* Completion reward (_celebrate; docs/ui/task-list.md §Completion reward): the tick springs in, a leaving row exits up.
    Full adds a warm ring and, on a roll, an ember burst off the ring (emberBurst). Each mark runs ~800ms, ending with the linger + exit. Transform/opacity only: reduced motion keeps the fades, and _glideRows measures rows with the marks on. */
-.item.cele .check.done::after { animation: cele-tick 800ms var(--ease-pop) both; }
-.item.cele.full .check::before { content: ""; position: absolute; inset: -2.25px; border-radius: 50%; border: 2px solid var(--warm); opacity: .55; pointer-events: none;
+:is(.item, .head-cele).cele .check.done::after { animation: cele-tick 800ms var(--ease-pop) both; }
+:is(.item, .head-cele).cele.full .check::before { content: ""; position: absolute; inset: -2.25px; border-radius: 50%; border: 2px solid var(--warm); opacity: .55; pointer-events: none;
   animation: cele-pulse 800ms var(--ease-pop) both, cele-fade 800ms var(--ease-in-out) both; }   /* bright while it springs out, then fades */
-.item.leave { animation: cele-out 200ms var(--ease-out) both; }
+.item.leave, .head-cele.leave { animation: cele-out 200ms var(--ease-out) both; }
+/* the page title's (_celeHead): after the name's last line, centred on it, the row's check at the title's scale */
+.topbar-title { position: relative; }
+.head-cele { position: absolute; display: flex; align-items: center; padding-left: var(--sp-20); pointer-events: none; .check { zoom: 1.5; } }
 .check .ember { position: absolute; left: 50%; top: 50%; pointer-events: none; }
 .check .ember i { position: absolute; width: var(--s); height: var(--s); margin: calc(var(--s) / -2); border-radius: 50%; background: var(--accent);
   animation: cele-ember var(--t) var(--ease-pop) both, cele-fade calc(var(--t) * .35) var(--ease-in-out) var(--f) both; }
@@ -2608,7 +2611,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .app { padding-top: 0; scroll-padding-top: 60px; container-type: scroll-state; }   /* the header's height (_seenTop); a state, not a scroll-driven animation: the motion dial zeroes those */
   .bar-on .topbar { position: sticky; top: 0; z-index: 8; height: 60px; margin: 0 calc(-1 * var(--pad-x)) var(--sp-8); padding: var(--sp-6) var(--pad-x) 0;   /* z 8: over a row's composer (7) */
     transition: background-color .2s var(--ease-out), backdrop-filter .2s var(--ease-out);
-    h1 { font-size: var(--fs-22); } }
+    h1 { font-size: var(--fs-22); } .head-cele .check { zoom: 1; } }
   @container scroll-state(scrollable: top) { .bar-on .topbar { background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(16px); } }
   /* A new task opens over the bar and rides the keyboard; the dock sticks to the host's own bottom. */
   .bar-on .canvas > .jb-host.open { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: var(--kb); z-index: 6; max-height: calc(100% - var(--kb) - var(--sp-24));

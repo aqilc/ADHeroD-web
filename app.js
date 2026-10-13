@@ -218,6 +218,7 @@ const emberBurst = () => {
   }).join('') + '</i>';
 };
 let _celeT = 0;   // the rewards' shared linger (_celebrate)
+let _celeHead = null;   // the page title's reward mark (_celeHead), gone with the linger's exit
 let _rowPatch = null, _visBP = null, _visRoots = new Set();  // _visBP: the last full walk's parent → children index · _visRoots: its scope roots
 let _secKids = null;   // childIndex for this pass's section pies — one build, not one per head
 // task id → its row's view data, reused across recomputes while _rowCacheKey (`_rowV|minute`) holds: a search key
@@ -7444,6 +7445,7 @@ document.addEventListener('alpine:init', () => {
     _celebrate(row, parents = false) {
       // Hold ancestors too: dropping a completed root would take the rewarded row with its subtree.
       const rows = [row, ...this._chain(row.t.parent_id).map(id => _rowMap.get(id)).filter(r => r && !r.t.completed_at)];
+      const head = parents && this.navSel.type === 'project' && this._chain(row.t.parent_id).includes(this.navSel.id) && !this.byId.get(this.navSel.id).completed_at;   // the page's project has no row
       for (const r of rows) {
         const id = r.t.id, quiet = r !== row && (!parents || !this._rowEl(id)?.checkVisibility());
         const full = !quiet && this.celebrations === 'full', leaves = !r.depth || this.navSel.type === 'filter' || this.isOverviewProject(this.byId.get(r.t.parent_id));   // a subtask of a task stays inline
@@ -7452,6 +7454,7 @@ document.addEventListener('alpine:init', () => {
       return () => {
         for (const r of rows) if (!this.byId.get(r.t.id)?.completed_at) _cele.delete(r.t.id);
         if (!this.byId.get(row.t.id)?.completed_at) return;
+        if (head && this.byId.get(this.navSel.id)?.completed_at) this._celeHead(this.byId.get(this.navSel.id));
         clearTimeout(_celeT);   // ONE linger, restarted by each tick: a burst exits together, never shifting rows under the pointer
         _celeT = setTimeout(() => this._celeExit(), motion.t(600));
       };
@@ -7510,8 +7513,24 @@ document.addEventListener('alpine:init', () => {
           return runs;
         });
     },
+    // A tick that finishes the page's project rewards its title: the project's own check, after the name, with the row's
+    // tick, ring and ember roll (user: "it should still animate the task finishing for both")
+    _celeHead(p) {
+      const full = this.celebrations === 'full';
+      _celeHead?.remove();
+      const title = document.querySelector('.surface-lists .topbar-title'), range = document.createRange();
+      if (!title) return;
+      range.selectNodeContents(title.firstElementChild);
+      const line = [...range.getClientRects()].at(-1), box = title.getBoundingClientRect();   // the name's last line: a wrapped title ends mid-box
+      _celeHead = title.appendChild(document.createElement('span'));
+      _celeHead.className = 'head-cele cele ' + this.celebrations;
+      _celeHead.style.cssText = `left: ${line.right - box.left}px; top: ${line.top - box.top}px; height: ${line.height}px`;
+      _celeHead.innerHTML = checkHtml(this._chkArgs(p), 'span');
+      if (full && !motion.gentle && motion.rand() < emberOdds()) _celeHead.firstChild.insertAdjacentHTML('beforeend', emberBurst());
+    },
     _celeExit() {
-      const held = [..._cele], fading = [];
+      const held = [..._cele], fading = [], head = _celeHead;
+      head?.classList.add('leave');
       for (const [id, fx] of held) if (fx.leaves && this.byId.get(id)?.completed_at) {   // undone meanwhile: it stays
         fx.leave = true;
         fading.push(...descendantIds(this.tasks, id, this._taskIdx().kids).map(sub => this._rowEl(sub)).filter(Boolean));   // its shown subtree fades with it
@@ -7520,6 +7539,8 @@ document.addEventListener('alpine:init', () => {
       setTimeout(() => {
         const left = held.filter(([, fx]) => fx.leave).map(([id]) => id), marked = held.map(([id, fx]) => [this._rowEl(id), fx]);
         for (const [id, fx] of held) if (_cele.get(id) === fx) _cele.delete(id);
+        head?.remove();
+        if (_celeHead === head) _celeHead = null;
         const unmark = () => {
           for (const [el, fx] of marked) {
             el?.classList.remove('cele', fx.mode);   // a staying row keeps its element
