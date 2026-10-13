@@ -170,6 +170,8 @@ let _viewHold = false, _heldP = null, _heldRes = null;   // a collapsing compose
 let _closeRange = null;   // trailing space from a composer's close; never part of the windowed rows
 let _addSlot = 0;   // the Add task row's height + margin, measured while shown: a new task grows from it and collapses back into it
 let _kb = 0;   // the soft keyboard's height (init's keyboard()): pops sit above it
+let _keys = 0, _keyboard = () => false;   // the keyboard alone, and init's keyboard(): a docked pop re-reads it as it opens, resizes and closes
+let _field;   // init's ResizeObserver for the jot bar's chat field (watchField)
 let _editPin = null, _editEnd = null;   // mirror `editing` / the collapse's target height OUTSIDE Alpine (listHtml reads both; a reactive read there would make composer open/close rebuild the list)
 let _listW = -1, _fitV = 0;         // list width + the generation every row's fit is stamped with (see _fit)
 let _fitDone = -1;                  // the _fitV a _fit pass left every list row fitted at; a morph that adds rows resets it
@@ -471,7 +473,9 @@ document.addEventListener('alpine:init', () => {
     _clMRest: true,         // month scroll at rest until a sample says otherwise (clFast = !_clMRest)
     bar: BAR,   // the jot bar replaces Lists' dot strip on a phone
     jotted: null,   // the task the bar just added, open for its steps (S1)
+    notesOpen: false,   // phone: the description and entries show, behind the Steps and notes chip (9A)
     listHold: null,   // { hot, x, y, moved }: the lists held up from the bar's chip (P-A)
+    viewSheet: false,   // Plan's views and actions, risen from the bar's day chip (droid-10)
     narrow: PHONE_MQ.matches,   // phone width — reactive twin of the 640px CSS block (a getter wouldn't re-render on resize)
     stacked: STACK_MQ.matches,  // dialogs share one cell, the covered one inert — reactive twin of the 759px CSS block
     clSideOver: SIDE_MQ.matches,   // the task panel overlays the calendar instead of squeezing it, and day view doesn't open it by itself
@@ -560,7 +564,7 @@ document.addEventListener('alpine:init', () => {
     railList: [],     // move-rail drop targets, populated while a task row is dragged
     railHot: null,    // rail target currently under the drag (kind+id)
     _t: null,
-    pop: null, popXY: { left: 0, top: 0 },
+    pop: null, popXY: { left: 0, top: 0 }, popDock: false,
     titleEmpty: true,
     areaPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
     projPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
@@ -756,14 +760,19 @@ document.addEventListener('alpine:init', () => {
       // The soft keyboard's height (0 when down), from what the visual viewport lost: a phone docks the composer's chips + Save on it.
       // Its metrics land on their readers alone (uninherited, styles.css): set on <html>, each change restyled every element.
       const root = document.documentElement, sheet = new CSSStyleSheet();
-      sheet.replaceSync('.app, .app::after, .composer-dock, .pop.cal, .jb-host {}'); document.adoptedStyleSheets.push(sheet);
-      const vars = sheet.cssRules[0].style, keyboard = () => {
-        const h = Math.max(0, Math.round(innerHeight - visualViewport.offsetTop - visualViewport.height)); if (h === _kb) return;
-        _kb = h; vars.setProperty('--kb', h + 'px'); root.classList.toggle('kb', h > 0);
+      sheet.replaceSync('.app, .app::after, .composer-dock, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
+      // A docked pop (9B) counts as the keyboard: it takes the keyboard's place, so the dock rides it the same way.
+      const vars = sheet.cssRules[0].style;
+      _keyboard = () => {
+        const keys = Math.max(0, Math.round(innerHeight - visualViewport.offsetTop - visualViewport.height));   // a tap on a docked pop's field raises the keyboard under it
+        const h = keys + (this.pop && this.popDock && document.querySelector('body > .pop.dock')?.offsetHeight || 0); if (h === _kb && keys === _keys) return false;
+        _kb = h; _keys = keys; vars.setProperty('--kb', h + 'px'); vars.setProperty('--keys', keys + 'px'); root.classList.toggle('kb', h > 0);
+        return true;
       };
-      new ResizeObserver(([e]) => vars.setProperty('--dock', e.borderBoxSize[0].blockSize + 'px')).observe(this.$refs.composer.querySelector('.composer-dock'));
-      visualViewport.addEventListener('resize', keyboard);
-      visualViewport.addEventListener('scroll', keyboard);
+      _field = new ResizeObserver(([e]) => vars.setProperty('--field', e.borderBoxSize[0].blockSize + 'px'));   // the bar's chat field: a thread keeps its last message above it
+      new ResizeObserver(([e]) => vars.setProperty('--dock', e.borderBoxSize[0].blockSize + 'px')).observe(this.$refs.composer.querySelector('.composer-dock'), { box: 'border-box' });   // html.kb pads the dock without resizing its content
+      visualViewport.addEventListener('resize', _keyboard);
+      visualViewport.addEventListener('scroll', _keyboard);
       // Phone width is a real mode, not just a stylesheet: week view is dropped and the calendar's view
       // switcher moves into the dot strip, so the flag has to be reactive and the current view legal.
       PHONE_MQ.addEventListener('change', (e) => {
@@ -1114,6 +1123,7 @@ document.addEventListener('alpine:init', () => {
       if (this._canPatch()) this._patchRows(hit);
       else this._rowV++;
     },
+    watchField(el) { _field.observe(el); },
     phoneThread() { return this.narrow && this.surface === 'social' && !!this.chat.open; },   // a whole-screen page with no switcher (soc-2e)
     chatPeer(chat) { return chat ? peerName(chat, this._acct()) : ''; },
     // Signed out, Social asks to sign in and the invite waits. A server's no (used, expired, your own) drops it; a network failure keeps it for the next boot.
@@ -1274,7 +1284,7 @@ document.addEventListener('alpine:init', () => {
       if (!this.chat.editing) this.chat.stash = this.chat.draft;
       this.chat.editing = m.id;
       this.chat.draft = m.body;
-      queueMicrotask(() => this.$refs.chatInput?.focus());
+      queueMicrotask(() => (this.$refs.chatBar ?? this.$refs.chatInput)?.focus());
     },
     endEdit() {
       this.chat.editing = null;
@@ -1395,7 +1405,7 @@ document.addEventListener('alpine:init', () => {
       // Holding the strip's ＋ = a new event on the shown day (D8): the platform's 500ms, real time (motion.t zeroes it → every tap a hold); the slop below cancels it.
       // A fired hold ends the drag (a mouse release lands on the editor's backdrop, missing canvasUp); the strip's @touchend eats a finger's release click, which would close it.
       if (e.target.closest('[data-act="add"]')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.clNewEvent(); }, 500);
-      else if (e.target.closest('.jb-dest')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.listHold = { hot: -1, x: e.clientX, y: e.clientY, moved: false }; }, 500);   // P-A, same hold and slop
+      else if (e.target.closest('.jb-dest:not(.jb-day)')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.listHold = { hot: -1, x: e.clientX, y: e.clientY, moved: false }; }, 500);   // P-A, same hold and slop
     },
     canvasMove(e) {
       if (!this.drag.active || e.pointerId !== this.drag.id || sorting) return;   // a held row owns the finger
@@ -2687,6 +2697,7 @@ document.addEventListener('alpine:init', () => {
     openComposer() {
       this._releaseCloseRange(true);
       this._releaseView();
+      this.notesOpen = !!this.editing && this.editing === this.jotted;   // S1 opens on its steps
       const focusBefore = document.activeElement, d = this.draft;
       // If the tapped task's TOP is in view, DON'T scroll — grow it in place (its bottom may extend below the
       // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. Close never
@@ -2718,7 +2729,7 @@ document.addEventListener('alpine:init', () => {
       queueMicrotask(() => queueMicrotask(() => {
         // A task that ALREADY has entries opens with the caret in its "new item" ghost — the next thing you do to
         // a list is add to it, not rename it. (Exactly one ghost renders in either non-empty case: sub or chk.)
-        const kids = this.shownSubs().length, ghost = (kids || this.editing && (this.draft.checklist.length || this.editing === this.jotted)) && this._ghostEl(kids ? 'sub' : 'chk');
+        const kids = this.shownSubs().length, ghost = (kids || this.editing && (this.draft.checklist.length || this.editing === this.jotted)) && !this.notesHidden() && this._ghostEl(kids ? 'sub' : 'chk');
         const c = ghost || this.$refs.content;
         // Default focus must not steal a click/Tab that reached the composer before this deferred callback,
         // nor land in a session an Escape already closed (a stall queues input ahead of this callback).
@@ -3592,7 +3603,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     // The ONE owner of teleported-pop placement + outside-close (every teleported pop binds these; fix positioning here, once)
-    popStyle() { return 'position:fixed;left:' + this.popXY.left + 'px;top:' + this.popXY.top + 'px;bottom:auto'; },   // each sits in an x-if: shown = mounted
+    popStyle() { return this.popDock ? '' : 'position:fixed;left:' + this.popXY.left + 'px;top:' + this.popXY.top + 'px;bottom:auto'; },   // each sits in an x-if: shown = mounted
     // capture (index.html): a click that repaints its own target (a row's check) detaches it before bubbling, and Alpine's .outside skips detached targets
     // @click.outside reads every listener's offsetWidth on each click (a forced layout); gate on open state first, then this
     outside(e, el) { return e.target.isConnected && !el.contains(e.target); },
@@ -3616,7 +3627,8 @@ document.addEventListener('alpine:init', () => {
       this.calFocus = null;
       // Kill any live anchor tracker before opening a new pop
       if (this._popTrack) { this._popTrack(); this._popTrack = null; }
-      if (!this.pop || !anchor) return;
+      this.popDock = this.phoneDock() && !!anchor?.closest('.composer-dock');   // 9B: a phone's composer pop opens in the keyboard's place
+      if (!this.pop || !anchor) return _keyboard();
       const r = anchor.getBoundingClientRect(), m = 8;
       this.popXY = { left: r.left, top: r.bottom + 5 };
       // The handle is published SYNCHRONOUSLY even though the loop below only starts a tick later —
@@ -3642,7 +3654,7 @@ document.addEventListener('alpine:init', () => {
         let prev = '', zeroRects = 0;
         const follow = () => {
           rafId = requestAnimationFrame(follow);
-          if (!this.pop || !el.isConnected) return cleanup();
+          if (!this.pop || !el.isConnected) { _keyboard(); return cleanup(); }
           // The pop's own size is part of the key: a filtered list that shrinks under a STATIONARY anchor otherwise leaves the
           // pop hanging where the taller version ended (6px → 38px gap), and content that widens it after placement runs it flush to the edge.
           const a = anchor.getBoundingClientRect(), k = `${a.top},${a.left},${a.bottom},${el.offsetHeight},${el.offsetWidth},${_kb}`;
@@ -3658,7 +3670,11 @@ document.addEventListener('alpine:init', () => {
           zeroRects = 0;
           if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) { this.pop = null; return cleanup(); }
           prev = k;
-          this.popXY = _pos(a);
+          if (!this.popDock) this.popXY = _pos(a);
+          else if (_keyboard()) {   // lift the card over the panel, as the caret reveal does over the keyboard; never its top off screen
+            const card = anchor.closest('.composer'), r = card.getBoundingClientRect(), over = Math.min(r.bottom - (vh - _kb), r.top);   // not $refs: a pop's own item (···'s Size) has none
+            if (over > 0) card.closest('.app').scrollTop += over;
+          }
         };
         follow();
       });
@@ -3788,7 +3804,7 @@ document.addEventListener('alpine:init', () => {
       this.dreg = !this.repRules().length && this.draft.on ? 'on' : 'by';   // hydrate: a placed task opens in On
       this.endPicking = false; this.tpop = false;
       this._calTo(this.draft[this._dateKey()] || this.draft.on || isoDate(new Date()));
-      this.$nextTick(() => this.pop === name && this.$refs.calType?.focus());
+      this.$nextTick(() => this.pop === name && !this.popDock && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it
     },
     // A repeat resumed after falling behind starts again at its next date from today, not the pile it missed
     // (user, tweak-9: "let's not unload onto the user when they restart a project"); one still ahead keeps its date.
@@ -6369,6 +6385,18 @@ document.addEventListener('alpine:init', () => {
     // Uncheckable: the checklist renders as a plain notes list (no boxes, no done styling) everywhere
     chkPlain() { return this.draft.checklist_plain; },
     chkSteps() { return !this.draft.checklist_plain && this.draft.task_type === 'steps'; },
+    phoneDock() { return this.narrow && document.documentElement.classList.contains('touch'); },   // the composer's one-row dock (9A): the 640 block's .touch rules
+    notesHidden() { return this.phoneDock() && !this.notesOpen; },
+    notesChip() {   // [icon, label] of the Steps and notes chip: what is behind it, the entries first
+      const n = this.draft.checklist.length, subs = this.shownSubs().length;
+      if (n) return this.chkSteps() ? ['steps', n + (n > 1 ? ' steps' : ' step')] : ['list-check', n + (n > 1 ? ' items' : ' item')];
+      if (subs) return ['indent', subs + (subs > 1 ? ' subtasks' : ' subtask')];
+      return this.draft.notes.trim() ? ['edit', 'Notes'] : ['steps', 'Steps and notes'];
+    },
+    toggleNotes() {
+      this.notesOpen = !this.notesOpen;
+      queueMicrotask(() => this.notesOpen && this.composer.open && this.focusFirstEntry());   // after Alpine's flush shows them: a list's ghost, else First step
+    },
     // Steps is picked by typing into the empty composer's "First step" ghost; it and the plain toggle are draft, like every field: nothing lands before Save. Plain and Steps exclude each other.
     toggleChecklistPlain(asked) {
       if (!asked && this.chkSteps()) return this.askConfirm({ message: 'Turn these steps into an uncheckable list?', confirmLabel: 'Make list uncheckable', onConfirm: () => this.toggleChecklistPlain(true) });   // Steps leave only through a confirm (msg 15)
@@ -8835,6 +8863,11 @@ document.addEventListener('alpine:init', () => {
     // The strip's "T" shows only while today is OUT of view (user 2026-08-17 P4; Android planShowToday) — the
     // SETTLED day (clAnchor lands after a drag), never the live drag, which flashed it mid-gesture
     clShowToday() { const d = new Date(); return this.clView === 'month' ? this.clFocusYM !== d.getFullYear() * 12 + d.getMonth() : this.clAnchor !== isoDate(d); },
+    jbDay() {   // the bar's Plan chip: Today until the view leaves it
+      if (!this.clShowToday()) return 'Today';
+      if (this.clView === 'month' && this.clFocusYM != null) return this._clFocusDate().toLocaleDateString([], { month: 'long' });
+      return this._clDate().toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    },
     clToday(turn = true) {
       const now = new Date(), gap = now.getFullYear() * 12 + now.getMonth() - this.clFocusYM;
       this.clAnchor = isoDate(now); this.clDayFocus = null;   // the Tab stop comes back with today

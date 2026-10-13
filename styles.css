@@ -42,6 +42,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .contents { display: contents; }
 .flex-col { display: flex; flex-direction: column; }
 .items-center { align-items: center; }
+.items-end { align-items: flex-end; }
 .justify-center { justify-content: center; }
 .justify-between { justify-content: space-between; }
 .gap-2 { gap: var(--sp-2); } .gap-4 { gap: var(--sp-4); } .gap-6 { gap: var(--sp-6); } .gap-8 { gap: var(--sp-8); } .gap-10 { gap: var(--sp-10); }
@@ -73,13 +74,15 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 /* ---- Social: chats list beside the thread (desktop); one or the other on a phone ---- */
 .social { display: grid; grid-template-columns: 280px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--sp-24); height: 100%; padding: var(--surface-top) var(--sp-24) var(--dock-clear) var(--surface-top); }
 .social h1 { margin: 0 0 var(--sp-20) var(--sp-2); font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
+.soc-head { margin-bottom: var(--sp-20); padding: 0 var(--sp-2); }   /* the title's line: the jot bar's gear sits on it */
+.social .soc-head > h1 { margin: 0; }
 .soc-out { grid-column: 1 / -1; justify-content: center; gap: var(--sp-12); color: var(--muted); }
 .soc-out p { margin: 0; }
 .soc-list { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; overflow-y: auto; }
 .chat-row, .soc-invite { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-10); align-items: center; padding: var(--sp-8) var(--sp-10);
   border: 0; border-radius: var(--r-8); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .chat-row:hover, .chat-row.sel, .soc-invite:hover { background: var(--hover); }
-:is(.chat-row, .soc-invite) .av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-13); font-weight: 700;
+:is(.chat-row, .soc-invite, .jb-chat) .av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-13); font-weight: 700;
   color: var(--warm-ink); background: color-mix(in srgb, var(--warm) 15%, transparent); }
 .chat-row b { font-size: var(--fs-15); font-weight: 600; }
 .chat-row.new .av { position: relative; }
@@ -147,7 +150,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   /* an open thread is the whole screen: no switcher (soc-2e); ‹ Chats, Back and a swipe right lead back */
   .social.in-thread { padding-bottom: var(--sp-12); }
   .canvas.in-thread > :is(.canvas-dots, .settings-gear) { display: none; }
-  .social h1 { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
+  :is(.soc-out h1, .soc-head) { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
   .social.in-thread:not(.back) .soc-list, .social:not(.in-thread) .thread { display: none; }
   .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) var(--sp-12); }   /* full bleed, so it slides as a page */
   .social.back .thread { background: var(--bg-wash), var(--bg); box-shadow: var(--shadow-sm); }
@@ -158,7 +161,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 /* A key cuts what a click or swipe animates (ui-build G9). --slide also times the leaving surface's content-visibility hold.
    Not inherited: an inherited one restyled every element under the track on the first key (60K with a huge description). */
 @property --slide { syntax: '<time>'; inherits: false; initial-value: .42s; }
-.kbd :is(.canvas-track, .surface) { --slide: 0s; }
+.kbd :is(.canvas-track, .surface, .jb-el, .jb-field) { --slide: 0s; }
 .kbd :is(.overview, .ov-grid, .sel-anim, .lc-anim) { transition: none; }
 .swiping, .swiping * { user-select: none; -webkit-user-select: none; }   /* no text selection / flicker mid horizontal swipe */
 /* The strip floats OVER scrolling content, and --muted/--faint carry ALPHA in every dark theme — the last
@@ -1107,7 +1110,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   button { border: none; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
   .bx { font-size: var(--fs-11); color: var(--faint); line-height: 1;
     &:hover { color: var(--p1); } } }
-.zrail { gap: 2px; opacity: 1; transform: translateY(0); transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+.zrail { gap: var(--sp-2); opacity: 1; transform: translateY(0); transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
   @starting-style { opacity: 0; transform: translateY(-4px); } }
 .zone.paused p { color: var(--muted); }
 .zone.paused .c, .zone.paused .st, .zone.paused .st button { background: var(--hover); color: var(--muted); }
@@ -1294,6 +1297,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .del-btn:hover { color: var(--p1); }
   .more-wrap { position: relative; }
   .more-btn .ico { width: 17px; height: 17px; fill: currentColor; stroke: none; }   /* solid dots — the global .ico fill:none would otherwise render them as outlines */
+  .primary .ico { display: none; }   /* the phone dock's go button (9A) */
 }
 /* Desktop: the project and the task's actions sit outside, under the card (user 10-10); Enter or ⌘Enter saves, Esc and
    a click outside close. Its left lines the project's icon up with the card's checkbox, its right the card's last icon.
@@ -2499,11 +2503,33 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
    title room. The shadow + clip paint the panel edge to edge: what scrolls beneath never shows through. */
 @property --kb { syntax: '<length>'; inherits: false; initial-value: 0px; }   /* keyboard() sets both on their readers only */
 @property --dock { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --keys { syntax: '<length>'; inherits: false; initial-value: 0px; }   /* the keyboard alone: a docked pop (9B) stands on it */
+@property --field { syntax: '<length>'; inherits: false; initial-value: 44px; }   /* the jot bar's chat field's height (watchField) */
 .composer-dock { display: contents; }
 @media (max-width: 640px) {
-  .touch.kb .composer-dock { display: flex; flex-direction: column; gap: var(--sp-8); position: sticky; bottom: calc(var(--kb) - 100px); z-index: 1;
+  .touch.kb .composer-dock { position: sticky; bottom: calc(var(--kb) - 100px); z-index: 1;
     padding-bottom: var(--sp-8); background: var(--panel); box-shadow: 0 0 0 100vmax var(--panel); clip-path: inset(0 -100vmax); }
-  .touch.kb .composer-opts { flex-wrap: nowrap; overflow-x: auto; > .field { flex: none; } }   /* `> *` would restyle the whole page per keyboard toggle */
+  /* 9A: one row from the card's left edge: the project, the set values then bare icons (sideways when crowded, under a
+     fade), ··· and the go button. Cancel goes (a tap outside closes); the unset Size, Place and Relations, Show in
+     Overview and Delete move into ···; the description and entries sit behind the Steps and notes chip (app.js notesHidden). */
+  .touch .composer-dock { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-8) 0 0 calc(-18px - var(--sp-12)); }   /* back over the 18px check and its gap: the card's left edge */
+  .touch :is(.composer-actions, .composer-btns) { display: contents; }
+  .touch .composer-actions :is(.ghost, .overview-btn, .del-btn) { display: none; }
+  .touch .composer-actions .field.loc { order: -1; flex: 0 1 auto; max-width: 50%; margin: 0; }
+  .touch .proj-pick { height: 40px; align-items: center; padding: 0 var(--sp-12) 0 var(--sp-8); border-radius: var(--r); background: color-mix(in srgb, var(--ink) 8%, transparent);
+    font-size: var(--fs-13); .proj-pick-ico { color: var(--muted); } :is(.proj-pick-ico, .hash) { width: 16px; text-align: center; } }   /* the name starts on the title's column */
+  .touch .composer-opts { flex: 1; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0; margin: 0; padding-right: var(--sp-12);
+    mask-image: linear-gradient(to left, transparent, #000 var(--sp-12));
+    > .field { flex: none; } .field:has(> .chip.set) { order: -1; } .field:has(> .chip-notes.chip) { order: -2; }   /* the notes lead, never scrolled away: the only way to the steps */
+    .field:has(> :is(.chip-dur, .chip-loc, .chip-rel):not(.set)) { display: none; }
+    .chip:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; } }
+  .touch .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
+  .touch .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
+    .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
+  /* 9B: a pop from the dock opens in the keyboard's place (app.js popDock), so the dock rides it as it rides the keyboard */
+  .touch .pop.dock { position: fixed; inset: auto 0 var(--keys); width: auto; min-width: 0; max-width: none; max-height: min(45vh, 70vh - var(--keys)); overflow-y: auto;   /* a keyboard's height */
+    border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + env(safe-area-inset-bottom));
+    transition: transform .2s var(--ease-drawer); @starting-style { transform: translateY(100%); } }
   /* The browser's caret reveal knows neither the keyboard nor the dock: pad them out, and give the list room to lift its end. */
   .touch.kb .app { scroll-padding-bottom: calc(var(--kb) + var(--dock)); &::after { content: ''; display: block; height: var(--kb); } }
 }
@@ -2519,34 +2545,65 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .ov-hint, .palette-foot, .set-sec-keys, .set-sub:has(kbd), .cl-stop-hint { display: none; }
 }
 
-/* ---- Jot bar (docs/ui/mobile-design-baseline.md §8): Lists on a phone, behind the adherod.bar trial ----
-   It takes the dot strip's band (so --foot grows to it) and the gear moves to the header. Plan and Social keep the
-   strip: Plan's views and actions ride it. Typing hides it: the composer docks over the keyboard on its own (#37d). */
-.jot-bar, .topbar .settings-gear { display: none; }
-.jot-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; height: var(--foot); gap: var(--sp-6);
-  padding: 0 var(--sp-10) env(safe-area-inset-bottom, 0px); background: var(--panel); border-top: 1px solid var(--hair); }
-.jb-field { flex: 1; height: 44px; gap: var(--sp-10); padding: 0 var(--sp-6); border-radius: var(--r-lg); background: var(--hover); }
-.jb-dest { flex: none; max-width: 50%; height: 32px; gap: var(--sp-6); padding: 0 var(--sp-10) 0 var(--sp-8); border: 0; border-radius: var(--r);
+/* ---- Jot bar (docs/ui/mobile-design-baseline.md §8): a phone's Lists, Plan and Social, behind the adherod.bar trial ----
+   Bar D (droid-11): no bar. The page blurs and fades under it and the field floats 12 off the edges; its top (56) is
+   Plan's --foot. Lists, Plan, Social hold their order and where you are widens into the field, on the canvas's slide.
+   The gears move to the headers. Typing hides it (the composer docks over the keyboard, #37d), but a thread's field rides the keyboard. */
+.jot-bar, :is(.topbar, .cl-bar, .soc-list) .settings-gear { display: none; }
+.jot-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; gap: var(--sp-4); container-type: inline-size;
+  padding: 0 var(--sp-12) calc(var(--sp-12) + env(safe-area-inset-bottom, 0px));
+  &::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; z-index: -1; height: 128px; pointer-events: none; backdrop-filter: blur(12px);
+    background: linear-gradient(color-mix(in srgb, var(--bg) 70%, transparent), color-mix(in srgb, var(--bg) 86%, transparent)); mask-image: linear-gradient(transparent, #000 55%); } }
+.jb-el { position: relative; flex: 0 1 44px; height: 44px; border-radius: var(--r-pill); overflow: hidden;
+  transition: flex-grow var(--slide) var(--ease-drawer), background-color var(--slide) var(--ease-drawer);
+  &.on { flex-grow: 1; background: color-mix(in srgb, var(--ink) 10%, transparent); }
+  > .jb-ico { position: absolute; left: 0; top: 0; transition: opacity .12s var(--ease-out); }
+  &.on > .jb-ico { opacity: 0; }
+  > .jb-field { opacity: 0; transition: opacity .12s var(--ease-out); }
+  &.on > .jb-field { opacity: 1; transition: opacity .2s var(--ease-out) calc(var(--slide) / 2); } }   /* the field shows once its pill has room */
+@media (prefers-reduced-motion: reduce) { .jb-el { transition: background-color .2s var(--ease-out); } }   /* the pills jump; the field crossfades */
+/* Absolute at the widened pill's final width: the growing pill uncovers it, nothing reflows mid-slide */
+.jb-field { position: absolute; left: 0; top: 0; width: calc(100cqw - 2 * (44px + var(--sp-4))); height: 44px; gap: var(--sp-10); padding: 0 var(--sp-6); }
+.jb-dest { flex: none; max-width: 50%; height: 32px; gap: var(--sp-6); padding: 0 var(--sp-10) 0 var(--sp-8); border: 0; border-radius: var(--r-pill);
   background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); font: inherit; font-size: var(--fs-13); font-weight: 600; cursor: pointer;
   touch-action: none; user-select: none; -webkit-touch-callout: none;   /* held (P-A): the finger slides the menu, not the page */
   .ico { width: 15px; height: 15px; flex: none; color: var(--muted); } }
-.jb-lists { top: auto; bottom: calc(100% + var(--sp-4)); left: var(--sp-10); width: 270px; border-radius: var(--r-lg); box-shadow: var(--shadow-pop); transform-origin: var(--sp-24) 100%;
+.jb-lists { top: auto; bottom: calc(100% + var(--sp-8)); left: var(--sp-12); width: 270px; border-radius: var(--r-lg); box-shadow: var(--shadow-pop); transform-origin: var(--sp-24) 100%;
   transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); @starting-style { opacity: 0; transform: scale(.95); }
   .pop-item { min-height: 44px; gap: var(--sp-12); padding: 0 var(--sp-10); font-size: var(--fs-15); &.hot { background: var(--hover); } &.on { color: var(--accent); } }
   .pop-item .ico { width: 18px; height: 18px; }
   .more { margin-top: var(--sp-6); border-top: 1px solid var(--hair); border-radius: 0; color: var(--muted); } }
 .jot-bar:has(> .jb-lists) { z-index: 61; }   /* held lists sit over the toasts standing on the bar */
-@media (prefers-reduced-motion: reduce) { .jb-lists { @starting-style { transform: none; } } }   /* fades, doesn't grow */
-.jb-jot { flex: 1; align-self: stretch; padding: 0; border: 0; background: none; color: var(--faint); font: inherit; font-size: var(--fs-15); text-align: left; cursor: text; }
-.jb-ico { flex: none; width: 44px; height: 44px; border: 0; border-radius: var(--r); background: none; color: var(--muted); cursor: pointer;
+.jb-sheet { right: var(--sp-12); width: auto; background: none; transform-origin: 25% 100%;   /* droid-10: the field's width, risen from the day chip */
+  &::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;   /* glass on a pseudo: on the sheet, backdrop-filter would trap its fixed scrim */
+    background: color-mix(in srgb, var(--panel) 60%, transparent); backdrop-filter: blur(20px); } }
+@media (prefers-reduced-motion: reduce) { .jb-lists, .touch .pop.dock { transition: opacity .18s var(--ease-out); @starting-style { transform: none; opacity: 0; } } }   /* fades, doesn't grow or rise */
+/* In a thread the field is the composer (V-B): in flow, so a long message grows it up; a 22 radius stays a pill at one line */
+.jb-el:has(> .jb-chat) { height: auto; border-radius: var(--r-field); }
+.jb-chat { position: relative; height: auto; min-height: 44px; gap: var(--sp-6); padding: var(--sp-6);
+  width: auto;   /* never slides: a thread opens on Social */
+  .jb-dest { padding-left: var(--sp-6); }
+  .av { width: 20px; height: 20px; font-size: var(--fs-11); }
+  textarea { flex: 1; min-width: 0; max-height: 40vh; field-sizing: content; resize: none; padding: var(--sp-6) 0; border: 0; outline: 0; background: none;
+    color: inherit; font: inherit; font-size: var(--fs-15); line-height: 20px; &::placeholder { color: var(--faint); } }
+  :is(.attach, .send) { width: 32px; height: 32px; border-radius: var(--r-pill); }
+  .send { flex: none; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; &:disabled { opacity: .45; cursor: default; } .ico { width: 16px; height: 16px; } } }
+.jb-jot { flex: 1; align-self: stretch; padding: 0; border: 0; background: none; color: var(--faint); font: inherit; font-size: var(--fs-15); text-align: left; cursor: text;
+  &:first-child { padding-left: var(--sp-10); } }   /* Social's: no chip before it */
+.jb-ico { flex: none; width: 44px; height: 44px; border: 0; border-radius: var(--r-pill); background: none; color: var(--muted); cursor: pointer;
   .ico { width: 20px; height: 20px; flex: none; }
   &.cd-new::before { left: calc(50% + var(--sp-4)); box-shadow: 0 0 0 2px var(--panel); } }
 @media (max-width: 640px) {
-  .bar-on { --foot: 72px; }   /* on the app root, not html:has(): that re-matched <html> on every DOM write */
+  .bar-on .surface-lists { --foot: 72px; }   /* not html:has(): that re-matched <html> on every DOM write */
   .bar-on .canvas > :is(.canvas-dots, .settings-gear) { display: none; }
   .bar-on .canvas > .jot-bar { display: flex; }
-  .kb .bar-on .canvas > .jot-bar { display: none; }
-  .bar-on .topbar .settings-gear { display: flex; position: static; flex: none; }
+  .kb .bar-on .canvas:not(.in-thread) > .jot-bar { display: none; }
+  .bar-on .canvas.in-thread > .jot-bar { bottom: var(--kb); }
+  .kb .bar-on .canvas.in-thread > .jot-bar > .jb-el:not(.on) { display: none; }   /* typing, the field takes the width (VB-chat-typed) */
+  .bar-on .thread { padding-bottom: calc(var(--kb) + var(--field) + var(--sp-24)); > .chat-comp { display: none; } }   /* its last message and files stay above the field… */
+  .bar-on .canvas.in-thread > .jot-bar::before { top: calc(-1 * var(--sp-24)); height: auto; }   /* …and its fade, which tracks the field's height */
+  #notif-stack.by-field { --foot: calc(var(--kb) + var(--field) + var(--sp-12)); }   /* toasts stand on the field, as on Plan */
+  .bar-on :is(.topbar, .cl-bar, .soc-list) .settings-gear { display: flex; position: static; flex: none; }
   /* G-A: a 60px header that stays on top, clear at rest (the glow runs from y=0); once rows scroll under it, it frosts */
   .bar-on .app { padding-top: 0; scroll-padding-top: 60px; container-type: scroll-state; }   /* the header's height (_seenTop); a state, not a scroll-driven animation: the motion dial zeroes those */
   .bar-on .topbar { position: sticky; top: 0; z-index: 8; height: 60px; margin: 0 calc(-1 * var(--pad-x)) var(--sp-8); padding: var(--sp-6) var(--pad-x) 0;   /* z 8: over a row's composer (7) */

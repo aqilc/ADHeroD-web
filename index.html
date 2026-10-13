@@ -133,7 +133,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c.83 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1-.24-.27-.39-.62-.39-1 0-.83.67-1.5 1.5-1.5H16a5 5 0 0 0 5-5c0-4.42-4.03-8-9-8z"/><circle cx="7.5" cy="11.5" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="8.5" r="1"/></symbol>
 </defs></svg>
 <!-- ── Root Alpine wrapper + shell + topbar ── -->
-<div x-data="adherod" x-cloak :class="{ 'no-breathe': !nowBreathe, kbd, 'bar-on': bar && surface === 'lists' }"
+<div x-data="adherod" x-cloak :class="{ 'no-breathe': !nowBreathe, kbd, 'bar-on': bar }"
      @click.capture="copyCode($event)"
      @keydown.capture="codeKey($event)"
      @wheel.capture.passive="kbd = false"
@@ -468,7 +468,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </template>
         </div>
         <!-- Live Markdown: a token's markers show while the caret touches it. -->
-        <div class="desc" x-ref="desc" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Description"
+        <div class="desc" x-ref="desc" x-show="!notesHidden()" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Description"
              data-placeholder="Description" @beforeinput="liveBeforeInput($event)" @input="onDescInput($event)" @compositionend="onDescInput()"
              @keydown="descKeydown($event)" @paste="descPaste($event)" @copy="descCopy($event)" @cut="descCopy($event)"></div>
         <!-- Relation and file chips, shown under the description so they're easy to see (add more via the Relations chip, a drop or a paste) -->
@@ -491,7 +491,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </template>
         </div>
         <!-- Inline subtasks / checklist entries (Things-style), directly below the description -->
-        <div class="composer-entries flex-col" @copy="chkCopy($event)" @pointermove="chkDragOut($event)">
+        <div class="composer-entries flex-col" x-show="!notesHidden()" @copy="chkCopy($event)" @pointermove="chkDragOut($event)">
           <!-- The subtask ghost's ONE element — never re-created, so a subtask landing mid-typing can't tear it from under the caret: the
                empty state's "ghost OR ghost" row, else the head of the subtask list (Tab from the description lands on it first; new
                subtasks land right below it). Rows are plain DOM painted by paintSubs from draft.subs (keyed by task id), their events delegated here. -->
@@ -546,7 +546,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="ico"><use href="#i-prio"/></svg>
               <span x-text="impName(draft.importance, 'Importance')"></span>
             </button>
-            <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" x-cloak :style="popStyle()">
+            <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <template x-for="o in [['none','None','No special handling'],['focus','Focus','Keep it in front of me'],['must','Must','Hard to ignore'],['someday','Someday','Park it for later']]" :key="o[0]">
                 <button type="button" class="pri-chip" :class="{ sel: draft.importance === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="draft.importance = o[0]; pop = null">
                   <svg class="ico"><use href="#i-prio"/></svg>
@@ -585,7 +585,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="ico"><use :href="sizeNow() ? '#i-size-' + sizeNow() : '#i-clock'"/></svg>
               <span x-text="durLabel()"></span>
             </button>
-            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :style="popStyle()">
+            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <div class="lad">
                 <button type="button" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><b>~5 m</b></button>
                 <button type="button" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><b>&lt;15 m</b></button>
@@ -607,7 +607,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="ico"><use :href="draft.reminders.length ? '#i-bell-fill' : '#i-bell'"/></svg>
               <span x-text="remLabel()"></span>
             </button>
-            <template x-if="pop === 'rem'"><template x-teleport="body"><div class="pop rem-pop" x-cloak :style="popStyle()">
+            <template x-if="pop === 'rem'"><template x-teleport="body"><div class="pop rem-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <div class="pop-sub-head" x-show="draft.reminders.length">Reminders</div>
               <template x-for="r in draft.reminders" :key="r.id">
                 <div class="rem-row" :class="{ paused: r.paused }">
@@ -636,7 +636,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="ico"><use :href="draft.areas.length ? '#i-tag-fill' : '#i-tag-tag'"/></svg>
               <span x-text="areaLabel()"></span>
             </button>
-            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :style="popStyle()">
+            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <div class="area-grid area-cluster items-center">
                 <template x-for="l in areas" :key="l.id">
                   <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="clusterPick($el, l.id)" x-html="areaOptHtml(l, draft.areas.includes(l.id))"></button>
@@ -652,7 +652,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <span x-text="locChipLabel()"></span>
             </button>
             <!-- Hybrid picker: sentence polarity ("do this [at]:") + block-driven here-row + region chip rows -->
-            <template x-if="pop === 'loc'"><template x-teleport="body"><div class="pop loc-pop" x-cloak :style="popStyle()">
+            <template x-if="pop === 'loc'"><template x-teleport="body"><div class="pop loc-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <p class="lp-line">do this <button type="button" class="c inline-flex items-center" :class="locPolarity() === 'any' ? 'g' : (locPolarity() === 'except' ? 'x' : '')" @click="toggleLocPolarity()" x-text="locPolarity() === 'any' ? 'anywhere' : (locPolarity() === 'except' ? 'away from' : 'at')"></button><span class="lp-colon" x-show="locPolarity() !== 'any'">:</span>
               <!-- teach by doing: the sentence's verb IS the phrase you can type into the title -->
               <template x-if="locPolarity() !== 'any'"><span class="lp-kbd" x-text="'or type “' + (locPolarity() === 'except' ? 'away from' : 'at') + ' …”'"></span></template></p>
@@ -697,7 +697,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <span>Relations</span>
             </button>
             <!-- Picker rows: a click adds as Relates; a drag onto a well picks the kind -->
-            <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" x-cloak :style="popStyle()">
+            <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <div class="relations-section">
                 <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
                 <div class="rel-picker">
@@ -720,12 +720,17 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </div>
             </div></template></template>
           </div>
+          <!-- Phone: the description and entries sit behind this chip (9A) -->
+          <div class="field" x-show="phoneDock()">
+            <button type="button" class="chip chip-notes inline-flex items-center" :class="{ set: notesChip()[1] !== 'Steps and notes', open: notesOpen }" title="Steps and notes" :aria-expanded="notesOpen" @click="toggleNotes()">
+              <svg class="ico"><use :href="'#i-' + notesChip()[0]"/></svg>
+              <span x-text="notesChip()[1]"></span>
+            </button>
+          </div>
         </div>
         </template>
-        <!-- a phone's pop covers most of the screen: the scrim takes the tap that dismisses it (popAway closes), like a sheet's backdrop -->
-        <template x-if="pop && narrow"><div class="pop-scrim"></div></template>
         <!-- ── Unified calendar pop (.pop.cal): due, plan-nav — outside the composer's x-if so clnav works while it's closed ── -->
-        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" x-cloak :class="{ 'cal-wk': pop === 'clnav' && clView === 'week' }" :style="popStyle()">
+        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" x-cloak :class="{ 'cal-wk': pop === 'clnav' && clView === 'week', dock: popDock }" :style="popStyle()">
           <!-- date-text input (not shown for clnav) -->
           <input type="text" class="cal-type" x-show="pop === 'due'" placeholder="Date or repeat (every 2 weeks)" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
           <!-- due: scheduling suggestions + clear chip -->
@@ -775,7 +780,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" @click="addRepeat()">+ repeat</button></div>
         </div></template></template>
         <!-- A rolled chip's list (.row-rels), its kind only: each opens, or goes (Undo restores). The blocking task or the file itself stays. -->
-        <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" x-cloak :style="popStyle()" @click.outside.capture="popAway('rels', $event)">
+        <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('rels', $event)">
           <template x-for="id in relsList()" :key="id">
             <div class="flex items-center gap-4">
               <template x-if="relsFor.kind === 'file'"><button type="button" class="pop-item min-w-0" @click="pop = null; openFileId(id)"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="fileName(id)"></span></button></template>
@@ -784,7 +789,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div>
           </template>
         </div></template></template>
-        <template x-if="pop === 'link'"><template x-teleport="body"><div class="pop link-pop" x-cloak :style="popStyle()" @click.outside.capture="popAway('link', $event)" @mousedown.prevent>
+        <template x-if="pop === 'link'"><template x-teleport="body"><div class="pop link-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('link', $event)" @mousedown.prevent>
           <span class="link-host truncate" x-text="linkUrl.replace(/^\w+:(\/\/)?(www\.)?/, '').replace(/\/$/, '')"></span>
           <button type="button" class="pop-item" @click="linkOpen()"><svg class="ico"><use href="#i-external"/></svg>Open</button>
           <button type="button" class="pop-item" @click="linkCopy()"><svg class="ico"><use href="#i-copy"/></svg>Copy</button>
@@ -794,10 +799,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="composer-actions flex gap-6">
           <!-- left: project location picker (Todoist-style, bottom-left); actions stay right -->
           <div class="field loc" @click.document.capture="pop === 'proj' && outside($event, $el) && popAway('proj', $event)">
-            <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
+            <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && !popDock && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
               <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="hash" x-show="!pickIsDefault()">#</span><span x-text="draft.project || defaultProjName() || 'Project'"></span>
             </button>
-            <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :style="popStyle()">
+            <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="enterProj()" @keydown.stop="$event.key === 'Escape' && escape()">
               <template x-for="p in filteredProjects()" :key="p.id">
                 <div>
@@ -820,9 +825,18 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-if="narrow &amp;&amp; filesUrl &amp;&amp; session"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="attachFiles($event.target.files); $event.target.value = ''"></label></template>
           <div class="composer-btns flex gap-6">   <!-- one unit: crowded, it wraps under the project picker whole -->
             <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
-            <div class="more-wrap inline-flex items-center" x-show="editing" @click.document.capture="pop === 'overflow' && outside($event, $el) && popAway('overflow', $event)">
+            <div class="more-wrap inline-flex items-center" x-show="editing || phoneDock()" @click.document.capture="pop === 'overflow' && outside($event, $el) && popAway('overflow', $event)">
               <button type="button" class="more-btn inline-flex items-center" @click="togglePop('overflow', $el)" title="More actions" aria-haspopup="menu" :aria-expanded="pop === 'overflow'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
-              <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :style="popStyle()">
+              <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+                <!-- phone: the dock's hidden chips and buttons (9A), anchored on the ··· they came from -->
+                <template x-if="phoneDock()"><div class="contents">
+                  <button type="button" class="pop-item" x-show="!durMinNow()" @click="togglePop('dur', document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-clock"/></svg>Size</button>
+                  <button type="button" class="pop-item" x-show="locations.length && locPolarity() === 'any'" @click="openLoc(document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-pin"/></svg>Place</button>
+                  <button type="button" class="pop-item" x-show="editing && !editingTask()?.blocked_by?.length" @click="togglePop('rel', document.querySelector('.composer .more-btn')); pickerQ = ''"><svg class="ico"><use href="#i-link"/></svg>Relations</button>
+                  <button type="button" class="pop-item" x-show="editing && !editingTask()?.overview" @click="pop = null; askShowInOverview()"><svg class="ico"><use href="#i-overview"/></svg>Show in Overview</button>
+                  <button type="button" class="pop-item" x-show="editing" @click="pop = null; deleteEditing()"><svg class="ico"><use href="#i-trash"/></svg>Delete task</button>
+                </div></template>
+                <template x-if="editing"><div class="contents">
                 <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
                 <button type="button" class="pop-item" x-show="editing" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
                 <button type="button" class="pop-item" x-show="shownSubs().length > 0 || chkSteps() && draft.checklist.length > 0" @click="convertTo('checklist'); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
@@ -830,15 +844,18 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="convertToSubtasks(); pop = null"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
                 <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="toggleChecklistPlain(); pop = null"><svg class="ico"><use :href="chkPlain() ? '#i-list-check' : '#i-all'"/></svg><span x-text="chkPlain() ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
                 <button type="button" class="pop-item" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
+                </div></template>
               </div></template></template>
             </div>
             <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
             <button type="button" class="del-btn inline-flex items-center" x-show="editing" @click="deleteEditing()" title="Delete task"><svg class="ico"><use href="#i-trash"/></svg></button>
             <button type="button" class="ghost" @click="closeComposer()">Cancel</button>
-            <button type="submit" class="primary" :disabled="!draft.content.trim()" x-text="editing ? 'Save' : 'Add task'"></button>
+            <button type="submit" class="primary" :disabled="!draft.content.trim()" :aria-label="editing ? 'Save' : 'Add task'"><svg class="ico" aria-hidden="true"><use :href="editing ? '#i-check' : '#i-send'"/></svg><span x-text="editing ? 'Save' : 'Add task'"></span></button>
           </div>
         </div>
         </div>
+        <!-- a phone's pop covers most of the screen: the scrim takes the tap that dismisses it (popAway closes), like a sheet's backdrop; outside the dock, whose clip-path would clip it -->
+        <template x-if="pop && narrow"><div class="pop-scrim"></div></template>
         </div>
       </form>
         </div>
@@ -946,6 +963,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <span class="cl-cds flex flex-wrap grow"><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
         </h2>
         <!-- calendar nav pop is the shared unified cal pop (see composer section) -->
+        <template x-if="bar"><button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">   <!-- the jot bar's, as on Lists -->
+          <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
+          <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span></template>
+          <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
+        </button></template>
       </div>
       <!-- outside .cl-bar: backdrop-filter creates a containing block, trapping position:fixed children -->
       <!-- ONE row of chips on the title's baseline. The ‹ › steppers are gone: scrolling IS how you move
@@ -1179,7 +1201,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </template>
       <template x-if="session">
       <div class="soc-list">
-        <h1>Social</h1>
+        <div class="soc-head flex items-center justify-between"><h1>Social</h1>
+        <template x-if="bar"><button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">   <!-- the jot bar's, as on Lists -->
+          <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
+          <span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span>
+          <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
+        </button></template></div>
         <template x-for="c in chat.chats" :key="c.id">
           <button type="button" class="chat-row" :class="{ sel: c.id === chat.open, new: chatNew(c) }" @click="openChat(c.id)">
             <span class="av" x-text="chatPeer(c).slice(0, 1).toUpperCase()"></span><b class="truncate" x-text="chatPeer(c)"></b>
@@ -1224,20 +1251,50 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span></template>
        <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
      </button>
-     <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists on a phone, behind the adherod.bar trial. The chip names the list a task lands in and opens the overview, as the current dot does. -->
-     <template x-if="bar"><div class="jot-bar items-center" @pointermove="holdMove($event)" @pointerup="holdUp()" @pointercancel="listHold = null">
+     <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists and Plan on a phone, behind the adherod.bar trial. No bar of its own: the page fades
+          under it and the field floats. Lists, Plan, Social keep their order; where you are widens into the field. Lists' chip names the list a task
+          lands in and opens the overview, as the current dot does; Plan's opens its view sheet. -->
+     <template x-if="bar"><div class="jot-bar items-end" @pointermove="holdMove($event)" @pointerup="holdUp()" @pointercancel="listHold = null">
        <template x-if="listHold"><div class="pop jb-lists" role="menu">   <!-- P-A: held up from the chip -->
          <div class="pop-scrim" @click="listHold = null"></div>
          <template x-for="(r, i) in holdRows()" :key="r.type + ':' + r.id">
            <button type="button" class="pop-item" role="menuitem" :data-hold="i" :class="{ hot: listHold.hot === i, on: r.type === navSel.type &amp;&amp; r.id === navSel.id, more: r.type === 'more' }" @click="holdPick(r)"><svg class="ico" aria-hidden="true"><use :href="'#' + r.icon"/></svg><span class="truncate" x-text="r.label"></span></button>
          </template>
        </div></template>
-       <div class="jb-field flex items-center min-w-0">
-         <button type="button" class="jb-dest inline-flex items-center min-w-0" data-sk="Overview" @click="openOverview()" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }" @contextmenu.prevent :aria-label="navHeading() + ', open menu'" aria-haspopup="dialog"><svg class="ico" aria-hidden="true"><use href="#i-all"/></svg><span class="truncate" x-text="navHeading()"></span></button>
-         <button type="button" class="jb-jot min-w-0" data-sk="New task" @click="quickAdd()">Jot something</button>
+       <template x-if="viewSheet"><div class="pop jb-lists jb-sheet" role="menu" @click="viewSheet = false">   <!-- droid-10: Plan's views and actions, risen from the day chip -->
+         <div class="pop-scrim"></div>
+         <template x-for="v in clViews()" :key="v"><button type="button" class="pop-item" role="menuitemradio" :aria-checked="clView === v" data-sk="Day / week / month" @click="clSetView(v)"><svg class="ico" aria-hidden="true" x-show="clView === v"><use href="#i-check"/></svg><span class="ico" x-show="clView !== v"></span><span x-text="v[0].toUpperCase() + v.slice(1)"></span></button></template>
+         <div class="nav-pop-sep"></div>
+         <button type="button" class="pop-item" role="menuitem" @click="clToday()"><svg class="ico" aria-hidden="true"><use href="#i-sun"/></svg>Today</button>
+         <button type="button" class="pop-item" role="menuitemcheckbox" :aria-checked="clSideOpen" @click="clSideOpen = !clSideOpen"><svg class="ico" aria-hidden="true"><use href="#i-panel-r"/></svg>Task panel</button>
+         <button type="button" class="pop-item" role="menuitem" @click="clNewEvent()"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>New event</button>
+       </div></template>
+       <div class="jb-el" :class="{ on: surface === 'lists' }">
+         <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Lists" @click="goSurface('lists')" aria-label="Lists" :inert="surface === 'lists'"><svg class="ico" aria-hidden="true"><use href="#i-all"/></svg></button>
+         <div class="jb-field flex items-center" :inert="surface !== 'lists'">
+           <button type="button" class="jb-dest inline-flex items-center min-w-0" data-sk="Overview" @click="openOverview()" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }" @contextmenu.prevent :aria-label="navHeading() + ', open menu'" aria-haspopup="dialog"><svg class="ico" aria-hidden="true"><use href="#i-all"/></svg><span class="truncate" x-text="navHeading()"></span></button>
+           <button type="button" class="jb-jot min-w-0" data-sk="New task" @click="quickAdd()">Jot something</button>
+         </div>
        </div>
-       <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Plan" @click="goSurface('plan')" aria-label="Plan"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg></button>
-       <button type="button" class="jb-ico flex items-center justify-center" :class="{ 'cd-new': chatUnread() }" data-sk="Go to Social" @click="goSurface('social')" :aria-label="chatUnread() ? 'Social, new messages' : 'Social'"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></button>
+       <div class="jb-el" :class="{ on: surface === 'plan' }">
+         <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Plan" @click="goSurface('plan')" aria-label="Plan" :inert="surface === 'plan'"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg></button>
+         <div class="jb-field flex items-center" :inert="surface !== 'plan'">
+           <button type="button" class="jb-dest jb-day inline-flex items-center min-w-0" @click="viewSheet = true" :aria-label="jbDay() + ', views'" aria-haspopup="menu"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg><span class="truncate" x-text="jbDay()"></span></button>
+           <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot something</button>
+         </div>
+       </div>
+       <div class="jb-el" :class="{ on: surface === 'social' }">
+         <button type="button" class="jb-ico flex items-center justify-center" :class="{ 'cd-new': chatUnread() }" data-sk="Go to Social" @click="goSurface('social')" :aria-label="chatUnread() ? 'Social, new messages' : 'Social'" :inert="surface === 'social'"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></button>
+         <template x-if="!phoneThread()"><div class="jb-field flex items-center" :inert="surface !== 'social'">
+           <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot something</button>
+         </div></template>
+         <template x-if="phoneThread() &amp;&amp; openChatRow()"><div class="jb-field jb-chat flex items-end" x-init="watchField($el)">   <!-- a thread's composer (V-B): the chip leads back to the chats -->
+           <button type="button" class="jb-dest inline-flex items-center min-w-0" @click="openChat(null)" :aria-label="chatPeer(openChatRow()) + ', chats'"><span class="av" x-text="chatPeer(openChatRow()).slice(0, 1).toUpperCase()"></span><span class="truncate" x-text="chatPeer(openChatRow())"></span></button>
+           <textarea rows="1" x-ref="chatBar" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" placeholder="Message" aria-label="Message"></textarea>
+           <template x-if="filesUrl &amp;&amp; !chat.editing &amp;&amp; !chat.draft"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template>
+           <template x-if="chat.draft.trim() || chat.pending.length"><button type="button" class="send flex items-center justify-center" @mousedown.prevent @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></template>   <!-- a tap keeps the keyboard up -->
+         </div></template>
+       </div>
      </div></template>
      <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar() }">   <!-- a new task's composer, over the bar (relocateComposer) -->
       <li class="jb-go" x-show="jotRows().length" @mousedown.prevent>   <!-- a tap keeps the keyboard up -->
@@ -1851,7 +1908,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        only the cards themselves are interactive, so the Undo/Redo/Discard buttons stay reachable. -->
   <!-- ── Notif stack + scripts ── -->
   <!-- under a dialog only the buttons go inert: an inert live region leaves the tree and announces nothing. Settings is no dialog: Undo stays clickable beside it -->
-  <div id="notif-stack" aria-live="polite" x-cloak :class="{ 'by-settings': settingsOpen }">
+  <div id="notif-stack" aria-live="polite" x-cloak :class="{ 'by-settings': settingsOpen, 'by-field': bar && phoneThread() }">
     <template x-for="n in notifs" :key="n.id">
       <div class="notif" :class="n.leaving && 'leaving'" @pointerenter="_notifHold(n.id, 'pointer', true)" @pointerleave="_notifHold(n.id, 'pointer', false)"
         @focusin="_notifHold(n.id, 'focus', true)" @focusout="$el.contains($event.relatedTarget) || _notifHold(n.id, 'focus', false)">
