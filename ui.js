@@ -186,7 +186,7 @@ export const checkHtml = (r, tag = 'button', extra = '', recArr = recList(r.t.re
   const isPaused = !done && !archived && recArr.length > 0 && recArr.every(x => x.paused);
   // archived → inert archive glyph (means "set aside"); suppress done/prog/blocked/paused overlays.
   const steps = !!r.step && !r.blocked;   // a blocked Steps task keeps the blocked check
-  const cls = ['check', extra, done && 'done', archived && 'archived', !archived && r.hasProgress && !done && 'prog', steps && 'steps', !!r.step && r.progress > 0 && !done && 'walked', !archived && r.blocked && !done && 'blocked', isPaused && 'paused'].filter(Boolean).join(' ');
+  const cls = ['check', extra, done && 'done', archived && 'archived', !archived && r.hasProgress && !done && 'prog', steps && 'steps', !archived && r.blocked && !done && 'blocked', isPaused && 'paused'].filter(Boolean).join(' ');
   const lock = !archived && r.blocked && !done ? '<svg class="ico lock-ico"><use href="#i-lock"/></svg>' : '';
   const pause = isPaused ? '<svg class="ico pause-ico"><use href="#i-pause"/></svg>' : '';
   const act = tag === 'button' ? ` type="button" data-act="check" role="checkbox" aria-checked="${done}" aria-label="${esc(t.content || '')}"` : '';   // never a submit: the composer's own check sits inside its <form>

@@ -3103,8 +3103,8 @@ document.addEventListener('alpine:init', () => {
     // The scroll STAYS. Opening an in-view task doesn't scroll (grow in place), so closing has nothing to
     // un-do — we never write scrollTop on close. A close holds trailing space so shrinking the
     // range cannot clamp the reader upward; release it only when the real range covers them. Within a list the ONLY
-    // deliberate scroll is `_revealRow`: bring a task in when it's OFF-SCREEN (an off-screen open, or a save
-    // that re-sorted the row out of view). The list is windowed, so we never trust absolute scrollTop.
+    // deliberate scroll is `_revealRow`: bring a task in when it's OFF-SCREEN (an off-screen open, or Show on a
+    // save's "Moved" card). The list is windowed, so we never trust absolute scrollTop.
     _releaseCloseRange(force = false) {
       if (!_closeRange) return;
       const { sc, space, padding } = _closeRange;
@@ -3240,8 +3240,8 @@ document.addEventListener('alpine:init', () => {
     // bottom overshoots the fold. A row taller than the viewport can never have both ≤ 0, so chasing the
     // bottom would oscillate every frame (B1): tall rows align to the top, like a row above the fold.
     _revealBy(under, over, tall) { return tall || under < 0 ? under : over > 0 ? over : 0; },
-    // Any write that can MOVE a row ends here (F9): carry the reader to it if it left the viewport, and mark which
-    // row took the edit. Not composer-only — a drag, a sort change or an undo relocates rows just as thoroughly.
+    // A drag, a sort change, an undo or a save's Show ends here (F9): carry the reader to the row if it left the viewport, and mark
+    // which row took the edit. A save itself stays put (tweak-2).
     // Native smooth scroll + scroll-margin, no JS tween: honours reduced-motion for free and can't teleport.
     _landOn(id) { if (id) this.$nextTick(() => { this._revealRow(id); this._flashSaved(id); }); },
     // A just-saved row morphs in place (keyed morph, #306) with no motion cue — a brief warm wash marks WHICH row
@@ -3289,7 +3289,7 @@ document.addEventListener('alpine:init', () => {
       // next measure pass, whose estimate→real corrections it absorbs invisibly. openComposer restores it too.
       const sc = this._listScroller(), end = this.editing ? this.blockH : this._inPanel() ? 0 : _addSlot;   // the open's mirror: to 0, a list at its end dropped by the Add task row
       if (sc) sc.style.overflowAnchor = 'none';
-      const grow = this.$refs.grow;   // absent when a popover's scope calls this
+      const grow = _staticEl('.composer-grow');   // $refs is empty in a popover's scope (its menu item is gone by the time an awaited action closes)
       const space = sc && grow && this.composer.open && !this._inPanel() ? Math.max(0, grow.offsetHeight - end) : 0;
       if (space && sc.scrollTop > sc.scrollHeight - sc.clientHeight - space) {   // only a collapse that would clamp the reader up
         _closeRange = { sc, space, padding: sc.style.paddingBottom, view: _visKey.slice(_visKey.indexOf('|')) };
@@ -3297,7 +3297,7 @@ document.addEventListener('alpine:init', () => {
       }
       if (this.composer.open && this.editing && sc) _viewHold = true;
       _editEnd = end; this._reflow();   // before any row rises into view — the collapse itself never re-windows
-      return new Promise(done => this._growClose(() => this.$refs.grow, end, () => {
+      return new Promise(done => this._growClose(() => grow, end, () => {
         this.composer.open = false; this.editing = null; _editPin = _editEnd = null; this.resetDraft(); this._releaseView(); this.applyEditDom(); this._paintRows(); this.fitRows();   // windowed in the frame the subtree returns, fitted next
         requestAnimationFrame(() => requestAnimationFrame(() => sc?.style.removeProperty('overflow-anchor')));
         done();
@@ -4465,7 +4465,7 @@ document.addEventListener('alpine:init', () => {
       const tok = matchTrailingToken(pending, new Date(), this.locNames());
       const start = tok ? tok.start : pending.search(/\S+$/);   // a non-token word may still fold: [Fri 4:00] + "PM"
       if ((!tok || tok.kind === 'date') && start >= 0 && this.swallowIntoPrevDate(node, start, pending.slice(start), off)) return true;   // [next week] + "sun" → [next week sunday]
-      if (!tok) return false;
+      if (!tok || tok.kind === 'proj' && _nlpFocus) return false;   // a subtask's "#word" stays text
       const token = pending.slice(tok.start);
       if (tok.kind === 'area') return this.pillifyArea(node, tok, token, off);         // area tokens carry a NAME → resolve to an id first; the promise lets Enter wait
       this.insertPill(node, tok.start, tok.kind, tok.value, token, off);
@@ -4687,7 +4687,7 @@ document.addEventListener('alpine:init', () => {
       for (const t in PICKERS) if (this[PICKERS[t].key].open && this.pickerKeydown(t, e)) { e.preventDefault(); e.stopPropagation(); return true; }
       // Trigger chars open their picker on their own input event — the char isn't in the DOM when keydown fires,
       // and a deferred tick can run after later keys (a transition holds $nextTick), opening on an older '@'.
-      if (e.key === '@' || e.key === '#') { _trigKey = e.key; return true; }
+      if (e.key === '@' || e.key === '#' && !_nlpFocus) { _trigKey = e.key; return true; }   // a subtask files under its parent: no # there
       // "at "/"needs "/"needed by " open their picker, so the phrase teaches itself — the trigger is the
       // space that ends the word.
       if (e.key === ' ') {
@@ -4731,7 +4731,7 @@ document.addEventListener('alpine:init', () => {
         if (this._draftSig() === this._draftBase) return true;
         this.toast('Add a title to save'); return false;
       }
-      const sc = this._listScroller(), stBefore = sc ? sc.scrollTop : 0, sid = this._draftSid, d = this.draft;   // at the press: a scroll during the subtask flush below is the user's too
+      const sc = this._listScroller(), sid = this._draftSid, d = this.draft;
       if (this.editing && this.subGhost.trim() && this.commitSubGhost() === false) return false;   // Save takes the ghost's typing as a row, Enter or not
       if (this.chkGhost.trim() && this.chkGhost !== _chkSeed) this.commitChkGhost();   // save in-progress ghost inputs on Save, even without Enter
       this.draft.checklist = this.draft.checklist.filter(c => (c.text || '').trim());   // prune whitespace-only items (transient while editing)
@@ -4783,8 +4783,8 @@ document.addEventListener('alpine:init', () => {
             subs: subbed ? draft.subs.map(s => ({ id: s.id, done: s.done })) : saveBase.subs, subMoves: {} } : saveBase;
           if (kept) await this._applyDraftLinks(editId, draft, j);
           // a new subtask: an add's Bin row, so a ⌘Z puts it in the Bin (a deleted one has its own, _saveSubs)
-          if (j.length) this._pushOps('Saved task', 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added });
-          else if (kept) this.notify('Saved task');   // nothing the task row changed (signed in, an empty write stamps nothing): still said
+          // kept with no journal ops: nothing the task row changed (signed in, an empty write stamps nothing), still said. A move re-labels this card below
+          const saveCard = j.length ? this._pushOps('Saved task', 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added }) : kept ? this.notify('Saved task') : null;
           for (const drop of drops) drop();
           save.base = nextBase;
           if (_draftFrom === sid) _saveBase = nextBase;   // the open draft continues this one (reopened mid-save): after every await, any reopen
@@ -4809,11 +4809,15 @@ document.addEventListener('alpine:init', () => {
             this._clearPending(editId, sid, this._draftSig({ draft }));   // saved → discard the pending draft so it can't resurrect over the save
             if (from) this._clearPending(editId, from);   // this draft continues that one: its rows are superseded
             this._viewFree().then(() => this.$nextTick(() => { this._setCheckPending(editId, false); this._flashSaved(editId); }));   // the row re-renders as the collapse ends
-            // Only a save that MOVED the row carries the reader to it (composer.md §STAY rule) — a tall row you had
-            // scrolled past is off-screen too, and revealing it glided the list ~1000px (B2). Judged once the save has
-            // landed AND the collapse settled (a signed-in save outlasts it), and not if the reader scrolled >300px since.
+            // A save never scrolls (composer.md §STAY rule, tweak-2): a row the SAVE moved off-screen gets a card whose Show
+            // carries the reader to it. A tall row you had scrolled past is off-screen too, so only a move counts. Judged once
+            // the save has landed AND the collapse settled (a signed-in save outlasts it). Lists only: Plan's panel has no list to show.
             closed.then(() => requestAnimationFrame(() => { const a = at();
-              if ((a[0] !== at0[0] || a[1] !== at0[1] && a[2] !== at0[2]) && !(sc && Math.abs(sc.scrollTop - stBefore) > 300)) this._revealRow(editId); }));
+              if (this.surface !== 'lists' || a[0] === at0[0] && (a[1] === at0[1] || a[2] === at0[2]) || !this._rowAway(editId)) return;
+              const msg = a[0] && !at0[0] ? 'Moved to Done' : this._modelTop(editId) < sc.scrollTop + this._seenTop(sc) ? 'Moved up the list' : 'Moved down the list';
+              const show = { label: 'Show', fn: () => this._landOn(editId) }, card = this.notifs.find(n => n.id === saveCard && !n.leaving);
+              if (card) Object.assign(card, { msg, actions: [...card.actions, show] });   // one save, one card: its Undo beside Show
+              else this.notify(msg, { actions: [show] }); }));
           }
           return true;
         });
@@ -5601,7 +5605,7 @@ document.addEventListener('alpine:init', () => {
       if (!this._jSaveT) this._jSaveT = setTimeout(() => this._journalFlush(), 0);
     },
     // a card's Undo/Redo steps the cursor: only while its entry is the next step that way does it take back what the card says
-    _jDeadCards() { for (const n of this.notifs) if (n.actions.some(a => a.jid && this._journalPeek(a.dir)?.id !== a.jid)) n.actions = []; },
+    _jDeadCards() { for (const n of this.notifs) if (n.actions.some(a => a.jid && this._journalPeek(a.dir)?.id !== a.jid)) n.actions = n.actions.filter(a => !a.jid); },   // a save's Show outlives its Undo
 
     // Diff helper for completion fx: which tasks' FX_FIELDS changed, before and after — only those keys, so the inverse writes
     // just what the action changed. seen: a row an earlier part of the same batch already restores is left to it.
@@ -5793,12 +5797,13 @@ document.addEventListener('alpine:init', () => {
     },
 
     // The [label, op]s an `ops` collector gathered, as ONE `target` entry (a save's lone date part too). A composite part (a date's) flattens in: its ops are already in undo order.
-    _pushOps(label, target, j, opts) { if (j.length) this._pushEntry(label, j.length > 1 || j[0][1].target !== target ? { kind: 'composite', target, ops: j.map(x => x[1]).reverse().flatMap(o => o.kind === 'composite' ? o.ops : o) } : j[0][1], opts); },
+    _pushOps(label, target, j, opts) { if (j.length) return this._pushEntry(label, j.length > 1 || j[0][1].target !== target ? { kind: 'composite', target, ops: j.map(x => x[1]).reverse().flatMap(o => o.kind === 'composite' ? o.ops : o) } : j[0][1], opts); },
     _pushEntry(label, entryOp, { bin = false, silent = false, restored = false, msg = label, actions = [] } = {}) {
       this._journalPush({ label, target: entryOp.target, kind: entryOp.kind, op: entryOp, bin: !!bin, restored });
       // silent = frequent actions (completion) that shouldn't toast on every press (emil: don't notify 100×/day).
-      if (!silent) this.notify(msg, { actions: [this._cardStep(-1, this.journal.at(-1).id), ...actions] });
+      const card = silent ? null : this.notify(msg, { actions: [this._cardStep(-1, this.journal.at(-1).id), ...actions] });
       if (!bin && !restored) this._pushSmall(entryOp);
+      return card;
     },
     // A task field's live value as a small change records it; 'date' = its date-item's day (+ 'T' start); item = that checklist item's text.
     // undefined: the task (or item) is gone.
@@ -7162,6 +7167,7 @@ document.addEventListener('alpine:init', () => {
       // title is one line — pasted line breaks become spaces.
       e.preventDefault();
       const line = text.replace(/\s*[\r\n]+\s*/g, ' '), segs = tokenizeAll(line, new Date(), this.locNames());
+      if (_nlpFocus) for (const seg of segs) if (seg.kind === 'proj') delete seg.kind;   // a subtask's "#word" stays text
       const sel = getSelection(); const range = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
       if (!segs.some(s => s.kind)) return this.insertAtRange(range, document.createTextNode(line));
       this.askConfirm({

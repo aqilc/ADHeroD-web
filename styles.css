@@ -618,7 +618,6 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   > .ring { position: absolute; inset: -2.25px; border-radius: 50%; pointer-events: none;
     background: conic-gradient(var(--pc) 0 186deg, transparent 0 198deg, var(--pc) 0 225deg, transparent 0 237deg, var(--pc) 0 264deg, transparent 0 276deg, var(--pc) 0 303deg, transparent 0 315deg, var(--pc) 0 342deg, transparent 0 354deg, var(--pc) 0);   /* solid runs past 12 and 6 o'clock so the rail lands on stroke */
     mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); } }
-.check.walked::after { content: ''; position: absolute; left: calc(50% - 1px); bottom: 100%; width: 2px; height: var(--row-pt); background: var(--pc); }   /* the task's own colour: orange beside a Must's red clashed */
 /* clickable: reveals/re-hides the collapsed done items (B7). Button reset — it inherits the row's box, not the UA's. */
 .chk-more { padding: 1px 0 1px 24px; border: 0; background: none; cursor: pointer; text-align: left; }
 .chk-more-txt { font-size: var(--fs-11); color: var(--muted); }
