@@ -3608,7 +3608,7 @@ document.addEventListener('alpine:init', () => {
     // @click.outside reads every listener's offsetWidth on each click (a forced layout); gate on open state first, then this
     outside(e, el) { return e.target.isConnected && !el.contains(e.target); },
     popAway(name, e) {
-      if (this.pop !== name || e.target.closest('.pop, .tpop')) return;
+      if (this.pop !== name || e.target.closest('.pop')) return;
       this.pop = null;
       this.tpop = false;   // the date pop's time pop goes with it: its own .outside skips the same detached targets
     },
@@ -4997,7 +4997,7 @@ document.addEventListener('alpine:init', () => {
       // Escape from inside a menu hands focus back to its trigger — the control that says it is expanded.
       // ceiling: the FIRST expanded trigger in DOM order — the filter menu has three, so Escape may land on "everything",
       // not the chip that opened it; remember the opener per menu if that is reported or a menu shares triggers across rows.
-      const trigger = document.activeElement?.closest('.pop') && document.querySelector('[aria-haspopup][aria-expanded="true"]');
+      const trigger = document.activeElement?.closest('.pop:not(.tpop)') && document.querySelector('[aria-haspopup][aria-expanded="true"]');   // the time pop's Escape keeps its date pop, so no trigger
       const o = OVERLAYS.find(([open]) => open(this));
       if (o) o[1](this); else if (this.focusId) this._setKbFocus(null);
       trigger?.focus();

@@ -741,7 +741,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   border: 1px solid color-mix(in srgb, var(--tc, var(--muted)) 30%, transparent);
   color: color-mix(in srgb, var(--tc, var(--muted)) 60%, var(--muted));
   background: color-mix(in srgb, var(--tc, var(--muted)) 9%, transparent); }
-.area .ico { width: 11px; height: 11px; color: var(--tc, var(--muted)); }
+.area svg.ico { width: 11px; height: 11px; color: var(--tc, var(--muted)); }
 .area .ico-default { display: none; }   /* areas without a set icon show just their name when there's room */
 /* Progressive collapse (fitRows on .r1l): names→icons→3-icon pill→"…"; chips merge into one pill.
    Transparent 1px border matches bordered chips height (no row-height jump). */
@@ -989,10 +989,11 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .pop-item .ico { width: 15px; height: 15px; flex: none; color: var(--muted); }   /* explicit sizing — an un-sized .ico has no viewBox height and inflates the row */
 .pop-item { display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left;
   padding: var(--sp-6) var(--sp-8); border: none; background: none; border-radius: var(--r-6); color: var(--ink); font-size: var(--fs-13);
-  &:hover { background: var(--hover); }
+  &:hover, &.hot { background: var(--hover); }   /* .hot: the keyboard's row */
   &.clear { color: var(--muted); }
   &.del, &.del .ico { color: var(--p1); }
-  .tick { margin-left: auto; color: var(--accent); } }
+  .tick { margin-left: auto; color: var(--accent); }
+  .rt { margin-left: auto; flex: none; max-width: 45%; color: var(--muted); font-variant-numeric: tabular-nums; } }   /* trailing hint */
 :is(.pop, .pick-list) .pop-input { padding: var(--sp-8) var(--sp-8); margin: var(--sp-2) 0 var(--sp-4); border: 1px solid var(--edge);
   border-radius: var(--r-6); background: var(--panel); color: var(--ink); font-size: var(--fs-13); width: 100%;
   &::placeholder { color: var(--muted); } }
@@ -1150,10 +1151,9 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.g { background: var(--hover); color: var(--muted); b { color: var(--muted); } button { color: var(--muted); } }
 }
 /* anchored time popover — one component, two anchors (Add-time row, [at ...] chip) */
-/* fixed + above .pop(z20): one instance serves every anchor, across teleported popups */
+/* fixed + above .pop(z20): one instance serves every anchor, across teleported popups; tpopStyle sets left + bottom */
 .tpop {
-  position: fixed; width: 212px; background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r);
-  box-shadow: var(--shadow-pop); padding: var(--sp-6); z-index: 40;
+  position: fixed; top: auto; width: 212px; z-index: 40;
   .tin { display: flex; padding: 2px var(--sp-6) var(--sp-6); border-bottom: 1px solid var(--hair); margin-bottom: var(--sp-4);
     input { border: none; background: none; color: var(--ink); font-size: var(--fs-13); font-weight: 600; width: 100%;
       &::placeholder { color: var(--faint); font-weight: 400; } } }
@@ -1200,10 +1200,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* Reminders popover — the sentence rows. Severity reads twice: the lead icon's shape, and the
    dots+word control at the end. Never red (that is the deadline's alone). */
 .pop.rem-pop { min-width: 300px; }
-.rem-row { display: flex; align-items: center; gap: var(--sp-4); padding: var(--sp-6) var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-13); }
-.rem-row:hover { background: var(--hover); }
 .rem-lead { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none; border-radius: var(--r-6); color: var(--muted); background: none; border: none; cursor: pointer;
-  .ico { width: 15px; height: 15px; flex: none; }
+  .ico { width: 15px; height: 15px; flex: none; color: inherit; }   /* the severity colour, over .pop-item .ico */
   &:hover { background: var(--hover); }
   &.gentle { color: var(--muted); } &.ping { color: var(--ink); } &.alarm { color: var(--warm-ink); } }
 .rem-seg { padding: 1px var(--sp-6); border-radius: var(--r-4); background: color-mix(in srgb, var(--hover) 70%, transparent); color: var(--ink); }
@@ -1216,7 +1214,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.s2 .dots i:nth-child(-n+2) { opacity: 1; background: var(--muted); }
   &.s3 .dots i { opacity: 1; background: var(--warm-ink); } }
 .rem-del { color: var(--faint); background: none; border: none; cursor: pointer; padding: 0 var(--sp-2); flex: none;
-  .ico { width: 13px; height: 13px; flex: none; } &:hover { color: var(--muted); } }
+  .ico { width: 13px; height: 13px; flex: none; color: inherit; } &:hover { color: var(--muted); } }
 /* a paused reminder still reads as itself, just stood down — never deleted, never hidden */
 .rem-row.paused { .rem-lead, .rem-sev { color: var(--faint); } .rem-seg { background: none; color: var(--faint); } .dots i { opacity: .25; } }
 /* suggestions: grounded, 1–3, one tap to become a row; a covered one is not rendered at all */
@@ -1227,8 +1225,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &:hover { background: var(--hover); color: var(--ink); } }
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 /* light shell: r8, hairline, soft shadow; 28px rows at r4 (concentric: 8 − 4 inset) */
-.pop:is(.proj-pop, .rem-pop, .cal), .nav-pop.rl-pop { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
-:is(.proj-pop, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
+.pop:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
+:is(.proj-pop, .rem-pop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
 .proj-row { gap: var(--sp-8); }
@@ -1530,37 +1528,21 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .fe-prev-row:hover { background: var(--hover); }
 .fe-prev-empty { color: var(--muted); font-size: var(--fs-12); padding: var(--sp-4) 0; }
 
-/* @-area autocomplete under the composer title — inline wrapping chip layout. */
-.area-autocomplete { position: absolute; z-index: 30; max-width: 300px; max-height: 240px;
-  overflow-y: auto; background: var(--panel); border: 1px solid var(--edge); border-radius: var(--r-8);
-  box-shadow: var(--shadow-pop); padding: var(--sp-6);
-  display: flex; flex-wrap: wrap; gap: var(--sp-4); }
-.area-autocomplete .ac-row { padding: 1px;
-  border: none; background: none; cursor: pointer; }
-/* selection/hover tint the area chip ITSELF (stronger --tc), no clashing outer box */
-.area-autocomplete .ac-row:hover .area { background: color-mix(in srgb, var(--tc, var(--muted)) 16%, transparent); }
-.area-autocomplete .ac-row.sel .area { background: color-mix(in srgb, var(--tc, var(--muted)) 42%, transparent);
-  border-color: color-mix(in srgb, var(--tc, var(--muted)) 85%, transparent);
-  color: color-mix(in srgb, var(--tc, var(--muted)) 92%, var(--ink));
-  box-shadow: 0 0 7px color-mix(in srgb, var(--tc, var(--muted)) 55%, transparent); }
-.area-autocomplete .ac-row.create { padding: var(--sp-2) var(--sp-6); color: var(--accent); font-size: var(--fs-13); }
-/* goal (^) picker: a vertical list, not wrapping chips — the selected row gets a real highlight so keyboard arrows are visible. */
-.ac-list { flex-direction: column; flex-wrap: nowrap; align-items: stretch; min-width: 160px; }
-.ac-list .ac-row { padding: var(--sp-4) var(--sp-8); border-radius: var(--r-4); font-size: var(--fs-13); color: var(--ink); }
-.ac-list .ac-row:hover { background: var(--hover); }
-.ac-list .ac-row.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-/* #-project + "at "-place pickers: same narrow list, with a leading glyph and (places) a waiting-task count. */
-.proj-autocomplete, .loc-autocomplete { min-width: 150px; }
-.ac-list .ac-row .ico { width: 13px; height: 13px; flex: none; margin-right: var(--sp-6); color: var(--faint); }
-.ac-list .ac-row .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }   /* min-width:0 — a flex item won't ellipsis without it */
-.link-autocomplete { max-width: 22rem; }
+/* caret pickers (@ # at needs): .pop pickers placed at the caret, over the composer's own pops */
+.pop.area-autocomplete { z-index: 30; max-width: 300px; max-height: 240px; overflow-y: auto; }
+/* @ picker: the area chips wrap in a strip; hover and the keyboard's chip tint the chip itself (stronger --tc), no outer box */
+.pop.area-chips { flex-direction: row; flex-wrap: wrap; gap: var(--sp-4); }
+.area-chips .ac-row { padding: 1px; border: none; background: none; cursor: pointer;
+  &:hover .area { background: color-mix(in srgb, var(--tc, var(--muted)) 16%, transparent); }
+  &.sel .area { background: color-mix(in srgb, var(--tc, var(--muted)) 42%, transparent);
+    border-color: color-mix(in srgb, var(--tc, var(--muted)) 85%, transparent);
+    color: color-mix(in srgb, var(--tc, var(--muted)) 92%, var(--ink));
+    box-shadow: 0 0 7px color-mix(in srgb, var(--tc, var(--muted)) 55%, transparent); }
+  &.create { padding: var(--sp-2) var(--sp-6); color: var(--accent); font-size: var(--fs-13); } }
+.pop.link-autocomplete { max-width: 22rem; }
 /* a candidate's own checkbox, scaled to the row's 13px type and inert (this row picks, it doesn't complete) */
-.ac-ck { margin-right: var(--sp-6); pointer-events: none; }
+.ac-ck { pointer-events: none; }
 .ac-ck .check { width: 14px; height: 14px; border-width: 1.75px; }
-/* the project name is arbitrary user text — one line, or the row grows and the list turns into a paragraph */
-.ac-list .ac-row .rt { margin-left: auto; padding-left: var(--sp-8); color: var(--muted); font-variant-numeric: tabular-nums;
-  flex: none; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ac-list .ac-row.create { padding: var(--sp-4) var(--sp-8); white-space: nowrap; }
 
 
 /* Lists view-controls row: a calm search field + filter chips. */
@@ -2410,8 +2392,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
      the neighbours' labels pushed the strip under the gear at every phone width. Their icons say it now. */
   .cd-near .cd-lab { display: none; }
   /* Popovers/pickers never exceed the screen; clampX() (JS) then nudges them fully on-screen. */
-  .pop, .nav-pop, .area-autocomplete { max-width: calc(100vw - 16px); }
-  .pop.proj-pop, .pop.area-pop, .pop.rel-pop, .area-autocomplete { overflow-x: hidden; }
+  .pop, .nav-pop { max-width: calc(100vw - 16px); }
+  .pop.proj-pop, .pop.area-pop, .pop.rel-pop, .pop.area-autocomplete { overflow-x: hidden; }
   .composer-opts { gap: var(--sp-8); }
   .composer-actions { flex-wrap: wrap; }   /* crowded (editing adds three icons), the project takes its own line */
   .composer-actions, .composer-btns { gap: var(--sp-8); }
@@ -2572,7 +2554,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .ico { width: 15px; height: 15px; flex: none; color: var(--muted); } }
 .jb-lists { top: auto; bottom: calc(100% + var(--sp-8)); left: var(--sp-12); width: 270px; border-radius: var(--r-lg); box-shadow: var(--shadow-pop); transform-origin: var(--sp-24) 100%;
   transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); @starting-style { opacity: 0; transform: scale(.95); }
-  .pop-item { min-height: 44px; gap: var(--sp-12); padding: 0 var(--sp-10); font-size: var(--fs-15); &.hot { background: var(--hover); } &.on { color: var(--accent); } }
+  .pop-item { min-height: 44px; gap: var(--sp-12); padding: 0 var(--sp-10); font-size: var(--fs-15); &.on { color: var(--accent); } }
   .pop-item .ico { width: 18px; height: 18px; }
   .more { margin-top: var(--sp-6); border-top: 1px solid var(--hair); border-radius: 0; color: var(--muted); } }
 .jot-bar:has(> .jb-lists) { z-index: 61; }   /* held lists sit over the toasts standing on the bar */
