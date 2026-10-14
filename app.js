@@ -8376,9 +8376,9 @@ document.addEventListener('alpine:init', () => {
       const overlaps = (b, sm, em) => b._sm < em && b._pem > sm;
       const holders = col.blocks.filter(b => tRanges.some(r => holds(b, r.sm, r.em)) || col.blocks.some(o => holds(b, o._sm, o._pem)));
       // the DEEPEST spine it meets, not one per holder: back-to-back holders sit at one depth
-      // an all-day block's spine is just its label, down from 00:00 (.is-terrain .cl-blk-t: 6px + up to ~10px a char): only what starts under it insets
+      // an all-day block's spine is just its label, down from 00:00 (.is-terrain .cl-blk-t: 6px + up to ~13px a char): only what starts under it insets
       // ceiling: label length over-estimated from its characters (W ~9.6px, CJK ~9px; too long only insets more); measure it if a script runs longer
-      const underLabel = (t, sm) => !t.it.allDay || sm * hourH / 60 < 6 + 10 * (t.it.title || '').length;
+      const underLabel = (t, sm) => !t.it.allDay || sm * hourH / 60 < 6 + 13 * (t.it.title || '').length;
       const terrain = [], inset = (sm, em, near) => Math.max(0, ...terrain.filter(t => near(t.it, sm, em) && underLabel(t, sm)).map(t => t.offPx + 16));
       for (const b of holders.sort((a, b) => (b._pem - b._sm) - (a._pem - a._sm)))   // outermost first: its depth is set before what it holds, and draws under it
         terrain.push({ it: b, blk: true, terrain: true, topPct: b.topPct, hPct: b.hPct, offPx: inset(b._sm, b._pem, holds) });
