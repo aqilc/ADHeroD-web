@@ -675,9 +675,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                     </template>
                     <button type="button" class="lp-more" x-show="row.more > 0" @click="locExpandRegion(row.region)" x-text="'+' + row.more + ' more'"></button>
                     <button type="button" class="lp-more" x-show="row.open" @click="locExpandRegion(row.region)">less</button>
-                    <button type="button" class="lp-new" x-show="locNew !== row.region" @click="locNew = row.region; $nextTick(() => locNew === row.region && $refs.lpNewInput?.focus())">＋ place</button>
+                    <button type="button" class="c ghosty" x-show="locNew !== row.region" @click="locNew = row.region; $nextTick(() => locNew === row.region && $refs.lpNewInput?.focus())">＋ place</button>
                     <template x-if="locNew === row.region">
-                      <span class="lp-new"><input x-ref="lpNewInput" placeholder="name…" @keydown.enter.prevent="createPlaceInline(row.region, $event.target.value)" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span>
+                      <span class="c ghosty lp-new"><input x-ref="lpNewInput" placeholder="name…" @keydown.enter.prevent="createPlaceInline(row.region, $event.target.value)" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span>
                     </template>
                   </div>
                 </div>
@@ -772,7 +772,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <div class="zone oneoff flex gap-6" x-show="pop === 'due' && !repRules().length">
             <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="pulseCal()" title="drag across days on the calendar above">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="pulseCal()" title="drag across days on the calendar above" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''">×</button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !timeGet() }" @click.stop="toggleTimePop($event)" x-text="timeGet() ? fmtTime(timeGet()) : '–'"></button></p><button type="button" class="evrow" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
           </div>
-          <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" @click="addRepeat()">+ repeat</button></div>
+          <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" class="c ghosty" @click="addRepeat()">+ repeat</button></div>
         </div></template></template>
         <!-- A rolled chip's list (.row-rels), its kind only: each opens, or goes (Undo restores). The blocking task or the file itself stays. -->
         <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('rels', $event)">
