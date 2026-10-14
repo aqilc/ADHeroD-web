@@ -411,9 +411,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="sheet-x db-x flex-none inline-flex items-center justify-center" @click="draftRestored=false" aria-label="Dismiss notice (keep draft)" title="Dismiss (keep draft)"><svg class="ico"><use href="#i-x"/></svg></button>
         </div>
         </div>
-        <div class="pop area-autocomplete area-chips" x-cloak :style="'display:' + (areaPicker.open ? 'flex' : 'none') + '; left:' + areaPicker.left + 'px; top:' + areaPicker.top + 'px'" @click.document="areaPicker.open && outside($event, $el) && (areaPicker.open = false)">
+        <div class="pop area-autocomplete" x-cloak :style="'display:' + (areaPicker.open ? 'flex' : 'none') + '; left:' + areaPicker.left + 'px; top:' + areaPicker.top + 'px'" @click.document="areaPicker.open && outside($event, $el) && (areaPicker.open = false)">
           <template x-for="(t, i) in areaMatches()" :key="t.id">
-            <button type="button" class="ac-row inline-flex items-center" :class="{ sel: i === areaPicker.sel }"
+            <button type="button" class="pop-item" :class="{ hot: i === areaPicker.sel }"
                     @click="pickPill('area', t.id)" @mouseenter="areaPicker.sel = i">
               <span class="area" :style="'--tc:' + (t.color || areaDefault)">
                 <template x-if="t.icon"><svg class="ico"><use :href="'#' + t.icon"/></svg></template>
@@ -421,7 +421,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </span>
             </button>
           </template>
-          <button type="button" class="ac-row create inline-flex items-center" x-show="areaMatches().length === 0 && areaPicker.frag.trim()"
+          <button type="button" class="pop-item create" x-show="areaMatches().length === 0 && areaPicker.frag.trim()"
                   @click="createAreaFromPicker()">Create "@<span x-text="areaPicker.frag"></span>"</button>
         </div>
         <!-- "#" and "at " open the same narrow list at the caret: typing is the shortcut, the list is the path. -->
@@ -673,8 +673,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                         <svg class="ico tkk" x-show="draft.location?.ids?.includes(ch.id)"><use href="#i-check"/></svg><span x-text="ch.name"></span>
                       </button>
                     </template>
-                    <button type="button" class="lp-more" x-show="row.more > 0" @click="locExpandRegion(row.region)" x-text="'+' + row.more + ' more'"></button>
-                    <button type="button" class="lp-more" x-show="row.open" @click="locExpandRegion(row.region)">less</button>
+                    <button type="button" class="c g" x-show="row.more > 0" @click="locExpandRegion(row.region)" x-text="'+' + row.more + ' more'"></button>
+                    <button type="button" class="c g" x-show="row.open" @click="locExpandRegion(row.region)">less</button>
                     <button type="button" class="c ghosty" x-show="locNew !== row.region" @click="locNew = row.region; $nextTick(() => locNew === row.region && $refs.lpNewInput?.focus())">＋ place</button>
                     <template x-if="locNew === row.region">
                       <span class="c ghosty lp-new"><input x-ref="lpNewInput" placeholder="name…" @keydown.enter.prevent="createPlaceInline(row.region, $event.target.value)" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span>
@@ -770,7 +770,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div>
           </template>
           <div class="zone oneoff flex gap-6" x-show="pop === 'due' && !repRules().length">
-            <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="pulseCal()" title="drag across days on the calendar above">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="pulseCal()" title="drag across days on the calendar above" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''">×</button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !timeGet() }" @click.stop="toggleTimePop($event)" x-text="timeGet() ? fmtTime(timeGet()) : '–'"></button></p><button type="button" class="evrow" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
+            <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="pulseCal()" title="drag across days on the calendar above">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="pulseCal()" title="drag across days on the calendar above" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''"><svg class="ico"><use href="#i-x"/></svg></button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !timeGet() }" @click.stop="toggleTimePop($event)" x-text="timeGet() ? fmtTime(timeGet()) : '–'"></button></p><button type="button" class="evrow" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
           </div>
           <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" class="c ghosty" @click="addRepeat()">+ repeat</button></div>
         </div></template></template>

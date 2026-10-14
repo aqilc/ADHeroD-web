@@ -275,7 +275,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 }
 /* Area icon picker — 7-column grid */
 .icon-pick-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--sp-4); place-items: center; padding: var(--sp-4) var(--sp-8) var(--sp-6); }
-.icon-pick-btn {
+.icon-pick-btn {   /* ceiling: own button, not an .icon-btn size variant; tweak-10 decides that variant */
   width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
   border: 1.5px solid transparent; border-radius: var(--r-6); background: none; cursor: pointer; color: var(--ink);
   &:hover { background: var(--hover); }
@@ -820,7 +820,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .composer-grow.clip { overflow: hidden; height: 0; }
 /* padding+margin animate concurrently with height (not gated on settle); target measured as-if-grown so it doesn't jump */
 .composer-grow.grown .composer-card { padding-top: 14px; padding-bottom: var(--sp-12); margin: var(--sp-8) 0 var(--sp-12); }
-:where(html:not(.touch, .composer-win)) .composer-grow.grown .composer-card { padding-bottom: var(--sp-8); margin-bottom: calc(var(--sp-24) * 2); }   /* the bar's icons sit as far from the foot as the checkbox from the top; room for the action row under the card (8 gap + 28 row + 12) */
+:where(html:not(.touch)) .composer-grow.grown .composer-card { padding-bottom: var(--sp-8); margin-bottom: calc(var(--sp-24) * 2); }   /* the bar's icons sit as far from the foot as the checkbox from the top; room for the action row under the card (8 gap + 28 row + 12) */
 /* the page dims a little while the composer is open (user 10-10: "not a lot"); it fades with the grow's opacity */
 .composer-grow::before { content: ""; position: fixed; inset: -100vmax; z-index: -1; pointer-events: none; background: light-dark(rgb(0 0 0 / .03), rgb(0 0 0 / .16)); }
 .composer-card {
@@ -1103,7 +1103,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* a picked band in the sentence: label opens the picker, × removes just that band */
 .poss-band { gap: 4px; margin-right: 2px;
   button { border: none; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
-  .bx { font-size: var(--fs-11); color: var(--faint); line-height: 1;
+  .bx { color: var(--faint); line-height: 1;
+    .ico { width: 11px; height: 11px; }
     &:hover { color: var(--p1); } } }
 .zrail { gap: var(--sp-2); opacity: 1; transform: translateY(0); transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
   @starting-style { opacity: 0; transform: translateY(-4px); } }
@@ -1127,7 +1128,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   height: 19px; vertical-align: middle;
   white-space: nowrap; cursor: pointer; transition: background .15s var(--ease-out);
   &:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
-  &.g { background: var(--hover); color: var(--muted); font-weight: 400; }
+  &.g { background: var(--hover); color: var(--muted); font-weight: 400;
+    @media (any-hover: hover) and (any-pointer: fine) { &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); } } }
   &.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
   &.ghosty { background: none; border: 1px dashed var(--faint); color: var(--muted);
     @media (any-hover: hover) and (any-pointer: fine) { &:hover:where(:not(.touch *)) { color: var(--warm-ink); border-color: var(--warm-ink); } } }
@@ -1192,6 +1194,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.gentle { color: var(--muted); } &.ping { color: var(--ink); } &.alarm { color: var(--warm-ink); } }
 .rem-seg { padding: 1px var(--sp-6); border-radius: var(--r-4); background: color-mix(in srgb, var(--hover) 70%, transparent); color: var(--ink); }
 .rem-tag { font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
+/* ceiling: a tap-to-cycle button, not .seg; a second tap-to-cycle control makes it a primitive */
 .rem-sev { display: inline-flex; align-items: center; gap: var(--sp-4); margin-left: auto; font-size: var(--fs-12); color: var(--muted); padding: 1px var(--sp-6); border-radius: var(--r-4); background: none; border: none; cursor: pointer;
   &:hover { background: var(--hover); }
   .dots { display: inline-flex; gap: 2px; }
@@ -1245,8 +1248,6 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .c.sel { font-weight: 600; }
 .c.selx { background: var(--deadline); color: var(--on-accent); font-weight: 600; }
 .c.x { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
-.lp-more { display: inline-flex; align-items: center; background: var(--hover); color: var(--muted); font-weight: 500; font-size: var(--fs-12); border: none; border-radius: var(--r-pill); padding: 0 var(--sp-8); height: 19px; cursor: pointer;
-  &:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); } }
 .lp-new input { border: none; background: none; color: var(--ink); font-size: var(--fs-12); width: 64px; &::placeholder { color: var(--faint); } }
 .lp-mgr { margin-top: var(--sp-8); border-top: 1px solid var(--hair); border-radius: 0; }
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
@@ -1275,8 +1276,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* Desktop: the project and the task's actions sit outside, under the card (user 10-10); Enter or ⌘Enter saves, Esc and
    a click outside close. Its left lines the project's icon up with the card's checkbox, its right the card's last icon.
    Anchored to .composer-body, which the # and @ pickers position against, so it can't move to the card. The Windows
-   composer window is the card alone, so it keeps them inside. */
-:where(html:not(.touch, .composer-win)) .composer-actions { position: absolute; top: calc(100% + var(--sp-8) + var(--sp-8)); left: calc(-18px - var(--sp-12) - var(--sp-2)); right: calc(-1 * var(--sp-6));
+   composer window is transparent around the card (desktop/composer.js), so they sit under it there too. */
+:where(html:not(.touch)) .composer-actions { position: absolute; top: calc(100% + var(--sp-8) + var(--sp-8)); left: calc(-18px - var(--sp-12) - var(--sp-2)); right: calc(-1 * var(--sp-6));
   height: 28px; margin: 0; padding: 0; border: none; align-items: center;
   :is(.ghost, .primary) { display: none; }
   .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }
@@ -1504,15 +1505,6 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 
 /* caret pickers (@ # at needs): .pop pickers placed at the caret, over the composer's own pops */
 .pop.area-autocomplete { z-index: 30; max-width: 300px; max-height: 240px; overflow-y: auto; }
-/* @ picker: the area chips wrap in a strip; hover and the keyboard's chip tint the chip itself (stronger --tc), no outer box */
-.pop.area-chips { flex-direction: row; flex-wrap: wrap; gap: var(--sp-4); }
-.area-chips .ac-row { padding: 1px; border: none; background: none; cursor: pointer;
-  &:hover .area { background: color-mix(in srgb, var(--tc, var(--muted)) 16%, transparent); }
-  &.sel .area { background: color-mix(in srgb, var(--tc, var(--muted)) 42%, transparent);
-    border-color: color-mix(in srgb, var(--tc, var(--muted)) 85%, transparent);
-    color: color-mix(in srgb, var(--tc, var(--muted)) 92%, var(--ink));
-    box-shadow: 0 0 7px color-mix(in srgb, var(--tc, var(--muted)) 55%, transparent); }
-  &.create { padding: var(--sp-2) var(--sp-6); color: var(--accent); font-size: var(--fs-13); } }
 .pop.link-autocomplete { max-width: 22rem; }
 /* a candidate's own checkbox, scaled to the row's 13px type and inert (this row picks, it doesn't complete) */
 .ac-ck { pointer-events: none; }

@@ -534,6 +534,7 @@ document.addEventListener('alpine:init', () => {
     mod: MAC ? '⌘' : 'Ctrl',   // the platform's command key, for keycaps (shortcuts sheet, finder footer)
     listQ: '',          // the list search's in-place filter
     sticky: !!window.desktopSticky,   // the Windows sticky note's window (desktop/sticky.js): this page, skinned
+    composerWin: !!window.desktopComposer,   // the Windows global composer's window (desktop/composer.js): the card alone, no rows
     showCompleted: false,   // view-controls toggle; completed tasks hidden by default, persisted to localStorage
     sortBy: 'manual',   // Lists sort: manual|due|importance|alpha|created|deadline (manual = drag/position order); persisted
     sortDir: 'asc',     // asc|desc — ignored for manual
@@ -702,7 +703,7 @@ document.addEventListener('alpine:init', () => {
       if (window.desktopWindow) addEventListener('storage', e => {   // the sticky and composer windows follow the app window's theme live: its write reaches them as this event
         if (e.key === 'adherod.theme' || e.key === 'adherod.colorTheme') { this.colorTheme = savedColorTheme(this.store.theme()); this.setTheme(savedAppearance()); }
       });
-      if (window.desktopWindow && !this.sticky && !window.desktopComposer) {   // the Windows app's main window (desktop/main.cpp); its overlay.js checks for updates
+      if (window.desktopWindow && !this.sticky && !this.composerWin) {   // the Windows app's main window (desktop/main.cpp); its overlay.js checks for updates
         this.desk = await desktopWindow('desk');
         const checkUpdate = async () => { this.updateUrl = await desktopUpdate(); };
         checkUpdate();
@@ -1601,6 +1602,7 @@ document.addEventListener('alpine:init', () => {
       return { mkRow: (t, depth) => this.mkRow(t, depth, byParent, byId, def, now, edMemo, pm), byParent, now, byId };
     },
     visibleRows() {
+      if (this.composerWin) { _secMemo = []; return this._linkRows([], []); }   // no list to show: new list features can't leak into the card's window
       // The key's reads are the only Alpine deps registered: the list re-runs on them. Completed rows split into _doneMemo (rendered below the add button).
       const key = this._rowV + '|' + this.navSel.type + '|' + this.navSel.id + '|' + this.listQ + '|' + this.showCompleted
         + '|' + this.sortBy + this.sortDir + '|' + this.qfImp + '|' + this.qfAreas + '|' + this.qfDue + '|' + this.qfArchived
