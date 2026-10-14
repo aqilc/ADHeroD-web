@@ -1025,14 +1025,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .cal-quick {
   display: flex; flex-direction: column; gap: 1px; padding-bottom: var(--sp-2);
   border-bottom: 1px solid var(--hair); margin-bottom: var(--sp-2);
-  .q { display: flex; align-items: center; gap: var(--sp-8); width: 100%; min-height: 28px; padding: var(--sp-4) var(--sp-8); border: none;
-    background: none; border-radius: var(--r-4); color: var(--ink); font-size: var(--fs-13);
-    .ico { width: 16px; height: 16px; flex: none; }
-    &:hover { background: var(--hover); }
-    span { flex: 1; text-align: left; }
-    b { color: var(--muted); font-weight: 400; font-size: var(--fs-12); } }
-  .q.sug .ico { width: 15px; height: 15px; color: var(--sug); }
-  .q.clear { color: var(--muted); .ico { color: var(--muted); } }
+  .sug .ico { color: var(--sug); }
 }
 
 .cal-head {
@@ -1216,7 +1209,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 /* light shell: r8, hairline, soft shadow; 28px rows at r4 (concentric: 8 − 4 inset) */
 .pop:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
-:is(.proj-pop, .rem-pop, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
+:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
 .proj-row { gap: var(--sp-8); }
