@@ -1168,7 +1168,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
           <div class="rows flex-col gap-4" x-effect="renderRows($el, clSideRows('un'))"></div>
         </ul>
-        <div class="cl-side-empty" x-show="!clSideRows('un').length">Nothing unscheduled</div>
+        <button type="button" class="cl-side-sec cl-side-more" x-show="clSideMoreN()" @click="clSideMore = !clSideMore" x-text="clSideMore ? 'Show less' : clSideMoreN() + ' more'"></button>
+        <div class="cl-side-empty" x-show="!clSideRows('un').length && !clSideMoreN()">Nothing unscheduled</div>
       </aside>
 
     </section>

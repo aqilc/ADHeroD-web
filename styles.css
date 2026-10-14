@@ -689,8 +689,10 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   display: flex; align-items: stretch; overflow: hidden; pointer-events: none; }   /* clipping wrapper, mirror of .move-rail: the off-screen slide never grows the page */
 .peek.on { pointer-events: auto; }
 .peek-panel { position: relative; flex: 1; min-width: 0; margin: var(--sp-12) 0;
-  background: var(--panel); border-radius: var(--r) 0 0 var(--r); box-shadow: var(--shadow-pop);
+  background: var(--panel);
   transform: translateX(100%); opacity: 0; transition: transform .18s var(--ease-out), opacity .18s var(--ease-out); }
+/* the calendar's two side panels, C1b tucked: inner corners rounded, shadow leftward, no box */
+.peek-panel, .cl-side { border-radius: var(--r-lg) 0 0 var(--r-lg); box-shadow: -1px 0 0 var(--hair), -10px 0 28px rgb(0 0 0 / .1); }
 .peek.on .peek-panel { transform: translateX(0); opacity: 1; }
 .peek-head { flex: none; padding: var(--sp-10) var(--sp-10) var(--sp-6); }
 .peek-date { font-size: var(--fs-22); font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
@@ -2218,7 +2220,7 @@ textarea.inp { resize: vertical; }
 
 /* DAY agenda — a side panel that slides in over the right edge in day view, listing the day's items */
 /* Side panel: scheduled (this view) + unscheduled + the relocated composer. Slides in from the right. */
-.cl-side { position: absolute; top: var(--bar); right: 0; bottom: 0; width: var(--side); z-index: 21; padding: 12px 16px var(--foot); overflow-y: auto; background: color-mix(in srgb, var(--panel) 96%, transparent); border-left: 1px solid var(--edge); border-radius: var(--r-lg) 0 0 var(--r-lg); transform: translateX(100%); transition: transform .32s var(--ease-drawer); }   /* z 21: overlaying (clSideOver), the pinned week head (20) runs under it */
+.cl-side { position: absolute; top: var(--bar); right: 0; bottom: 0; width: var(--side); z-index: 21; padding: 12px 16px var(--foot); overflow-y: auto; background: color-mix(in srgb, var(--panel) 96%, transparent); transform: translateX(100%); transition: transform .32s var(--ease-drawer); }   /* z 21: overlaying (clSideOver), the pinned week head (20) runs under it */
 .cl-side.open { transform: none; }
 @media (prefers-reduced-motion: reduce) { .cl-side { transition: opacity .15s ease; } .cl-side:not(.open) { opacity: 0; } }   /* fades in instead of sliding; leaves at once */
 .cl-wk, .cl-period-block { contain: paint; }
@@ -2233,6 +2235,8 @@ textarea.inp { resize: vertical; }
 .cl-side-sec::before, .cl-side-sec::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
 .cl-side-hint { font-size: 9px; font-weight: 500; letter-spacing: .04em; text-transform: none; color: var(--muted); }
 .cl-side-hint::before { content: "· "; }
+.cl-side-more { width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }   /* the thread line as a button: the plain undated tasks fold behind it */
+.cl-side-more:hover { color: var(--ink); }
 .cl-side-sec.resched { color: var(--warm-ink); }   /* slipped wants attention, never the red that means a deadline */
 /* flat rows, no fold: the gutter shrinks to the row's own inset, and the bleed puts each check under "Needs a slot" */
 .cl-side-list.list { --gut: var(--sp-10); margin: 0 calc(-1 * var(--sp-10)); content-visibility: auto; contain-intrinsic-size: auto 400px; }

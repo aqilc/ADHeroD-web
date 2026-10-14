@@ -116,7 +116,7 @@ let _hayV = -1;   // _hay's data version (see pickerMatches)
 let _hayOf = new WeakMap();   // candidate array -> { hay, low }: a memoized pool (relationCandidates) reuses its haystack per keystroke
 const _seqIn = (low, f) => { let at = 0; for (let k = 0; k < f.length; k++) if (!(at = low.indexOf(f[k], at) + 1)) return false; return true; };   // f in order within low; both lowercased
 const _relMemo = new Map(), _candMemo = new Map();   // _relIdx / relationCandidates, one entry each
-const _clSideOut = { res: { rows: [], html: new Map() }, un: { rows: [], html: new Map() } };   // clSideRows(): each kind's last rows + their key (_rowV|day(|tick)) + id → row html; hidden, the last rows show
+const _clSideOut = { res: { rows: [], html: new Map() }, un: { rows: [], html: new Map(), more: 0 } };   // clSideRows(): each kind's last rows + their key (_rowV|day(|tick)) + id → row html; hidden, the last rows show
 let _clSideV = -1;   // the _rowV the tray's cached row html holds for: _patchTask keeps it current, any other bump leaves it behind
 let _clAdNxH = null;   // last written --adh (the incoming claims rail height)
 const _clPgCache = new Map();   // day/week periods by index: scale-free days + bands, and their packed cols at one scale
@@ -463,7 +463,7 @@ document.addEventListener('alpine:init', () => {
     blockDays: [],          // block_day answer rows (start/skip/undo written here and on Android)
     dayNotes: [],           // named days (B·V3): { date, label }
     clView: 'month',        // calendar view: day | week | month
-    clSideOpen: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle; 'peek-ad' while a drag hovers the Peek all-day strip
+    clSideOpen: false, clSideMore: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle; 'peek-ad' while a drag hovers the Peek all-day strip
     peekPin: false, peekIso: '', peekEdgeHot: null, peekMonHot: '',   // Peek Pane (C2): drag-summoned docked day column on Lists; pin keeps it for batch planning; edge-dwell paging + month-dwell state
     clDropPreview: null,   // { iso, min, h, label } — live ghost of where a drag will land in a week/day column
     clAnchor: isoDate(new Date()),   // calendar anchor date (YYYY-MM-DD); drives the visible period
@@ -3327,7 +3327,7 @@ document.addEventListener('alpine:init', () => {
       _viewHold = false; this._heldV++; _heldRes?.(); _heldP = _heldRes = null;
     },
     _viewFree() { return _viewHold ? _heldP ??= new Promise(res => _heldRes = res) : Promise.resolve(); },
-    composerMt() { return (this.editing && !this._inBar() ? -this.startH : 0) + 'px'; },   // over its row; the bar's task has none
+    composerMt() { return (this.editing && !this._inBar() && !this._inPanel() ? -this.startH : 0) + 'px'; },   // over its row; the bar's task and the panel's (its row is hidden) have none
     // A terminal action (done, duplicate, archive) closes the composer: its open edits land first. False = they didn't, and
     // the composer keeps them — a dirty draft closed over would only survive as a recoverable pending draft.
     async _saveOpenEdits(d) { return this._live(d) && (this._draftSig() === this._draftBase || await this.submitComposer() === true); },
@@ -9217,13 +9217,20 @@ document.addEventListener('alpine:init', () => {
       const parts = this._schedParts(id, d); if (!parts.length) return;
       return this.perform(label || (d.on ? 'Scheduled task' : 'Unscheduled task'), { kind: 'composite', target: 'scheduleItem', ops: parts }, { silent: !label, ops, fail });
     },
-    // no date at all, newest first; cap for perf
+    // No date at all → [need, rest], each newest first. Need = Must, Focus or a deadline: soonest deadline, then Must before Focus.
+    // ceiling: the open "N more" list renders every undated task; window it past ~500
     clUnscheduled() {
-      const pm = this._placedMap();
-      return this.tasks.filter(t => this._openLeaf(t) && !this.whenOf(t, pm))
-        .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || '')).slice(0, 50);
+      const pm = this._placedMap(), need = [], rest = [];
+      const all = this.tasks.filter(t => this._openLeaf(t) && !this.whenOf(t, pm)).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      for (const t of all) (t.deadline_at || t.importance === 'must' || t.importance === 'focus' ? need : rest).push(t);
+      need.sort((a, b) => !a.deadline_at - !b.deadline_at || (a.deadline_at || '').localeCompare(b.deadline_at || '') || (a.importance !== 'must') - (b.importance !== 'must'));
+      return [need, rest];
     },
-    _overdue(t, b, pm) { const w = this.whenOf(t, pm); return !!w && (timeOf(w) ? w < b.at : w.slice(0, 10) < b.today); },
+    // A timed task slips once its block ends, not while it runs; a paused repeat owes nothing
+    _overdue(t, b, pm) {
+      const w = this.whenOf(t, pm); if (!w || t.recurrence && !recActive(t.recurrence)) return false;
+      return timeOf(w) ? addMinutes(w, t.est_minutes ?? 60) <= b.at : w.slice(0, 10) < b.today;
+    },
     // local wall-clock, never UTC
     clReschedule() {
       void this._nowTickV;   // refresh as the clock passes each task's time
@@ -9246,12 +9253,14 @@ document.addEventListener('alpine:init', () => {
     // keep the last rows and read no task, so a Lists edit wakes nothing; showing re-runs this.
     clSideRows(kind) {
       const side = _clSideOut[kind]; if (!this.clSideVisible() || this._clHidden()) return side.rows;
-      const res = kind === 'res', clock = res ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, ed = this.editing, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV + '|' + ed;   // the tick: re-list for the timed deadlines it left uncached
+      const res = kind === 'res', clock = res ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, ed = this.editing, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV + '|' + ed + '|' + this.clSideMore;   // the tick: re-list for the timed deadlines it left uncached
       if (side.key === key) return side.rows;
       if (_clSideV !== this._rowV) { for (const s of Object.values(_clSideOut)) s.html.clear(); _clSideV = this._rowV; }   // not only patches since: any row may differ
       if (side.clock !== clock) side.html.clear();   // rows read the clock (due and deadline badges)
-      return Object.assign(side, { key, clock, rows: this._clRowsHtml((res ? this.clReschedule() : this.clUnscheduled()).filter(t => t.id !== ed), side.html) }).rows;   // the edited task is the composer's, as on Lists: its row ticked too completed it behind a composer left open
+      const [need, rest] = res ? [this.clReschedule(), []] : this.clUnscheduled();
+      return Object.assign(side, { key, clock, more: rest.length, rows: this._clRowsHtml((this.clSideMore ? need.concat(rest) : need).filter(t => t.id !== ed), side.html) }).rows;   // the edited task is the composer's, as on Lists: its row ticked too completed it behind a composer left open
     },
+    clSideMoreN() { return this.clSideRows('un') && _clSideOut.un.more; },   // the plain undated tasks behind the "N more" line
     clRowClick(e) { const el = e.target.closest?.('.item'); const t = el && this.byId.get(el.dataset.id); if (t) this.onRowClick({ t }, e); },
     clSideDragStart(e) { const el = e.target.closest?.('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
     clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideOpen = true; this.$nextTick(() => this.editTask(t)); },
