@@ -39,7 +39,7 @@ import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurr
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
-import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip } from './ui.js';
+import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip } from './ui.js';
 import { makeSortable, edgeScrollStep, edgeSpeed, sorting, DWELL } from './sortable.js';
 import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
@@ -373,9 +373,9 @@ let _press = null;   // the mouse press under way, a tap's too: the description 
 let _opened = null;   // the field openComposer focused: an opened task reads as a view, no markers, until a key or a press (web-14)
 const _textWidth = document.createElement('canvas').getContext('2d');   // _descHtml's chars-per-line estimate
 const _tpl = h => Object.assign(document.createElement('template'), { innerHTML: h }).content.firstChild;
-const CHK_ROW = _tpl('<div class="entry chk"><button type="button" class="chk-rect"></button><div class="entry-txt" role="textbox" tabindex="0"></div><button type="button" class="entry-del" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button></div>');
-const GRIP = '<span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>', CHK_GRIP = _tpl(GRIP);
-const SUB_ROW = _tpl('<div class="entry">' + GRIP + '<span class="entry-chk"></span><div class="entry-txt sub-ce" role="textbox" tabindex="0" contenteditable="true"></div><button type="button" class="entry-kids" title="Open this task"><svg class="ico"><use href="#i-chev-r"/></svg></button><button type="button" class="entry-del" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button></div>');
+const CHK_ROW = _tpl(html`<div class="entry chk"><button type="button" class="chk-rect"></button><div class="entry-txt" role="textbox" tabindex="0"></div><button type="button" class="entry-del" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button></div>`);
+const GRIP = html`<span class="entry-grip" aria-hidden="true"><svg class="ico"><use href="#i-grip"/></svg></span>`, CHK_GRIP = _tpl(GRIP);
+const SUB_ROW = _tpl(html`<div class="entry">${raw(GRIP)}<span class="entry-chk"></span><div class="entry-txt sub-ce" role="textbox" tabindex="0" contenteditable="true"></div><button type="button" class="entry-kids" title="Open this task"><svg class="ico"><use href="#i-chev-r"/></svg></button><button type="button" class="entry-del" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button></div>`);
 const QF_DUE = { today: { verb: 'due', label: 'today', col: 'var(--q-today)' }, overdue: { verb: '', label: 'overdue', col: 'var(--p1)' }, has: { verb: 'that', label: 'has a date', col: 'var(--accent)' }, none: { verb: 'with', label: 'no date', col: 'var(--faint)' } };
 
 // ── Popover placement: the ONE viewport clamp ────────────────────────────────
@@ -1857,13 +1857,13 @@ document.addEventListener('alpine:init', () => {
     _secKey(g) { return 'sec:' + g.at + ':' + g.key; },
     // Section head: the Done head's own type + count, plus a chevron on the row-chevron column.
     _secLi(g) {
-      return '<li class="sec-row flex items-center" data-id="' + this._secKey(g) + '" data-sec="' + escHtml(g.key) + '" style="order:' + (g.at * 2 - 1) + '">'
-        + '<svg class="ico sec-chev"' + (g.shut ? ' style="transform:rotate(-90deg)"' : '') + '><use href="#i-chev-d"/></svg>'
-        + '<span class="sec-lbl">' + (g.up ? '<span class="sec-up"><span>' + escHtml(g.up) + '</span></span>' : '') + '<span class="sec-nm">' + escHtml(g.label) + '</span></span><span class="sec-ct">' + g.count + '</span>'
-        // AFTER the count, never before the label: the chevron/label column is aligned to the row chevron and the
-        // Done head by deliberate convention (layout-lists asserts it), and a leading pie shifts the label 18px.
-        + (g.pct == null ? '' : '<span class="rl-prog sec-pie" style="--p:' + g.pct + ';--pc:' + escHtml(g.pieColor || 'var(--muted)') + '"></span>')
-        + '<span class="head-rule"></span></li>';
+      const up = g.up ? html`<span class="sec-up"><span>${g.up}</span></span>` : '';
+      // the pie sits AFTER the count, never before the label: the chevron/label column is aligned to the row chevron and the
+      // Done head by deliberate convention (layout-lists asserts it), and a leading pie shifts the label 18px.
+      const pie = g.pct == null ? '' : html`<span class="rl-prog sec-pie" style="--p:${g.pct};--pc:${g.pieColor || 'var(--muted)'}"></span>`;
+      return html`<li class="sec-row flex items-center" data-id="${this._secKey(g)}" data-sec="${g.key}" style="order:${g.at * 2 - 1}">`
+        + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg>`
+        + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>${raw(pie)}<span class="head-rule"></span></li>`;
     },
     completedRows() { this.visibleRows(); return _doneMemo; },   // computed alongside visibleRows; the Done list below the add button
     // Same pure row markup as listHtml (order + depth padding so it aligns with the active list), so the single
@@ -1872,7 +1872,7 @@ document.addEventListener('alpine:init', () => {
     // holds the chevron left of the check on EVERY row, so checks line up with or without one.
     _itemLi(r, { order = null, drag = '', ...body } = {}) {
       const t = r.t, style = (order == null ? '' : 'order:' + order + ';') + 'padding-left:calc(var(--gut) + ' + (r.depth * 22) + 'px);--d:' + r.depth;
-      return '<li class="item' + (t.completed_at ? ' done' : t.archived_at ? ' archived' : r.blocked ? ' waiting' : '') + (r.ctx ? ' ctx' : '') + ' flex gap-10" data-id="' + t.id + '" style="' + style + '"' + drag + '>' + this.rowBody(r, body) + '</li>';
+      return html`<li class="item${t.completed_at ? ' done' : t.archived_at ? ' archived' : r.blocked ? ' waiting' : ''}${r.ctx ? ' ctx' : ''} flex gap-10" data-id="${t.id}" style="${style}"${raw(drag)}>${raw(this.rowBody(r, body))}</li>`;
     },
     // Height estimate for a row that has NEVER been rendered (once one has, _hCache holds its real height).
     // One flat 38px guess against real 34/46/54+ rows made the scrollbar lurch on the way down (#307), so this
@@ -2048,7 +2048,7 @@ document.addEventListener('alpine:init', () => {
       const out = this._parts(m.ent, w.s, w.e).filter(p => !_dragDescs?.has(p.id));
       // data-id, like every other part: morphRows keys the reconciliation off it, and two elements sharing
       // the undefined key collided — the old spacer was orphaned into the list and its height double-counted.
-      const pad = (id, order, h) => ({ id, html: '<li class="win-pad" data-id="' + id + '" style="order:' + order + ';height:' + h + 'px"></li>' });
+      const pad = (id, order, h) => ({ id, html: html`<li class="win-pad" data-id="${id}" style="order:${order};height:${h}px"></li>` });
       // The composer's flex order pins it to its row's slot. If that slot is elided into a spacer, the spacer
       // would sort to the other side of the composer, and the composer's flow height (composerH - startH)
       // would hop across _listOrigin's measurement point — flipping the very window decision that elided the
@@ -2861,9 +2861,9 @@ document.addEventListener('alpine:init', () => {
     // first swatch = clear; '' → null; shared by editors + nav popovers
     swatchRow(cur, defaultBg) {
       const first = defaultBg
-        ? `<button type="button" class="swatch${cur ? '' : ' sel'}" style="background:${defaultBg}" data-color="" title="Default"></button>`
-        : `<button type="button" class="swatch none${cur ? '' : ' sel'}" data-color="" title="No color"></button>`;
-      return first + this.colors.map(c => `<button type="button" class="swatch${cur === c ? ' sel' : ''}" style="background:${c}" data-color="${c}"></button>`).join('');
+        ? html`<button type="button" class="swatch${cur ? '' : ' sel'}" style="background:${defaultBg}" data-color="" title="Default"></button>`
+        : html`<button type="button" class="swatch none${cur ? '' : ' sel'}" data-color="" title="No color"></button>`;
+      return first + this.colors.map(c => html`<button type="button" class="swatch${cur === c ? ' sel' : ''}" style="background:${c}" data-color="${c}"></button>`).join('');
     },
     swatchPick(e, set) { if (e.target.dataset.color !== undefined) set(e.target.dataset.color || null); },   // ignores clicks on the gap; '' → null
     // Dragged tasks' subtrees move with them, so they leave the list until the drop (_clearDrag brings them back). The grabbed
@@ -2896,8 +2896,8 @@ document.addEventListener('alpine:init', () => {
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.id);
         const row = this._rowFromEl(e.target?.closest?.('.item')) || this._mkRowFn().mkRow(t, 0);
-        const rest = ids.length - (t.id === this.dragId), more = rest ? `<span class="badge">+${rest}</span>` : '';   // the roots besides the card's row; the card only: a Peek drop schedules the grabbed row alone
-        dragImage(e, `<div class="drag-ghost-row">${this.rowBody(row, { chevron: false, checklist: false, rels: false })}${more}<span class="badge deep">Too deep</span></div><div class="drag-ghost-chip">${escHtml(t.content || 'Task')}</div>`,
+        const rest = ids.length - (t.id === this.dragId), more = rest ? html`<span class="badge">+${rest}</span>` : '';   // the roots besides the card's row; the card only: a Peek drop schedules the grabbed row alone
+        dragImage(e, html`<div class="drag-ghost-row">${raw(this.rowBody(row, { chevron: false, checklist: false, rels: false }))}${raw(more)}<span class="badge deep">Too deep</span></div><div class="drag-ghost-chip">${t.content || 'Task'}</div>`,
           e.target?.closest?.('.item')?.getBoundingClientRect() || { left: (e.clientX ?? 0) - 20, top: (e.clientY ?? 0) - 10 });
       }
     },
@@ -3495,16 +3495,14 @@ document.addEventListener('alpine:init', () => {
     },
     searchJumpHTML(r) {   // non-task palette row: lead (icon/dot) + name (+ a type tag for nav/commands)
       if (r.kind === 'nav' || r.kind === 'cmd') {
-        const name = escHtml(r.title || '');   // escape — filter/goal names are user input
         const lead = r.color
-          ? `<span class="filter-dot" style="background:${r.color}"></span>`
-          : `<svg class="ico pick-ico"><use href="#${r.icon || 'i-arrow'}"/></svg>`;
-        return `${lead}<span class="pick-name">${name}</span><span class="pick-tag">${r.tag ?? (r.type === 'command' ? 'Action' : r.type)}</span>`;
+          ? html`<span class="filter-dot" style="background:${r.color}"></span>`
+          : html`<svg class="ico pick-ico"><use href="#${r.icon || 'i-arrow'}"/></svg>`;
+        return html`${raw(lead)}<span class="pick-name">${r.title || ''}</span><span class="pick-tag">${r.tag ?? (r.type === 'command' ? 'Action' : r.type)}</span>`;
       }
-      const marked = this.searchTitleHTML(r);
-      if (r.type === 'project') return `<span class="hash">#</span><span class="pick-name">${marked}</span>`;
-      const color = r.obj.color || this.areaDefault;
-      return `<svg class="ico area-ico" style="color:${color}"><use href="#${r.obj.icon || 'i-tag-tag'}"/></svg><span class="pick-name">${marked}</span>`;
+      const marked = raw(this.searchTitleHTML(r));
+      if (r.type === 'project') return html`<span class="hash">#</span><span class="pick-name">${marked}</span>`;
+      return html`<svg class="ico area-ico" style="color:${r.obj.color || this.areaDefault}"><use href="#${r.obj.icon || 'i-tag-tag'}"/></svg><span class="pick-name">${marked}</span>`;
     },
     openPalette(q = '') { this.palette.open = true; this.palette.q = q; this.palette.sel = 0; this.$nextTick(() => this.palette.open && this.$refs.paletteInput?.focus()); },   // held by a leave transition, a focus tick can run after a close, ahead of the held hide: every deferred focus checks its open flag
     paletteMove(d) {
@@ -3730,10 +3728,10 @@ document.addEventListener('alpine:init', () => {
     taskProj(p) { return !p.overview && p.id !== this.store.defaultProject(); },   // container task, not an overview project
     // The project picker's rows, ticked at sel: task-projects read as the TASKS they are (checkbox + title + areas), the rest as # rows
     projRowsHtml(list, sel) {
-      return list.map(p => { const tick = p.id === sel ? '<svg class="tick ico"><use href="#i-check"/></svg>' : '', tint = p.color ? `color:${escHtml(p.color)}` : '';
-        return this.taskProj(p) ? `<button type="button" class="pop-item task-line" data-pid="${p.id}">${this.taskLine(p)}${tick}</button>`
-          : `<button type="button" class="pop-item proj-row" data-pid="${p.id}"><svg class="hash-ico ico" style="${tint}"><use href="${this.isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'}"/></svg>`
-            + `<span style="${tint && tint + ';opacity:.75'}">${escHtml(this.projectPath(p))}</span>${tick}</button>`; }).join('');
+      return list.map(p => { const tick = raw(p.id === sel ? html`<svg class="tick ico"><use href="#i-check"/></svg>` : ''), tint = p.color ? `color:${p.color}` : '';
+        return this.taskProj(p) ? html`<button type="button" class="pop-item task-line" data-pid="${p.id}">${raw(this.taskLine(p))}${tick}</button>`
+          : html`<button type="button" class="pop-item proj-row" data-pid="${p.id}"><svg class="hash-ico ico" style="${tint}"><use href="${this.isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'}"/></svg>`
+            + html`<span style="${tint && tint + ';opacity:.75'}">${this.projectPath(p)}</span>${tick}</button>`; }).join('');
     },
     pidOf(e) { return this.byId.get(e.target.closest('[data-pid]')?.dataset.pid); },
     pickProject(project) { this.draft.project_id = project.id; this.draft.project = project.content; this.projRequired = false; this.pickerQ = ''; this.pop = null; },
@@ -4203,13 +4201,13 @@ document.addEventListener('alpine:init', () => {
     _descHtml(text) {
       const tail = text.endsWith('\n') ? '<br>' : '';   // inside the last block, so a redraw of it keeps the closing line
       if (text.length <= DESC_BLOCK) return mdLiveRender(text) + tail;
-      let html = '';
+      let out = '';
       for (let at = 0, end; at < text.length; at = end) {
         end = mdCut(text, at, DESC_BLOCK);
         const part = text.slice(at, end);
-        html += `<div class="desc-block">${at && end < text.length ? escHtml(part) : mdLiveRender(part)}${end < text.length ? '' : tail}</div>`;
+        out += html`<div class="desc-block">${at && end < text.length ? part : raw(mdLiveRender(part))}${raw(end < text.length ? '' : tail)}</div>`;
       }
-      return html;
+      return out;
     },
     _blockHtml(block, plain) {
       const text = block.textContent;
@@ -7459,7 +7457,7 @@ document.addEventListener('alpine:init', () => {
       this.askConfirm({ message: 'Completing this will also complete:', bodyHtml: this._sweepHtml(sweep.map(x => this.byId.get(x)).filter(Boolean)), confirmLabel: 'Complete all', onConfirm: complete });
       return true;
     },
-    _sweepHtml(items) { return `<div class="sweep-list">${items.map(it => `<div class="task-line">${this.taskLine(it)}</div>`).join('')}</div>`; },
+    _sweepHtml(items) { return html`<div class="sweep-list">${items.map(it => raw(html`<div class="task-line">${raw(this.taskLine(it))}</div>`))}</div>`; },
     async toggle(t, row = null) {
       if (inNotes(t) && !t.completed_at) return;   // a note never completes (x, the row, the composer); one that came in done reopens
       if (t.archived_at) { this.toast('Archived. Unarchive from the task menu'); return; }   // dash checkbox is inert
@@ -7629,8 +7627,7 @@ document.addEventListener('alpine:init', () => {
       if (!cleared) return;
       const el = document.createElement('div');
       el.className = 'day-clear';
-      el.innerHTML = '<span class="day-clear-t"></span>';
-      el.firstChild.textContent = cleared.label;
+      el.innerHTML = html`<span class="day-clear-t">${cleared.label}</span>`;
       document.body.append(el);
       setTimeout(() => {
         el.classList.add('out');
@@ -8656,24 +8653,24 @@ document.addEventListener('alpine:init', () => {
     // directive inits per page built. Reads the reactive state a binding would, so an edit still repaints its row.
     clAgParts(key, col) {
       col = this._clColNow(key, col);
-      const rows = col.agenda?.rows || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0, dot = '<span class="cl-ag-dot"></span>';
+      const rows = col.agenda?.rows || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0, dot = raw(html`<span class="cl-ag-dot"></span>`);
       const parts = rows.map((r, ix) => {
-        const it = r.it, mark = r.free ? dot : it.kind === 'task-block' ? '<span class="cl-ag-chk">' + this.clCheckHtml(it, 'cl-evt-check') + '</span>'
-          : it.kind === 'task-deadline' ? '<svg class="ico cl-dl-ico"><use href="#i-flag"/></svg>' : dot;
-        return { id: r.key, html: '<div class="cl-ag-row ' + (r.free ? 'free' : it.kind + (r.mark ? ' mark' : '') + this.clTaskState(it)) + (!r.allday && r.min + r.mins <= cut ? ' past' : '')
-          + '" data-id="' + escHtml(r.key) + '" tabindex="' + (r.free ? -1 : 0) + '"' + (!r.free && this._dndKind(it.kind) ? ' draggable="true"' : '')
-          + ' style="--i:' + ix + ';--cc:' + (r.free ? 'var(--muted)' : escHtml(this.clItemColor(it))) + '"><span class="cl-ag-t">' + (r.allday ? 'All day' : this.clAgTime(r.min))
-          + '</span><span class="cl-ag-m">' + mark + '</span><span class="cl-ag-b"><span class="cl-ag-n">' + escHtml(r.free ? this.durFmt(r.mins) + ' free' : it.title)
-          + '</span><span class="cl-ag-d">' + (r.free ? '' : escHtml(this.clAgSub(r))) + '</span></span></div>' };
+        const it = r.it, mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
+          : it.kind === 'task-deadline' ? raw(html`<svg class="ico cl-dl-ico"><use href="#i-flag"/></svg>`) : dot;
+        return { id: r.key, html: html`<div class="cl-ag-row ${r.free ? 'free' : it.kind + (r.mark ? ' mark' : '') + this.clTaskState(it)}${!r.allday && r.min + r.mins <= cut ? ' past' : ''}"`
+          + html` data-id="${r.key}" tabindex="${r.free ? -1 : 0}"${raw(!r.free && this._dndKind(it.kind) ? ' draggable="true"' : '')}`
+          + html` style="--i:${ix};--cc:${r.free ? 'var(--muted)' : this.clItemColor(it)}"><span class="cl-ag-t">${r.allday ? 'All day' : this.clAgTime(r.min)}`
+          + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n">${r.free ? this.durFmt(r.mins) + ' free' : it.title}`
+          + html`</span><span class="cl-ag-d">${r.free ? '' : this.clAgSub(r)}</span></span></div>` };
       });
-      if (!rows.length) parts.push({ id: 'none', html: '<div class="cl-ag-none" data-id="none">Nothing scheduled</div>' });
-      if (col.cleared) parts.push({ id: 'cleared', html: '<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">' + escHtml(col.cleared.label) + '</span></div>' });
+      if (!rows.length) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });
+      if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });
       return parts;
     },
     clRailHtml(key, col) {
       col = this._clColNow(key, col);
-      return col.blocks.map(b => '<div class="cl-rail-blk" style="top:' + b.topPct + '%;height:' + this.clBandH(b, b.hPct) + '%;--cc:' + escHtml(b.color || 'var(--accent)') + '" title="' + escHtml(b.title) + '"></div>').join('')
-        + col.timed.map(p => '<div class="cl-rail-seg ' + p.it.kind + '" style="top:' + p.topPct + '%;height:' + p.hPct + '%;--cc:' + escHtml(this.clItemColor(p.it)) + '"></div>').join('');
+      return col.blocks.map(b => html`<div class="cl-rail-blk" style="top:${b.topPct}%;height:${this.clBandH(b, b.hPct)}%;--cc:${b.color || 'var(--accent)'}" title="${b.title}"></div>`).join('')
+        + col.timed.map(p => html`<div class="cl-rail-seg ${p.it.kind}" style="top:${p.topPct}%;height:${p.hPct}%;--cc:${this.clItemColor(p.it)}"></div>`).join('');
     },
     _clAgRow(e, col) { const el = e.target.closest('.cl-ag-row'); return el && col.agenda?.rows.find(r => r.key === el.dataset.id); },
     clAgClick(e, col) {
