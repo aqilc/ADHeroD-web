@@ -1168,21 +1168,18 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
       &:not(:last-child) { border-right: 1px solid var(--hair); }
       &:hover { background: var(--hover); }
       &.on { font-weight: 600; } } }
-  .tx { display: flex; margin-top: var(--sp-4);
-    button { flex: 1; border: none; background: none; font-size: var(--fs-11); color: var(--muted); padding: 3px 0;
-      border-radius: var(--r-6); cursor: pointer; &:hover { background: var(--hover); color: var(--p1); } } }
+  .tx { margin-top: var(--sp-4); }
 }
 /* Duration popover: size ladder + one exact-minutes field */
 .pop.dur { min-width: 220px; padding: var(--sp-8); }
 .pop.dur .lad { display: flex; flex-direction: column; gap: 1px;
-  .ico { width: 15px; height: 15px; flex: none; align-self: center; color: var(--muted); }
-  button { display: flex; align-items: baseline; gap: var(--sp-8); padding: 5px var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-13); color: var(--ink); text-align: left; width: 100%;
-    &:hover { background: var(--hover); }
+  .pop-item { align-items: baseline;   /* the name and its 11px gloss share a baseline */
+    .ico { align-self: center; }
+    /* ceiling: the pick is a tint, not the primitive's .tick; revisit when the size popover is next restyled */
     &.on { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--warm-ink);
       .ico { color: inherit; } }
     i { font-style: normal; font-size: var(--fs-11); color: var(--muted); }
-    &.on i { color: color-mix(in srgb, var(--accent) 55%, var(--muted)); }
-    b { margin-left: auto; font-size: var(--fs-11); color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; } }
+    &.on i { color: color-mix(in srgb, var(--accent) 55%, var(--muted)); } }
 }
 .pop.dur .hmrow { display: flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-8); font-size: var(--fs-12); color: var(--muted); border-top: 1px solid var(--hair); margin-top: var(--sp-6);
   .ico { width: 13px; height: 13px; flex: none; }
@@ -1192,10 +1189,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     appearance: textfield; &::-webkit-inner-spin-button { appearance: none; }
     &::placeholder { color: var(--faint); }
     &:focus { border-bottom-color: var(--accent); outline: none; } } }
-.pop.dur .dur-clr { display: flex; align-items: center; gap: var(--sp-6); width: 100%; border: none; background: none;
-  padding: var(--sp-4) var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-12); color: var(--muted); cursor: pointer; margin-top: var(--sp-4);
-  .ico { width: 13px; height: 13px; flex: none; }
-  &:hover { background: var(--hover); } }
+.pop.dur .dur-clr { margin-top: var(--sp-4); }
 /* Project/area/relations popovers: wider, scrollable; right-sized icons (not the default huge SVG) */
 /* Reminders popover — the sentence rows. Severity reads twice: the lead icon's shape, and the
    dots+word control at the end. Never red (that is the deadline's alone). */
@@ -1218,15 +1212,11 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* a paused reminder still reads as itself, just stood down — never deleted, never hidden */
 .rem-row.paused { .rem-lead, .rem-sev { color: var(--faint); } .rem-seg { background: none; color: var(--faint); } .dots i { opacity: .25; } }
 /* suggestions: grounded, 1–3, one tap to become a row; a covered one is not rendered at all */
-.rem-sug { display: flex; align-items: center; gap: var(--sp-8); width: 100%; min-height: 28px; text-align: left; padding: var(--sp-4) var(--sp-8);
-  border-radius: var(--r-4); font-size: var(--fs-13); color: var(--muted); background: none; border: none; cursor: pointer;
-  .ico { width: 15px; height: 15px; flex: none; color: var(--faint); }
-  .plus { margin-left: auto; font-size: 19px; line-height: 1; color: var(--muted); padding: 0 var(--sp-2); }
-  &:hover { background: var(--hover); color: var(--ink); } }
+.rem-sug { .plus { margin-left: auto; font-size: 19px; line-height: 1; color: var(--muted); padding: 0 var(--sp-2); } }
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 /* light shell: r8, hairline, soft shadow; 28px rows at r4 (concentric: 8 − 4 inset) */
 .pop:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
-:is(.proj-pop, .rem-pop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
+:is(.proj-pop, .rem-pop, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
 .proj-row { gap: var(--sp-8); }
@@ -1248,18 +1238,15 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .lp-kbd { float: right; color: var(--muted); font-size: var(--fs-11); }
 .lp-colon { color: var(--muted); margin-left: 1px; }
 .lp-here {
-  display: flex; align-items: center; gap: var(--sp-8); width: 100%; padding: var(--sp-4) var(--sp-8);
-  border: none; border-radius: var(--r-6); font-size: var(--fs-13); color: var(--ink); text-align: left;
-  background: color-mix(in srgb, var(--q-today) 7%, transparent); cursor: pointer;
+  background: color-mix(in srgb, var(--q-today) 7%, transparent);
   .heredot { width: 7px; height: 7px; border-radius: 50%; background: var(--q-today); box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-today) 20%, transparent); flex: none; }
   .sub { color: var(--muted); font-size: var(--fs-11); }   /* reserved slot: source/staleness text lands here later, no reflow */
-  .tick { margin-left: auto; width: 13px; height: 13px; color: var(--accent); flex: none; }
   &:hover { background: color-mix(in srgb, var(--q-today) 12%, transparent); }
 }
 /* home row: amber tint + home glyph — distinct from the blue "here now" row */
 .lp-home-row { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .lp-home-row:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); }
-.lp-home-row .hm-ico { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.lp-home-row .hm-ico { color: var(--accent); }
 .lp-sec { padding: var(--sp-6) var(--sp-4) 2px; }
 .lp-row { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px var(--sp-4) var(--sp-2);
   .c .tkk { width: 11px; height: 11px; margin: 0 3px 0 -2px; } }
@@ -1271,10 +1258,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .lp-new { display: inline-flex; align-items: center; background: none; border: 1px dashed var(--faint); color: var(--muted); font-weight: 400; font-size: var(--fs-12); border-radius: var(--r-pill); padding: 0 var(--sp-8); height: 19px; cursor: pointer;
   &:hover { background: var(--hover); color: var(--ink); }
   input { border: none; background: none; color: var(--ink); font-size: var(--fs-12); width: 64px; &::placeholder { color: var(--faint); } } }
-.lp-mgr { display: flex; align-items: center; gap: var(--sp-6); width: 100%; padding: var(--sp-6) var(--sp-4) 2px; margin-top: var(--sp-8);
-  border: none; border-top: 1px solid var(--hair); background: none; color: var(--muted); font-size: var(--fs-12); cursor: pointer; text-align: left;
-  .ico { width: 12px; height: 12px; flex: none; }
-  &:hover { color: var(--ink); } }
+.lp-mgr { margin-top: var(--sp-8); border-top: 1px solid var(--hair); border-radius: 0; }
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
 /* 1.5px border on all buttons (transparent for filled) — action-row siblings stay pixel-equal height */

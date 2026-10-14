@@ -572,7 +572,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" :class="{ on: timeQuarter() === q }" @click="setTimeQuarter(q)" x-text="':' + String(q).padStart(2, '0')"></button>
               </template>
             </div>
-            <div class="tx"><button type="button" @click="timeSet(''); tpop = false">no time</button></div>
+            <button type="button" class="pop-item clear tx" @click="timeSet(''); tpop = false"><svg class="ico"><use href="#i-x"/></svg>no time</button>
           </div></template></template>
           <!-- Duration -->
           <div class="field" @click.document.capture="pop === 'dur' && outside($event, $el) && popAway('dur', $event)">
@@ -582,17 +582,17 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </button>
             <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <div class="lad">
-                <button type="button" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><b>~5 m</b></button>
-                <button type="button" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><b>&lt;15 m</b></button>
-                <button type="button" :class="{ on: sizeNow() === 'session' }" @click="setSize('session')"><svg class="ico"><use href="#i-size-session"/></svg>Session <i>one sitting</i><b>½–1 h</b></button>
-                <button type="button" :class="{ on: sizeNow() === 'multi' }" @click="setSize('multi')"><svg class="ico"><use href="#i-size-multi"/></svg>Multi <i>spread across days</i><b>2 h+</b></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><span class="rt">~5 m</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><span class="rt">&lt;15 m</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'session' }" @click="setSize('session')"><svg class="ico"><use href="#i-size-session"/></svg>Session <i>one sitting</i><span class="rt">½–1 h</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'multi' }" @click="setSize('multi')"><svg class="ico"><use href="#i-size-multi"/></svg>Multi <i>spread across days</i><span class="rt">2 h+</span></button>
               </div>
               <!-- Exact minutes: one field, no wheels. Type a number → Enter commits and closes; empty commits
                    nothing (the ladder pick stands). The ladder writes it too, so the two never disagree. -->
               <label class="hmrow"><svg class="ico"><use href="#i-clock"/></svg>Exactly
                 <input type="number" class="durx" min="0" step="5" inputmode="numeric" placeholder="–" :value="draft.durMin || ''"
                        @keydown.stop @keydown.enter.prevent.stop="setDur(Math.max(0, +$el.value || 0)); pop = null" @change="setDur(Math.max(0, +$el.value || 0))">min</label>
-              <button type="button" class="dur-clr" x-show="durMinNow()" @click="draft.durMin = null; pop = null"><svg class="ico"><use href="#i-x"/></svg>No size</button>
+              <button type="button" class="pop-item clear dur-clr" x-show="durMinNow()" @click="draft.durMin = null; pop = null"><svg class="ico"><use href="#i-x"/></svg>No size</button>
             </div></template></template>
           </div>
           <!-- Reminders: the user's own voice. Severity is the lead icon's SHAPE; a self-repeating
@@ -619,7 +619,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </template>
               <div class="rem-sug-head" :class="{ sep: draft.reminders.length }" x-show="remSuggest().length">Suggested</div>
               <template x-for="sg in remSuggest()" :key="sg.key">
-                <button type="button" class="rem-sug" @click="remAdd(sg)">
+                <button type="button" class="pop-item clear rem-sug" @click="remAdd(sg)">
                   <svg class="ico"><use href="#i-bell"/></svg><span x-text="sg.label"></span><span class="plus">+</span>
                 </button>
               </template>
@@ -652,14 +652,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <!-- teach by doing: the sentence's verb IS the phrase you can type into the title -->
               <template x-if="locPolarity() !== 'any'"><span class="lp-kbd" x-text="'or type “' + (locPolarity() === 'except' ? 'away from' : 'at') + ' …”'"></span></template></p>
               <template x-if="hereLocationId()">
-                <button type="button" class="lp-here" @click="toggleLocId(hereLocationId())">
+                <button type="button" class="pop-item lp-here" @click="toggleLocId(hereLocationId())">
                   <span class="heredot"></span><span x-text="locName(hereLocationId())"></span><span class="sub">here now</span>
                   <svg class="ico tick" x-show="draft.location?.ids?.includes(hereLocationId())"><use href="#i-check"/></svg>
                 </button>
               </template>
               <!-- designated home always surfaces here (unless it's already the "here" row) so "at home" is one tap -->
               <template x-if="homeLocationId && homeLocationId !== hereLocationId()">
-                <button type="button" class="lp-here lp-home-row" @click="toggleLocId(homeLocationId)">
+                <button type="button" class="pop-item lp-here lp-home-row" @click="toggleLocId(homeLocationId)">
                   <svg class="ico hm-ico"><use href="#i-tag-home"/></svg><span x-text="locName(homeLocationId)"></span><span class="sub">home</span>
                   <svg class="ico tick" x-show="draft.location?.ids?.includes(homeLocationId)"><use href="#i-check"/></svg>
                 </button>
@@ -682,7 +682,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   </div>
                 </div>
               </template>
-              <button type="button" class="lp-mgr" @click="openLocManager()"><svg class="ico"><use href="#i-pin"/></svg>Manage places…</button>
+              <button type="button" class="pop-item clear lp-mgr" @click="openLocManager()"><svg class="ico"><use href="#i-pin"/></svg>Manage places…</button>
             </div></template></template>
           </div>
           <!-- Relations (edit only) -->
