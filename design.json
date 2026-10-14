@@ -174,7 +174,7 @@
       "label": "Graphite Light", "family": "Graphite", "base": "light",
       "over": {
         "deadline": "#9E3752", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#23616A",
-        "bg": "#E3E7ED", "panel": "#F7F9FC", "ink": "#20242B", "ink-hi": "var(--ink)", "muted": "#59616E", "faint": "#596372", "hover": "#D9DFE8",
+        "bg": "#E3E7ED", "panel": "#F7F9FC", "ink": "#20242B", "ink-hi": "var(--ink)", "muted": "#59616E", "faint": "#6A7381", "hover": "#D9DFE8",
         "accent": "#2054C5", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
         "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
         "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
