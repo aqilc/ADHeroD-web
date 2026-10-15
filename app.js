@@ -4,7 +4,7 @@ import DESIGN from './design.json' with { type: 'json' };
 // design.json → CSS custom properties, injected before Alpine boots. styles.css declares only layout constants (--foot, --bar, --side…).
 const _vars = (m) => Object.entries(m).map(([k, v]) => `--${k}:${v}`).join(';');
 const _scale = (d) => [
-  d.space.map((n) => `--sp-${n}:${n}px`), d.type.map((n) => `--fs-${n}:${n}px`), Object.entries(d.layout).map(([k, v]) => `--${k}:${v}px`),
+  d.space.map((n) => `--sp-${n}:${n}px`), d.type.map((n) => `--fs-${String(n).replace('.', '_')}:${n}px`), Object.entries(d.layout).map(([k, v]) => `--${k}:${v}px`),
   Object.entries(d.radius).map(([k, v]) => `--r${k === 'r' ? '' : '-' + k}:${v}`),
   Object.entries(d.ease).map(([k, v]) => `--ease-${k}:${v}`), Object.entries(d.motion).map(([k, v]) => `--motion-${k}:${v}ms`),
   Object.entries(d.font).map(([k, v]) => `--font-${k}:${v}`),
