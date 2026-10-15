@@ -21,10 +21,10 @@
     "#f43f5e"
   ],
   "quick": {
-    "today": "#3aa655",
-    "tomorrow": "#e8862a",
-    "weekend": "#2d7ff9",
-    "nextweek": "#8b5cf6",
+    "today": "#4b9244",
+    "tomorrow": "#ad6200",
+    "weekend": "#246fe0",
+    "nextweek": "#692ec2",
     "thisweek": "#14b8a6"
   },
   "space": [
