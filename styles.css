@@ -355,11 +355,9 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   clip-path: shape(from 12.669% 54.379%, line to 44.511% 83.090%, line to 87.925% 34.868%, arc to 75.075% 23.299% of 8.646% ccw,
     line to 43.239% 58.660%, line to 24.248% 41.537%, arc to 12.669% 54.379% of 8.646% ccw, close);
 }
-/* Waiting on an incomplete blocker: the row goes QUIET (dimmed, lock in the box) rather than shouting in --p1.
-   The thing you can't start yet is the last thing that should be competing for attention. The ring stays SOLID:
-   a dashed ring already means "archived" (dash-in-circle) and "add task" (ghost), and read as either. */
+/* Waiting on an incomplete blocker: a lock in the box, the row at full ink, and its blocker chip red (.row-rel below).
+   The ring stays SOLID: a dashed ring already means "archived" (dash-in-circle) and "add task" (ghost), and read as either. */
 .check.blocked { background: none; border-color: color-mix(in srgb, var(--pc, var(--faint)) 45%, transparent); }
-.item.waiting .title, .item.waiting .m, .item.waiting .badge, .item.waiting .chk-list { opacity: .62; }
 .check .lock-ico { position: absolute; inset: 0; margin: auto; width: var(--lk, 11px); height: var(--lk, 11px); color: var(--muted); opacity: .5; pointer-events: none; }   /* --lk scales it for smaller rings (the 11px calendar chip), same lever as --dash above */
 /* Paused recurrence: themed border + pause icon instead of checkmark. */
 .check.paused { border-color: var(--gold); }
@@ -510,6 +508,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .row-rel {
   .ico { width: 11px; height: 11px; flex: none; color: var(--rc, var(--muted)); } }
 .row-rel.blocked_by { --rc: var(--p1); }
+.item:not(.done) .row-rel.blocked_by .row-rel-name { color: var(--ink); }   /* a live block reads at ink; a done row's is over: grey */
+.item.done .row-rel { --rc: var(--muted); }
+.row-rel:is(:hover:where(:not(.touch *)), :active) .row-rel-name { text-decoration: underline; text-underline-offset: 2px; }   /* a link: it opens the task (app.js rowRelOpen) */
 /* the blocked-by stop sign is filled (solid) so it reads as an octagon, not a circle, at small sizes */
 .row-rel.blocked_by .ico, .rel-ico.blocked_by { fill: currentColor; stroke: none; }
 .row-rel-name { max-width: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1331,7 +1332,11 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 }
 .rel-chip.blocked_by { --rc: var(--p1); }
 .rel-chip.blocks { --rc: var(--p2); }   /* this task is the blocker — holding the other one up */
-.rel-chip-name { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-chip-name { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; color: inherit; text-underline-offset: 2px;   /* a button: it opens the task */
+  &:is(:hover:where(:not(.touch *)), :active) { text-decoration-line: underline; } }
+.rel-chip.done { --rc: var(--muted); }   /* the block is over (either end done): grey and struck */
+.rel-chip.done .rel-chip-name { color: var(--muted); text-decoration-line: line-through;
+  &:is(:hover:where(:not(.touch *)), :active) { text-decoration-line: line-through underline; } }
 .rel-ico { width: 12px; height: 12px; flex: none; color: var(--rc, var(--muted)); }
 /* relation chips shown under the description in the composer */
 .composer-rels { display: flex; flex-wrap: wrap; gap: var(--sp-6); }

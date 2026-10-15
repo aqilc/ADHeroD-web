@@ -469,9 +469,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <!-- Relation and file chips, shown under the description so they're easy to see (add more via the Relations chip, a drop or a paste) -->
         <div class="composer-rels" x-show="relChips().length || editingTask()?.attachments?.length || composerFiles().length">
           <template x-for="r in relChips()" :key="r.type + r.id">
-            <span class="rel-chip" :class="r.type">
+            <span class="rel-chip" :class="[r.type, r.done && 'done']">
               <svg class="ico rel-ico" :class="r.type" :title="relTypeLabel(r.type)"><use href="#i-stop"/></svg>
-              <span class="rel-chip-name" x-text="projName(r.id)"></span>
+              <button type="button" class="rel-chip-name" @click="openTaskById(r.id)" x-text="projName(r.id)"></button>
               <button type="button" class="rel-chip-remove" @click="removeRelation(r.id, r.type)" title="Remove">×</button>
             </span>
           </template>

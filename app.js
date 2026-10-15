@@ -7744,8 +7744,10 @@ document.addEventListener('alpine:init', () => {
     _relIdx() {
       return _memo(_relMemo, this._rowV + '|' + this.editing, () => {
         const e = this.editingTask(), inv = this._taskIdx().inv.get(this.editing) ?? [];
-        // 'blocks' = the INVERSE direction (this task sits in the other's blocked_by) — shown so it's managed from here too
-        return { rels: [...(e?.blocked_by ?? []).map(id => ({ id, type: 'blocked_by' })), ...inv.map(id => ({ id, type: 'blocks' })), ...(e?.relates ?? []).map(id => ({ id, type: 'relates' }))] };
+        // 'blocks' = the INVERSE direction (this task sits in the other's blocked_by) — shown so it's managed from here too.
+        // done: a block is over once either end is done; a 'relates' link only when the other task is.
+        const rel = (id, type) => ({ id, type, done: !!(this.byId.get(id)?.completed_at || type !== 'relates' && e?.completed_at) });
+        return { rels: [...(e?.blocked_by ?? []).map(id => rel(id, 'blocked_by')), ...inv.map(id => rel(id, 'blocks')), ...(e?.relates ?? []).map(id => rel(id, 'relates'))] };
       }, 1);
     },
     relationCandidates() {
