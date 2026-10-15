@@ -2164,20 +2164,22 @@ document.addEventListener('alpine:init', () => {
     renderRows(el, parts) {
       const prev = el._parts;
       if (prev === parts || (prev && prev.length === parts.length && parts.every((p, i) => p.html === prev[i].html))) return;
-      const before = _arrive.size && el.closest('.surface-lists') && this._rowTops(), pin = this._closePin(el);
+      const before = _arrive.size && el.closest('.surface-lists') && this._rowTops(), pin = this._readerPin(el, before);
       el._parts = parts; const made = this.morphRows(el, parts);
       if (pin) { const r = this._rowEl(pin.id); if (r) pin.sc.scrollTop += r.getBoundingClientRect().top - pin.top; }
       if (made.length && el.closest('.surface-lists')) { _fitDone = -1; queueMicrotask(() => { for (const n of made) this._stampRow(n); this.paintSel(); this._rehover(); }); this.fitRows(); }   // list rows only; a microtask reads the state subscribing no effect
       else if (made.length && el.closest('.cl-side')) this._fitSide(el.closest('.cl-side'), made);
       if (before) queueMicrotask(() => this._glideFrom(before, false));
     },
-    // A close holds scroll anchoring off for its collapse (closeComposer), so a morph inside it moved the reader: the row ⌘Enter
-    // files above the viewport pushed every row on screen down by its height (#50). Anchor by hand, as the browser would, on
-    // the first row on screen: read either side of the synchronous morph, so the collapse can't move it in between.
-    _closePin(el) {
-      const sc = this._closingComposer && !_dragIds && el.closest('.surface-lists') && this._listScroller();
-      if (!sc || sc.style.overflowAnchor !== 'none') return null;
+    // The browser anchors a morph, except inside a close's collapse (closeComposer holds anchoring off) or under an arrival's
+    // glide (it moves the rows itself): there the row ⌘Enter files above the viewport pushed every row on screen down by its
+    // height (#50; a signed-in save lands after the collapse, #84). Anchor by hand, as the browser would, on the first row on
+    // screen: read either side of the synchronous morph, so the collapse can't move it in between.
+    _readerPin(el, glide) {
+      const sc = !_dragIds && el.closest('.surface-lists') && this._listScroller();
+      if (!sc || !(glide && !this.composer.open || this._closingComposer && sc.style.overflowAnchor === 'none')) return null;
       const s = sc.getBoundingClientRect().top;
+      if (el.firstElementChild?.getBoundingClientRect().top >= s) return null;   // the rows start on screen (el is display: contents): a row filed among them pushes none off
       for (const r of el.querySelectorAll(':scope > li.item')) { const top = r.getBoundingClientRect().top; if (top >= s) return top < s + sc.clientHeight ? { sc, id: r.dataset.id, top } : null; }   // a jump leaves only off-screen rows: none to hold
       return null;
     },
@@ -2324,9 +2326,10 @@ document.addEventListener('alpine:init', () => {
       if (ops.length && !await this.perform(label, { kind: 'composite', target: ops[0].target, ops }, { bin: true })) this.sel = sel.filter(id => this.byId.has(id));
       else if (!keep) this.clearSel();
     },
-    async selComplete() {
-      const ops = this.selTasks().filter(t => !t.completed_at && !t.archived_at && !inNotes(t)).map(t => ({ kind: 'complete', target: 'task', mode: 'forward', fwd: { id: t.id, done: true } }));
-      await this._bulk(`Completed ${this._nTasks(ops.length)}`, ops);
+    async selComplete(key) {   // x (key) on an all-done selection reopens it, and keeps the selection so x again flips it back, as the checklist's x does
+      const reopen = key && this.selTasks().every(t => t.completed_at);
+      const ops = this.selTasks().filter(t => reopen ? !t.archived_at : !t.completed_at && !t.archived_at && !inNotes(t)).map(t => ({ kind: 'complete', target: 'task', mode: 'forward', fwd: { id: t.id, done: !reopen } }));
+      await this._bulk(`${reopen ? 'Uncompleted' : 'Completed'} ${this._nTasks(ops.length)}`, ops, key);
     },
     _selRoots(ids = this.sel) { const s = new Set(ids); return ids.filter(id => !this._chain(this.byId.get(id)?.parent_id).some(a => s.has(a))); },   // a selected ancestor carries its subtree
     async selDelete() {   // deleting a descendant again fails the batch
@@ -4304,8 +4307,10 @@ document.addEventListener('alpine:init', () => {
     // A live field (the description, a checklist row) redraws only when its markdown changed, so plain typing keeps its nodes.
     _redraw(part, html, paint) {
       for (const t of _liveOn) t.classList.remove('on');
+      const now = part.innerHTML;
+      if (now === html) return;   // plain typing: the drawn markup already reads back verbatim, no parse
       _canon.innerHTML = html;   // parsed, so it compares as the DOM serializes
-      if (part.innerHTML === _canon.innerHTML) return;
+      if (now === _canon.innerHTML) return;
       const off = this._caretOffset(part);
       paint ? paint(_canon.content) : part.replaceChildren(_canon.content);
       this._setCaret(part, off);
@@ -4972,6 +4977,7 @@ document.addEventListener('alpine:init', () => {
       else if ((e.key === 'j' || e.key === 'ArrowDown') && this.listView()) { e.preventDefault(); this.moveFocus(1); }   // off Lists the rows are hidden
       else if ((e.key === 'k' || e.key === 'ArrowUp') && this.listView()) { e.preventDefault(); this.moveFocus(-1); }
       else if ((e.key === 'Enter' || e.key === 'e') && this.focusId) { e.preventDefault(); this.openFocused(); }
+      else if (e.key === 'x' && this.sel.length > 1 && this.listView()) { e.preventDefault(); this.selComplete(true); }
       else if (e.key === 'x' && this.focusId && this.listView()) { e.preventDefault(); this.toggleFocused(); }   // complete focused row (Space now opens the palette)
       else if (e.key === '?') { e.preventDefault(); this.shortcutsOpen = true; }
       else if (e.key === '/' && this.listView()) { e.preventDefault(); this.openListSearch(); }
@@ -5115,7 +5121,7 @@ document.addEventListener('alpine:init', () => {
         {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],...this.surfaceOrder.map((s, i) => ['<kbd>' + (i + 1) + '</kbd>', 'Go to ' + SURF_META[s].label]),['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> · <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
         {l:'Overview',r:[['<kbd class=sk-letter>h</kbd>/<kbd class=sk-letter>l</kbd> · <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Move across surfaces'],['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move through Lists destinations'],['<kbd>↵</kbd>','Open overview selection'],['<kbd>1</kbd>–<kbd>' + this.surfaceOrder.length + '</kbd>','Open surface directly'],['<kbd class=sk-letter>o</kbd>','Close overview']]},
         {l:'Finder',r:[['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move finder selection'],['<kbd>↵</kbd>','Open finder selection'],['<kbd>⌘</kbd><kbd class=sk-letter>s</kbd>','Save query as filter']]},
-        {l:'Task list',r:[['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd class=sk-letter>e</kbd>','Open focused'],['<kbd class=sk-letter>x</kbd>','Complete focused'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Extend selection'],['<kbd>/</kbd> · <kbd>⌘</kbd><kbd class=sk-letter>f</kbd>','Search tasks'],['<kbd class=sk-letter>f</kbd>','Filter tasks']]},
+        {l:'Task list',r:[['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd class=sk-letter>e</kbd>','Open focused'],['<kbd class=sk-letter>x</kbd>','Complete focused or selected'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Extend selection'],['<kbd>/</kbd> · <kbd>⌘</kbd><kbd class=sk-letter>f</kbd>','Search tasks'],['<kbd class=sk-letter>f</kbd>','Filter tasks']]},
         {l:'Plan',r:[['<kbd class=sk-letter>d</kbd>/<kbd class=sk-letter>w</kbd>/<kbd class=sk-letter>m</kbd>','Day / week / month'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Scroll an hour · hold 3s to travel'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⌘</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Travel a day / week / month'],['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','On a month day: the next day / week']]},
         {l:'Composer',r:[['<kbd>↵</kbd>','Save / add another'],['<kbd>⌘</kbd><kbd>↵</kbd>','Save & close'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⇥</kbd>','Move between fields'],['<kbd class=sk-arrow>↑</kbd> in an empty title','Edit the task just added'],['<kbd>esc</kbd>','Close']]},
         {l:'Composer entries',r:[['<kbd>↵</kbd>','Add next entry'],['<kbd class=sk-mod>⇧</kbd><kbd>↵</kbd>','New line in entry'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Navigate open picker'],['<kbd>↵</kbd>','Choose picker option'],['<kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>v</kbd>','Paste lines as one entry'],['<kbd>⌫</kbd> on rows dragged across','Delete selected entries']]},
