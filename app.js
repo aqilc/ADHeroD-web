@@ -3624,6 +3624,20 @@ document.addEventListener('alpine:init', () => {
       else this.clPickDate(c.iso);
     },
     calDayMouseenterFor(c) { if (this.pop === 'clnav') this.clPopHoverWk = this.clView === 'week' ? this._clWkKey(c.iso) : ''; },
+    // The 42 days as html: built when the month or its ordinals change, restamped in place otherwise, so a pick, a drag or a
+    // walked focus never replaces the day under the pointer or the key.
+    calPaint(grid) {
+      const cells = grid._cells = this.calCells(), due = this.pop === 'due', stop = this.calStop();
+      const days = cells.map((c, i) => html`<button type="button" class="cal-day" data-i="${i}" aria-label="${c.label}"><span>${c.d}</span><i class="bar l"></i><i class="bar r"></i>${raw(due && c.ord ? `<b class="ordn">${c.ord}</b>` : '')}</button>`).join('');
+      if (grid._days !== days) { grid._days = days; for (const b of [...grid.getElementsByClassName('cal-day')]) b.remove(); grid.insertAdjacentHTML('beforeend', days); }
+      const els = grid.getElementsByClassName('cal-day');
+      cells.forEach((c, i) => {
+        const on = this.calDayClassFor(c, i), cls = 'cal-day ' + Object.keys(on).filter(k => on[k]).join(' '), b = els[i], tab = c.iso === stop ? 0 : -1;
+        if (b.className !== cls) b.className = cls;
+        if (b.tabIndex !== tab) b.tabIndex = tab;
+      });
+    },
+    calAt(e) { const b = e.target.closest?.('.cal-day'); return b && e.currentTarget._cells[b.dataset.i]; },
     togglePop(name, anchor) {
       this.pop = this.pop === name ? null : name;
       this.calFocus = null;
@@ -6421,6 +6435,14 @@ document.addEventListener('alpine:init', () => {
     chkSteps() { return !this.draft.checklist_plain && this.draft.task_type === 'steps'; },
     phoneDock() { return this.narrow && document.documentElement.classList.contains('touch'); },   // the composer's one-row dock (9A): the 640 block's .touch rules
     notesHidden() { return this.phoneDock() && !this.notesOpen; },
+    // KC: a strip word types itself where the caret is and chips as a typed space would; # and @ open their picker
+    kcType(word) {
+      const r = getSelection().getRangeAt(0).cloneRange(); r.setStart(this.$refs.content, 0);
+      const text = /^[#@]/.test(word) ? word[0] : word;
+      this.insertPlainText((/(^|\s)$/.test(r.toString()) ? '' : ' ') + text);
+      if (text.length > 1) return this.pillifyTrailing();
+      _trigKey = text; this.refreshPickers();
+    },
     notesChip() {   // [icon, label] of the Steps and notes chip: what is behind it, the entries first
       const n = this.draft.checklist.length, subs = this.shownSubs().length;
       if (n) return this.chkSteps() ? ['steps', n + (n > 1 ? ' steps' : ' step')] : ['list-check', n + (n > 1 ? ' items' : ' item')];

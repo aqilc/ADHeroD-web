@@ -124,7 +124,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .chat-comp textarea::placeholder { color: transparent; }
 .chat-placeholder { position: absolute; inset: 0; display: flex; align-items: baseline; gap: var(--sp-8); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-15); color: var(--faint); white-space: nowrap; pointer-events: none; }
 .chat-prompt { flex: none; }
-.chat-keys { min-width: 0; overflow: hidden; gap: var(--sp-16); font-size: var(--fs-11); }   /* .palette-foot's hint row */
+.chat-keys { min-width: 0; overflow: hidden; gap: var(--sp-16); font-size: var(--fs-11); opacity: .55; }   /* .palette-foot's hint row, a step under the prompt: opacity dims the standard kbd chip whole (.content-hint's ghost) */
 .attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
 .attach .ico { width: 18px; height: 18px; flex: none; }
 .composer-actions .attach { align-self: center; }
@@ -2603,6 +2603,11 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go under a fade to their icons, never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; } } }   /* the last first */
   .bar-on .jb-host .composer-actions .more-btn { width: 38px; .ico { rotate: 90deg; } }   /* KA: ··· */
+  /* KC (user 10-15 "the ka, kb and KC pics"): typing with nothing set, the row is words the parser knows; off the title (··· or a pick), the icons */
+  .bar-on .jb-host .composer:has(.content:focus):not(:has(.composer-opts .chip.set:not(.chip-notes))) .composer-opts {
+    &::before, > .field { display: none; } > .kc { display: flex; } }
+  .bar-on .jb-host .kc { display: none; flex: 1; min-width: 0; gap: var(--sp-6); overflow-x: auto; scrollbar-width: none;
+    button { flex: none; height: 32px; padding: 0 var(--sp-10); border-radius: var(--r-8); background: var(--hover); font-size: var(--fs-14); color: var(--muted); white-space: nowrap; } }
   .bar-on .jb-host .composer-actions .primary { margin-left: var(--sp-4); border-radius: var(--r-12); }
   .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4); }   /* the card keeps its height; Go to scrolls */
   .jb-go .palette-row { min-height: 44px; }

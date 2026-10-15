@@ -535,6 +535,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="composer-dock">   <!-- chips + actions: one block, so a phone can dock them above the keyboard (styles .composer-dock) -->
         <template x-if="composer.open">
         <div class="composer-opts flex items-center">
+          <template x-if="_inBar()"><div class="kc flex items-center" @mousedown.prevent>   <!-- KC: words the parser knows, till something is set (styles) -->
+            <template x-for="w in ['tomorrow', '5pm', '#list', '@area', 'every week']" :key="w"><button type="button" @click.stop="kcType(w)" x-text="w"></button></template>
+          </div></template>
           <!-- Importance (app-behavior flag, not a rank) -->
           <div class="field" @click.document.capture="pop === 'imp' && outside($event, $el) && popAway('imp', $event)">
             <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: draft.importance !== 'none', down: draft.importance === 'someday' }" :style="'--cc:' + pc(draft.importance)" :title="impName(draft.importance, 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'imp'" @click="togglePop('imp', $el)">
@@ -739,12 +742,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- shared: calendar head + grid (in due mode the head carries the On|By register toggle) -->
           <div class="cal-head flex items-center justify-between"><span class="flex items-center gap-8"><span x-text="calLabel()"></span><span class="dreg swt" :class="{ by: dreg === 'by' }" x-show="pop === 'due' && !repRules().length"><button type="button" data-reg="on" :class="{ on: dreg === 'on' }" :aria-pressed="dreg === 'on'" title="Tap a day to schedule it there (never red)" @click="setDreg('on')">On</button><button type="button" data-reg="by" :class="{ on: dreg === 'by' }" :aria-pressed="dreg === 'by'" title="Tap a day = the deadline; right-click does this from either mode" @click="setDreg('by')">By</button></span></span><span class="cal-navs flex items-center"><button type="button" class="cal-nav inline-flex items-center justify-center" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="cal-nav dot inline-flex items-center justify-center" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="cal-nav inline-flex items-center justify-center" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
-          <div class="cal-grid" :class="{ hint: calPulse }" @mouseleave="pop === 'clnav' && (clPopHoverWk = '')" @pointerdown="calDown($event)" @pointermove="calMove($event)" @pointerup="calUp($event)" @pointercancel="_calDn = null; calH = null" @click.capture="_calDragged && ($event.stopPropagation(), _calDragged = false)">
+          <!-- the days are html (calPaint), their events delegated here: per-day bindings were half of the pop's open -->
+          <div class="cal-grid" :class="{ hint: calPulse }" x-effect="calPaint($el)" @mouseleave="pop === 'clnav' && (clPopHoverWk = '')" @pointerdown="calDown($event)" @pointermove="calMove($event)" @pointerup="calUp($event)" @pointercancel="_calDn = null; calH = null" @click.capture="_calDragged && ($event.stopPropagation(), _calDragged = false)"
+            @focusin="calAt($event) && (calFocus = calAt($event).iso)" @keydown="calAt($event) && calKey($event, calAt($event))" @mouseover="calAt($event) && calDayMouseenterFor(calAt($event))" @click="calAt($event) && calDayClickFor(calAt($event))" @contextmenu="calAt($event) && ($event.preventDefault(), pop === 'due' && !repRules().length && calDayBy(calAt($event)))">
             <!-- due: interactive weekday-toggle buttons; clnav: plain non-functional buttons -->
             <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" tabindex="-1" :class="pop === 'due' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused, pulse: hdrPulse }" @click="pop === 'due' && toggleRepeatWeekday(i)" x-text="w"></button></template>
-            <template x-for="(c, ci) in calCells()" :key="c.key + ':' + c.ord">
-              <button type="button" class="cal-day" :class="calDayClassFor(c, ci)" :aria-label="c.label" :tabindex="c.iso === calStop() ? 0 : -1" @focus="calFocus = c.iso" @keydown="calKey($event, c)" @mouseenter="calDayMouseenterFor(c)" @click="calDayClickFor(c)" @contextmenu.prevent="pop === 'due' && !repRules().length && calDayBy(c)"><span x-text="c.d"></span><i class="bar l"></i><i class="bar r"></i><b class="ordn" x-show="pop === 'due' && c.ord" x-text="pop === 'due' ? c.ord : ''"></b></button>
-            </template>
           </div>
           <!-- due: V3 phrase-builder repeat zones -->
           <template x-for="(r, ri) in repRules()" :key="ri">
