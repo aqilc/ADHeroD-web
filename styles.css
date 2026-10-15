@@ -545,14 +545,13 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-list .chk-desc { margin-bottom: -1lh; }   /* never sets the row's height: its descent runs into the text's */
 /* any sortable.js item being dragged lifts above its siblings + the indent guide; siblings' shift transition is set inline */
 .sorting { position: relative; z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
-.chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 2px solid color-mix(in srgb, var(--faint) 60%, transparent); background: none; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check */
-.chk-list .chk-rect { background: color-mix(in srgb, var(--faint) 8%, transparent); }   /* faint tint on the LIST checklist boxes only (composer entry boxes stay transparent) */
-.chk-list .chk-rect:not(.plain)::before { content: ""; position: absolute; inset: -5px -3px; }   /* 5px: boxes tile down the column, meeting mid-gap — no row flash, never a neighbour's tick */
+.chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 1px solid transparent; background: color-mix(in srgb, var(--faint) 30%, transparent) padding-box; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check. Open = a 14px tile: the transparent border keeps the 16px footprint and hit area; 30% still reads on the zebra band */
+.chk-list .chk-rect:not(.plain)::before { content: ""; position: absolute; inset: -4px -2px; }   /* 3px past the 16px box: boxes tile down the column, meeting mid-gap — no row flash, never a neighbour's tick */
 /* text 2px lower via padding, its box 1px taller above: item texts tile with no gap, so moving between them never flashes the row */
 .chk-list .chk-txt { box-sizing: content-box; padding-top: 3px; margin: -1px 0 -2px; }
 .chk-list .chk-txt:empty { margin-right: calc(-1 * var(--sp-8)); }   /* an item that is only a detail: the detail starts where text would (gap-8) */
 .chk-list .chk-txt:empty::before { content: "\200b"; }   /* …and still has a line: the row's baseline and height */
-.chk-row > .chk-rect:not(.plain, .done):is(:hover, :has(+ .chk-txt:hover)) { border-color: var(--muted); }   /* what a click ticks — the box OR its text — lights the open box */
+.chk-row > .chk-rect:not(.plain, .done):is(:hover, :has(+ .chk-txt:hover)) { background-color: color-mix(in srgb, var(--faint) 60%, transparent); }   /* what a click ticks — the box OR its text — lights the open tile */
 /* uncheckable list: the box becomes a plain bullet — same footprint, no interaction */
 .chk-rect.plain { border-color: transparent; background: none; pointer-events: none; cursor: default; }
 .chk-rect.plain::after { content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 2px; border-radius: 1px; background: var(--muted); }   /* DASH (gallery pick P2, 2026-08-13) — encloses nothing, so nothing reads as fillable */
@@ -610,7 +609,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
    centre, left of the body (half the 18px check + the row's 10px gap). */
 .step-block { --rail-x: -19px; position: relative;
   &:has(> .step-next)::before { content: ''; position: absolute; left: calc(var(--rail-x) - 1px); width: 2px; top: var(--rail-top, 4px); bottom: 13px; background: color-mix(in srgb, var(--faint) 60%, transparent); } }
-.step-node { position: absolute; cursor: pointer; left: calc(var(--rail-x) - 5px); width: 10px; height: 10px; border: 2px solid color-mix(in srgb, var(--faint) 70%, transparent); border-radius: 50%;
+.step-node { position: absolute; cursor: pointer; left: calc(var(--rail-x) - 5px); width: 10px; height: 10px; border: 2px solid color-mix(in srgb, var(--faint) 70%, transparent); border-radius: 50%; background: none;
   &::before { content: ''; position: absolute; inset: -9px; border-radius: 50%; }   /* a 24px fine-pointer target */ }
 @media (any-hover: hover) and (any-pointer: fine) { .step-node:hover:where(:not(.touch *)) { border-color: var(--pc); background: color-mix(in srgb, var(--pc) 15%, transparent); } }
 :where(.touch) { .step-node::before { inset: -17px; } }   /* 44px */
@@ -848,7 +847,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
    icons up with the title and the card's right edge. */
 .composer-opts {
   flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-8) 0 0;
-  :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-6));   /* touch keeps its order: the phone wasn't part of the pick */
+  :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-6)); padding-right: calc(var(--sp-24) + var(--sp-10));   /* touch keeps its order: the phone wasn't part of the pick. The right room is the go's 28px and a 6px gap */
     &::after { content: ""; flex: 1; order: -1; }
     .field:has(> .chip.set) { order: -1; } }
   .field { position: relative; }
@@ -970,7 +969,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .entry.chk.chk-sel { background: color-mix(in srgb, var(--accent) 13%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--accent) 13%, var(--panel)); }
 /* small round check for subtask entries (smaller than the row .check) */
 .check.sm { width: 16px; height: 16px; border-width: 2px; }
-.ghost-check { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px dashed var(--faint); }
+.ghost-check { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px dashed var(--faint); background: none; }
 .entry.chk:not(.step-ghost) .ghost-check { border-radius: var(--r-4); }   /* a step's ghost stays round, like the rail's nodes */
 /* empty state: up to three ghosts with an OR between each */
 .entry-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
@@ -1281,7 +1280,13 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
    composer window is transparent around the card (desktop/composer.js), so they sit under it there too. */
 :where(html:not(.touch)) .composer-actions { position: absolute; top: calc(100% + var(--sp-8) + var(--sp-8)); left: calc(-18px - var(--sp-12) - var(--sp-2)); right: calc(-1 * var(--sp-6));
   height: 28px; margin: 0; padding: 0; border: none; align-items: center;
-  :is(.ghost, .primary) { display: none; }
+  .ghost { display: none; }
+  /* the go (orc-31 A, KA's): at the card's bar end, over the room .composer-opts leaves; a click is the form's submit, Enter's path */
+  .primary { position: absolute; right: 0; bottom: calc(100% + var(--sp-8) * 2); display: flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px; padding: 0; border: 0; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out);
+    > span { display: none; } .ico { display: block; width: 16px; height: 16px; stroke-width: 2.4; }
+    &:active:not(:disabled) { transform: scale(.97); }
+    @media (hover: hover) { &:hover:not(:disabled) { background: color-mix(in oklab, var(--ink) 13%, var(--accent)); } } }
   .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }
   :is(.del-btn, .overview-btn, .more-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--hover); } .ico { width: 16px; height: 16px; } }
   .proj-pick-ico { width: 16px; height: 16px; }   /* the checkbox's size, on its x */
