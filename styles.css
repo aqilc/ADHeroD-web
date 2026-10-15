@@ -2588,12 +2588,12 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host:not(.editing) .type-tog, .bar-on .jb-host .attach { display: none; }   /* a jotted task, on for its steps, keeps its done check */
   .bar-on .jb-host .composer-body { flex-flow: row wrap; align-items: center; gap: 0;
     &::before { content: ""; flex-basis: 100%; }   /* the break under the title line */
-    > .composer-titlerow { order: -1; flex: 1; min-width: 0; min-height: 44px; align-items: center; padding: 0 var(--sp-6) 0 0; } > :is(.desc, .composer-entries) { flex-basis: 100%; }
+    > .composer-titlerow { order: -1; flex: 1; min-width: 0; min-height: 44px; align-items: center; padding: 0 var(--sp-6) 0 0; } > :is(.desc, .composer-rels, .composer-entries) { flex-basis: 100%; }
     .content, .content-hint { font-size: var(--fs-16); } }
   .bar-on .jb-host .composer-dock { display: contents; }
   .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
     .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
-    :is(.composer-actions .field.loc, .desc, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
+    :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
   /* KA-edit (user 10-15 "the ka, kb and KC pics"): the title alone on its line; the list's path and what the notes hold on a subline under it */
   .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* KA-edit.png: the ring's centre at 26, the title at 46 */
     .type-tog { left: var(--sp-16); &:not(.note) > :last-child, &.note > :first-child { display: none; } }   /* the other type is in ··· */
