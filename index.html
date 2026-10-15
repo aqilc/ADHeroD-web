@@ -795,8 +795,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <!-- left: project location picker (Todoist-style, bottom-left); actions stay right -->
           <div class="field loc" @click.document.capture="pop === 'proj' && outside($event, $el) && popAway('proj', $event)">
             <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && !popDock && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
-              <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="hash" x-show="!pickIsDefault()">#</span><span x-text="draft.project || defaultProjName() || 'Project'"></span>
+              <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="hash" x-show="!pickIsDefault()">#</span><span x-text="kaEdit() &amp;&amp; draft.project_id ? projectPath(byId.get(draft.project_id), ' · ') : draft.project || defaultProjName() || 'Project'"></span>
             </button>
+            <button type="button" class="ka-notes inline-flex items-center" x-show="kaEdit() &amp;&amp; notesChip()[1] !== 'Steps and notes'" :aria-expanded="notesOpen" @click="toggleNotes()"><svg class="ico"><use :href="'#i-' + notesChip()[0]"/></svg><span x-text="notesChip()[1]"></span></button>
             <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :class="{ dock: popDock }" :style="popStyle()">
               <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="enterProj()" @keydown.stop="$event.key === 'Escape' && escape()">
               <div class="contents" x-html="projRowsHtml(filteredProjects(), draft.project_id)" @click="pidOf($event) && pickProject(pidOf($event))"></div>
@@ -811,7 +812,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
                 <!-- phone: the dock's hidden chips and buttons (9A), anchored on the ··· they came from -->
                 <template x-if="phoneDock()"><div class="contents">
-                  <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; !editing" @click="pop = null; typeTap(!typeFront(true))"><span x-html="compCheckHtml(!typeFront(true))"></span><span x-text="typeLabel(!typeFront(true))"></span></button>
+                  <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; (!editing || kaEdit())" @click="pop = null; typeTap(!typeFront(true))"><span x-html="compCheckHtml(!typeFront(true))"></span><span x-text="typeLabel(!typeFront(true))"></span></button>
                   <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; filesUrl &amp;&amp; session" @click="pop = null; document.querySelector('.jb-host .attach input')?.click()"><svg class="ico"><use href="#i-clip"/></svg>Attach file</button>
                   <button type="button" class="pop-item" x-show="!durMinNow()" @click="togglePop('dur', document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-clock"/></svg>Size</button>
                   <button type="button" class="pop-item" x-show="locations.length && locPolarity() === 'any'" @click="openLoc(document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-pin"/></svg>Place</button>
@@ -1283,7 +1284,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
          </div></template>
        </div>
      </div></template>
-     <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar(), editing }">   <!-- a new task's composer, over the bar (relocateComposer) -->
+     <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar(), editing, ka: kaEdit() }">   <!-- the composer over the bar, new or edit (relocateComposer) -->
       <li class="jb-go" x-show="jotRows().length" @mousedown.prevent>   <!-- a tap keeps the keyboard up -->
         <template x-for="r in jotRows()" :key="r.type + ':' + r.id">
           <button type="button" class="palette-row task-line" @click="pickJot(r)" x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r)) : searchJumpHTML(r)"></button>

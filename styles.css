@@ -2581,6 +2581,16 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
     .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
     :is(.composer-actions .field.loc, .desc, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
+  /* KA-edit (user 10-15 "the ka, kb and KC pics"): the title alone on its line; the list's path and what the notes hold on a subline under it */
+  .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* KA-edit.png: the ring's centre at 26, the title at 46 */
+    .type-tog { left: var(--sp-16); &:not(.note) > :last-child, &.note > :first-child { display: none; } }   /* the other type is in ··· */
+    .composer-titlerow, .composer-actions .field.loc { flex-basis: calc(100% - var(--chk-col)); margin-left: var(--chk-col); }
+    .composer-actions .field.loc { display: flex; order: -1; max-width: none; height: 30px; gap: var(--sp-6); }   /* after the title (DOM order), before the break */
+    :is(.proj-pick, .ka-notes) { height: 30px; min-width: 0; padding: 0; gap: var(--sp-5); background: none; font-size: var(--fs-13); font-weight: 400; color: var(--muted);
+      :is(.hash, .ico) { width: auto; flex: none; color: var(--faint); } .ico { width: 15px; height: 15px; } }
+    .proj-pick span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ka-notes { flex: none; &::before { content: "·"; margin-right: var(--sp-6); color: var(--faint); } }
+    .composer-opts .field:has(> .chip-notes.set) { display: none; } }   /* the subline carries it */
   .bar-on .jb-host .composer-actions .field.loc { order: -2; max-width: 150px; margin-right: var(--sp-10); }
   .bar-on .jb-host .proj-pick { height: 34px; padding: 0 var(--sp-10) 0 var(--sp-8); border-radius: var(--r); font-size: var(--fs-14); font-weight: 600; color: var(--ink); gap: var(--sp-6);
     .proj-pick-ico { width: 15px; } }
@@ -2589,7 +2599,9 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
     .chip { height: 40px; width: 38px; padding: 0; justify-content: center; .ico { width: 19px; height: 19px; } }
     .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
-    .field:has(> .chip-notes:not(.set)) { order: 1; } }   /* KA: the steps icon last */
+    .field:has(> .chip-notes:not(.set)) { order: 1; }   /* KA: the steps icon last */
+    .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go under a fade to their icons, never the bare icons or the steps */
+      &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; } } }   /* the last first */
   .bar-on .jb-host .composer-actions .more-btn { width: 38px; .ico { rotate: 90deg; } }   /* KA: ··· */
   .bar-on .jb-host .composer-actions .primary { margin-left: var(--sp-4); border-radius: var(--r-12); }
   .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4); }   /* the card keeps its height; Go to scrolls */

@@ -3360,7 +3360,8 @@ document.addEventListener('alpine:init', () => {
     },
     _subsOf(id) { return this.childTasks(id).map(c => ({ id: c.id, done: !!c.completed_at })); },   // a draft's subtask rows as stored
     _inPanel() { return this.surface === 'plan' && this.clSideVisible(); },   // the calendar's panel hosts the composer itself
-    _inBar() { return this.bar && this.narrow && (this.surface === 'lists' || this.phoneThread()) && (!this.editing || this.editing === this.jotted); },   // …and the jot bar a new task, then its steps
+    _inBar() { return this.bar && this.narrow && (this.surface === 'lists' || this.phoneThread()); },   // …and the jot bar every task: a new one, its steps, an edit (KA)
+    kaEdit() { return !!this.editing && this.editing !== this.jotted && this._inBar(); },   // KA-edit: a tapped task, its list and steps on a subline
     // The composer IS a row in the visible list, so a task the current view doesn't hold (another project, a
     // filtered-out one, opened from Now/search/a subtask chevron) had nothing to sit on and landed in a broken
     // spot. Navigate to a view that holds it; returns true when it moved, so the caller re-opens next tick.
@@ -3692,14 +3693,14 @@ document.addEventListener('alpine:init', () => {
       const dx = popLeft(r.left, r.width + m, m) - r.left;   // same clamp as the fixed pops, applied as a delta
       if (dx) el.style.transform = `translateX(${Math.round(dx)}px)`;
     },
-    projectPath(p) {
+    projectPath(p, sep = ' / ') {
       const parts = []; const seen = new Set(); let cur = p;
       while (cur && !seen.has(cur.id)) {
         seen.add(cur.id);
         parts.unshift(cur.content);
         cur = this.byId.get(cur.parent_id);
       }
-      return parts.join(' / ');
+      return parts.join(sep);
     },
     // uFuzzy-ranked + subsequence fallback for short fragments; shared picker search
     pickerMatches(candidates, query = this.pickerQ) {
