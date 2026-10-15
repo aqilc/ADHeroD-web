@@ -6419,7 +6419,7 @@ document.addEventListener('alpine:init', () => {
     // A stored row with open subtasks of its own asks first, as the list's tick does; Save's complete op sweeps them.
     tickSub(s, c) {
       if (inNotes(c ?? s.fields)) return;   // its tack is inert: a note never completes
-      if (c?.archived_at) return this.toast('Archived. Unarchive from the task menu');   // as the list's tick
+      if (c?.archived_at) return this.toast('Archived. Unarchive it first');   // as the list's tick
       const before = this._subsSnap(), tick = () => { s.done = !s.done; this._pushSubs('Ticked subtask', before); }; return !s.done && c ? this.confirmSweep(c.id, tick).then(asked => asked || tick()) : tick(); },
     _chkItem(el) { return el.closest?.('.entry.chk')?._item ?? null; },
     // The painted rows' events, delegated from the list (the ghost row has no data-id and keeps its own handlers).
@@ -7520,7 +7520,7 @@ document.addEventListener('alpine:init', () => {
     _sweepHtml(items) { return html`<div class="sweep-list">${items.map(it => raw(html`<div class="task-line">${raw(this.taskLine(it))}</div>`))}</div>`; },
     async toggle(t, row = null) {
       if (inNotes(t) && !t.completed_at) return;   // a note never completes (x, the row, the composer); one that came in done reopens
-      if (t.archived_at) { this.toast('Archived. Unarchive from the task menu'); return; }   // dash checkbox is inert
+      if (t.archived_at) { this.toast('Archived. Unarchive it first'); return; }   // dash checkbox is inert
       if (!t.completed_at && await this.confirmSweep(t.id)) return;
       const finish = !t.completed_at, id = t.id;
       const start = finish && row && this.celebrations !== 'off' ? this._celebrate(row, true) : null;   // before the write: its render holds the row and any completed ancestors

@@ -384,7 +384,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="composer-grow" x-ref="grow" x-effect="persistDraft(true)" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
         <form class="composer-card" @submit.prevent="_pillThen(() => submitComposer())">
         <!-- type toggle (#104): the draft's type in the check slot, the other under it; click that one to swap -->
-        <span class="type-tog" :class="{ note: typeFront(true) }">
+        <span class="type-tog" :class="{ note: typeFront(true), solo: editing &amp;&amp; !phoneDock() }">   <!-- solo: the other type is the tack beside the bin -->
           <button type="button" x-html="compCheckHtml(false)" @click="typeTap(false)" :aria-label="typeLabel(false)" :disabled="typeFront(false) && !editing"
             :role="typeFront(false) && editing ? 'checkbox' : null" x-effect="typeFront(false) && editing ? $el.setAttribute('aria-checked', !!editingTask()?.completed_at) : $el.removeAttribute('aria-checked')"></button>
           <button type="button" x-html="compCheckHtml(true)" @click="typeTap(true)" :aria-label="typeLabel(true)" :disabled="typeFront(true)"></button>
@@ -827,16 +827,22 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 </div></template>
                 <template x-if="editing"><div class="contents">
                 <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
-                <button type="button" class="pop-item" x-show="editing" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
+                <button type="button" class="pop-item" x-show="phoneDock()" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
                 <button type="button" class="pop-item" x-show="shownSubs().length > 0 || chkSteps() && draft.checklist.length > 0" @click="convertTo('checklist'); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
                 <button type="button" class="pop-item" x-show="!chkSteps() && !typeFront(true) && (shownSubs().length > 0 || draft.checklist.length > 0)" @click="convertTo('steps'); pop = null"><svg class="ico"><use href="#i-steps"/></svg>Convert to steps</button>
                 <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="convertToSubtasks(); pop = null"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
                 <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="toggleChecklistPlain(); pop = null"><svg class="ico"><use :href="chkPlain() ? '#i-list-check' : '#i-all'"/></svg><span x-text="chkPlain() ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
-                <button type="button" class="pop-item" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
+                <button type="button" class="pop-item" x-show="phoneDock()" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
                 </div></template>
               </div></template></template>
             </div>
             <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
+            <!-- web-27A: beside the bin; a phone keeps them in ··· -->
+            <template x-if="editing"><div class="contents">
+              <button type="button" class="act-btn inline-flex items-center" :class="{ on: typeFront(true) }" :aria-pressed="typeFront(true)" @click="typeTap(!typeFront(true))" title="Note"><svg class="ico"><use href="#i-tack"/></svg></button>
+              <button type="button" class="act-btn inline-flex items-center" @click="toggleArchive()" :title="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"><svg class="ico"><use href="#i-archive"/></svg></button>
+              <button type="button" class="act-btn inline-flex items-center" @click="copyEditingMd()" title="Copy as markdown"><svg class="ico"><use href="#i-clipboard"/></svg></button>
+            </div></template>
             <button type="button" class="del-btn inline-flex items-center" x-show="editing" @click="deleteEditing()" title="Delete task"><svg class="ico"><use href="#i-trash"/></svg></button>
             <button type="button" class="ghost" @click="closeComposer()">Cancel</button>
             <button type="submit" class="primary" :disabled="!draft.content.trim()" :aria-label="editing ? 'Save' : 'Add task'"><svg class="ico" aria-hidden="true"><use :href="editing ? '#i-check' : '#i-send'"/></svg><span x-text="editing ? 'Save' : 'Add task'"></span></button>

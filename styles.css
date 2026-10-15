@@ -567,6 +567,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; z-index: 1; }   /* 24px hit box (G5) */
   > button:disabled { cursor: default; }
   &:not(.note) > :last-child, &.note > :first-child { translate: 4px 15px; z-index: 0; .check { scale: .55; } }
+  &.solo:not(.note) > :last-child, &.solo.note > :first-child { display: none; }
   /* touch: each mark gets the row check's 40px column, split where the two meet. Only the ::after takes a finger: the
      buttons' boxes and the row check's own slop overlap the peek's mark, and a disabled front has none */
   :where(.touch) & { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -11px -11px -1px; pointer-events: auto; }
@@ -1274,7 +1275,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   justify-content: flex-end; align-items: stretch;
   margin-top: var(--sp-8); padding-top: var(--sp-8); border-top: 1px solid var(--hair);
   /* opaque resting color (dark --muted is semi-transparent → stroke icons read translucent); hover keeps the accent */
-  .del-btn, .overview-btn, .more-btn { color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);
+  .del-btn, .overview-btn, .more-btn, .act-btn { color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);
     .ico { width: 19px; height: 19px; }
     &:hover { color: var(--accent); } }
   .del-btn:hover { color: var(--p1); }
@@ -1296,7 +1297,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     &:active:not(:disabled) { transform: scale(.97); }
     @media (hover: hover) { &:hover:not(:disabled) { background: color-mix(in oklab, var(--ink) 13%, var(--accent)); } } }
   .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }
-  :is(.del-btn, .overview-btn, .more-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--hover); } .ico { width: 16px; height: 16px; } }
+  :is(.del-btn, .overview-btn, .more-btn, .act-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--hover); } .ico { width: 16px; height: 16px; } }
+  .act-btn.on { color: var(--accent); }   /* the tack: a note */
   .proj-pick-ico { width: 16px; height: 16px; }   /* the checkbox's size, on its x */
   .composer-btns { gap: var(--sp-2); } }
 /* Composer parent (project) chip caps long names. The areas chip shares the truncation (but no cap — it
@@ -2485,7 +2487,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
      Overview and Delete move into ···; the description and entries sit behind the Steps and notes chip (app.js notesHidden). */
   .touch .composer-dock { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-8) 0 0 calc(-18px - var(--sp-12)); }   /* back over the 18px check and its gap: the card's left edge */
   .touch :is(.composer-actions, .composer-btns) { display: contents; }
-  .touch .composer-actions :is(.ghost, .overview-btn, .del-btn) { display: none; }
+  .touch .composer-actions :is(.ghost, .overview-btn, .del-btn, .act-btn) { display: none; }
   .touch .composer-actions .field.loc { order: -1; flex: 0 1 auto; max-width: 50%; margin: 0; }
   .touch .proj-pick { height: 40px; align-items: center; padding: 0 var(--sp-12) 0 var(--sp-8); border-radius: var(--r); background: color-mix(in srgb, var(--ink) 8%, transparent);
     font-size: var(--fs-13); .proj-pick-ico { color: var(--muted); } :is(.proj-pick-ico, .hash) { width: 16px; text-align: center; } }   /* the name starts on the title's column */
