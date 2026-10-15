@@ -494,20 +494,22 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                x-init="initEntrySort($el, 'sub')" x-effect="paintSubs($el)"
                @click="subRowEv($event)" @focus.capture="subRowEv($event)" @blur.capture="subRowEv($event)" @input="subRowEv($event)" @beforeinput="subRowEv($event)" @keydown="subRowEv($event)" @paste="subRowEv($event)">
             <template x-if="editing">
-              <div class="entry ghost" :class="{ active: subGhost.length }" x-show="shownSubs().length > 0 || !chkGhost.length" x-transition.opacity.duration.150ms><span class="check sm ghost-check"></span><div class="entry-txt sub-ce" role="textbox" tabindex="0" contenteditable="true" data-placeholder="New subtask" x-effect="subGhostSync($el)" @focus="focusSubEditor($el, null)" @input="pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="entryKey($event); subEditorKeydown($event, null)" @keydown.escape="entryEscape($event)" @paste="onPaste($event)" @keydown.stop></div></div>
+              <div class="entry ghost" :class="{ active: subGhost.length }" x-show="(shownSubs().length > 0 || !chkGhost.length) && !(phoneDock() && entryPick() !== 'sub')" x-transition.opacity.duration.150ms><span class="check sm ghost-check"></span><div class="entry-txt sub-ce" role="textbox" tabindex="0" contenteditable="true" data-placeholder="New subtask" x-effect="subGhostSync($el)" @focus="focusSubEditor($el, null)" @input="pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="entryKey($event); subEditorKeydown($event, null)" @keydown.escape="entryEscape($event)" @paste="onPaste($event)" @keydown.stop></div><template x-if="phoneDock()"><div class="seg type-pick" x-html="typePickHtml()" @click="typePick($event)" @pointerdown.prevent></div></template></div>
             </template>
             <!-- the checklist ghost holding typing stays (below the subtasks) when one lands: re-created, it would drop the caret -->
             <template x-if="!draft.checklist.length && (!shownSubs().length || chkGhost)">
-              <div class="contents">   <!-- empty state: subtask (edit-only) OR steps OR checklist; steps lead (user 10-13: "make the user think of first steps"). Picking Steps is typing its first step: no switch anywhere -->
-                <span class="entry-or" x-show="!!editing && !subGhost.length && !chkGhost.length" x-transition.opacity.duration.150ms>OR</span>
-                <div class="entry chk ghost step-ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && !chkSteps()) && !typeFront(true)" x-transition.opacity.duration.150ms>
+              <div class="contents">   <!-- empty state: subtask (edit-only) OR steps OR checklist (a phone shows one, by its picker); steps lead (user 10-13: "make the user think of first steps"). Picking Steps is typing its first step: no switch anywhere -->
+                <span class="entry-or" x-show="!!editing && !subGhost.length && !chkGhost.length && !phoneDock()" x-transition.opacity.duration.150ms>OR</span>
+                <div class="entry chk ghost step-ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && !chkSteps()) && !typeFront(true) && !(phoneDock() && entryPick() !== 'steps')" x-transition.opacity.duration.150ms>
                   <span class="ghost-check"></span>
                   <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="First step" x-model="chkGhost" @input="setTaskType('steps')" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="setTaskType('steps'); chkPaste($event)" @keydown.stop></textarea>
+                  <template x-if="phoneDock()"><div class="seg type-pick" x-html="typePickHtml()" @click="typePick($event)" @pointerdown.prevent></div></template>
                 </div>
-                <span class="entry-or" x-show="!subGhost.length && !chkGhost.length && !typeFront(true)" x-transition.opacity.duration.150ms>OR</span>
-                <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && chkSteps())" x-transition.opacity.duration.150ms>
+                <span class="entry-or" x-show="!subGhost.length && !chkGhost.length && !typeFront(true) && !phoneDock()" x-transition.opacity.duration.150ms>OR</span>
+                <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!subGhost.length && !(chkGhost.length && chkSteps()) && !(phoneDock() && entryPick() !== 'chk')" x-transition.opacity.duration.150ms>
                   <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
                   <textarea class="entry-txt chk-ghost-ta" rows="1" placeholder="New checklist item" x-model="chkGhost" @input="setTaskType(null)" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="entryEscape($event)" @paste="setTaskType(null); chkPaste($event)" @keydown.stop></textarea>
+                  <template x-if="phoneDock()"><div class="seg type-pick" x-html="typePickHtml()" @click="typePick($event)" @pointerdown.prevent></div></template>
                 </div>
               </div>
             </template>
@@ -519,9 +521,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <!-- Rows are plain DOM painted by paintChk (keyed by item id), their events delegated here — see paintChk. -->
             <div class="entry-list flex-col" :class="{ steps: chkSteps() }" x-init="editing && initEntrySort($el, 'chk')" x-effect="paintChk($el)"
                  @pointerdown="chkRowEv($event)" @pointerup="chkRowEv($event)" @beforeinput="chkRowEv($event)" @input="chkRowEv($event)" @compositionend="chkRowEv($event)" @keydown="chkRowEv($event)" @paste="chkRowEv($event)" @click="chkRowEv($event)">
-              <div class="entry chk ghost" :class="{ active: chkGhost.length }">
+              <div class="entry chk ghost" :class="{ active: chkGhost.length }" x-show="!(phoneDock() && entryPick() === 'sub')">
                 <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }"></span>
                 <textarea class="entry-txt chk-ghost-ta" rows="1" :placeholder="chkSteps() ? 'Add step' : 'New checklist item'" x-model="chkGhost" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="chkGhostEsc($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
+                <template x-if="phoneDock()"><div class="seg type-pick" x-html="typePickHtml()" @click="typePick($event)" @pointerdown.prevent></div></template>
               </div>
               <!-- The ghost doubles as find: matches float to the top + highlight (display only — stored order
                    untouched, nothing hidden); grips drop while the order is temporary. Enter still adds. -->

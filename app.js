@@ -561,6 +561,7 @@ document.addEventListener('alpine:init', () => {
     startH: 0,          // drives crossfade overlap
     blockH: 0,
     subGhost: '',
+    entryKind: '',   // the phone picker's segment on a draft with no rows yet ('' = steps lead)
     chkGhost: '',
     focusId: null,      // keyboard-focused list row (j/k/↑↓); Enter/e opens it, x completes it
     sel: [],            // multi-select: ids of selected task rows (drives the edit bar; the row .selected class is painted imperatively, never a per-row reactive :class — list-perf)
@@ -2624,7 +2625,7 @@ document.addEventListener('alpine:init', () => {
     resetDraft() {
       this.draft = emptyDraft(); this.subDraft = emptyDraft(); _nlpFocus = null; _dlAuto = ''; _chkSeed = '';
       this.draftRestored = false;   // a blank draft restored nothing (the note's Esc clears its always-open line in place)
-      this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.endPicking = false; this.tpop = false; this._calDn = null; this.calH = null;
+      this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.entryKind = ''; this.endPicking = false; this.tpop = false; this._calDn = null; this.calH = null;
       for (const t in PICKERS) this[PICKERS[t].key] = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this._noPillOnce = false;   // the un-chip→no-re-pill guard is per-session; never leak it across composer opens
       this._draftSid = crypto.randomUUID();   // ditto the draft identity — a rapid-add save resets the draft without reopening
@@ -3399,7 +3400,7 @@ document.addEventListener('alpine:init', () => {
       this.blockH = h;
       this._endDraft();   // a composer already open (another row, a subtask's chevron) keeps its draft under its own key
       // the ghost rows are shared DOM, and focusing one mirrors its text back into subGhost before subGhostSync runs
-      this.draft = this.taskToDraft(t); _dlAuto = ''; this.subGhost = this.chkGhost = ''; this._clearEditor(this._ghostEl('sub'));
+      this.draft = this.taskToDraft(t); _dlAuto = ''; this.subGhost = this.chkGhost = ''; this.entryKind = ''; this._clearEditor(this._ghostEl('sub'));
       if (ghost && (_chkFuzzy ??= makeFuzzy()).search(this.draft.checklist.map(c => c.text), ghost, 0, 1e4)[0]?.length) this.chkGhost = ghost;
       _chkSeed = this.chkGhost;
       this.editing = t.id; _editPin = t.id;
@@ -6461,7 +6462,7 @@ document.addEventListener('alpine:init', () => {
     },
     toggleNotes() {
       this.notesOpen = !this.notesOpen;
-      queueMicrotask(() => queueMicrotask(() => this.notesOpen && this.composer.open && this.focusFirstEntry()));   // after Alpine's flush shows them and its queued subtask writes: a list's ghost, else First step
+      queueMicrotask(() => queueMicrotask(() => this.notesOpen && this.composer.open && (this.phoneDock() ? this._focusEntry(this._ghostEl(this.entryPick() === 'sub' ? 'sub' : 'chk')) : this.focusFirstEntry())));   // after Alpine's flush shows them and its queued subtask writes: a list's ghost, else First step; a phone's sits last, its picked one
     },
     // Steps is picked by typing into the empty composer's "First step" ghost; it and the plain toggle are draft, like every field: nothing lands before Save. Plain and Steps exclude each other.
     toggleChecklistPlain(asked) {
@@ -6476,6 +6477,25 @@ document.addEventListener('alpine:init', () => {
       else if (type) d.typeBeforeNote = type;
       else delete d.typeBeforeNote;   // absent = null on the way back, and keeps the draft equal to its base
       if (type) d.checklist_plain = false;
+    },
+    // Phone: one ghost row whose picker (checklist · subtask · steps) replaces the desktop's ghost OR ghost trio
+    entryPick() {   // an empty draft leads with steps (user 10-13: "make the user think of first steps"); a note has none
+      if (this.shownSubs().length || this.subGhost.length) return 'sub';
+      if (this.draft.checklist.length || this.chkGhost.length) return this.chkSteps() ? 'steps' : 'chk';
+      return this.entryKind || (this.typeFront(true) ? 'chk' : 'steps');
+    },
+    typePickHtml() {
+      const on = this.entryPick(), typing = this.subGhost.length, off = { chk: typing, sub: !this.editing || this.draft.checklist.length || this.chkGhost.length, steps: typing || this.typeFront(true) };
+      const seg = (t, label, glyph) => html`<button type="button" data-t="${t}" aria-label="${label}"${raw(t === on ? ' class="on"' : '')}${raw(off[t] ? ' disabled' : '')}>${raw(glyph)}</button>`;
+      return seg('chk', 'Checklist', html`<span class="chk-rect"></span>`) + seg('sub', 'Subtasks', html`<span class="check sm"></span>`)
+        + seg('steps', 'Steps', html`<span class="check sm steps" style="--p:0"><i class="ring"></i></span>`);
+    },
+    typePick(e) {   // typed rows retype in place: checklist ↔ steps or subtasks → items, through convertTo and its confirm
+      const t = e.target.closest('button[data-t]')?.dataset.t; if (!t || t === this.entryPick()) return;
+      this.entryKind = t;   // an empty draft only shows the picked ghost: typing into it sets the type, as on desktop
+      if (t !== 'sub' && (this.shownSubs().length || this.draft.checklist.length)) this.convertTo(t);
+      else if (this.chkGhost.length) this.setTaskType(t === 'steps' ? 'steps' : null);   // a half-typed first row follows the pick
+      this.$nextTick(() => this.composer.open && !this.confirm && this._focusEntry(this._ghostEl(t === 'sub' ? 'sub' : 'chk')));   // held till the picked ghost's fade-in shows it; a convert's confirm keeps focus
     },
     toggleChecklistItem(item) { this._holdChk('draft', item.id, !!item.done); item.done = !item.done; },
     removeChecklistItem(item) { const i = this.draft.checklist.indexOf(item); if (i >= 0) this.draft.checklist.splice(i, 1); if ((item.text || '').trim()) this._pushChkItem(item, i, item.text, null); },
@@ -6602,7 +6622,7 @@ document.addEventListener('alpine:init', () => {
     subGhostSync(el) { if (document.activeElement !== el && (el.textContent || '') !== (this.subGhost || '')) el.textContent = this.subGhost || ''; },
     _resetSubDraft() { this.subDraft = emptyDraft(); if (_nlpFocus) _nlpFocus.draft = this.subDraft; },
     _ghostEl(kind) {   // the "new subtask" / "new item" prompt row's editor; an empty Steps draft types into "First step"
-      const chk = this.chkSteps() && !this.draft.checklist.length ? '.chk.step-ghost' : '.chk:not(.step-ghost)';
+      const chk = (this.phoneDock() ? this.entryPick() === 'steps' : this.chkSteps()) && !this.draft.checklist.length ? '.chk.step-ghost' : '.chk:not(.step-ghost)';
       return document.querySelector('.composer-entries .entry' + (kind === 'sub' ? ':not(.chk)' : chk) + '.ghost .entry-txt');
     },
     _clearEditor(el) { if (el) { el.textContent = ''; el._hist = null; } },   // a fresh ghost: ⌘Z must not bring back the subtask just added

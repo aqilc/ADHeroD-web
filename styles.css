@@ -491,7 +491,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
    them 100+ times a day. A hidden bullet reads as a dot, a fence takes no line. */
 /* Composer checklist and subtask rows and the title too, at rest and editing. */
 :is(.desc, .entry-txt, .composer-title .content) {
-  .dm-tok:not(.on) > .dm-mark { font-size: 0; }
+  .dm-tok:not(.on) > .dm-mark { font-size: 0; line-height: 0; }   /* a px line-height would hold a 0-size box open around the baseline: the line grows ~4px */
   .dm-fence { display: block; }   /* the prose's newline before it then ends at the block, not on an empty line */
   .dm-fence:not(.on) > .dm-mark { display: none; }
   .dm-tok:not(.on) > .dm-li { font-size: inherit; color: transparent; position: relative;
@@ -978,6 +978,14 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 }
 /* three ghosts can't share a phone-width line (a wrap strands an OR at a line's end): they stack, each OR centred between */
 .composer-entries { container-type: inline-size; }
+.composer-entries .seg.type-pick { margin: 0; flex: none; gap: 1px;   /* the phone's ghost row picks its kind (entryPick) */
+  button { flex: none; width: 44px; height: 32px; padding: 0; display: grid; place-items: center; position: relative; &::before { content: ''; position: absolute; inset: -6px 0; } &:disabled { opacity: .35; } }   /* 44px tall target */
+  .chk-rect, .check { --pc: currentColor; border-color: currentColor; pointer-events: none; }
+  .chk-rect { border: 2px solid currentColor; background: none; box-shadow: none; &::before, &::after { display: none; } }   /* outlined: the steps list's ring styling must not reach it */
+  .check.steps { border-color: transparent; } }
+@media (max-width: 640px) { .touch .composer-entries {
+  .entry.ghost:has(> .type-pick) { flex: 1 1 100%; align-items: center; }
+  .entry-list > .entry.ghost { order: 9; } } }   /* ghost last, right above send; desktop keeps it first */
 @container (width < 400px) { .entry-empty:has(> .entry:not(.chk)) { flex-direction: column; align-items: stretch; .entry { flex: none; } .entry-or { align-self: center; } } }
 .ico { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* Popover shell — floating panel of rows. .nav-pop is the same shell anchored to a nav row. */
