@@ -32,7 +32,7 @@ applyTheme(savedAppearance(), savedColorTheme()); // Before Alpine boots: no fla
 import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, cascades, MAX_DEPTH, pendingSweep, placedMap, overviewFields, liveRefs } from './store.js';
 import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, jMigrate } from './recovery.js';
 import { inNotes, openBlockers } from './predicates.js';
-import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, userReminders, offsetLabel } from './reminders.js';
+import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, sevOf, userReminders, offsetLabel } from './reminders.js';
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, bodyText } from './search.js';
 import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
@@ -3431,7 +3431,7 @@ document.addEventListener('alpine:init', () => {
         anchor: sug.anchor, offset_minutes: sug.offset_minutes ?? null, at: sug.at || null, severity: 'ping', repeat: null, times: null, paused: false });
     },
     remDrop(id) { this.draft.reminders = this.draft.reminders.filter(r => r.id !== id); },
-    remCycleSev(r) { const o = ['gentle', 'ping', 'alarm']; r.severity = o[(o.indexOf(r.severity || 'ping') + 1) % 3]; },
+    remCycleSev(r) { r.severity = sevOf(r) === 'alarm' ? 'ping' : 'alarm'; },
     // The lead switch is the pause, and only a self-repeating reminder has something to pause.
     remLeadTap(r) { if (isRepeating(r)) r.paused = !r.paused; else this.remCycleSev(r); },
     remLabel() { const n = this.draft.reminders.length; return n ? String(n) : 'Remind'; },

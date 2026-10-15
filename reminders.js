@@ -78,9 +78,11 @@ export const nextAt = (r, now = Date.now()) => {
   return isNaN(d) ? r.at : localStamp(d);   // a malformed cadence keeps its at rather than failing the restore
 };
 
+// Two severities: a stored 'gentle' (no longer offered) reads, cycles and delivers as a Ping.
+export const sevOf = r => r.severity === 'alarm' ? 'alarm' : 'ping';
 // One lead slot: a severity-shaped bell, or the repeat switch wearing the same severity weight.
-const BELL = { gentle: 'i-bell', ping: 'i-bell-fill', alarm: 'i-bell-alarm' };
+const BELL = { ping: 'i-bell-fill', alarm: 'i-bell-alarm' };
 export const leadIcon = r => {
-  const sev = r.severity || 'ping', repeating = isRepeating(r);
+  const sev = sevOf(r), repeating = isRepeating(r);
   return { icon: repeating ? 'i-repeat' : BELL[sev], sev, repeating };
 };

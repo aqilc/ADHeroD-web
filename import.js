@@ -164,7 +164,7 @@ const shift = (start, mins) => {
 export const icsReplaces = (existingSeq, incomingSeq) => (incomingSeq ?? 0) > (existingSeq ?? 0);
 
 // ─── pasted task payload ───────────────────────────────────────────────────────────────────────────
-const SEVERITY = ['gentle', 'ping', 'alarm'];
+const SEVERITY = ['ping', 'alarm'];
 const LOC_MODE = ['any', 'only', 'except'];
 const ANCHOR = ['deadline', 'start', 'due'];
 const TYPE = ['task', 'note'];
@@ -387,7 +387,7 @@ Rules the validator enforces:
 - "subtasks" nests tasks (${MAX_DEPTH} levels deep at most). "checklist" is a flat list of strings for trivial steps.
 - "needs" lists the "id"s of tasks that must be done first. Ids are yours to make up, unique inside this block, and must refer to tasks in this same block. Dependencies must not form a loop.
 - "repeat" is { "freq": "day"|"week"|"month"|"year", "interval": 1, ... } with optional "weekdays" (0=Sunday..6), "month_day", "nth" (1-5 or -1 for last, with "freq":"month" and a single weekday, e.g. the 3rd Thursday), "months" (1-12), and one ending: "count" OR "until".
-- "reminders" is a list of either { "anchor": "deadline"|"start"|"due", "offset": minutes-before-as-a-negative-number } or { "at": "YYYY-MM-DDTHH:MM" } for an exact moment, each optionally with "severity": "gentle"|"ping"|"alarm". An "at" must be in the future.
+- "reminders" is a list of either { "anchor": "deadline"|"start"|"due", "offset": minutes-before-as-a-negative-number } or { "at": "YYYY-MM-DDTHH:MM" } for an exact moment, each optionally with "severity": "ping"|"alarm". An "at" must be in the future.
 - "location" is { "mode": "only"|"except", "places": ["..."] }.
 
 Full example:

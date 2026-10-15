@@ -1200,7 +1200,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .rem-lead { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none; border-radius: var(--r-6); color: var(--muted); background: none; border: none; cursor: pointer;
   .ico { width: 15px; height: 15px; flex: none; color: inherit; }   /* the severity colour, over .pop-item .ico */
   &:hover { background: var(--hover); }
-  &.gentle { color: var(--muted); } &.ping { color: var(--ink); } &.alarm { color: var(--warm-ink); } }
+  &.ping { color: var(--ink); } &.alarm { color: var(--warm-ink); } }
 .rem-seg { padding: 1px var(--sp-6); border-radius: var(--r-4); background: color-mix(in srgb, var(--hover) 70%, transparent); color: var(--ink); }
 .rem-tag { font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 /* ceiling: a tap-to-cycle button, not .seg; a second tap-to-cycle control makes it a primitive */
@@ -1208,9 +1208,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &:hover { background: var(--hover); }
   .dots { display: inline-flex; gap: 2px; }
   .dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--faint); opacity: .4; }
-  &.s1 .dots i:nth-child(1) { opacity: 1; }
-  &.s2 .dots i:nth-child(-n+2) { opacity: 1; background: var(--muted); }
-  &.s3 .dots i { opacity: 1; background: var(--warm-ink); } }
+  &.ping .dots i:nth-child(-n+2) { opacity: 1; background: var(--muted); }
+  &.alarm .dots i { opacity: 1; background: var(--warm-ink); } }
 .rem-del { color: var(--faint); background: none; border: none; cursor: pointer; padding: 0 var(--sp-2); flex: none;
   .ico { width: 13px; height: 13px; flex: none; color: inherit; } &:hover { color: var(--muted); } }
 /* a paused reminder still reads as itself, just stood down — never deleted, never hidden */

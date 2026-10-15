@@ -617,8 +617,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   </button>
                   <span class="rem-seg" x-text="remWhen(r)"></span>
                   <span class="rem-tag" x-show="r.paused" x-text="remTag(r)"></span>
-                  <button type="button" class="rem-sev" :class="'s' + (['gentle','ping','alarm'].indexOf(r.severity || 'ping') + 1)" @click="remCycleSev(r)">
-                    <span class="dots"><i></i><i></i><i></i></span><span x-text="(r.severity || 'ping').replace(/^./, c => c.toUpperCase())"></span>
+                  <button type="button" class="rem-sev" :class="remLead(r).sev" @click="remCycleSev(r)">
+                    <span class="dots"><i></i><i></i><i></i></span><span x-text="remLead(r).sev === 'alarm' ? 'Alarm' : 'Ping'"></span>
                   </button>
                   <button type="button" class="rem-del" @click="remDrop(r.id)"><svg class="ico"><use href="#i-x"/></svg></button>
                 </div>
