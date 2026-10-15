@@ -1840,8 +1840,8 @@ textarea.inp { resize: vertical; }
 /* keyboard focus ring for the role="button" calendar cells/blocks/events — inset so the cells' overflow:hidden doesn't clip it */
 .cl-date:focus-visible, .cl-block:focus-visible, .cl-event:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cl-date { justify-content: flex-end; }   /* day number sits top-right (Apple) */
-.cl-mlabel { font-size: var(--fs-15); font-weight: 300; color: var(--ink); text-transform: uppercase; letter-spacing: .03em; }
-.cl-dnum { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: var(--fs-15); color: var(--ink); }
+.cl-mlabel { font-size: var(--fs-14); font-weight: 300; color: var(--ink); text-transform: uppercase; letter-spacing: .03em; }
+.cl-dnum { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; font-size: var(--fs-14); color: var(--ink); }
 .cl-chips { transition: opacity .3s ease; }
 /* Normalized thread ramp: hue comes from the item's --cc, lightness+chroma are FIXED per theme, so every
    colour lands at the same perceived weight with guaranteed text contrast (raw color-mix made blue read

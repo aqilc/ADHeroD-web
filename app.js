@@ -268,8 +268,8 @@ const PILL_SPEC = {
               commit: (s, d, v) => { d.importance = v; }, clear: (s, d) => { d.importance = 'none'; }, snapshot: (s, d) => d.importance, restore: (s, d, x) => { d.importance = x ?? 'none'; } },
   dur:      { json: 0, num: 1, label: (s, v) => s.durFmt(v), read: (s, d) => d.durMin || null,
               commit: (s, d, v) => { d.durMin = v; }, clear: (s, d) => { d.durMin = 0; }, snapshot: (s, d) => d.durMin, restore: (s, d, x) => { d.durMin = x || 0; } },
-  proj:     { json: 0, label: (s, v) => '#' + (s.byId.get(v)?.content ?? v), read: (s, d) => d.project ? d.project_id || d.project : null,   // a picked project's chip holds its id: save resolves a bare name among top-level projects only
-              commit: (s, d, v) => { const t = s.byId.get(v); if (t || v !== d.project) d.project_id = t ? v : null; d.project = t ? t.content : v; s.projRequired = false; }, clear: (s, d) => { d.project = null; }, snapshot: (s, d) => ({ project: d.project, project_id: d.project_id }), restore: (s, d, x) => { d.project = x?.project ?? null; d.project_id = x?.project_id ?? null; } },   // a replayed chip keeps the picked (maybe nested) project's id
+  proj:     { json: 0, label: (s, v) => '#' + (s.byId.get(v)?.content ?? v), read: (s, d) => d.project ? d.project_id || d.project : null,   // a picked project's chip holds its id; a typed name takes an existing project's
+              commit: (s, d, v) => { const t = s.byId.get(v) ?? (v === d.project ? null : s.projNamed(v)); if (t || v !== d.project) d.project_id = t?.id ?? null; d.project = t ? t.content : v; s.projRequired = false; }, clear: (s, d) => { d.project = null; }, snapshot: (s, d) => ({ project: d.project, project_id: d.project_id }), restore: (s, d, x) => { d.project = x?.project ?? null; d.project_id = x?.project_id ?? null; } },   // a replayed chip keeps the picked (maybe nested) project's id
   area:     { json: 0, multi: 'areas', label: (s, v) => '@' + (s.areaById(v)?.name ?? v),
               commit: (s, d, v) => { if (!d.areas.includes(v)) d.areas.push(v); }, clear: (s, d, r) => { const i = d.areas.indexOf(r); if (i >= 0) d.areas.splice(i, 1); }, snapshot: (s, d) => [...d.areas], restore: (s, d, x) => { d.areas = x || []; } },
   loc:      { json: 0, label: (s, v) => '📍 ' + v,
@@ -2501,7 +2501,7 @@ document.addEventListener('alpine:init', () => {
       if (!ids.length) return 0;
       return Math.round(ids.filter(x => this.byId.get(x)?.completed_at).length / ids.length * 100);
     },
-    startRename(id) { this.navRename = id; this.navPop = null; this.$nextTick(() => this.$nextTick(() => { const i = this.navRename === id && document.querySelector('.nav-pop .pop-input'); if (i) { i.focus(); i.select(); } })); },   // select: a rename usually replaces, and a just-added area opens on its placeholder
+    startRename(id) { this.navRename = id; this.navPop = null; },   // the field focuses itself as it renders (index.html)
     async saveRename(p, name) {
       name = name.trim(); this.navRename = null;
       if (!name) return;
@@ -2806,6 +2806,7 @@ document.addEventListener('alpine:init', () => {
       return (h ? h + 'h' : '') + (h && m ? ' ' : '') + (m ? m + 'm' : '');
     },
     projName(id) { return this.byId.get(id)?.content || ''; },
+    projNamed(name) { const n = name.toLowerCase(), all = this.tasks.filter(t => t.overview && !t.archived_at && t.content.toLowerCase() === n); return all.find(t => !t.parent_id) ?? all[0]; },   // a typed #name files under the project it names, top level first, never a twin of a nested one
     isDefaultProj(id) { return !!id && id === this._defId; },
     pickIsDefault() { return this.draft.project_id ? this.draft.project_id === this.store.defaultProject() : !this.draft.project; },
     projPickColor() {

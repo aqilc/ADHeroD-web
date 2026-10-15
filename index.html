@@ -1359,7 +1359,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </template>
     <template x-if="overview && navRename">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
-        <input class="pop-input" type="text"
+        <!-- Focused as it renders, not a tick later: keys typed right after the Rename click are the deck's shortcuts until then
+             ("g" goes to Backlog and quits the overview). Selected: a rename usually replaces, and a just-added area opens on its placeholder. -->
+        <input class="pop-input" type="text" x-init="$el.focus(); $el.select()"
           :value="(byId.get(navRename)?.content) || (areas.find(a => a.id === navRename)?.name) || ''"
           @keydown.enter.prevent="saveRename(byId.get(navRename) || areas.find(a => a.id === navRename), $el.value)">
       </div>
