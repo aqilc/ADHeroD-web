@@ -327,7 +327,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   /* indent guides: 2px vertical line per depth level (matches checklist connector) */
   background-image: repeating-linear-gradient(to right, transparent 0 9px, color-mix(in srgb, var(--faint) 55%, transparent) 9px 11px, transparent 11px 22px);
   background-repeat: no-repeat; background-position: calc(var(--gut) - 1px) 0; background-size: calc(var(--d, 0) * 22px) 100%;
-  &:hover:not(:has(a:hover, code:hover, .md-code:hover, .chk-rect:hover, .chk-rect:not(.plain) + .chk-txt:hover, .chk-more:hover, .row-rel:hover)) { background-color: var(--row-hov, var(--hover)); }   /* lit where a click opens the composer: not where it ticks an item (box/text — app.js listOver mirrors) */
+  &:hover:where(:not(.touch *)):not(:has(a:hover, code:hover, .md-code:hover, .chk-rect:hover, .chk-rect:not(.plain) + .chk-txt:hover, .chk-more:hover, .row-rel:hover)) { background-color: var(--row-hov, var(--hover)); }   /* lit where a click opens the composer: not where it ticks an item (box/text — app.js listOver mirrors) */
   .body { position: relative; }
   .title { display: block; width: 100%; font-size: var(--fs-15); line-height: 18px; cursor: pointer; }
   &.done .title { color: var(--muted); text-decoration: line-through; }
@@ -627,7 +627,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-more-txt { font-size: var(--fs-11); color: var(--muted); }
 .chk-more:hover .chk-more-txt { color: var(--muted); }
 /* block hover: flat rect reads as the composer's source area */
-.item.inblock { background-color: var(--hover); border-radius: 0; }
+.item.inblock:where(:not(.touch *)) { background-color: var(--hover); border-radius: 0; }   /* a finger's compat mouseover would leave it lit */
 .item.inblock.rb-top { border-top-left-radius: 8px; border-top-right-radius: 8px; }
 .item.inblock.rb-bottom { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
 .item.dragging { opacity: .4; }
@@ -791,7 +791,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   padding: var(--sp-2); color: var(--ink); font-size: 16px; font-weight: 600; letter-spacing: -.01em;
   .hash { color: var(--muted); font-weight: 500; }
   > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  &:hover { opacity: .82; }
+  :where(html:not(.touch)) &:hover { opacity: .82; }   /* a finger's tap leaves :hover stuck on */
   &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); border-radius: var(--r-4); } }   /* owns the open picker */
 .proj-pick-ico { width: 15px; height: 15px; flex: none; align-self: center; }
 .proj-pick.required { color: var(--p1); animation: req-pulse .35s ease 2; }

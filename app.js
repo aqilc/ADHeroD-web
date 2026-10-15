@@ -4297,8 +4297,10 @@ document.addEventListener('alpine:init', () => {
         }
         if ((at = end) > to) break;
       }
+      const drawn = mdLiveRender(text.slice(from, to));
+      if (html === drawn) return true;   // plain typing: no parse
       _canon.innerHTML = html; const now = _canon.innerHTML;   // parsed, so both compare as the DOM serializes
-      _canon.innerHTML = mdLiveRender(text.slice(from, to));
+      _canon.innerHTML = drawn;
       if (now === _canon.innerHTML) return true;   // an empty line drew '' and holds nothing: always here
       r.deleteContents(); r.insertNode(_canon.content);
       this._setCaret(el, off);
@@ -4776,15 +4778,16 @@ document.addEventListener('alpine:init', () => {
       if (last) { e.preventDefault(); this.editTask(last); }
     },
     // An add owns its slot. Edits queue their captured drafts; repeated presses of the same draft save once.
-    async submitComposer(extra, close) {
+    async submitComposer(extra, close, lead) {
       if (!this.editing) return !this._closingComposer && this._submit(extra, close);   // closing: ⌘⏎ handed this draft on at its press
       const sid = this._draftSid;
       if (_submitting.has(sid)) return false;
       _submitting.set(sid, { base: _saveBase });
-      try { return await this._submit(extra, close); } finally { _submitting.delete(sid); }
+      try { return await this._submit(extra, close, lead); } finally { _submitting.delete(sid); }
     },
-    // extra: fields that ride the same save (Show in Overview's flag) — one write, one ⌘Z. close: a new task closes, not resets. Returns true ONLY once it saved.
-    async _submit(extra, close) {
+    // extra: fields that ride the same save (Show in Overview's flag) — one write, one ⌘Z. close: a new task closes, not resets.
+    // lead: [label, op] steps that came before (a convert), taken out once this save journals them, as its first steps and under the first's label. Returns true ONLY once it saved.
+    async _submit(extra, close, lead = []) {
       if (!this.draft.content.trim()) {   // contenteditable has no `required`; nothing typed at all = nothing to lose
         if (this._draftSig() === this._draftBase) return true;
         this.toast('Add a title to save'); return false;
@@ -4825,7 +4828,7 @@ document.addEventListener('alpine:init', () => {
           // draft.wasDone: set by a save whose checklist landed but completion failed — its retry must still complete, while the task is as that save left it
           const wasDone = draft.savedAt && draft.savedAt === before.updated_at ? draft.wasDone : !!(before.checklist?.length && before.checklist.every(c => c.done));
           // The edit and the completion it triggers land as ONE entry; an edit that landed stays undoable though its completion failed.
-          const j = [], opts = { ops: j, fail: null }, drops = [];   // the failure branch below says it, once
+          const label = lead[0]?.[0] ?? 'Saved task', j = lead.splice(0), opts = { ops: j, fail: null }, drops = [];   // the failure branch below says it, once
           // a save that may finish the task (every subtask or checklist item ticked) rewards it as the list's tick does: the
           // subtasks it ticks and the task, or the task alone for a checklist. Each start keeps only what finished.
           const ticked = draft.subs.filter(s => !this.byId.get(s.id)?.completed_at), all = list => list.length && list.every(x => x.done);
@@ -4849,7 +4852,7 @@ document.addEventListener('alpine:init', () => {
           if (kept) for (const s of draft.subs) if (s.links && this.byId.has(s.id)) await this._applyDraftLinks(s.id, { content: this.byId.get(s.id).content, ...s.links }, j);
           // a new subtask: an add's Bin row, so a ⌘Z puts it in the Bin (a deleted one has its own, _saveSubs)
           // kept with no journal ops: nothing the task row changed (signed in, an empty write stamps nothing), still said. A move re-labels this card below
-          const saveCard = j.length ? this._pushOps('Saved task', 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added }) : kept ? this.notify('Saved task') : null;
+          const saveCard = j.length ? this._pushOps(label, 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added }) : kept ? this.notify('Saved task') : null;
           for (const drop of drops) drop();
           for (const start of starts) start();
           save.base = nextBase;
@@ -6371,6 +6374,7 @@ document.addEventListener('alpine:init', () => {
     paintChk(list, force) {
       if (!list?.isConnected) return;
       _chkDraftList = list;
+      if (this.notesHidden()) return;
       const plain = this.chkPlain(), find = this.chkFind(), grip = this.editing && !this.chkGhost.trim(), ae = document.activeElement;   // ae: the row being typed in
       const cur = this.chkSteps() ? this.draft.checklist.find(x => !x.done) : null;
       this._paintKeyed(list, this.checklistRows(), () => { const el = CHK_ROW.cloneNode(true); el._r = el.firstChild; el._t = el._r.nextSibling; return el; }, (el, item) => {
@@ -6388,7 +6392,7 @@ document.addEventListener('alpine:init', () => {
     shownSubs() { return this.editing ? this.draft.subs.filter(s => s.add || this.byId.has(s.id)) : []; },
     // A row's pill editor hydrates once per draft (a reopen re-reads the store), then shows the draft's edit of it; later store writes re-hydrate via syncSubRows.
     paintSubs(list) {
-      if (!list?.isConnected) return;
+      if (!list?.isConnected || this.notesHidden()) return;
       const sid = this._draftSid, fresh = [];
       this._paintKeyed(list, this.shownSubs(), () => { const el = SUB_ROW.cloneNode(true); [, el._c, el._t, el._k] = el.children; return el; }, (el, s) => {
         const c = this.byId.get(s.id);
@@ -6457,7 +6461,7 @@ document.addEventListener('alpine:init', () => {
     },
     toggleNotes() {
       this.notesOpen = !this.notesOpen;
-      queueMicrotask(() => this.notesOpen && this.composer.open && this.focusFirstEntry());   // after Alpine's flush shows them: a list's ghost, else First step
+      queueMicrotask(() => queueMicrotask(() => this.notesOpen && this.composer.open && this.focusFirstEntry()));   // after Alpine's flush shows them and its queued subtask writes: a list's ghost, else First step
     },
     // Steps is picked by typing into the empty composer's "First step" ghost; it and the plain toggle are draft, like every field: nothing lands before Save. Plain and Steps exclude each other.
     toggleChecklistPlain(asked) {
@@ -7180,13 +7184,13 @@ document.addEventListener('alpine:init', () => {
     // Overflow menu: checklist → subtasks. CREATE FIRST, DELETE LAST: the checklist is cleared only after
     // every subtask verifiably exists; any failure rolls back the created tasks and leaves the checklist
     // untouched. Worst case is a duplicate, never a loss.
-    async convertToSubtasks(asked) {
+    async convertToSubtasks(asked, ops) {   // ops: as perform's, its step joins the caller's entry
       const id = this.editing; if (!id || _converting.has(id)) return;
       if (!asked && this.chkSteps()) return this.askConfirm({ message: 'Turn these steps into subtasks?', confirmLabel: 'Convert to subtasks', onConfirm: () => this.convertToSubtasks(true) });
       _converting.add(id);
-      try { return await this._convertToSubtasks(id, this.draft); } finally { _converting.delete(id); }
+      try { return await this._convertToSubtasks(id, this.draft, ops); } finally { _converting.delete(id); }
     },
-    async _convertToSubtasks(id, d) {   // held: the composer may close or move on mid-convert
+    async _convertToSubtasks(id, d, ops) {   // held: the composer may close or move on mid-convert
       const items = d.checklist.filter(i => i.text.trim());
       if (!items.length) return;
       const beforeChecklist = JSON.parse(JSON.stringify(d.checklist)), beforeType = d.task_type ?? null, type = inNotes(d) ? 'note' : null;   // a note stays one
@@ -7226,10 +7230,11 @@ document.addEventListener('alpine:init', () => {
         const moved = [...was].filter(([k, at]) => this.byId.has(k) && (this.byId.get(k).completed_at ?? null) !== at);
         if (moved.length) { await Promise.all(moved.map(([k, at]) => this.store.tasks.update(k, { completed_at: at }))); await this.loadTasks(); }
       }
-      if (ok) this._pushEntry('Converted to subtasks', { kind: 'composite', target: 'task', ops: [
+      const entry = { kind: 'composite', target: 'task', ops: [
         ...made.map(k => ({ kind: 'remove', target: 'task', id: k })).reverse(),
         { kind: 'update', target: 'task', id, after: { checklist: beforeChecklist, task_type: beforeType, completed_at: wasCompletedAt } },   // removing done kids can auto-complete it — pin it back
-      ] });
+      ] };
+      if (ok) ops ? ops.push(['Converted to subtasks', entry]) : this._pushEntry('Converted to subtasks', entry);
       if (ok && this._live(d)) {   // a failed convert saved nothing: the checklist stays a draft
         // only the new rows land: a subtask the draft deleted (or converted) stays an unsaved delete, else it's back beside its copy
         const rows = made.map((k, i) => ({ id: k, done: !!items[i].done })), base = JSON.parse(this._draftBase).draft.subs;
@@ -7470,11 +7475,14 @@ document.addEventListener('alpine:init', () => {
     askShowInOverview() {
       // The flag rides the composer's normal save: pending edits land with it (nothing typed is lost), a failed save keeps
       // the composer + draft and flags nothing, and ⌘Z reverts the whole write (edits, flag, a deleted checklist).
-      const d = this.draft, id = this.editing, n = d.checklist.filter(c => (c.text || '').trim()).length, flag = (f = {}) => this.submitComposer({ ...f, overview: true });
+      const d = this.draft, id = this.editing, n = d.checklist.filter(c => (c.text || '').trim()).length, flag = (f = {}, lead) => this.submitComposer({ ...f, overview: true }, undefined, lead);
       this.askConfirm(n ? { message: `Overview projects don't keep a checklist. Turn its ${n} item${n > 1 ? 's' : ''} into subtasks, or delete ${n > 1 ? 'them' : 'it'}?`,
-        // flags only once every subtask exists; a composer closed or moved on meanwhile isn't this draft: flag the task by id
-        confirmLabel: 'Convert to subtasks', onConfirm: async () => await this.convertToSubtasks(true)
-          && (this._live(d) ? flag() : this.perform('Showed in Overview', { target: 'task', kind: 'update', id, after: { overview: true } })),
+        // flags only once every subtask exists; a composer closed or moved on meanwhile isn't this draft: flag the task by id.
+        // The convert and the flag are one card and one ⌘Z: a step the save didn't take (it never got that far) is journaled here
+        confirmLabel: 'Convert to subtasks', onConfirm: async () => { const lead = [];
+          const ok = await this.convertToSubtasks(true, lead) && (this._live(d) ? await flag({}, lead) : await this.perform('Showed in Overview', { target: 'task', kind: 'update', id, after: { overview: true } }, { ops: lead }));
+          this._pushOps('Converted to subtasks', 'task', lead);
+          return ok; },
         // its [] also drops an item another tab or device added since open: the Bin gets those too (as a save keeps them, submitComposer)
         altLabel: 'Delete checklist', onAlt: async () => { const own = this.draft.checklist, seen = new Set([..._saveBase.checklist, ...own].map(c => c.id)), cl = [...own, ...(this.byId.get(id)?.checklist || []).filter(c => !seen.has(c.id))];
           if (await flag({ checklist: [] }) === true) this._binChkItems(id, cl, cl.filter(c => (c.text || '').trim())); } }
