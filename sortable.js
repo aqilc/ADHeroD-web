@@ -95,6 +95,8 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
     const ac = new AbortController(), o = { signal: ac.signal };
     st = { item, scope, ac, x0: e.clientX, _cx: e.clientX, startY: e.clientY, t0: e.timeStamp, pid: e.pointerId, dragging: false, hold: !mouse && setTimeout(begin, HOLD) };
     if (mouse) container.style.userSelect = 'none';   // a finger writes nothing until it holds: a swipe never touches the list
+    // Chrome's drag threshold (~3px, any axis) can pass before THRESH: a draggable ancestor's (a list row's) HTML drag would cancel this press
+    if (mouse) window.addEventListener('dragstart', ev => { ev.preventDefault(); ev.stopPropagation(); }, { ...o, capture: true });
     window.addEventListener('pointermove', onMove, o);
     window.addEventListener('pointerup', onUp, o);
     window.addEventListener('pointercancel', onUp, o);
