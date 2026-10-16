@@ -108,6 +108,7 @@ const CL_AG_ROW = 52, CL_AG_FREE = 34;   // full-tier agenda row heights ("1h fr
 const CL_AG_GAP = 30;                     // a hole in the day big enough to be worth naming ("1h free")
 const CL_WALK = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };   // a focused month day's arrows, in days
 const CL_BAR = 90, CL_HEAD = 32;          // overlaid toolbar + weekday-header heights (must match --bar/--head in CSS)
+const CL_MNAMED = 62, CL_MCHIP = 14, CL_MMORE = 18;   // phone month cell, px: padding + number + two-line name + gap less a chip gap · a chip + its gap · what a "+N" adds (must match the phone .cl-cell/.cl-dn/.cl-chip/.cl-more)
 const _groupMemo = new Map();   // byDay cache; busts on any task/event change
 const _placedMemo = new Map();  // task_id → placement ISO; busts on _calDataV (read once per row per pass)
 const _taskIdxMemo = new Map();  // _taskIdx(): children + inverse blocked_by, one pass per _rowV
@@ -126,6 +127,7 @@ let _clBlocksSig = null, _clBlocksCache = [], _clWkOut = [], _clWkSig = null, _c
 const _clWheel = { t: -Infinity, v: Infinity, hi: 0, lo: 0, hiT: 0, n: 0 };   // wheel gesture gate (_clGestureFresh): last event time and speed, peak/floor speed, the peak's time, events since it — module scope, off the Alpine proxy
 let _calDataV = 0, _clScrollT, _clFrac = 0, _clMTop = 0, _clAdD, _clAdPg, _clAdH = 0;   // last boundary offset / rail page / deadline-rail height painted   // _clFrac mirrors clPos.frac, _clMTop the month scrollTop, without Alpine reactivity
 const _periodLabels = new Map();   // (view|idx) -> label; toLocaleDateString is far too slow to call per wheel event
+const _dayLabels = new Map();   // day-view label -> { iso, wd }: labels stay date-only (cached), a day's name lays over the weekday at render
 // The week edge glide (_clEdgeGlide) ends on entering anything but a day column: leaving fires dragenter, not dragover.
 const clEdgeEnd = () => { motion.stop('clEdge'); removeEventListener('dragenter', clEdgeOut, true); };
 const clEdgeOut = e => e.target.closest?.('.cl-pcol') || clEdgeEnd();
@@ -7977,7 +7979,10 @@ document.addEventListener('alpine:init', () => {
       // NOT keyed on clFocusYM: the dominant month changes at every month boundary (~4× a fling) and the only
       // thing that depends on it is the out-of-month fade. Cells carry their own `ym` and the template compares
       // it, so a focus change costs one class binding per cell instead of rebuilding every row.
-      const todayIso = this._nowDay, narrow = this.narrow, sig = _calDataV + '|' + todayIso + '|' + narrow;
+      const todayIso = this._nowDay, narrow = this.narrow;
+      // phone: a named day's two-line name stands over its chips, so the row's height decides how many show: [all, before a "+N"]
+      const named = narrow && [Math.min(3, Math.floor((this.clRowH - CL_MNAMED) / CL_MCHIP)), Math.max(0, Math.floor((this.clRowH - CL_MNAMED - CL_MMORE) / CL_MCHIP))];
+      const sig = _calDataV + '|' + todayIso + '|' + narrow + '|' + named + (named ? '|' + this.dayNotes.map(d => d.date) : '');   // the names: a reactive read, so one arriving re-runs this
       if (_clWkSig !== sig || _clWkCache.size > 200) { _clWkSig = sig; _clWkCache.clear(); }   // size: a long scroll would otherwise keep every row it ever passed
       const end = Math.min(CL_TOTAL_WEEKS, this.clVisStart + this.clVisCount);
       for (let idx = Math.max(0, this.clVisStart); idx < end; idx++) {
@@ -8007,7 +8012,7 @@ document.addEventListener('alpine:init', () => {
             const singles = narrow ? tasksFirst(rest) : [...rest];
             for (let k = 0; k < items.length; k++) items[k] ||= singles.shift() || { pad: true, kind: 'pad', id: k, title: '' };
             items.push(...singles);
-            const shown = narrow && items.length > 3 ? 2 : 3;
+            const [all, some] = named && this.clDayLabel(iso) ? named : [3, narrow ? 2 : 3], shown = items.length > all ? some : all;
             return {
               iso, day: d.getDate(), today: iso === todayIso, label: DAY_NAME.format(d), first: i === 0,
               weekend: i === 0 || i === 6, ym: d.getFullYear() * 12 + d.getMonth(),
@@ -8244,7 +8249,11 @@ document.addEventListener('alpine:init', () => {
     _periodDate(idx) { if (this.clView !== 'day') return this._weekDate(idx); const d = new Date(CL_EPOCH); d.setDate(d.getDate() + idx); return d; },
     _periodTotal() { return this.clView === 'day' ? CL_TOTAL_WEEKS * 7 : CL_TOTAL_WEEKS; },
     _periodLabel(d) {
-      if (this.clView === 'day') return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      if (this.clView === 'day') {
+        const s = d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+        _dayLabels.set(s, { iso: isoDate(d), wd: d.toLocaleDateString([], { weekday: 'long' }) });
+        return s;
+      }
       const e = new Date(d); e.setDate(e.getDate() + 6);
       return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' – ' + e.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
     },
@@ -8287,7 +8296,7 @@ document.addEventListener('alpine:init', () => {
       return Math.max(0, 1 - (port - this._clHeadH()) / ph) + (this.clView === 'week' ? CL_WEEK_BLEED / ph : 0); },
     // toLocaleDateString is ~100us; three zone titles plus the heading asked for one on EVERY wheel event.
     // A period's label is a pure function of its key, so it is computed once and kept.
-    _lbl(k, make) { if (_periodLabels.has(k)) return _periodLabels.get(k); const v = make(); if (_periodLabels.size > 500) _periodLabels.clear(); _periodLabels.set(k, v); return v; },
+    _lbl(k, make) { if (_periodLabels.has(k)) return _periodLabels.get(k); const v = make(); if (_periodLabels.size > 500) { _periodLabels.clear(); _dayLabels.clear(); } _periodLabels.set(k, v); return v; },
     _periodLabelAt(idx) { return this._lbl(this.clView + '|' + idx, () => this._periodLabel(this._periodDate(idx))); },
     // The offset the timeline is painted at, in PERIODS, relative to the first rendered one.
     clPosOff() { return (this.clPos.idx - this.clPVisStart + this.clPos.frac).toFixed(4); },
@@ -9032,7 +9041,12 @@ document.addEventListener('alpine:init', () => {
       if (it.spanStart === undefined || this.clView === 'day') return it.kind + st;   // one column ⇒ nothing to join across, so no span caps
       return it.kind + st + ' cl-span' + (it.spanStart ? ' cl-span-l' : '') + (it.spanEnd ? ' cl-span-r' : '') + (!it.spanStart && !it.spanEnd ? ' cl-span-mid' : '');
     },
-    clSplitTitle(n) { const m = n.match(/^(.*?),?\s*(\d{4})$/); return m ? [m[1], ' ' + m[2]] : [n, '']; },   // trailing YEAR only — splitting on the first space mangled 'Jul 19 – Jul 25, 2026' down to 'Jul 19'
+    // [main, year, a named day's name]: the name takes the weekday's place (the week head's slot, in the title)
+    clSplitTitle(n) {
+      const m = n.match(/^(.*?),?\s*(\d{4})$/), [main, year] = m ? [m[1], ' ' + m[2]] : [n, ''];   // trailing YEAR only — splitting on the first space mangled 'Jul 19 – Jul 25, 2026' down to 'Jul 19'
+      const day = _dayLabels.get(n), name = day ? this.clDayLabel(day.iso) : '';
+      return name && main.startsWith(day.wd) ? [main.slice(day.wd.length), year, name] : [main, year, ''];
+    },
     clIsTask(it) { return it.kind === 'task-due' || it.kind === 'task-block' || it.kind === 'task-deadline'; },
     // all-day → date-only, keeping its day-span when the date moves; a single-day end before the start is the next day (22:00–02:00), a multi-day one is kept as typed; shared by event + block
     _evRange(e, date = e.date) {

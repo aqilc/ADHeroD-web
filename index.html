@@ -953,7 +953,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="cl-bar flex items-center" @wheel.passive="onCalTitleWheel($event)">
         <!-- in day/week the title IS the date picker; a hover background is the whole affordance -->
         <h2 class="cl-period grow min-w-0 flex" @click.document.capture="pop === 'clnav' && outside($event, $el) && popAway('clnav', $event)">
-          <button type="button" class="cl-period-btn" :class="{ pick: clView === 'day' || clView === 'week' }" @click="clOpenDatePop($el)"><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></button>
+          <button type="button" class="cl-period-btn" :class="{ pick: clView === 'day' || clView === 'week' }" @click="clOpenDatePop($el)"><span class="cl-dn-t" x-text="clTitleParts()[2]"></span><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></button>
           <!-- A2·B: what's COMING rides the title's line — part of the date you're looking at, not one more control -->
           <span class="cl-cds flex flex-wrap grow"><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
         </h2>
@@ -987,7 +987,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <template x-for="t in (clView === 'month' ? clZoneTitles() : _periodZoneTitles())" :key="t.name">
           <!-- NO :style top or :class — _clPositionZone is the single writer of top and .at-bar. Two writers on top made a
                title entering or leaving the list keep a stale y for a frame (the teleport). -->
-          <div class="cl-mtitle" :data-name="t.name"><span x-text="clSplitTitle(t.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(t.name)[1]"></span></div>
+          <div class="cl-mtitle" :data-name="t.name"><span class="cl-dn-t" x-text="clSplitTitle(t.name)[2]"></span><span x-text="clSplitTitle(t.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(t.name)[1]"></span></div>
         </template>
       </div>
 
@@ -1024,7 +1024,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                      attribute path is diff-guarded, so only the ~60 cells that really change write anything.
                      clDimYM, not clFocusYM: it holds while fast, when .cl-fast lifts the dim and a flip would show nothing. -->
                 <div class="cl-cell" :class="{ today: c.today, weekend: c.weekend }" :data-out="c.ym !== clDimYM ? 1 : 0" @click="narrow && ($event.stopPropagation(), clOpenDay(c.iso))" @dragover.prevent @dragenter.prevent="_clDropCell($el); clDropPreview = null" @drop="clDropOn($event, c.iso)">
-                  <div class="cl-date flex items-center gap-4" role="button" :tabindex="c.iso === (clDayInView || clDayFocus || _nowDay) ? 0 : -1" :aria-label="c.label" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)"><span class="cl-mlabel" x-show="c.mlabel" x-text="c.mlabel"></span><span class="cl-dnum" x-text="c.day"></span></div>
+                  <div class="cl-date flex items-center gap-4" role="button" :tabindex="c.iso === (clDayInView || clDayFocus || _nowDay) ? 0 : -1" :aria-label="c.label" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)"><span class="cl-mlabel" x-show="c.mlabel" x-text="c.mlabel"></span><span class="cl-dn" x-text="clDayLabel(c.iso)"></span><span class="cl-dnum" x-text="c.day"></span></div>
                   <div class="cl-chips flex-col min-w-0 gap-2">
                     <!-- a chip has NO click of its own: it is part of its day, so the click is the day's (the side panel
                          it used to open covered the very day you were looking at), and no Tab stop either. Drag and the checkbox still work. -->
