@@ -167,7 +167,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
    calendar row read straight through the labels. --nav-ink/--nav-pip are those tones pre-composited onto the page. */
 .canvas-dots { position: absolute; left: 50%; transform: translateX(-50%); bottom: 4px; z-index: 5; display: flex; gap: var(--sp-16); justify-content: center; align-items: center; padding: var(--sp-10);
   --nav-ink: color-mix(in oklab, var(--ink) 58%, var(--bg)); --nav-pip: color-mix(in oklab, var(--ink) 38%, var(--bg)); }
-/* The old full-width wash, localized per control: same vertical ramp as .calendar::after, clipped sideways by a
+/* A full-width wash localized per control: same vertical ramp as .calendar::after, clipped sideways by a
    mask so scrolled content stays clean between the two. On the control itself, so it tracks its width. Each
    box's `bottom` cancels its own control's lift, reaching the screen edge. Insets are mask-fade room. */
 .canvas-dots::before, .settings-gear::before { content: ''; position: absolute; z-index: -1; pointer-events: none; height: 50px;
@@ -560,7 +560,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
    2026-08-13). Inert (a note isn't asking to be done); checkHtml never gives it .done, so a completed note
    keeps the mark unchanged (no amber fill, no tick). */
 .check.note { border: 0; background: none; cursor: default; pointer-events: none; }
-.check.note .ico { width: 120%; height: 120%; flex: none; color: var(--muted); }   /* 1.2x the slot (user 10-12); never bigger than the checkbox (10-07) */
+.check.note .ico { width: 120%; height: 120%; flex: none; color: var(--muted); }   /* 1.2x the slot; never bigger than the checkbox */
 /* Composer type toggle (#104): the draft's type in front, the other mark small under it, behind its panel disc; a click
    on it swaps them at once. At rest the peek's ink stays 1px clear of that disc: a merely touching disc edge eats a ring's stroke. */
 .type-tog { position: relative; flex: none; width: 18px; height: 18px;
@@ -601,7 +601,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* _stepTick: the rail fills down to the next node in the task's colour (motion.fill), then the step pushes (motion.push) */
 .rail-fill { position: absolute; left: calc(var(--rail-x) - 1px); width: 2px; top: var(--rail-top, 4px); bottom: 13px; background: var(--pc); transform-origin: top; }
 .pushing { clip-path: inset(0 -100vw); }   /* clips only above and below: the rail and its nodes sit left of the box */
-.pushing > .push-out { position: absolute; inset: 0 0 auto; pointer-events: none; &::before { content: none; } }   /* the old step, laid over the new; the rail stays the box's own */
+.pushing > .push-out { position: absolute; inset: 0 0 auto; pointer-events: none; &::before { content: none; } }   /* the outgoing step, laid over the new; the rail stays the box's own */
 .pushing > .row-step { transform-origin: left top; }
 /* The step's ::desc, its own line well under the preview's size; the preview: the next open step, its node on the rail. */
 .step-desc { font-size: var(--fs-11); line-height: 14px; color: var(--muted); margin-top: 1px; }
@@ -824,14 +824,14 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* padding+margin animate concurrently with height (not gated on settle); target measured as-if-grown so it doesn't jump */
 .composer-grow.grown .composer-card { padding-top: 14px; padding-bottom: var(--sp-12); margin: var(--sp-8) 0 var(--sp-12); }
 :where(html:not(.touch)) .composer-grow.grown .composer-card { padding-bottom: var(--sp-8); margin-bottom: calc(var(--sp-24) * 2); }   /* the bar's icons sit as far from the foot as the checkbox from the top; room for the action row under the card (8 gap + 28 row + 12) */
-/* the page dims a little while the composer is open (user 10-10: "not a lot"); it fades with the grow's opacity */
+/* the page dims a little while the composer is open; it fades with the grow's opacity */
 .composer-grow::before { content: ""; position: fixed; inset: -100vmax; z-index: -1; pointer-events: none; background: light-dark(rgb(0 0 0 / .03), rgb(0 0 0 / .16)); }
 .composer-card {
   /* left pad = the row's --gut check rail (app.js sets `padding-left:calc(var(--gut) + depth*22px)` per row), so the
      composer's checkbox lands exactly on the list's — the edit flow crossfades the two and any offset jumps */
   display: flex; align-items: flex-start; gap: var(--sp-12); padding: var(--sp-8) 14px var(--sp-12) var(--gut); margin: 0;
   position: relative; border-radius: var(--r-lg); background: var(--panel); transition: padding .18s ease, margin .18s ease;
-  box-shadow: var(--shadow);   /* no border, a soft shadow (user 10-10) */
+  box-shadow: var(--shadow);   /* no border, a soft shadow */
   .composer-body { position: relative; }
   .content { border: none; background: none; padding: 0; font-size: var(--fs-15); line-height: 18px;
     min-height: 18px; outline: none; white-space: pre-wrap; word-break: break-word; cursor: text; }
@@ -1062,7 +1062,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   font-size: var(--fs-13); font-weight: 600; display: flex; align-items: center; justify-content: center; line-height: 1; padding-top: 1px;   /* optical center: digits carry no descender, so ink rides ~1px high of the metric center — nudge down or the today ring reads low */
   &:hover { background: var(--hover); }
   &.out { color: var(--muted); font-weight: 500; }
-  &.today { background: var(--today-fill); color: var(--today-ink); }   /* fill, not ring — day-marks pick 2026-08-08; unifies with .peek-mday/.cl-cell today */
+  &.today { background: var(--today-fill); color: var(--today-ink); }   /* fill, not ring — unifies with .peek-mday/.cl-cell today */
   /* recurrence preview vocabulary: solid = fixed occurrence · hollow = completion-dependent · grey = paused · tinted day + edge wall = end */
   &.occ::after { content: ""; position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--accent); opacity: .55; }
   &.occ-h::after { content: ""; position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.2px var(--accent); opacity: .75; }
@@ -1102,7 +1102,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     border: none; background: none; border-radius: var(--r-6); color: var(--faint); margin: 2px 0 0 4px; cursor: pointer;
     .ico { width: 12px; height: 12px; flex: none; }
     &:hover { background: var(--hover); color: var(--p1); } }
-  /* hint text dims everywhere in the card, not just the old ghosted state — it was silently unstyled in the phrase sentence */
+  /* hint text dims everywhere in the card, not just the ghosted state (the phrase sentence needs it too) */
   .zhint { font-size: var(--fs-11); color: var(--muted); transition: color .15s var(--ease-out); }
 }
 .zone.oneoff { min-height: 0; flex-direction: column; }   /* constant-frame foot card: no rail; sentence, then the every… row */
@@ -1283,7 +1283,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .more-btn .ico { width: 17px; height: 17px; fill: currentColor; stroke: none; }   /* solid dots — the global .ico fill:none would otherwise render them as outlines */
   .primary .ico { display: none; }   /* the phone dock's go button (9A) */
 }
-/* Desktop: the project and the task's actions sit outside, under the card (user 10-10); Enter or ⌘Enter saves, Esc and
+/* Desktop: the project and the task's actions sit outside, under the card; Enter or ⌘Enter saves, Esc and
    a click outside close. Its left lines the project's icon up with the card's checkbox, its right the card's last icon.
    Anchored to .composer-body, which the # and @ pickers position against, so it can't move to the card. The Windows
    composer window is transparent around the card (desktop/composer.js), so they sit under it there too. */
@@ -1367,7 +1367,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .palette-row .pick-name { flex: 0 1 auto; min-width: 0; max-width: none; }   /* a wide row: titles fill it, not the pickers' 12rem cap */
 .pick-tag { margin-left: auto; flex: none; font-size: var(--fs-11); color: var(--muted); text-transform: capitalize; }   /* surface/filter/goal/Action label */
 .pick-ico, .area-ico { width: 18px; height: 18px; flex: none; color: var(--muted); }   /* palette lead icons — nav/command (.pick-ico) + area (.area-ico, whose inline style="color:" overrides the muted fallback). Explicit size: a bare .ico has no viewBox and inflates to the 300×150 replaced-element default. */
-/* task-line (picker/palette/rel-picker) proj chip: pushed right, same label style as the old pick-path */
+/* task-line (picker/palette/rel-picker) proj chip: pushed right, a step smaller */
 .task-line .proj { margin-left: auto; flex: 0 1 auto; padding-left: var(--sp-8); font-size: var(--fs-11); }
 
 /* ---- Cascade-completion confirm dialog ---- */
@@ -1720,9 +1720,9 @@ textarea.inp { resize: vertical; }
    little air, so no hour ever sits under the dots or in the --bg-foot wash. Without it the day's last hours
    — midnight especially — were legible only as much as the wash allowed. */
 .calendar { --bar: 90px; --head: 32px; --side: 412px; --ag-rail: 12px; --ag-w: 620px; --cl-act-w: 272px; --cl-fade: 26px; --cl-top: calc(var(--bar) + var(--head)); position: relative; height: 100%; overflow: hidden; }   /* fill the Plan surface (canvas minus the time strip). Nothing here paints a surface tint — the page's --bg-wash runs unbroken from the header down through the days (see .cl-cell). */
-/* The dissolve at the top used to be a mask ON the scroller — but a mask on a scroll container forces Blink to
-   re-rasterize the whole timeline every frame instead of just translating it (504 hour-lines + events, dropped
-   frames). It now lives on this STATIC overlay: the same wash the content dissolved into, painted over the top
+/* The dissolve at the top lives on this STATIC overlay, not a mask ON the scroller (a mask on a scroll container forces
+   Blink to re-rasterize the whole timeline every frame instead of just translating it: 504 hour-lines + events, dropped
+   frames). It is the same wash the content dissolved into, painted over the top
    chrome and feathered at its inner edge. Non-scrolling → zero per-frame cost, and the scroller keeps the fast
    path. The wash is a fixed radial centred at 50%; a top-anchored overlay reproduces it (see body background).
    The chrome NEVER changes appearance — don't reintroduce a scroll-driven material here (an old frosted plate
@@ -1843,9 +1843,8 @@ textarea.inp { resize: vertical; }
   background-size: calc(100% / 7) 1px, 100% var(--rowh, 100%);
   background-position: -1px -1px, 0 -1px; background-repeat: repeat, repeat-y; }
 .cl-wk { position: absolute; left: 0; right: 0; height: var(--rowh); display: grid; grid-template-columns: repeat(7, 1fr); container-type: inline-size; }
-/* Cells paint NO background. They used to carry a translucent tint that the bar also carried, so the wash read
-   the same through both; once the bar went transparent that tint became a visible step at the header's bottom
-   edge. Transparent cells let the one --bg-wash run unbroken into the grid. */
+/* Cells paint NO background: a tint here would show as a step at the header's bottom edge (the bar is transparent), so
+   the one --bg-wash runs unbroken into the grid. */
 .cl-cell { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; overflow: hidden; padding: var(--sp-4) var(--sp-6); cursor: pointer; transition: opacity .3s ease; }
 .cl-date span { transition: color .3s ease, opacity .3s ease; }  /* animate the out-of-month day-number fade as the focused month changes (both ways at rest; a fast glide skips it, below) */
 /* The dim is gated on .cl-fast, NOT .cl-scrolling: it returns as soon as the glide slows to a crawl, while the
@@ -1909,9 +1908,8 @@ textarea.inp { resize: vertical; }
 /* CONTINUOUS day/week timeline — the month's model, not a pager: a fixed-height spacer with period blocks
    absolutely placed at idx*periodH, free scrolling with proximity snap. Same scroll edge as month so content
    dissolves before it reaches the constant chrome. */
-/* --cl-top must equal _clHeadH() in app.js. It is bar + head and nothing else: week/day used to add a fixed
-   3-row all-day reserve, which cost 66px of chrome on every week whether or not anything was in it. Both
-   all-day modes draw inside the week instead, so the timeline starts directly under the weekday row. */
+/* --cl-top must equal _clHeadH() in app.js. It is bar + head and nothing else: no all-day reserve (it cost 66px of chrome
+   on every week, filled or not); both all-day modes draw inside the week, so the timeline starts directly under the weekday row. */
 /* NOT a scroller. `clip` and not `hidden`: an overflow:hidden box is still a scroll container, so the browser
    would silently scroll it to reveal a focused block and desync it from clPos — clip cannot be scrolled at all.
    touch-action:none because the finger drives clPagesTouch, not a pan. --cl-top inherited from .calendar. */
@@ -1995,8 +1993,7 @@ textarea.inp { resize: vertical; }
 .cl-block-drag { z-index: 3; pointer-events: none; background: color-mix(in srgb, var(--cc) 22%, transparent); border: 1px dashed color-mix(in srgb, var(--cc) 55%, transparent); }
 /* H-states-D1: running = accent left rail + warm tint; keep border-left so getComputedStyle(el).borderLeftWidth > 0 */
 .cl-block.is-running { border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); --mark: var(--accent); }
-/* Running reads as a breathing GLOW on the band itself. It used to be a 7px accent dot pinned at left:6px —
-   exactly where the title starts, so it sat on the first characters. The glow needs no room. Opacity-only
+/* Running reads as a breathing GLOW on the band itself (a dot at left:6px would sit on the title's first characters; the glow needs no room). Opacity-only
    animation on a pseudo-element (never box-shadow) so it stays off the paint path. */
 .cl-block.is-running::before { content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
   background: linear-gradient(to right, color-mix(in srgb, var(--accent) 34%, transparent), transparent 62%);
@@ -2018,7 +2015,7 @@ textarea.inp { resize: vertical; }
 .cl-block.is-terrain .cl-blk-t { position: absolute; left: 5px; top: 6px; max-height: calc(100% - 12px); min-width: 0; writing-mode: vertical-rl;
   font-size: var(--fs-10); font-weight: 700; line-height: 1; letter-spacing: .12em; text-transform: uppercase; color: var(--txt); opacity: .9; }
 .cl-block.is-running.is-terrain .cl-blk-t { left: 3px; }   /* the running border moves the padding edge 2px: keep the label off what it holds */
-/* done: shrinks to its log (actual_*) and recedes a step — .62 read too faint (user 2026-09-28) */
+/* done: shrinks to its log (actual_*) and recedes a step — .62 read too faint */
 .cl-block.is-done { opacity: .78; }
 /* Stop: a quiet chip that takes the tick's corner on hover (always shown without hover). Hovered tens of times a day,
    so a short opacity fade only. */
@@ -2597,7 +2594,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .canvas > .jb-host.open { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: var(--kb); z-index: 6; max-height: calc(100% - var(--kb) - var(--sp-24));
     overflow-y: auto; margin: 0; padding: var(--sp-8) var(--sp-8) 0; background: var(--panel); border-top: 1px solid var(--hair); }
   .touch.kb .jb-host .composer-dock { bottom: 0; }
-  /* KA (droid-9, user 10-12 "KA looks great!"): the bar's new task is one sheet, [project][title] on one line, then the set
+  /* KA (droid-9): the bar's new task is one sheet, [project][title] on one line, then the set
      values, the bare icons, ··· and a square go; the task/note toggle and Attach are in ··· */
   .bar-on .canvas > .jb-host.open { padding: var(--sp-8) 0 0; border: 0; border-radius: var(--r-18) var(--r-18) 0 0; box-shadow: var(--shadow-pop); }
   .bar-on .jb-host .composer-card { padding: 0 var(--sp-8) var(--sp-6) var(--sp-10); margin: 0; border-radius: 0; background: none; box-shadow: none; }
@@ -2610,7 +2607,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
     .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
     :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
-  /* KA-edit (user 10-15 "the ka, kb and KC pics"): the title alone on its line; the list's path and what the notes hold on a subline under it */
+  /* KA-edit: the title alone on its line; the list's path and what the notes hold on a subline under it */
   .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* KA-edit.png: the ring's centre at 26, the title at 46 */
     .type-tog { left: var(--sp-16); &:not(.note) > :last-child, &.note > :first-child { display: none; } }   /* the other type is in ··· */
     .composer-titlerow, .composer-actions .field.loc { flex-basis: calc(100% - var(--chk-col)); margin-left: var(--chk-col); }
@@ -2632,7 +2629,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go under a fade to their icons, never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; } } }   /* the last first */
   .bar-on .jb-host .composer-actions .more-btn { width: 38px; .ico { rotate: 90deg; } }   /* KA: ··· */
-  /* KC (user 10-15 "the ka, kb and KC pics"): typing with nothing set, the row is words the parser knows; off the title (··· or a pick), the icons */
+  /* KC: typing with nothing set, the row is words the parser knows; off the title (··· or a pick), the icons */
   .bar-on .jb-host .composer:has(.content:focus):not(:has(.composer-opts .chip.set:not(.chip-notes))) .composer-opts {
     &::before, > .field { display: none; } > .kc { display: flex; } }
   .bar-on .jb-host .kc { display: none; flex: 1; min-width: 0; gap: var(--sp-6); overflow-x: auto; scrollbar-width: none;

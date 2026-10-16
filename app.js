@@ -90,10 +90,7 @@ const CL_STACK_Y = CL_TITLE_PX;           // (28px in a week column); a stack ke
                                           // place that hovers it, so raising one can't swallow a peer's hover zone.
 // Day/week has NO SCROLLER. It is a transform viewport: clPos {idx, frac} is the position, and the timeline is
 // painted at translateY(-pf · --ph). There is no spacer, so no origin, so no drift, so no excursion — the
-// "insane scroll then teleport" is not fixed here, it is unrepresentable. (The old model kept a native
-// scroller purely as an output sink while clPagesWheel already preventDefaulted every event and wrote
-// scrollTop by hand: we paid a finite spacer over an infinite timeline, a drifting base, and five flags to
-// suppress a browser scroll animation we never wanted, in exchange for nothing we used.)
+// "insane scroll then teleport" is unrepresentable.
 const GLIDE_YIELD = ['wheel', 'touchstart', 'pointerdown'];   // fresh wheel gestures, touches and presses outrank a glide; an existing tail doesn't
 const CL_GESTURE_GAP = 140;               // ms of quiet that ends a scroll gesture (trackpad momentum fires continuously, so this only trips when the fingers are done)
 const CL_TURN_MS = 368;                   // page-turn / nudge tween — we own the animation now that the browser doesn't
@@ -381,11 +378,9 @@ const SUB_ROW = _tpl(html`<div class="entry">${raw(GRIP)}<span class="entry-chk"
 const QF_DUE = { today: { verb: 'due', label: 'today', col: 'var(--q-today)' }, overdue: { verb: '', label: 'overdue', col: 'var(--p1)' }, has: { verb: 'that', label: 'has a date', col: 'var(--accent)' }, none: { verb: 'with', label: 'no date', col: 'var(--faint)' } };
 
 // ── Popover placement: the ONE viewport clamp ────────────────────────────────
-// Five placement sites used to inline this arithmetic, and they disagreed — one measured against
-// window.innerWidth, which COUNTS THE SCROLLBAR and pushes a right-edge pop off by its width. Always
-// document.clientWidth. `w`/`h` are the pop's extent INCLUDING the gutter to leave at the far edge (declared
+// Always document.clientWidth: window.innerWidth COUNTS THE SCROLLBAR and pushes a right-edge pop off by its width. `w`/`h` are the pop's extent INCLUDING the gutter to leave at the far edge (declared
 // where the pop has a fixed width, measured where it doesn't); `m` is the near-edge margin. Neither rounds —
-// call sites round at the point they write a px string, exactly as they did before.
+// call sites round at the point they write a px string.
 const popLeft = (left, w, m = 6) => Math.max(m, Math.min(left, document.documentElement.clientWidth - w));
 const popTop = (top, h, m = 8) => Math.max(m, Math.min(top, innerHeight - h));
 
@@ -648,10 +643,9 @@ document.addEventListener('alpine:init', () => {
       // height the virtualized calendar measures dates against — the same scrollTop then reads as a different
       // YEAR (it flew to 2014). Capture + stopPropagation so the calendar always claims it and no inner
       // scroll handler sees it as a fling.
-      // Being on Plan is the WHOLE condition — ownership of a gesture must never depend on hit-testing. It
-      // used to also require e.target inside `.surface-plan`, and that lost the gesture twice: over the side
-      // panel/margins, and then over the ::view-transition overlay a view STEP puts up mid-pinch (e.target is
-      // <html> for the ~300ms it runs, so the rest of one continuous pinch page-zoomed).
+      // Being on Plan is the WHOLE condition — ownership of a gesture must never depend on hit-testing: over the side
+      // panel/margins, or the ::view-transition overlay a view STEP puts up mid-pinch (e.target is <html> for the
+      // ~300ms it runs), a target check loses the gesture and the rest of one continuous pinch page-zooms.
       document.addEventListener('wheel', e => {
         if (!(e.ctrlKey || e.metaKey) || this.surface !== 'plan') return;
         e.stopPropagation(); this.clZoomWheel(e);
@@ -698,10 +692,8 @@ document.addEventListener('alpine:init', () => {
       // ceiling: another tab's in-flight add is binned too (a duplicate if it lands); slot by tab if two tabs add at once
       for (const [k, p] of Object.entries(this._pendingMap())) if (k.startsWith('save:')) await this._binSave(k, p); else if (dead.includes(k)) await this._binSave(k, { ...p, acct: acctOf(k) }, true);
       await this.reloadAll();
-      await this._migratePlaceStrings();
       if (this.sticky) { this.startAdd(); this.$watch('draft.content', q => this.listQ = q || ''); }   // the title adds AND filters: its text, never its pills
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
-      this._migrateNotes();       // not awaited: its per-row writes never hold up live sync
       setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
       if (window.desktopWindow) addEventListener('storage', e => {   // the sticky and composer windows follow the app window's theme live: its write reaches them as this event
         if (e.key === 'adherod.theme' || e.key === 'adherod.colorTheme') { this.colorTheme = savedColorTheme(this.store.theme()); this.setTheme(savedAppearance()); }
@@ -1443,7 +1435,7 @@ document.addEventListener('alpine:init', () => {
       let d = dx;
       const i = this.surfaceIndex(), n = this.surfaceOrder.length;
       if ((i === 0 && d > 0) || (i === n - 1 && d < 0)) d *= 0.3;   // rising resistance past the ends (emil §10)
-      this.dragDx = d;   // kept for test reads; no longer in :style (no Alpine UpdateLayoutTree per frame)
+      this.dragDx = d;   // kept for test reads; not in :style (no Alpine UpdateLayoutTree per frame)
       this.$refs.track.style.transform = `translateX(calc(-${i * 100}% + ${d}px))`;   // imperative: GPU compositor, no style-recalc
     },
     canvasUp(e) {
@@ -1767,7 +1759,7 @@ document.addEventListener('alpine:init', () => {
         roots = roots.slice().sort((a, b) => { const x = ks.get(a.id), y = ks.get(b.id); let i = 0; while (i < x.length - 1 && x[i] === y[i]) i++; return x[i] - y[i]; });
       }
       for (const r of roots) walk(r, 0);
-      if (this.sticky) {   // the sticky note: every open task, flat, as the Mac note (wOrder, N11 user 08-17) — today, overdue, later, undated; then when, importance
+      if (this.sticky) {   // the sticky note: every open task, flat, as the Mac note (wOrder) — today, overdue, later, undated; then when, importance
         const pm = this._placedMap(), today = this._nowDay, k = new Map();
         out = out.filter(r => placeable(r.t) && (!(r.t.completed_at || r.t.archived_at) || _cele.has(r.t.id)) && (filtering ? this.rowPass(r.t) : r.t.task_type !== 'note'));   // flat, so a done subtask the tree keeps inline would read as an open task; a note is never done: only a search shows it
         for (const r of out) { const w = this.whenOf(r.t, pm) || '', d = w.slice(0, 10); r.depth = 0; k.set(r, [!w ? 3 : d === today ? 0 : d < today ? 1 : 2, w, impRank(r.t.importance)]); }
@@ -2052,7 +2044,7 @@ document.addEventListener('alpine:init', () => {
       if (key && m.parts?.key === key) return m.parts;
       const out = this._parts(m.ent, w.s, w.e).filter(p => !_dragDescs?.has(p.id));
       // data-id, like every other part: morphRows keys the reconciliation off it, and two elements sharing
-      // the undefined key collided — the old spacer was orphaned into the list and its height double-counted.
+      // the undefined key collided: the spacer was orphaned into the list and its height double-counted.
       const pad = (id, order, h) => ({ id, html: html`<li class="win-pad" data-id="${id}" style="order:${order};height:${h}px"></li>` });
       // The composer's flex order pins it to its row's slot. If that slot is elided into a spacer, the spacer
       // would sort to the other side of the composer, and the composer's flow height (composerH - startH)
@@ -2377,7 +2369,7 @@ document.addEventListener('alpine:init', () => {
       localStorage.setItem('adherod.nav.collapsed', JSON.stringify(this.collapsed));
     },
     overviewProjectRows() {   // all overview projects at all depths always shown (roller uses this)
-      // ONE position-sorted byParent index: the old form re-scanned every task for each project it found (O(projects·tasks) per roller paint).
+      // ONE position-sorted byParent index: no per-project rescan (O(projects·tasks) per roller paint).
       const rows = [], seen = new Set(), def = this.store.defaultProject(), byP = buildByParent(this.tasks), visit = (parentId, depth, shelved) => {
         for (const p of byP.get(parentId) || []) {
           if (seen.has(p.id)) continue;
@@ -2459,8 +2451,7 @@ document.addEventListener('alpine:init', () => {
       if (!await api.reorder(ids)) return this.toast('Failed reordering');
       await this._reloadFor(kind === 'area' || kind === 'filter' ? kind : 'task');
     },
-    // The rail lists filters and areas but had no way to MAKE one — filters were reachable only by saving a
-    // search, areas only as a side effect of tagging a task. A new area is created named and then opened straight
+    // A new area is created named and then opened straight
     // into its rename popover: an abandoned add leaves a real, visible, deletable area, never a half-made thing.
     async rollerAdd(kind, r) {
       if (kind === 'filter') return this.openFilterEditor();
@@ -3927,7 +3918,7 @@ document.addEventListener('alpine:init', () => {
       if (this.dreg === 'on') { this.draft.on = this.draft.on === c.iso ? '' : c.iso; return; }
       this.calDayBy(c);
     },
-    // BY register, nearest-endpoint model (2026-08-07, replaces tap-tap arming): fresh tap = THE deadline.
+    // BY register, nearest-endpoint model (replaces tap-tap arming): fresh tap = THE deadline.
     // With something set, a tap grows the window at whichever endpoint the day is nearer (only a deadline:
     // earlier = start, later = deadline moves). Re-tapping an endpoint collapses to deadline-only that day —
     // so a degenerate from==deadline window can't exist. Drag (calUp) writes the same two fields.
@@ -3937,7 +3928,7 @@ document.addEventListener('alpine:init', () => {
       _dlAuto = '';   // any tap is a chosen date, even on the derived day
       const f = (this.draft.available_from || '').slice(0, 10), dl = (this.draft.deadline_at || '').slice(0, 10);
       if (c.iso === dl || c.iso === f) {
-        // same-day cycle (2026-08-08): a window endpoint collapses to by-that-day; by → ONLY (walls both
+        // same-day cycle: a window endpoint collapses to by-that-day; by → ONLY (walls both
         // sides — vote day, birthday call); only → clear. Each state is voiced live on the chip.
         if (f === dl && f === c.iso) { this.draft.deadline_at = ''; this.draft.available_from = ''; return; }
         if (!f && c.iso === dl) { this.draft.available_from = c.iso; return; }
@@ -4517,8 +4508,7 @@ document.addEventListener('alpine:init', () => {
       const node = sel.anchorNode, off = sel.anchorOffset;
       if (!node || node.nodeType !== 3) return false;
       // The caret is the authority on which editor is live. Aiming at a stale target (a subtask row that lost
-      // focus without the title's @focus firing to reset it) used to make this bail SILENTLY — no chip at all,
-      // for any kind. Re-point at the title instead of dropping the keystroke on the floor.
+      // focus without the title's @focus firing to reset it) must not bail silently: re-point at the title, not drop the keystroke.
       if (node.parentNode !== this._nlpEl()) { if (node.parentNode !== this.$refs.content) return false; this.focusTitle(); }
       const pending = node.textContent.slice(0, off);
       const tok = matchTrailingToken(pending, new Date(), this.locNames());
@@ -6338,7 +6328,7 @@ document.addEventListener('alpine:init', () => {
     async _binSave(key, entry, detached) { this._pushDraftBin(this._newKey(), entry, detached); await this._journalFlush(); if (!this._jSaveFailed) this._clearPending(key); },
 
     // ONE pass per data version (_rowV bumps on every tasks write): children in position order + whom each task blocks.
-    // A composer open used to scan every task ~7× (each childTasks template, the progress ring, descendants, relations).
+    // Replaces ~7 full scans per composer open (each childTasks template, the progress ring, descendants, relations).
     _taskIdx() {
       return _memo(_taskIdxMemo, this._rowV, () => { const inv = new Map(), arch = [];
         for (const o of this.tasks) {
@@ -6481,7 +6471,7 @@ document.addEventListener('alpine:init', () => {
       if (type) d.checklist_plain = false;
     },
     // Phone: one ghost row whose picker (checklist · subtask · steps) replaces the desktop's ghost OR ghost trio
-    entryPick() {   // an empty draft leads with steps (user 10-13: "make the user think of first steps"); a note has none
+    entryPick() {   // an empty draft leads with steps; a note has none
       if (this.shownSubs().length || this.subGhost.length) return 'sub';
       if (this.draft.checklist.length || this.chkGhost.length) return this.chkSteps() ? 'steps' : 'chk';
       return this.entryKind || (this.typeFront(true) ? 'chk' : 'steps');
@@ -6795,7 +6785,7 @@ document.addEventListener('alpine:init', () => {
       return this._focusEntry(fields[fields.indexOf(el) + dir]);
     },
     // Bottom rung of the ArrowDown ladder (title → description → entries): a real entry list's first row, else the
-    // empty state's First step (user 10-13: "move steps to the first thing you go down to"); a note has none, so down stays put.
+    // empty state's First step; a note has none, so down stays put.
     focusFirstEntry() {
       const list = document.querySelector('.composer-entries .entry-list');
       const first = list ? this._entryFields(list)[0] : document.querySelector('.composer-entries .step-ghost .entry-txt');
@@ -8102,10 +8092,9 @@ document.addEventListener('alpine:init', () => {
       this.clTopMonth = z ? z.name : this._topMonthLabel(Math.max(0, Math.floor(scrollTop / (this.clRowH || 1))));
       this._clFocus(scrollTop);
     },
-    // THE only thing that sets a zone title's `top`. It used to share the job with a reactive :style binding on
-    // the same elements, so on any frame where a title entered or left the x-for, the element present had no
-    // entry here and kept its stale top until the next flush — that is the teleport. The markup now renders
-    // position-less (data-name only) and this is the single writer, called from the one place position moves.
+    // THE only thing that sets a zone title's `top`: with a reactive :style binding beside it, a title that entered or left
+    // the x-for kept a stale top until the next flush (the teleport). The markup is position-less (data-name only);
+    // this is the single writer, called from the one place position moves.
     _clPositionZone(list) {
       const box = this.$refs.clMtitlesBox; if (!box) return;
       const at = {}; for (const t of (list || (this.clView === 'month' ? this.clZoneTitles() : this._periodZoneTitles()))) at[t.name] = t;
@@ -8332,10 +8321,9 @@ document.addEventListener('alpine:init', () => {
       // a fixed grid. Measured when the week's contents change — never per frame. The `!_clAdH` arm is what
       // makes it survive the real entry path: the first paint runs while the surface is still mounting, so the
       // rail measures 0, and with only a page-identity guard that 0 stuck forever and the rails overlapped.
-      // Retry ONLY while this page actually wants a deadline rail. The old `r.style.display !== 'none'` read
-      // was true for every week that simply has no deadlines, so the measure — two forced layouts and a custom
-      // property written on the wrapper, which restyles every child — ran on EVERY frame. A dense week froze
-      // the renderer outright and put 16s on the suite.
+      // Retry ONLY while this page actually wants a deadline rail: `r.style.display !== 'none'` is true for every week with
+      // no deadlines, and the measure (two forced layouts + a custom property on the wrapper that restyles every child)
+      // would run on EVERY frame; a dense week froze the renderer.
       if (pg !== _clAdPg || (!_clAdH && this.clHasDeadlines(pg))) {
         _clAdPg = pg; this._clAdMeasure(w); requestAnimationFrame(() => this._clAdMeasure(w));
       }
@@ -8810,8 +8798,7 @@ document.addEventListener('alpine:init', () => {
       this.$nextTick(arm);
     },
     // The heading is the title the layout CLAMPED to the bar — asked of the layout, not searched for in its
-    // output. (It used to scan the rendered list for |y − barY| < 3 on a rounded pixel, with a completely
-    // different fallback formula when the scan missed by 3px, so the two could name different months.)
+    // output. (Scanning the rendered list for |y − barY| < 3 could name a different month than the fallback formula.)
     _clPeriodState(list) {
       const z = (list || this._periodZoneTitles()).find(t => t.atBar);
       const name = z ? z.name : this._periodLabelAt(this.clPos.idx);
@@ -8831,8 +8818,8 @@ document.addEventListener('alpine:init', () => {
       }
       return this._zoneLayout(list, head, zoneH, barY, 34 + (this.clView === 'week' ? _clAdH : 0));   // 34: the .cl-mtitle line box; _clAdH: the top week's deadline rail
     },
-    // Pinch = ctrl/⌘+wheel, claimed in capture phase for EVERY calendar view (month-view pinch used to
-    // page-zoom the browser). Accumulates past a deliberate threshold and steps the view finer or coarser.
+    // Pinch = ctrl/⌘+wheel, claimed in capture phase for EVERY calendar view (else month-view pinch
+    // page-zooms the browser). Accumulates past a deliberate threshold and steps the view finer or coarser.
     clZoomWheel(e) {
       if (e.cancelable) e.preventDefault();
       const t = performance.now(), fresh = !this._clZG || t - this._clZGT > CL_GESTURE_GAP;
@@ -8983,7 +8970,7 @@ document.addEventListener('alpine:init', () => {
       else if (!mo) { set(); this._clTween(this._periodIdx(this._clDate()), hour); }   // a held arrow's period turns the page as a wheel does (decision #75); the next step retargets it
       else { set(); after(); if (this.reduceMotion()) this._clSettle(); }   // month glides as Today does; reduced, it lands and fades in
     },
-    // The strip's "T" shows only while today is OUT of view (user 2026-08-17 P4; Android planShowToday) — the
+    // The strip's "T" shows only while today is OUT of view (Android planShowToday) — the
     // SETTLED day (clAnchor lands after a drag), never the live drag, which flashed it mid-gesture
     clShowToday() { const d = new Date(); return this.clView === 'month' ? this.clFocusYM !== d.getFullYear() * 12 + d.getMonth() : this.clAnchor !== isoDate(d); },
     jbDay() {   // the bar's Plan chip: Today until the view leaves it
@@ -9014,7 +9001,7 @@ document.addEventListener('alpine:init', () => {
     clToggleTask(id) { const t = this.byId.get(id); if (t) this.toggle(t); },
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
     // ONE state class for every calendar mark of a task — chip, timeline event, agenda row, chapter band,
-    // due/deadline mark. A finished deadline used to read exactly like a live one.
+    // due/deadline mark, so a finished deadline never reads like a live one.
     clTaskState(it) { const t = this.clIsTask(it) && this.byId.get(it.id); return !t ? '' : t.archived_at ? ' archived' : t.completed_at ? ' done' : ''; },
     // checkHtml's row args for a task off the list (mkRow builds the list's) — same blocked/paused/prog states as list rows.
     // imp: the composer's check shows the DRAFT's importance, not the stored one.
@@ -9472,37 +9459,6 @@ document.addEventListener('alpine:init', () => {
     },
 
     // --- Cloud sync (Supabase adapter, opt-in via magic link). LocalStore stays the offline default. ---
-    async _migratePlaceStrings() {
-      // One-shot: tasks saved during the 9a5d964 campaign era kept a plain `place` string but no constraint.
-      // Exact case-insensitive name match → write location:{mode:'only',ids:[id]}, clear `place` (idempotent guard).
-      // Non-matching place strings are left intact (retained but unused). Data-safety: write must succeed before clearing.
-      let migrated = 0;
-      for (const t of this.tasks) {
-        if (!t.place || (t.location?.ids ?? []).length) continue;
-        const match = this.locations.find(l => l.name.toLowerCase() === t.place.toLowerCase());
-        if (!match) continue;
-        const ok = await this.store.tasks.update(t.id, { location: { mode: 'only', ids: [match.id] }, place: null });
-        if (ok) migrated++;
-        // on failure: leave place intact — worst case is a retained-but-unused string, never a lost constraint
-      }
-      if (migrated) await this.loadTasks();
-    },
-    async _migrateNotes() {
-      // One-shot: things under a root 'Notes' project become task_type 'note' (the root stays a project; 'steps' there was a note too; another type is kept).
-      // ceiling: a done-key read every boot and a fixed cutoff; delete both once every device has booted past 2026-10-06
-      const key = 'adherod.notesMigrated.' + (this._acct() ?? 'local');
-      if (localStorage.getItem(key) || this._loadFailed) return;   // a failed load holds no rows to judge by: retry next boot
-      const underNotes = t => { let r = t; for (let d = 0; r?.parent_id && d < 200; d++) r = this.byId.get(r.parent_id); return !!r && !r.parent_id && r.content?.trim().toLowerCase() === 'notes'; };
-      // The done-key is per device: a row touched since the release (another device migrated it, then the user chose otherwise) is the user's.
-      const cutoff = Date.parse('2026-10-06T00:00:00Z');
-      const due = t => !!t?.parent_id && (t.task_type == null || t.task_type === 'steps') && Date.parse(t.updated_at) < cutoff && underNotes(t);
-      const todo = this.tasks.filter(due);
-      // ceiling: one store update (~2 cloud round trips) per row, off the boot path; add a bulk tasks write if a Notes tree past ~200 rows is reported slow
-      let ok = true;
-      for (const t of todo) if (due(this.byId.get(t.id)) && !await this.store.tasks.update(t.id, { task_type: 'note' })) ok = false;   // live sync can move or retype it mid-run
-      if (ok) localStorage.setItem(key, '1');   // a failed write retries next boot
-      if (todo.length) await this.loadTasks();
-    },
 
     async reloadAll(quiet) {
       const store = this.store, gen = ++this._loadGen;
