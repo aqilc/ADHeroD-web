@@ -13,7 +13,7 @@
 }
 /* Bottom furniture, on html so anything fixed to the viewport can reach it: --foot reserves the dot strip,
    which is the ONLY thing in the bottom band — one source, or the toast stack goes back to guessing. */
-html { color-scheme: light dark; --foot: 56px; --gear: 30px; --gut: 18px; }   /* --gear: the settings gear's box, which the phone strip centres beside; --gut: a row's left gutter, where its fold chevron hangs */
+html { color-scheme: light dark; -webkit-tap-highlight-color: transparent; --foot: 56px; --gear: 30px; --gut: 18px; }   /* --gear: the settings gear's box, which the phone strip centres beside; --gut: a row's left gutter, where its fold chevron hangs */
 * { box-sizing: border-box; scrollbar-width: none; }   /* hide scrollbars app-wide — scroll still works */
 *::-webkit-scrollbar { width: 0; height: 0; }
 [x-cloak] { display: none !important; }
