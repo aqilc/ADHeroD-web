@@ -2502,7 +2502,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-12));
     > .field { flex: none; } .field:has(> .chip.set) { order: -1; } .field:has(> .chip-notes.chip) { order: -2; }   /* the notes lead, never scrolled away: the only way to the steps */
     .field:has(> :is(.chip-dur, .chip-loc, .chip-rel):not(.set)) { display: none; }
-    .chip:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; } }
+    .chip:is(:not(.set), .chip-imp, .chip-dur, .chip-rel) > span { display: none; } }   /* set, the link's chips already name its blockers over the bar */
   .touch .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
   .touch .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
     .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
@@ -2624,7 +2624,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* clear of a glyph at rest */
     &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
     .chip { height: 40px; width: 38px; padding: 0; justify-content: center; .ico { width: 19px; height: 19px; } }
-    .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
+    .chip.set:not(.chip-imp, .chip-dur, .chip-rel) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* KA: the steps icon last */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go under a fade to their icons, never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; } } }   /* the last first */

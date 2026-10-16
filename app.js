@@ -6340,9 +6340,9 @@ document.addEventListener('alpine:init', () => {
     childTasks(id) { return (this._taskIdx().kids.get(id) ?? []).filter(t => t.id !== id); },
     // every archived row and all under it: an archived project's subtree leaves Overview, the pickers and the Lists nav
     _shelved() { const ix = this._taskIdx(); return ix.shelved ??= new Set(ix.arch.flatMap(id => descendantIds(this.tasks, id, ix.kids))); },
-    addChecklistItem(text) {   // a checklist adds on top; steps append, in the order they're done
+    addChecklistItem(text) {   // a checklist adds on top; steps, and a phone's (its ghost sits last), append in the order typed
       if (!text.trim()) return;
-      const it = { id: crypto.randomUUID(), text: text.trim(), done: false }, cl = this.draft.checklist, at = this.chkSteps() ? cl.length : 0;
+      const it = { id: crypto.randomUUID(), text: text.trim(), done: false }, cl = this.draft.checklist, at = this.chkSteps() || this.phoneDock() ? cl.length : 0;
       cl.splice(at, 0, it); this._pushChkItem(it, at, null, it.text);
     },
     // Bucket only the display: unchecking restores the item's saved position. Steps keep stored order.
@@ -6641,7 +6641,7 @@ document.addEventListener('alpine:init', () => {
     },
     // A sub-draft → child task fields. A subtask's parent is the editing task (not a project); it has no checklist of its own.
     _subFields(d) { const f = this.draftFields(d); delete f.project; delete f.project_id; delete f.checklist; f.parent_id = this.editing; return f; },
-    // The ghost's typing → a new row at the head of the draft (right under the ghost). Its own row, never merged into the ghost —
+    // The ghost's typing → a new row next to the ghost: the draft's head, a phone's tail. Its own row, never merged into the ghost —
     // prepending there turned "sub1 30m" + "sub2 1h" into ONE task and dropped the 30m.
     commitSubGhost() {
       const el = this._ghostEl('sub');
@@ -6655,7 +6655,7 @@ document.addEventListener('alpine:init', () => {
       // element fires no focus event, so nothing else re-points it and the typing would land in the task title.
       this._clearEditor(el); this._resetSubDraft();
       if (el && document.activeElement === el) this.focusSubEditor(el, null); else _nlpFocus = null;
-      if (this.editing && s.text) { const before = this._subsSnap(); this.draft.subs.unshift(s); this._pushSubs('Added subtask', before); }
+      if (this.editing && s.text) { const before = this._subsSnap(); this.phoneDock() ? this.draft.subs.push(s) : this.draft.subs.unshift(s); this._pushSubs('Added subtask', before); }   // as addChecklistItem
     },
     // Fill an existing child row's editor with its content text + a pill per stored field (inverse of the parser).
     // Fields come from the pills, exactly like the title: a throwaway draft during the build gives each pill a correct
@@ -6825,7 +6825,7 @@ document.addEventListener('alpine:init', () => {
       e.preventDefault();
       const items = trimmed.map(t => ({ id: crypto.randomUUID(), text: t, done: false }));
       // ghost paste lands where addChecklistItem adds; pasting onto an item inserts right after it
-      const at = item ? this.draft.checklist.indexOf(item) + 1 : this.chkSteps() ? this.draft.checklist.length : 0;
+      const at = item ? this.draft.checklist.indexOf(item) + 1 : this.chkSteps() || this.phoneDock() ? this.draft.checklist.length : 0;
       const before = JSON.parse(JSON.stringify(this.draft.checklist));
       this.draft.checklist.splice(at, 0, ...items);
       this._pushDraftEdit('Pasted checklist items', 'chk-multi', { before, after: JSON.parse(JSON.stringify(this.draft.checklist)) });   // ONE ⌘Z step for the whole paste, not one per item
@@ -8998,7 +8998,7 @@ document.addEventListener('alpine:init', () => {
       this.eventEdit = { id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi: e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10), all_day: !!e.all_day, color: e.color || null, countdown: !!e.countdown, notes: e.notes ?? '' };
     },
     clItemClick(it) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
-    clToggleTask(id) { const t = this.byId.get(id); if (t) this.toggle(t); },
+    clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
     // ONE state class for every calendar mark of a task — chip, timeline event, agenda row, chapter band,
     // due/deadline mark, so a finished deadline never reads like a live one.
