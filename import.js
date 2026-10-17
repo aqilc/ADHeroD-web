@@ -186,11 +186,11 @@ const oneOf = (v, list, path, label, problems) => {
   return true;
 };
 
-// Detect the payload without parsing the world: only a JSON object carrying the sentinel qualifies, so an
-// ordinary paste can never trip the importer.
+// Detect the payload without parsing the world: only a JSON object carrying the sentinel or a "tasks" array
+// qualifies (a model that never saw the prompt leaves the sentinel out), so an ordinary paste can never trip the importer.
 export function looksLikePayload(text) {
   const t = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
-  return t.startsWith('{') && /"adherod"\s*:/.test(t);
+  return t.startsWith('{') && /"adherod"\s*:|"tasks"\s*:\s*\[/.test(t);
 }
 
 export function parsePayload(text, { lists = [], areas = [], places = [], today } = {}) {
@@ -198,7 +198,7 @@ export function parsePayload(text, { lists = [], areas = [], places = [], today 
   let doc;
   try { doc = JSON.parse(t); } catch (e) { return { items: [], problems: [problem('(document)', `not valid JSON: ${e.message}`)] }; }
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { items: [], problems: [problem('(document)', 'the top level must be a JSON object.')] };
-  if (doc.adherod !== 1) return { items: [], problems: [problem('adherod', `expected "adherod": 1, got ${JSON.stringify(doc.adherod)}.`)] };
+  if (doc.adherod !== undefined && doc.adherod !== 1) return { items: [], problems: [problem('adherod', `expected "adherod": 1, got ${JSON.stringify(doc.adherod)}.`)] };
   unknown(doc, TOP_KEYS, '(document)', problems);
   if (!Array.isArray(doc.tasks) || !doc.tasks.length) problems.push(problem('tasks', 'must be a non-empty array of tasks.'));
 

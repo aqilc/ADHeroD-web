@@ -7276,8 +7276,8 @@ document.addEventListener('alpine:init', () => {
     onPaste(e) {
       const text = e.clipboardData?.getData('text') || '';
       if (!text) return;
-      // A structured payload takes the whole paste — it can never be a title. The sentinel is what makes
-      // this safe to intercept: ordinary text, markdown and unrelated JSON all fall through untouched.
+      // A structured payload takes the whole paste — it can never be a title. The sentinel or a "tasks" array is
+      // what makes this safe to intercept: ordinary text, markdown and unrelated JSON all fall through untouched.
       if (looksLikePayload(text)) { e.preventDefault(); return this.openImport('tasks', text); }
       // Never the browser's paste: syncTitle reads only text nodes, so pasted formatting was shown but not saved, and a
       // title is one line — pasted line breaks become spaces.
