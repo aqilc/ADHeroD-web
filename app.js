@@ -534,6 +534,7 @@ document.addEventListener('alpine:init', () => {
     mod: MAC ? '⌘' : 'Ctrl',   // the platform's command key, for keycaps (shortcuts sheet, finder footer)
     listQ: '',          // the list search's in-place filter
     sticky: !!window.desktopSticky,   // the Windows sticky note's window (desktop/sticky.js): this page, skinned
+    stickyBlock: null,   // the note's block on now (id), which desktop/sticky.js picks
     composerWin: !!window.desktopComposer,   // the Windows global composer's window (desktop/composer.js): the card alone, no rows
     showCompleted: false,   // view-controls toggle; completed tasks hidden by default, persisted to localStorage
     sortBy: 'manual',   // Lists sort: manual|due|importance|alpha|created|deadline (manual = drag/position order); persisted
@@ -1662,9 +1663,10 @@ document.addEventListener('alpine:init', () => {
     visibleRows() {
       if (this.composerWin) { _secMemo = []; return this._linkRows([], []); }   // no list to show: new list features can't leak into the card's window
       // The key's reads are the only Alpine deps registered: the list re-runs on them. Completed rows split into _doneMemo (rendered below the add button).
-      const key = this._rowV + '|' + this.navSel.type + '|' + this.navSel.id + '|' + this.listQ + '|' + this.showCompleted
+      let key = this._rowV + '|' + this.navSel.type + '|' + this.navSel.id + '|' + this.listQ + '|' + this.showCompleted
         + '|' + this.sortBy + this.sortDir + '|' + this.qfImp + '|' + this.qfAreas + '|' + this.qfDue + '|' + this.qfArchived
-        + '|' + this.groupBy + '|' + this.secShut + '|' + this._nowDay + '|' + this._foldV;
+        + '|' + this.groupBy + '|' + this.secShut + '|' + this._nowDay + '|' + this._foldV, focus = this.sticky && this._stickyFocus();
+      if (focus) key += '|' + focus.ids + '|' + focus.areas;   // an attachment bumps no _rowV
       void this._celeV;   // _celeExit patches the memo or clears _visKey: either way a pending change
       void this._heldV;
       if (_viewHold && _visKey && key.slice(key.indexOf('|')) === _visKey.slice(_visKey.indexOf('|'))) return _visMemo;   // same view: a nav/sort/filter change shows at once
@@ -1827,6 +1829,11 @@ document.addEventListener('alpine:init', () => {
         out = out.filter(r => placeable(r.t) && (!(r.t.completed_at || r.t.archived_at) || _cele.has(r.t.id)) && (filtering ? this.rowPass(r.t) : r.t.task_type !== 'note'));   // flat, so a done subtask the tree keeps inline would read as an open task; a note is never done: only a search shows it
         for (const r of out) { const w = this.whenOf(r.t, pm) || '', d = w.slice(0, 10); r.depth = 0; k.set(r, [!w ? 3 : d === today ? 0 : d < today ? 1 : 2, w, impRank(r.t.importance)]); }
         out.sort((a, b) => { const x = k.get(a), y = k.get(b); return x[0] - y[0] || (x[1] < y[1] ? -1 : x[1] > y[1] ? 1 : 0) || x[2] - y[2]; });
+        if (focus && !filtering) {   // a block on now with its own tasks shows only those: its attachments in order, then its areas' rows; a find searches all
+          const at = new Map(focus.ids.map((id, i) => [id, i])), own = out.filter(r => at.has(r.t.id)).sort((a, b) => at.get(a.t.id) - at.get(b.t.id));
+          const mine = [...own, ...out.filter(r => !at.has(r.t.id) && r.t.area_ids?.some(a => focus.areas.includes(a)))];
+          if (mine.length) out = mine;
+        }
         _secMemo = []; _visKey = key; return this._linkRows(out, done);
       }
       if (group !== 'none') { const [secs, kept] = this._sectionize(out); _secMemo = secs; out = kept; }
@@ -1836,6 +1843,11 @@ document.addEventListener('alpine:init', () => {
       else if (subSec) { const [secs, kept] = this._promoteSections(out, r => this.isOverviewProject(r.t)); _secMemo = secs; out = kept; }
       else _secMemo = [];
       _visKey = key; return this._linkRows(out, done);
+    },
+    // The note's block on now, as Mac's wFocus reads it (user 10-10: "the filtering"; #47: "only have tasks that are constrained to that block"): its "during" attachments, its areas
+    _stickyFocus() {
+      const block = this.stickyBlock && this.blocks.find(b => b.id === this.stickyBlock);
+      return block && { ids: this.clDuring(block.id).map(s => s.task_id), areas: block.areas || [] };
     },
     // Neighbor ids (itemBlock's hover highlight) and index `i` (a row's position by id) — O(1)/row via _rowMap/_doneMap.
     _linkRows(out, done) {
@@ -6057,8 +6069,10 @@ document.addEventListener('alpine:init', () => {
     },
     // A shown root leaving for a hidden Done list, in a flat list: the patch drops it with its subtree.
     _dropsRoot(id, arch, done) { return (arch ? !this.qfArchived : !!done && !this.showCompleted) && !_secMemo.length && this.navSel.type !== 'area' && _rowMap.get(id)?.depth === 0; },
-    // A filter reads anything, so it never patches; nor while a _rowV bump the memo hasn't rendered stands (a patch must never hide it).
-    _canPatch() { return !!_visKey && this.navSel.type !== 'filter' && !this.filtering() && (_rowPatch ? _rowPatch.v : +_visKey.slice(0, _visKey.indexOf('|'))) === this._rowV; },
+    // A search or quick filter reads anything, so an edit never patches under one; an exit edits nothing, so it still drops its rows.
+    // A saved filter never patches: its exits from under a section head drop nothing anyway. Nor while a _rowV bump the memo hasn't rendered
+    // stands (a patch must never hide it).
+    _canPatch(exit) { return !!_visKey && this.navSel.type !== 'filter' && (exit || !this.filtering()) && (_rowPatch ? _rowPatch.v : +_visKey.slice(0, _visKey.indexOf('|'))) === this._rowV; },
     // The next visibleRows rebuilds only these rows (+ an unrendered earlier patch's); the tray drops just their html.
     _patchRows(ids, drop = new Set(_rowPatch?.drop), sort = new Set(_rowPatch?.sort)) {
       if (_rowPatch) for (const id of _rowPatch.ids) ids.add(id);
@@ -7715,7 +7729,7 @@ document.addEventListener('alpine:init', () => {
     // The ended rewards' rows leave: dropped from the rows as they stand when the patch can, else a full rebuild.
     _exitRows(left) {
       const t = id => this.byId.get(id);
-      if (this._canPatch() && left.every(id => this._dropsRoot(id, t(id)?.archived_at, t(id)?.completed_at))) {
+      if (this._canPatch(true) && left.every(id => this._dropsRoot(id, t(id)?.archived_at, t(id)?.completed_at))) {
         _rowPatch ??= { ids: new Set(), drop: new Set(), sort: new Set(), key: _visKey, v: this._rowV };   // no _rowV bump: no row's data changed
         for (const id of left) _rowPatch.drop.add(id);
       } else _visKey = '';
@@ -9552,12 +9566,13 @@ document.addEventListener('alpine:init', () => {
       if (this.clBlockDay(blockId, iso)?.status === 'done') return this.clSetBlockDay(blockId, { status: 'running', actual_end: null }, iso, 'Undid stop');
       return this.clSetBlockDay(blockId, { status: 'pending', ...this.clStarted(blockId, iso) && { actual_start: null, actual_end: null } }, iso);
     },
+    clDuring(blockId) {   // a block's "during" attachments, in its order
+      return this.scheduleItems.filter(s => s.block_id === blockId && s.role === 'during').sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    },
     // Lead = first incomplete during-attachment fitting capacity (mirrors the Android blockLead pick).
     clBlockLead(blockId) {
       const cap = this.blocks.find(b => b.id === blockId)?.est_minutes ?? null;
-      return this.scheduleItems.filter(s => s.block_id === blockId && s.role === 'during')
-        .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-        .map(s => this.tasks.find(t => t.id === s.task_id))
+      return this.clDuring(blockId).map(s => this.tasks.find(t => t.id === s.task_id))
         .find(t => t && !t.completed_at && (cap == null || t.est_minutes == null || t.est_minutes <= cap)) || null;
     },
 
