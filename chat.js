@@ -90,10 +90,23 @@ export const peerName = (chat, uid) => chat.members.find(m => m.user_id !== uid)
 const TIME = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' });
 const WEEKDAY = new Intl.DateTimeFormat([], { weekday: 'short' });
 const DAY = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' });
+const daysAgo = (at, now) => Math.round((new Date(now).setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 864e5);   // round: a DST day is 23 or 25 h
 export function whenLabel(ts, now = new Date()) {
   if (!ts) return '';
-  const at = new Date(ts), days = Math.round((new Date(now).setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 864e5);   // round: a DST day is 23 or 25 h
+  const at = new Date(ts), days = daysAgo(at, now);
   return (days < 1 ? TIME : days < 7 ? WEEKDAY : DAY).format(at);
+}
+
+// Thread line above a message that opens the thread, a new day or follows an hour's quiet: "Today 2:14 PM", "Yesterday 9:03 PM", "Thu 3:12 PM", "Oct 3, 3:12 PM".
+const WEEKDAY_TIME = new Intl.DateTimeFormat([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const DAY_TIME = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const YEAR_TIME = new Intl.DateTimeFormat([], { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+export function threadLine(prev, ts, now = new Date()) {
+  const at = new Date(ts);
+  if (prev && at - new Date(prev) < 36e5 && !daysAgo(prev, at)) return '';
+  const days = daysAgo(at, now);
+  if (days < 2) return (days < 1 ? 'Today ' : 'Yesterday ') + TIME.format(at);
+  return (days < 7 ? WEEKDAY_TIME : at.getFullYear() === new Date(now).getFullYear() ? DAY_TIME : YEAR_TIME).format(at);
 }
 
 // ── Files: bytes go through the files Worker (scripts/files-worker.js) to Drive; the rows say what a chip shows. ──

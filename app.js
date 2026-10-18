@@ -47,7 +47,7 @@ import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
 const SURF_HOME = SURFACES.includes('lists') ? 'lists' : SURFACES[0];
 import { createSupabaseStore } from './supabase-store.js';
-import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, byCreated, peerName, whenLabel, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
+import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, byCreated, peerName, whenLabel, threadLine, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
 let _sb, _inFlight = 0;
@@ -83,7 +83,7 @@ const PHONE_MQ = matchMedia('(max-width: 640px)');   // the 640px CSS block's tw
 const BAR = (() => { const q = new URLSearchParams(location.search).get('bar'); if (q) localStorage.setItem('adherod.bar', q); return localStorage.getItem('adherod.bar') === '1'; })();
 const STACK_MQ = matchMedia('(max-width: 759px)');   // the stacked-dialogs CSS block's twin: two 380px dialog min-widths don't fit
 const SIDE_MQ = matchMedia('(max-width: 772px)');   // the task panel (--side 412) + the narrowest phone we lay out (360): under it the panel overlays
-const CL_FOOT = 56;                       // bottom nav strip the timeline stops short of (must match --foot in CSS)
+const CL_FOOT = 56;                       // bottom nav strip the timeline stops short of (--foot in CSS, less the gesture bar's band)
 const CL_TITLE_PX = 15;                   // one title strip. Two events starting closer than this leave nothing of
                                           // the lower one to read, so they STACK (staggered) instead of cascading.
 const CL_STACK_X = 8;                     // stagger step for concurrent peers. Splitting the width made slivers
@@ -306,7 +306,8 @@ const OVERLAYS = [
   [c => c.importPreview, c => c.importPreview = null, 1],   // above the rest: it is the frontmost thing when open
   [c => c.delAsk, c => c.delAsk = null, 1], [c => c.locMgr, c => c.locMgr = false, 1],
   [c => c.filterEdit, c => c.filterEdit = null, 1],
-  [c => c.eventEdit, c => c.eventEdit = null, 1], [c => c.blockEdit, c => c.blockEdit = null, 1],
+  [c => c.eventEdit && !c.eventEdit.draft, c => c.eventEdit = null, 1], [c => c.blockEdit && !c.blockEdit.draft, c => c.blockEdit = null, 1],
+  [c => c.clDraft(), c => c.eventEdit = c.blockEdit = null],   // a new block/event drawn on the grid: no backdrop, the grid stays live
   [c => c.settingsOpen, c => c.settingsOpen = false],   // corner settings popup — own light backdrop, below the dialogs
   [c => c.navPop, c => c.navPop = null], [c => c.listMenu, c => c.listMenu = null],   // Hearthsay sentence menus (add/sort)
   [c => c.navRename, c => c.navRename = null], [c => c.tpop, c => c.tpop = false],
@@ -501,7 +502,6 @@ document.addEventListener('alpine:init', () => {
     clHourH: 0,             // px per hour when zoomed (0 = fit)
     eventEdit: null,        // null = closed
     blockEdit: null,        // null = closed
-    clDragBand: null,       // preview while drag-creating a block
     homeLocationId: null,   // designated home place (mirror of store)
     currentRegion: 'Home',
     locMgr: false,
@@ -549,6 +549,7 @@ document.addEventListener('alpine:init', () => {
     editing: null,
     confirm: null,
     shortcutsOpen: false,
+    shortcutsBuilt: false,   // the sheet builds on its first open and keeps its rows (and scroll) after
     shortcutTips: localStorage.getItem('adherod.shortcutTips') !== '0',   // Settings → Shortcut tips; off = no coach tips
     nowBreathe: localStorage.getItem('adherod.nowBreathe') !== '0',       // Settings → Breathing now line; off = a still knob
     celebrations: localStorage.getItem('adherod.celebrations') || 'full',   // Settings → Celebrations: full | calm | off (_celebrate)
@@ -676,9 +677,10 @@ document.addEventListener('alpine:init', () => {
         sb.auth.onAuthStateChange((e, session) => { if (e !== 'INITIAL_SESSION') this.onAuth(session); });
       }
       // An invite link (?invite=<id>) waits in storage for a signed-in boot: signing in reloads, or arrives by a mail link without it.
-      const invite = new URLSearchParams(location.search).get('invite');
+      const url = new URL(location.href), invite = url.searchParams.get('invite');
       if (/^[0-9a-f-]{36}$/i.test(invite ?? '')) localStorage.setItem('adherod.invite', invite);
-      if (invite != null) history.replaceState(history.state, '', location.pathname);
+      url.searchParams.delete('invite');   // only the token leaves the address: other params and the hash stay
+      if (invite != null) history.replaceState(history.state, '', url);
       if (localStorage.getItem('adherod.invite')) this.redeemInvite();
       // A tab holds its lock until it closes. A closed tab's add draft (or one from before slots had a tab): this account's
       // newest comes back in this tab's add composer if it has none, the rest go to their account's Bin.
@@ -766,7 +768,7 @@ document.addEventListener('alpine:init', () => {
       // The soft keyboard's height (0 when down), from what the visual viewport lost: a phone docks the composer's chips + Save on it.
       // Its metrics land on their readers alone (uninherited, styles.css): set on <html>, each change restyled every element.
       const root = document.documentElement, sheet = new CSSStyleSheet();
-      sheet.replaceSync('.app, .app::after, .composer-dock, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
+      sheet.replaceSync('.app, .app::after, .composer-dock, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, :is(.chat-comp, .jb-chat) textarea, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
       // A docked pop (9B) counts as the keyboard: it takes the keyboard's place, so the dock rides it the same way.
       const vars = sheet.cssRules[0].style;
       _keyboard = () => {
@@ -1153,13 +1155,20 @@ document.addEventListener('alpine:init', () => {
     watchField(el) { _field.observe(el); },
     phoneThread() { return this.narrow && this.surface === 'social' && !!this.chat.open; },   // a whole-screen page with no switcher (soc-2e)
     chatPeer(chat) { return chat ? peerName(chat, this._acct()) : ''; },
-    // Signed out, Social asks to sign in and the invite waits. A server's no (used, expired, your own) drops it; a network failure keeps it for the next boot.
+    // Signed out, Social asks to sign in and the invite waits. A refusal (400: used, yours, a bad id; 403) drops it; anything else (offline, 401, 404, 429, 5xx) keeps it for the next boot.
     async redeemInvite() {
       this.goSurface('social');
       if (!this.session) return;
-      const { data: id, error } = await sbClient().rpc('redeem_invite', { invite: localStorage.getItem('adherod.invite') });
-      if (!error || error.code === 'P0001') localStorage.removeItem('adherod.invite');
-      if (error) return this.notify(error.code === 'P0001' ? 'That invite link has been used or has expired' : 'Invite not opened. Check your connection');
+      const sb = sbClient(), invite = localStorage.getItem('adherod.invite');
+      const { data: id, error, status } = await sb.rpc('redeem_invite', { invite });
+      const refused = status === 400 || status === 403;
+      if (!error || refused) localStorage.removeItem('adherod.invite');
+      // redeem_invite refuses your own link like a used one
+      if (error?.code === 'P0001') {
+        const live = await sb.from('invites').select('id').eq('id', invite).eq('user_id', this._acct()).is('used_at', null).gt('expires_at', new Date().toISOString());
+        return this.notify(live.data?.length ? 'That invite link is yours. Send it to a friend' : 'That invite link has been used or has expired');
+      }
+      if (error) return this.notify(refused ? 'Invite not opened' : status ? 'Invite not opened. Try again later' : 'Invite not opened. Check your connection');
       await this.chatReload();
       this.openChat(id);
     },
@@ -1171,8 +1180,14 @@ document.addEventListener('alpine:init', () => {
       if (this.narrow && navigator.share) {
         try { return await navigator.share({ url }); } catch (e) { if (e.name === 'AbortError') return; }   // dismissing the sheet is a choice
       }
-      const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
-      this.notify(copied ? 'Invite link copied. It works once, for 14 days' : `Invite link: ${url}`);
+      const copy = async () => {
+        const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
+        if (copied) this.notify('Invite link copied. It works once, for 14 days');
+        return copied;
+      };
+      // Safari refuses a write that follows the insert's await; a click on Copy is a fresh gesture
+      // ceiling: Safari takes two clicks; if that's one too many, write a ClipboardItem holding the URL's promise before the insert's await
+      if (!(await copy())) this.notify('Invite link ready', { actions: [{ label: 'Copy', fn: async () => (await copy()) || this.notify(`Invite link: ${url}`) }] });
     },
     // ceiling: with Social not yet opened on this device, only a name set here shows; load the chats with the card if that confuses
     chatName() { return this._myMembers().find(m => m.name)?.name || this.chat.name || localStorage.getItem('adherod.chatName:' + this._acct()) || ''; },   // chat.name: storage isn't reactive
@@ -1208,6 +1223,7 @@ document.addEventListener('alpine:init', () => {
       if (await markRead(sbClient(), uid, chat.id, at)) chat.members.find(m => m.user_id === uid).last_read_at = at;
     },
     chatWhen: whenLabel,
+    msgLine(i) { return threadLine(this.chat.msgs[i - 1]?.created_at, this.chat.msgs[i].created_at, this._nowDay && new Date()); },   // reads _nowDay: Today turns Yesterday at midnight
     chatLine(m) { return m?.body || (m?.attachments?.length ? 'File' : ''); },   // a files-only message previews as "File"
     openChatRow() { return this.chat.chats.find(c => c.id === this.chat.open); },
     chatCanSend() { return this.chat.editing ? !!this.chat.draft.trim() : !this.chat.sending[this.chat.open] && (!!this.chat.draft.trim() || !!this.chat.pending.length) && this.chat.pending.every(f => f.row); },
@@ -1258,7 +1274,7 @@ document.addEventListener('alpine:init', () => {
       else if (e.key === 'ArrowUp' && !this.chat.draft && !this.chat.editing) {   // ↑ in an empty composer edits your last message
         const mine = this.chat.msgs.findLast(m => m.user_id === this._acct());
         if (mine) { e.preventDefault(); this.startEdit(mine); }
-      } else if (e.key === 'Enter' && !e.shiftKey) {
+      } else if (e.key === 'Enter' && !e.shiftKey && !document.documentElement.classList.contains('touch')) {   // a touch keyboard's Enter adds a line; Send sends
         e.preventDefault();
         this.sendChat();
       }
@@ -4928,37 +4944,38 @@ document.addEventListener('alpine:init', () => {
       // the app undo stack only takes over outside fields (list-level actions: complete, delete, move…).
       const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
       const dialogs = OVERLAYS.filter(([open, , dialog]) => dialog && open(this)).length;
+      const draft = !!this.clDraft(), modal = this.modalOpen() || draft;   // a grid draft has no backdrop, yet its editor owns the keys as a dialog's does
       // The ? sheet teaches its keys: one it lists closes it and runs, like its ↗ launchers. Settings and any other dialog keep them dead.
       const sheetOnly = this.shortcutsOpen && !this.settingsOpen && dialogs === 1;
       if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
         if (inField) return;   // let the browser's native text undo/redo run
         e.preventDefault();   // Chrome's own Undo would rewrite the last-edited editor, focused or not
         // A modal keeps ⌘Z off what's behind it; the Bin, block editor and places manager journal their own controls' actions.
-        if (this.modalOpen() && !sheetOnly && !(dialogs === 1 && (this.trashOpen || this.blockEdit || this.locMgr))) return;
+        if (modal && !sheetOnly && !(dialogs + draft === 1 && (this.trashOpen || this.blockEdit || this.locMgr))) return;
         // composer open → only its OWN draft edits step; task-level ones stay blocked. A closing one (open stays true through the 240ms collapse) is shut.
         if (this.composer.open && !this._closingComposer && !DRAFT_KINDS.includes(this._journalPeek(e.shiftKey ? 1 : -1)?.kind)) return;
         e.shiftKey ? this.redo() : this.undo();   // ⌘⇧Z = redo
         return;
       }
-      if ((e.key === 'Backspace' || e.key === 'Delete') && this.composer.open && !this.modalOpen() && this.chkDelSel(e)) return;
-      if (e.key === 'x' && !e.metaKey && !e.ctrlKey && !e.altKey && this.composer.open && !this.modalOpen() && this.chkTickSel(e)) return;
+      if ((e.key === 'Backspace' || e.key === 'Delete') && this.composer.open && !modal && this.chkDelSel(e)) return;
+      if (e.key === 'x' && !e.metaKey && !e.ctrlKey && !e.altKey && this.composer.open && !modal && this.chkTickSel(e)) return;
       // ⌘/Ctrl+Enter saves & closes the open composer from anywhere but the palette, whose ↵ is its own, and a dialog's field — no input focus needed.
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && this.composer.open && !this.palette.open && !(inField && e.target.closest('[role=dialog]'))) { e.preventDefault(); this.submitAndClose(); return; }
       // ⌘/Ctrl+K opens the everything-nav palette from anywhere but a modal, even mid-typing (Space does it outside typing).
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); if (sheetOnly) this.shortcutsOpen = false; if (!this.modalOpen()) this.openPalette(); return; }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); if (sheetOnly) this.shortcutsOpen = false; if (!this.modalOpen() && !draft) this.openPalette(); return; }   // read after the sheet closes
       // ⌘/Ctrl+F on Lists is `/`, even mid-typing: the Done list windows its rows, so the browser's find misses them.
       // An open composer or modal keeps the browser's find; in the search, it selects the query, as the find bar does.
-      if ((e.metaKey || e.ctrlKey) && e.key === 'f' && !e.shiftKey && !e.altKey && this.listView() && !this.composer.open && (!this.modalOpen() || sheetOnly)) { e.preventDefault(); this.shortcutsOpen = false; return this.openListSearch(true); }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f' && !e.shiftKey && !e.altKey && this.listView() && !this.composer.open && (!modal || sheetOnly)) { e.preventDefault(); this.shortcutsOpen = false; return this.openListSearch(true); }
       // Plan claims ⌘/Ctrl+↑/↓ as well: the native binding is "scroll to the end of the document", and the
       // month scroller is virtualized to ~670k px, so it read as an uncontrollable fling. One period, morphed —
       // the same readable jump as Shift.
       // (no composer guard: the composer lives on Lists, and a stale-open one must not hand the fling back)
       if ((e.metaKey || e.ctrlKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && this.surface === 'plan'
-          && (!this.modalOpen() || sheetOnly) && !this.overview) {
+          && (!modal || sheetOnly) && !this.overview) {
         e.preventDefault(); this.shortcutsOpen = false; this.clStep(e.key === 'ArrowDown' ? 1 : -1, true, e.timeStamp); return;
       }
       // Single-key shortcuts — only when not typing, composing, or under a modal (Settings or a dialog), and unmodified.
-      if (e.metaKey || e.ctrlKey || e.altKey || this.composer.open || (this.modalOpen() && !sheetOnly)
+      if (e.metaKey || e.ctrlKey || e.altKey || this.composer.open || (modal && !sheetOnly)
           || (sheetOnly && e.key === 'Enter' && e.target.closest?.('button'))   // a sheet control's Enter is its own (↗, ×), as natively
           || tag === 'input' || tag === 'textarea' || tag === 'select') return;
       if (this.overview) {   // the overview deck owns the keys while it's open
@@ -5169,6 +5186,11 @@ document.addEventListener('alpine:init', () => {
           ['<b>**bold**</b> · <b>*italic*</b> · <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],
           ['<b>```code```</b>','Code block'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> · <b>- Item</b>','Heading / bullet']]}
       ];
+    },
+    // The sheet's reference as one string: static text needs no ~180 bindings.
+    shortcutsHtml() {
+      return this.shortcutGroups().map(g => html`<div class="${g.r ? 'sheet-grp' : 'sk-section'}"><div class="section-label">${g.l}</div>${raw((g.r || []).map(([k, d]) =>
+        html`<div class="sk flex items-center gap-6 muted-12"><span>${raw(k.replaceAll('⌘', this.mod).replaceAll(' · ', ' or '))}</span><span>${d}</span></div>`).join(''))}</div>`).join('');
     },
     // The 2nd mouse use of one action in a session shows its key — once ever per action, never blocking.
     _coach(data) {   // the control's dataset: sk = its sheet label, skKey = its own key where the row lists several (d/w/m)
@@ -8610,7 +8632,7 @@ document.addEventListener('alpine:init', () => {
       const mins = mine.reduce((n, it) => n + (this.byId.get(it.id)?.est_minutes || 0), 0);
       return { mins, label: mins ? this.durFmt(mins) + ' of planned work, done' : 'Everything you planned, done' };
     },
-    _clMin(iso) { const t = timeOf(iso, '00:00'); return (+t.slice(0, 2)) * 60 + (+t.slice(3, 5)); },
+    _clMin(iso) { return this._hm(timeOf(iso, '00:00')); },
     _dayBlocks(iso) {
       return blocksInRange(this.blocks, iso, iso, this.blockDays, localStamp(new Date())).map(b => {
         const sm = b.allDay || b.start < iso ? 0 : this._clMin(b.start), em = b.allDay || b.end.slice(0, 10) > iso ? 1440 : Math.min(1440, this._clMin(b.end));   // all-day: every day it covers, whole
@@ -9016,8 +9038,8 @@ document.addEventListener('alpine:init', () => {
     },
     clOpenDay(iso) { this.clSetView('day'); this.clAnchor = iso; },
     // --- Event editor (create / edit / delete) ---
-    clNewEvent(date) {
-      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, countdown: false, notes: '' };
+    clNewEvent(date, draft = false) {
+      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, countdown: false, notes: '', draft };
     },
     clEditEvent(id) {
       const e = this.events.find(x => x.id === id); if (!e) return;
@@ -9090,28 +9112,60 @@ document.addEventListener('alpine:init', () => {
     },
     async clDeleteEvent() { const e = this.events.find(x => x.id === this.eventEdit?.id); if (!e || await this.perform('Deleted event', { target: 'event', kind: 'delete', id: e.id })) this.eventEdit = null; },   // a failed delete keeps the editor and its edits
 
-    // --- Blocks: drag a span on the week/day grid to create; click a band to edit ---
-    clBlockDragStart(e, iso) {
-      // A finger dragging the grid is SCROLLING the day; stealing that gesture to draw a block makes the
-      // calendar feel broken, so touch draws no blocks here. Pen still draws (it points).
-      if (e.pointerType === 'touch' || e.button !== 0 || e.target.closest('.cl-event, .cl-block')) return;   // drag only on empty grid
-      const col = e.currentTarget; col.setPointerCapture?.(e.pointerId);
-      this._blkDrag = { iso, rect: col.getBoundingClientRect(), y0: e.clientY, y1: e.clientY };
-      this.clDragBand = this._blkBand();
+    // --- New block/event on the week/day grid. A click on empty time starts a 1h block at its slot; a new editor opened from
+    // the grid (that click or ＋) is a draft: its band stays on the grid and its editor sits beside it with no backdrop. While a
+    // draft is open a drag redraws it (a press inside it drags the nearer edge) and a click on another time moves it there.
+    // No drag creates without an editor (user 10-18): it fights the pan.
+    clDraft() { const e = this.eventEdit || this.blockEdit; return e?.draft ? e : null; },
+    clDraftFocus(el) { if (this.clDraft() && !document.documentElement.classList.contains('touch')) queueMicrotask(() => el.querySelector('.ev-title')?.focus({ preventScroll: true })); },   // a phone's keyboard would bury the grid
+    _hm(t) { return +t.slice(0, 2) * 60 + +t.slice(3, 5); },
+    // [start, end] minutes the draft covers on iso, to 24:00 when it runs past midnight; null off that day
+    _draftSpan(iso) { const d = this.clDraft(); if (!d || d.all_day || d.date !== iso) return null; const s = this._hm(d.start), e = this._hm(d.end); return [s, e > s ? e : 1440]; },
+    clDraftBand(iso) { const s = this._draftSpan(iso); return s ? 'top:' + s[0] / 14.4 + '%;height:' + (s[1] - s[0]) / 14.4 + '%;--cc:var(--accent)' : 'display:none'; },
+    _clSlot(y, rect) { return Math.max(0, Math.min(1425, Math.floor((y - rect.top) / rect.height * 96) * 15)); },   // the 15-min slot at y
+    _setDraft(iso, s, e) { Object.assign(this.clDraft(), { date: iso, start: this._fmtMin(s), end: this._fmtMin(e % 1440) }); },   // 24:00 → 00:00, which _evRange rolls to the next day
+    clGridDown(e, iso) {
+      // armed only when nothing but a draft is open: the press that closes a pop, the composer or a selection makes nothing
+      const open = OVERLAYS.filter(([o]) => o(this)).length, armed = open === (this.clDraft() ? 1 : 0) && !e.target.closest('.cl-event, .cl-block:not(.cl-block-drag)');
+      const clear = !armed && open === 1 && this.sel.length > 0;   // one carried from Lists has nothing else to close it here: its click does, a pan keeps it
+      this._clPress = armed || clear ? { x: e.clientX, y: e.clientY, clear } : null;
+      if (!armed || !this.clDraft() || e.pointerType === 'touch' || e.button !== 0) return;   // a finger on the grid pans the day
+      e.preventDefault();   // the title keeps focus, so typing on goes to it, not to the shortcuts
+      const col = e.currentTarget, rect = col.getBoundingClientRect(), span = this._draftSpan(iso), p = (e.clientY - rect.top) / rect.height * 1440;
+      // inside the band: its far edge holds, so the drag moves the nearer one
+      const y0 = span && p >= span[0] && p <= span[1] ? rect.top + (p - span[0] < span[1] - p ? span[1] : span[0]) / 1440 * rect.height : e.clientY;
+      col.setPointerCapture?.(e.pointerId);
+      this._blkDrag = { iso, rect, y0, yp: e.clientY, moved: false };
     },
-    clBlockDragMove(e) { if (!this._blkDrag) return; this._blkDrag.y1 = e.clientY; this.clDragBand = this._blkBand(); },
-    clBlockDragEnd() {
-      const d = this._blkDrag, s = d && this._blkSpan(d); this._blkDrag = null; this.clDragBand = null; if (!s) return;
-      this.clNewBlock(d.iso, this._fmtMin(s[0]), this._fmtMin(s[1] % 1440));   // 24:00 → 00:00, which _evRange rolls to the next day
+    clGridMove(e) {
+      const d = this._blkDrag; if (!d || !d.moved && Math.abs(e.clientY - d.yp) < 8) return;
+      d.moved = true;
+      const snap = y => Math.round((y - d.rect.top) / d.rect.height * 96) * 15, a = Math.max(0, Math.min(1425, snap(Math.min(d.y0, e.clientY))));
+      this._setDraft(d.iso, a, Math.max(a + 15, Math.min(1440, a + 1425, snap(Math.max(d.y0, e.clientY)))));   // under a day: 00:00–24:00 would save zero-length
     },
-    // [start, end] minutes the drag spans, snapped 15 within its day — the band draws exactly the block it saves; null for a click
-    _blkSpan(d) {
-      if (Math.abs(d.y1 - d.y0) < 8) return null;
-      const snap = y => Math.round((y - d.rect.top) / d.rect.height * 96) * 15;
-      const a = Math.max(0, Math.min(1425, snap(Math.min(d.y0, d.y1))));
-      return [a, Math.max(a + 15, Math.min(1440, a + 1425, snap(Math.max(d.y0, d.y1))))];   // under a day: 00:00–24:00 would save zero-length
+    // beside its day's column, on the side with room (narrowed to fit if neither has it); else flush right (day view), centred on a phone
+    clDraftPos() {
+      if (innerWidth < 760) return 'margin-inline:auto';
+      const d = this.clDraft(), w = 420;   // .event-editor/.block-editor's width · ceiling: placed when the draft's day changes, not on a page turn under it; recompute on clAnchor if a turn strands it
+      const col = [...document.querySelectorAll(`.cl-pcol[data-iso="${d.date}"]`)].find(c => { const r = c.getBoundingClientRect(); return r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
+      const right = r ? innerWidth - r.right - 16 : 0, left = r ? r.left - 16 : 0, fit = Math.max(right, left);   // room beside it, 8px gaps
+      if (right >= w) return 'margin-left:' + (r.right + 8) + 'px';
+      if (left >= w) return 'margin-left:' + (r.left - 8 - w) + 'px';
+      if (fit < 320) return 'margin-left:' + (innerWidth - 16 - w) + 'px';
+      return 'min-width:0;width:' + fit + 'px;margin-left:' + (right >= left ? r.right + 8 : 8) + 'px';
     },
-    _blkBand() { const d = this._blkDrag, s = this._blkSpan(d); return s && { iso: d.iso, topPct: s[0] / 14.4, hPct: (s[1] - s[0]) / 14.4 }; },
+    clGridUp() { this._blkDrag = null; },
+    clGridClick(e, iso) {
+      const p = this._clPress; if (!p || Math.hypot(e.clientX - p.x, e.clientY - p.y) >= 8) return;   // a drag's release isn't a click
+      if (p.clear) return this.clearSel();
+      const s = this._clSlot(e.clientY, e.currentTarget.getBoundingClientRect()), d = this.clDraft();
+      if (!d) return this.clNewBlock(iso, this._fmtMin(s), this._fmtMin((s + 60) % 1440), true);
+      const span = this._draftSpan(iso);
+      if (span && s >= span[0] && s < span[1]) return;   // a click inside it keeps it: only another time moves it
+      const len = d.all_day ? 60 : (this._hm(d.end) - this._hm(d.start) + 1440) % 1440 || 1440;   // its whole length, past midnight too
+      if (d.all_day) d.all_day = false;
+      this._setDraft(iso, s, s + len);   // past midnight, as a fresh click there
+    },
 
     // --- Drag-to-(re)schedule (HTML5 DnD) — wall-clock local strings, never toISOString (tz shift) ---
     _fmtMin: m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'),
@@ -9352,7 +9406,7 @@ document.addEventListener('alpine:init', () => {
     clSideDragStart(e) { const el = e.target.closest?.('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
     clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideOpen = true; this.$nextTick(() => this.editTask(t)); },
     clBlockWeekdays: [{ d: 0, l: 'S' }, { d: 1, l: 'M' }, { d: 2, l: 'T' }, { d: 3, l: 'W' }, { d: 4, l: 'T' }, { d: 5, l: 'F' }, { d: 6, l: 'S' }],
-    clNewBlock(date, start, end) { this.blockEdit = { date: date || isoDate(this._clAt()), start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], color: null, title: '', est_minutes: null }; },
+    clNewBlock(date, start, end, draft = false) { this.blockEdit = { date: date || isoDate(this._clAt()), start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], color: null, title: '', est_minutes: null, draft }; },
     clEditBlock(id, viewIso) {
       const b = this.blocks.find(x => x.id === id); if (!b) return;
       const start = timeOf(b.starts_at, '09:00'), end = timeOf(b.ends_at, '10:00'), bd = this.clBlockDay(b.id, viewIso), p = plannedOf(bd);

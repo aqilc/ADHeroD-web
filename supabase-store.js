@@ -1,6 +1,6 @@
 // Supabase adapter — same interface as createLocalStore (see store.js). Mapping helpers exported for tests.
 
-import { chkIds, childIndex, descendantIds, projectDepth, subtreeDepth, ancestorsToReopen, completionPatches, movedOutParents, removedOutParents, recActive, MAX_DEPTH, resolveAreaNames, searchDocs, buildFreeText, updateRecent, pauseRecurrence, seedRecurrenceDue, captureTz, placedMap, REFS, liveRefs, overviewFields } from './store.js';
+import { chkIds, childIndex, descendantIds, projectDepth, subtreeDepth, ancestorsToReopen, completionPatches, movedOutParents, removedOutParents, recActive, MAX_DEPTH, resolveAreaNames, searchDocs, buildFreeText, updateRecent, pauseRecurrence, seedRecurrenceDue, captureTz, placedMap, REFS, liveRefs, overviewFields, reminderRow } from './store.js';
 import { makeFuzzy, buildSearchDocs, matchQuery } from './search.js';
 import { isoDate } from './nlp.js';
 import { inNotes } from './predicates.js';
@@ -527,12 +527,7 @@ export function createSupabaseStore(client) {
     // User-authored reminders.
     reminders: {
       list: () => COLL.reminders.list(),
-      async add({ task_id, anchor, offset_minutes, at, severity, repeat, times, message }) {
-        const anc = anchor || 'absolute';
-        return COLL.reminders.insert({ ref_type: 'task', ref_id: task_id, kind: 'user', anchor: anc,
-          offset_minutes: anc === 'absolute' ? null : (offset_minutes ?? 0), at: anc === 'absolute' ? (at ?? null) : null,
-          severity: severity ?? 'ping', repeat: repeat ?? null, times: times ?? null, message: message ?? null, paused: false });
-      },
+      add: fields => COLL.reminders.insert(reminderRow(fields)),
       update: (id, fields) => COLL.reminders.patch(id, fields),
       remove: id => COLL.reminders.del(id),
     },

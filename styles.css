@@ -13,7 +13,9 @@
 }
 /* Bottom furniture, on html so anything fixed to the viewport can reach it: --foot reserves the dot strip,
    which is the ONLY thing in the bottom band — one source, or the toast stack goes back to guessing. */
-html { color-scheme: light dark; -webkit-tap-highlight-color: transparent; --foot: 56px; --gear: 30px; --gut: 18px; }   /* --gear: the settings gear's box, which the phone strip centres beside; --gut: a row's left gutter, where its fold chevron hangs */
+@property --foot { syntax: '<length>'; inherits: true; initial-value: 56px; }   /* registered so JS reads px (_seenH), not calc() text */
+html { color-scheme: light dark; -webkit-tap-highlight-color: transparent; --safe-b: env(safe-area-inset-bottom, 0px); --foot: calc(56px + var(--safe-b)); --gear: 30px; --gut: 18px; }   /* --gear: the settings gear's box, which the phone strip centres beside; --gut: a row's left gutter, where its fold chevron hangs */
+/* --safe-b: the gesture bar's band (viewport-fit=cover). Never re-set it on html.kb: every element restyles per keyboard move (app.perf). */
 * { box-sizing: border-box; scrollbar-width: none; }   /* hide scrollbars app-wide — scroll still works */
 *::-webkit-scrollbar { width: 0; height: 0; }
 [x-cloak] { display: none !important; }
@@ -22,6 +24,7 @@ body {
   background: var(--bg-wash), var(--bg-foot), var(--bg); color: var(--ink);   /* fixed top wash + bottom nav-backdrop wash under the whole shell — don't scroll/page with .canvas-track */
   font: 14.5px/1.45 var(--font-ui);
   -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+  padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px);   /* a landscape notch or side nav bar (viewport-fit=cover); 0 elsewhere */
 }
 button { font: inherit; cursor: pointer; border: none; background: none; }   /* background too: UA grey leaks into any row that forgets to clear it */
 input, textarea, select { font: inherit; color: var(--ink); }
@@ -72,7 +75,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .canvas-track:not(.dragging) > .surface[inert] { content-visibility: hidden; }   /* ceiling: the swipe's first move pays the surface's render (6x phone, 240-item month: worst early frame 44 → 48–58ms); revisit if a swipe reads as stuttering */
 .surface-lists { display: flex; }
 /* ---- Social: chats list beside the thread (desktop); one or the other on a phone ---- */
-.social { display: grid; grid-template-columns: 280px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--sp-24); height: 100%; padding: var(--surface-top) var(--sp-24) var(--dock-clear) var(--surface-top); }
+.social { display: grid; grid-template-columns: 280px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: var(--sp-24); height: 100%; padding: var(--surface-top) var(--sp-24) var(--foot) var(--surface-top); }
 .social h1 { margin: 0 0 var(--sp-20) var(--sp-2); font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
 .soc-head { margin-bottom: var(--sp-20); padding: 0 var(--sp-2); }   /* the title's line: the jot bar's gear sits on it */
 .social .soc-head > h1 { margin: 0; }
@@ -101,8 +104,9 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .th-back .ico { width: 20px; height: 20px; flex: none; }
 /* column-reverse pins the scroll to the newest message with no JS */
 .msgs { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column-reverse; }
-.msgs-in { display: flex; flex-direction: column; gap: var(--sp-8); padding-bottom: var(--sp-12); }
+.msgs-in { display: flex; flex-direction: column; gap: var(--sp-8); padding-bottom: var(--sp-12); container-type: inline-size; }
 .msg-row { align-self: flex-start; max-width: 78%; gap: var(--sp-4); }
+.msg-line { align-self: center; margin-top: var(--sp-8); font-size: var(--fs-11); color: var(--faint); }
 .msg-row.me { align-self: flex-end; }
 .msg { min-width: 0; padding: var(--sp-8) var(--sp-12); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--shadow-sm);
   font-size: var(--fs-15); line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; outline: 0; }
@@ -114,17 +118,19 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .msg-row:is(:hover, :focus-within) .msg-acts { opacity: 1; pointer-events: auto; }
 .msg-acts button, .chat-editing button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: none; color: var(--muted); cursor: pointer; }
 .msg-acts button:hover, .chat-editing button:hover { background: var(--hover); color: var(--ink); }
-.msg-acts .ico, .chat-editing .ico { width: 16px; height: 16px; }
+.msg-acts .ico, .chat-editing .ico, .chat-comp .send .ico { width: 16px; height: 16px; }
 .chat-editing { justify-content: space-between; margin-bottom: var(--sp-4); padding-left: var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
 .chat-comp { gap: var(--sp-6); padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-10); border: 1px solid var(--edge); border-radius: var(--r); background: var(--panel); }
 .chat-input { position: relative; display: flex; flex: 1; min-width: 0; }
-.chat-comp textarea { flex: 1; min-width: 0; max-height: 40vh; field-sizing: content; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-15); padding: var(--sp-2) var(--sp-4); }
+.chat-comp textarea { flex: 1; min-width: 0; field-sizing: content; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-15); line-height: 20px; padding: var(--sp-4); }   /* 28px, the send's: one line shares its centre */
 .chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
 .chat-comp .send:disabled { opacity: .45; cursor: default; }
 .chat-comp textarea::placeholder { color: transparent; }
-.chat-placeholder { position: absolute; inset: 0; display: flex; align-items: baseline; gap: var(--sp-8); padding: var(--sp-2) var(--sp-4); font-size: var(--fs-15); color: var(--faint); white-space: nowrap; pointer-events: none; }
+:is(.chat-comp, .jb-chat) textarea { max-height: calc((100vh - var(--kb)) * .4); }   /* of what the keyboard leaves */
+.chat-placeholder { position: absolute; inset: 0; display: flex; align-items: baseline; gap: var(--sp-8); padding: var(--sp-4); font-size: var(--fs-15); line-height: 20px; color: var(--faint); white-space: nowrap; pointer-events: none; }
 .chat-prompt { flex: none; }
 .chat-keys { min-width: 0; overflow: hidden; gap: var(--sp-16); font-size: var(--fs-11); opacity: .55; }   /* .palette-foot's hint row, a step under the prompt: opacity dims the standard kbd chip whole (.content-hint's ghost) */
+:where(.touch) .chat-keys { display: none; }   /* a touch keyboard's Enter adds a line: a phone on its side, a tablet */
 .attach { flex: none; width: 28px; height: 28px; border-radius: var(--r-6); color: var(--muted); cursor: pointer; }
 .attach .ico { width: 18px; height: 18px; flex: none; }
 .composer-actions .attach { align-self: center; }
@@ -144,14 +150,16 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .msg-file .retry { font-weight: 600; }
 .msg-file :is(.retry, .drop):hover { background: var(--hover); }
 @media (max-width: 640px) {
-  .social { grid-template-columns: minmax(0, 1fr); padding: var(--sp-16) var(--sp-12) var(--dock-clear); }
+  .social { grid-template-columns: minmax(0, 1fr); padding: var(--sp-16) var(--sp-12) 0; }
+  .soc-list { padding-bottom: var(--list-end); }   /* scrolls under the nav */
+  .msg-row { max-width: none; } .msg { max-width: 78cqw; }   /* the bubble, not its row: my row also holds Edit and Delete */
   .social > * { grid-area: 1 / 1; }   /* stacked: a swipe back slides the thread off the chats */
   /* an open thread is the whole screen: no switcher (soc-2e); ‹ Chats, Back and a swipe right lead back */
   .social.in-thread { padding-bottom: var(--sp-12); }
   .canvas.in-thread > :is(.canvas-dots, .settings-gear) { display: none; }
   :is(.soc-out h1, .soc-head) { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
   .social.in-thread:not(.back) .soc-list, .social:not(.in-thread) .thread { display: none; }
-  .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) calc(var(--sp-12) + var(--kb)); }   /* full bleed, so it slides as a page; its field rides the keyboard */
+  .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) calc(var(--sp-12) + max(var(--kb), var(--safe-b))); }   /* full bleed, so it slides as a page; its field rides the keyboard, else clears the gesture bar (the keyboard covers it) */
   .social.back .thread { background: var(--bg-wash), var(--bg); box-shadow: var(--shadow-sm); }
   .th-back { display: flex; }
   .chat-keys { display: none; }
@@ -165,7 +173,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .swiping, .swiping * { user-select: none; -webkit-user-select: none; }   /* no text selection / flicker mid horizontal swipe */
 /* The strip floats OVER scrolling content, and --muted/--faint carry ALPHA in every dark theme — the last
    calendar row read straight through the labels. --nav-ink/--nav-pip are those tones pre-composited onto the page. */
-.canvas-dots { position: absolute; left: 50%; transform: translateX(-50%); bottom: 4px; z-index: 5; display: flex; gap: var(--sp-16); justify-content: center; align-items: center; padding: var(--sp-10);
+.canvas-dots { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(4px + var(--safe-b)); z-index: 5; display: flex; gap: var(--sp-16); justify-content: center; align-items: center; padding: var(--sp-10);
   --nav-ink: color-mix(in oklab, var(--ink) 58%, var(--bg)); --nav-pip: color-mix(in oklab, var(--ink) 38%, var(--bg)); }
 /* A full-width wash localized per control: same vertical ramp as .calendar::after, clipped sideways by a
    mask so scrolled content stays clean between the two. On the control itself, so it tracks its width. Each
@@ -291,7 +299,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 
 /* ---- App content (right pane) ---- */
 /* full-width padding (not max-width+margin) so margin-area wheel events scroll natively, not via JS */
-:root { --surface-top: 64px; --dock-clear: 56px; }   /* where a surface's title starts (Lists, Social); room under fixed content for the nav dock's band */
+:root { --surface-top: 64px; }   /* where a surface's title starts (Lists, Social) */
 .app { flex: 1; min-width: 0; padding: var(--surface-top) max(var(--sp-24), calc((100% - var(--list-w)) / 2)) 120px; height: 100%; overflow-y: auto; overflow-x: hidden; }
 .topbar {
   align-items: flex-start;
@@ -760,8 +768,10 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .rolled .areas .area ~ .area ~ .area ~ .area { display: none; }
 .rolled .areas::after { content: "…"; display: inline-flex; align-items: center;
   font-size: var(--fs-12); font-weight: 700; color: var(--muted); line-height: 15px; padding: 0 1px; }
-/* Project: "in", name and inbox glyph share one ink, a step darker than the muted description line under the title. */
-.proj { max-width: 7rem; font-size: var(--fs-12); color: color-mix(in oklch, var(--muted), var(--ink) 40%); white-space: nowrap; }
+/* Project: "in", name and inbox glyph share one ink, a step darker than the muted description line under the title.
+   Dark mixes toward --bg (Mac's rule): there --ink is near-white, so a mix toward it brightens instead. */
+.proj { max-width: 7rem; font-size: var(--fs-12); white-space: nowrap;
+  color: light-dark(color-mix(in oklch, var(--muted), var(--ink) 40%), color-mix(in oklch, var(--muted), var(--bg) 50%)); }
 .proj .proj-in { margin-right: 1px; }
 .proj .proj-nm { overflow: hidden; text-overflow: ellipsis; }
 /* Named chip: glyph and name share ONE baseline, and align-self (above) puts it on the title's. 1.875px = 15px × 3/24 =
@@ -1371,6 +1381,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .dialog-backdrop {   /* a dialog opened over another sits beside it (Import + its guide); under 760px they stack (block below) */
   position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 200; display: flex; align-items: center; justify-content: center;
 }
+.dialog-backdrop.draft { background: none; pointer-events: none; justify-content: flex-start; > .dialog { pointer-events: auto; } }   /* a draft's grid stays live under it */
 .dialog {
   background: var(--panel); border-radius: var(--r); box-shadow: var(--shadow);
   padding: var(--sp-20) var(--sp-24); min-width: 380px; max-width: 90vw;
@@ -1475,7 +1486,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .trash-foot { padding-top: var(--sp-10); border-top: 1px solid var(--hair); margin-top: var(--sp-4); }
 @media (max-width: 640px) {   /* phone: a bottom sheet, 44px rows */
   .trash-sheet { position: fixed; inset: auto 0 0 0; width: auto; min-width: 0; max-width: none; border-radius: var(--r-lg) var(--r-lg) 0 0;
-    padding: var(--sp-16) var(--sp-16) calc(var(--sp-16) + env(safe-area-inset-bottom)); }
+    padding: var(--sp-16) var(--sp-16) calc(var(--sp-16) + var(--safe-b)); }
   .trash-list { max-height: 68vh; }
   .trash-row { min-height: 44px; padding: var(--sp-8); }
   .trash-restore { height: 36px; }
@@ -2360,7 +2371,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 
 /* --- Mobile layout --- */
 @media (max-width: 640px) {
-  .app { --pad-x: 14px; max-width: none; padding: var(--sp-16) var(--pad-x) 100px; }
+  :root { --list-end: calc(100px + var(--safe-b)); }   /* where a phone list's scroll ends: clear of the nav and the bar's fade */
+  .app { --pad-x: 14px; max-width: none; padding: var(--sp-16) var(--pad-x) var(--list-end); }
   .topbar { align-items: center; margin-top: var(--sp-16); }
   .list { margin: 0 -8px; }
   /* The ghost row bleeds exactly as far as the list it stands in for. Its desktop bleed is -18px/+28px
@@ -2399,7 +2411,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .canvas-dots { --nav-shift: calc((var(--sp-12) + var(--gear)) / 2); height: 44px; padding: 0; left: calc(50% + var(--nav-shift)); }   /* padding paints nothing: dropping it is room */
   /* Full-width cards; nothing floats over the bottom band any more, so the nav reserve is the whole story. */
   #notif-stack { left: var(--sp-12); right: var(--sp-12); max-width: none; align-items: stretch;
-    bottom: calc(var(--foot) + var(--sp-6) + env(safe-area-inset-bottom, 0px)); }
+    bottom: calc(var(--foot) + var(--sp-6)); }
   .cl-mband, .cl-mtitle { font-size: var(--fs-22); left: 10px; }
   .touch .cl-dnum { font-size: var(--fs-13); }
   /* a day's name under the number, in sentence case, wrapping to two lines: beside it a 50px cell holds one letter */
@@ -2456,7 +2468,14 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 
 /* Hardware detection also covers Samsung's fine/hover media report. */
 :where(.touch) {
-  .attach { width: 44px; height: 44px; }
+  .composer-actions .attach { width: 44px; height: 44px; }
+  :is(.msg-acts button, .chat-editing button, :is(.chat-comp, .jb-chat) :is(.attach, .send), .th-back) { position: relative;
+    &::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); translate: -50% -50%; } }   /* a 44px hit, the face unchanged */
+  .msg-acts { gap: var(--sp-16); }   /* their hits meet, never overlap */
+  .msg-row { gap: var(--sp-8); }
+  .chat-comp { gap: var(--sp-16); }   /* the clip's and Send's hits meet, never overlap */
+  .chat-editing { margin-bottom: var(--sp-8); }
+  .msg-file { min-height: 44px; &.pend { padding-block: 0; } :is(.retry, .drop) { align-self: stretch; height: auto; min-width: 44px; } }
   .item { --row-pt: var(--sp-12); padding: var(--row-pt) var(--sp-8); }
   .row-chev.boxed { left: calc(var(--gut) + var(--d, 0) * (var(--sp-20) + var(--sp-2)) - var(--sp-20)); }
   .check::before { content: ""; position: absolute; inset: -11px; }   /* ~40px hit area, same small circle */
@@ -2480,7 +2499,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 
 /* #37d: with the soft keyboard up (app.js sets html.kb + --kb), the chips and Save stick to its top whenever the
    composer runs under it — one block, so no chip can slide under the Save bar. Sticky insets count from inside
-   .app's 100px bottom padding. Docked, the chips keep to one line that scrolls sideways, so the dock leaves the
+   .app's bottom padding (--list-end). Docked, the chips keep to one line that scrolls sideways, so the dock leaves the
    title room. The shadow + clip paint the panel edge to edge: what scrolls beneath never shows through. */
 @property --kb { syntax: '<length>'; inherits: false; initial-value: 0px; }   /* keyboard() sets both on their readers only */
 @property --dock { syntax: '<length>'; inherits: false; initial-value: 0px; }
@@ -2488,7 +2507,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 @property --field { syntax: '<length>'; inherits: false; initial-value: 44px; }   /* the jot bar's chat field's height (watchField) */
 .composer-dock { display: contents; }
 @media (max-width: 640px) {
-  .touch.kb .composer-dock { position: sticky; bottom: calc(var(--kb) - 100px); z-index: 1;
+  .touch.kb .composer-dock { position: sticky; bottom: calc(var(--kb) - var(--list-end)); z-index: 1;
     padding-bottom: var(--sp-8); background: var(--panel); box-shadow: 0 0 0 100vmax var(--panel); clip-path: inset(0 -100vmax); }
   /* 9A: one row from the card's left edge: the project, the set values then bare icons (sideways when crowded, under a
      fade), ··· and the go button. Cancel goes (a tap outside closes); the unset Size, Place and Relations, Show in
@@ -2509,7 +2528,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
   /* 9B: a pop from the dock opens in the keyboard's place (app.js popDock), so the dock rides it as it rides the keyboard */
   .touch .pop.dock { position: fixed; inset: auto 0 var(--keys); width: auto; min-width: 0; max-width: none; max-height: min(45vh, 70vh - var(--keys)); overflow-y: auto;   /* a keyboard's height */
-    border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + env(safe-area-inset-bottom));
+    border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + var(--safe-b));
     transition: transform .2s var(--ease-drawer); @starting-style { transform: translateY(100%); } }
   /* The browser's caret reveal knows neither the keyboard nor the dock: pad them out, and give the list room to lift its end. */
   .touch.kb .app { scroll-padding-bottom: calc(var(--kb) + var(--dock)); &::after { content: ''; display: block; height: var(--kb); } }
@@ -2532,7 +2551,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
    The gears move to the headers. Typing hides it (the composer docks over the keyboard, #37d), but a thread's field rides the keyboard. */
 .jot-bar, :is(.topbar, .cl-bar, .soc-list) .settings-gear { display: none; }
 .jot-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; gap: var(--sp-4); container-type: inline-size;
-  padding: 0 var(--sp-12) calc(var(--sp-12) + env(safe-area-inset-bottom, 0px));
+  padding: 0 var(--sp-12) calc(var(--sp-12) + var(--safe-b));
+  .kb & { padding-bottom: var(--sp-12); }   /* the keyboard already covers the gesture bar */
   &::before { content: ''; position: absolute; left: 0; right: 0; bottom: 0; z-index: -1; height: 128px; pointer-events: none; backdrop-filter: blur(12px);
     background: linear-gradient(color-mix(in srgb, var(--bg) 70%, transparent), color-mix(in srgb, var(--bg) 86%, transparent)); mask-image: linear-gradient(transparent, #000 55%); } }
 .jb-el { position: relative; flex: 0 1 44px; height: 44px; border-radius: var(--r-pill); overflow: hidden;
@@ -2565,7 +2585,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   width: auto;   /* never slides: a thread opens on Social */
   .jb-dest { padding-left: var(--sp-6); }
   .av { width: 20px; height: 20px; font-size: var(--fs-11); }
-  textarea { flex: 1; min-width: 0; max-height: 40vh; field-sizing: content; resize: none; padding: var(--sp-6) 0; border: 0; outline: 0; background: none;
+  textarea { flex: 1; min-width: 0; field-sizing: content; resize: none; padding: var(--sp-6) 0; border: 0; outline: 0; background: none;
     color: inherit; font: inherit; font-size: var(--fs-15); line-height: 20px; &::placeholder { color: var(--faint); } }
   :is(.attach, .send) { width: 32px; height: 32px; border-radius: var(--r-pill); }
   .send { flex: none; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; &:disabled { opacity: .45; cursor: default; } .ico { width: 16px; height: 16px; } } }
@@ -2575,15 +2595,15 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .ico { width: 20px; height: 20px; flex: none; }
   &.cd-new::before { left: calc(50% + var(--sp-4)); box-shadow: 0 0 0 2px var(--panel); } }
 @media (max-width: 640px) {
-  .bar-on .surface-lists { --foot: 72px; }   /* not html:has(): that re-matched <html> on every DOM write */
+  .bar-on .surface-lists { --foot: calc(72px + var(--safe-b)); }   /* not html:has(): that re-matched <html> on every DOM write */
   .bar-on .canvas > :is(.canvas-dots, .settings-gear) { display: none; }
   .bar-on .canvas > .jot-bar { display: flex; }
   .kb .bar-on .canvas:not(.in-thread) > .jot-bar { display: none; }
   .bar-on .canvas.in-thread > .jot-bar { bottom: var(--kb); }
   .kb .bar-on .canvas.in-thread > .jot-bar > .jb-el:not(.on) { display: none; }   /* typing, the field takes the width (VB-chat-typed) */
-  .bar-on .thread { padding-bottom: calc(var(--kb) + var(--field) + var(--sp-24)); > .chat-comp { display: none; } }   /* its last message and files stay above the field… */
+  .bar-on .thread { padding-bottom: calc(max(var(--kb), var(--safe-b)) + var(--field) + var(--sp-24)); > .chat-comp { display: none; } }   /* its last message and files stay above the field… */
   .bar-on .canvas.in-thread > .jot-bar::before { top: calc(-1 * var(--sp-24)); height: auto; }   /* …and its fade, which tracks the field's height */
-  #notif-stack.by-field { --foot: calc(var(--kb) + var(--field) + var(--sp-12)); }   /* toasts stand on the field, as on Plan */
+  #notif-stack.by-field { --foot: calc(max(var(--kb), var(--safe-b)) + var(--field) + var(--sp-12)); }   /* toasts stand on the field, as on Plan */
   .bar-on :is(.topbar, .cl-bar, .soc-list) .settings-gear { display: flex; position: static; flex: none; }
   /* G-A: a 60px header that stays on top, clear at rest (the glow runs from y=0); once rows scroll under it, it frosts */
   .bar-on .app { padding-top: 0; scroll-padding-top: 60px; container-type: scroll-state; }   /* the header's height (_seenTop); a state, not a scroll-driven animation: the motion dial zeroes those */
@@ -2593,11 +2613,11 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   @container scroll-state(scrollable: top) { .bar-on .topbar { background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(16px); } }
   /* A new task opens over the bar and rides the keyboard; the dock sticks to the host's own bottom. */
   .bar-on .canvas > .jb-host.open { display: flex; flex-direction: column; position: absolute; left: 0; right: 0; bottom: var(--kb); z-index: 6; max-height: calc(100% - var(--kb) - var(--sp-24));
-    overflow-y: auto; margin: 0; padding: var(--sp-8) var(--sp-8) 0; background: var(--panel); border-top: 1px solid var(--hair); }
+    overflow-y: auto; margin: 0; padding: var(--sp-8) var(--sp-8) 0; background: var(--panel); }
   .touch.kb .jb-host .composer-dock { bottom: 0; }
   /* KA (droid-9): the bar's new task is one sheet, [project][title] on one line, then the set
      values, the bare icons, ··· and a square go; the task/note toggle and Attach are in ··· */
-  .bar-on .canvas > .jb-host.open { padding: var(--sp-8) 0 0; border: 0; border-radius: var(--r-18) var(--r-18) 0 0; box-shadow: var(--shadow-pop); }
+  .bar-on .canvas > .jb-host.open { padding: var(--sp-8) 0 max(0px, var(--safe-b) - var(--kb)); border: 0; border-radius: var(--r-18) var(--r-18) 0 0; box-shadow: var(--shadow-pop); }
   .bar-on .jb-host .composer-card { padding: 0 var(--sp-8) var(--sp-6) var(--sp-10); margin: 0; border-radius: 0; background: none; box-shadow: none; }
   .bar-on .jb-host:not(.editing) .type-tog, .bar-on .jb-host .attach { display: none; }   /* a jotted task, on for its steps, keeps its done check */
   .bar-on .jb-host .composer-body { flex-flow: row wrap; align-items: center; gap: 0;
@@ -2642,7 +2662,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .jb-host { display: none; }
 /* ---- Account & settings: corner gear + popup ---- */
 /* The gear — calm idiom: faint hover fill, no border, no glow; clearly apart from the centered dot strip */
-.settings-gear { position: absolute; left: var(--sp-12); bottom: 10px; z-index: 5;   /* sits higher than the dot strip (4px) */
+.settings-gear { position: absolute; left: var(--sp-12); bottom: calc(10px + var(--safe-b)); z-index: 5;   /* sits higher than the dot strip (4px) */
   width: var(--gear); height: var(--gear);
   border: none; background: none; color: var(--muted); cursor: pointer;
   transition: background-color .15s var(--ease-out), color .15s var(--ease-out); }

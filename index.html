@@ -3,7 +3,7 @@
 <!-- ── Head + SVG icon sprite ── -->
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ADHeroD</title>
 <!-- Phone size catches Samsung's fine-pointer report; large screens with a mouse keep desktop controls. -->
 <script>if (navigator.maxTouchPoints > 0 && (Math.min(screen.width, screen.height) < 600 || !matchMedia('(any-pointer: fine)').matches)) document.documentElement.classList.add('touch');</script>
@@ -125,8 +125,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <!-- thumbtack tilted ~40° (not the map-pin i-pin; that stays for locations). One fill-only path: a stroked fill doubles a translucent ink (dark --muted) where they overlap -->
   <symbol id="i-tack" viewBox="0 0 24 24"><path transform="rotate(40 12 12)" fill="currentColor" stroke="none" d="M8 3h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2zM8 4h8v5.77L18.62 15H5.38L8 9.77zM11 14h2v6a1 1 0 0 1-2 0z"/></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
-  <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle (user 10-05) -->
-  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M2.5 11.5a9.5 8.5 0 0 1 19 0h-3.25a6.25 5.25 0 0 0-12.5 0z"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M2.5 11.5h19v9a3 3 0 0 1-3 3h-13a3 3 0 0 1-3-3zM12 15.3a1.6 1.6 0 0 0-.7 3.04V19.7h1.4v-1.36A1.6 1.6 0 0 0 12 15.3z"/></symbol>
+  <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle (user 10-05). 19 wide, 24 tall; up 4/3 so its ink mass centres on the box; joint and shift are multiples of 4/3, whole pixels in an 18px box at 1-3x (no seam) -->
+  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M2.526 9.333V8.141a9.474 9.474 0 0 1 18.947 0V9.333h-3.789V8.141a5.684 5.684 0 0 0-11.368 0V9.333z"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M2.526 9.333h18.947v9.545a3.789 3.789 0 0 1-3.789 3.789h-11.368a3.789 3.789 0 0 1-3.789-3.789zM12 13.5a2.021 2.021 0 0 0-.884 3.84V19.058h1.768v-1.718A2.021 2.021 0 0 0 12 13.5z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
@@ -982,7 +982,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button class="cl-seg inline-flex items-center justify-center" data-sk="Day / week / month" :data-sk-key="v[0]" :class="{ sel: clView === v }" @click="clSetView(v)" :title="v[0].toUpperCase()+v.slice(1)" :aria-label="v[0].toUpperCase()+v.slice(1)" x-text="v[0].toUpperCase()"></button>
           </template>
         </div>
-        <button class="cl-add inline-flex items-center justify-center" @click="clNewEvent()" title="New event"><svg class="ico"><use href="#i-plus"/></svg></button>
+        <button class="cl-add inline-flex items-center justify-center" @click="clNewEvent(null, clView === 'week')" title="New event"><svg class="ico"><use href="#i-plus"/></svg></button>
         <button class="cl-add cl-tray-btn inline-flex items-center justify-center" :class="{ on: clSideOpen }" @click="clSideOpen = !clSideOpen" title="Task panel (this view's tasks and unscheduled)"><svg class="ico" viewBox="0 0 24 24"><use href="#i-panel-r"/></svg></button>
       </div>
       </template>
@@ -1125,7 +1125,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <div class="cl-drop-clock" :style="'display:' + (clDropPreview?.clock && pg.cols.some(c => c.iso === clDropPreview.iso) ? 'block' : 'none') + ';top:max(9px, ' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%)'" x-text="clDropPreview?.clock"></div>
               </div>
               <template x-for="(col, ci) in pg.cols" :key="'c'+col.iso">
-                <div class="cl-pcol flex-col" :class="{ weekend: col.weekend }" :data-iso="col.iso" :style="'grid-column:' + (ci + 2)" @pointerdown="clBlockDragStart($event, col.iso)" @pointermove="clBlockDragMove($event)" @pointerup="clBlockDragEnd()" @dragenter.prevent="clDropOver($event, col.iso)" @dragover.prevent="clDropOver($event, col.iso)" @dragleave="!$el.contains($event.relatedTarget) && (clDropPreview?.iso === col.iso && (clDropPreview = null), _clDropEl === $el && _clDropCell(null))" @drop="clDropOn($event, col.iso)">
+                <div class="cl-pcol flex-col" :class="{ weekend: col.weekend }" :data-iso="col.iso" :style="'grid-column:' + (ci + 2)" @pointerdown="clGridDown($event, col.iso)" @pointermove="clGridMove($event)" @pointerup="clGridUp()" @click="clGridClick($event, col.iso)" @dragenter.prevent="clDropOver($event, col.iso)" @dragover.prevent="clDropOver($event, col.iso)" @dragleave="!$el.contains($event.relatedTarget) && (clDropPreview?.iso === col.iso && (clDropPreview = null), _clDropEl === $el && _clDropCell(null))" @drop="clDropOn($event, col.iso)">
 
                   <template x-if="clDropPreview && clDropPreview.iso === col.iso"><div class="cl-drop-ghost" :style="'top:'+(clDropPreview.min/14.4)+'%;height:'+Math.max(2.5, clDropPreview.h/14.4)+'%'"><span class="cl-drop-time" x-text="clDropPreview.label"></span><span class="cl-drop-t truncate" x-text="clDropPreview.t || ''"></span></div></template>
                   <!-- a block holding nothing packs with events/tasks; a holder (H-presence, p.terrain) sits behind them at z 1 -->
@@ -1137,7 +1137,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                     </div>
                   </template>
                   <template x-if="clStopHint(col) != null"><div class="cl-stop-hint muted-11" :style="'top:'+clStopHint(col)+'%'"><kbd x-text="keyTip('<kbd>⌘</kbd><kbd>z</kbd>', mod)"></kbd> undo stop</div></template>
-                  <div class="cl-block cl-block-drag" :style="clDragBand?.iso === col.iso ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : 'display:none'"></div><!-- no x-show: a string :style overwrites its display:none -->
+                  <div class="cl-block cl-block-drag" :style="clDraftBand(col.iso)"></div><!-- no x-show: a string :style overwrites its display:none -->
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
                   <!-- DEADLINE: a rule across the day at the hour it bites, the runway above it darkening
                        toward it. The label is STICKY to the bottom of the scroller, so a deadline can never be
@@ -1198,7 +1198,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <template x-if="mounted('social')">
     <div class="social" :class="{ 'in-thread': !!chat.open }" x-init="socialStart()" x-effect="chatSeen(openChatRow())">
       <template x-if="!session">
-        <div class="soc-out flex flex-col items-center"><h1>Social</h1><p>Sign in to chat with friends.</p><button type="button" class="primary" @click="settingsOpen = true">Sign in</button></div>
+        <div class="soc-out flex flex-col items-center"><h1>Social</h1><p x-text="localStorage.getItem('adherod.invite') ? 'Sign in to open the invite.' : 'Sign in to chat with friends.'"></p><button type="button" class="primary" @click="settingsOpen = true">Sign in</button></div>
       </template>
       <template x-if="session">
       <div class="soc-list">
@@ -1223,10 +1223,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="th-head flex items-center"><button type="button" class="th-back flex items-center" @click="openChat(null)"><svg class="ico" aria-hidden="true"><use href="#i-chev-l"/></svg>Chats</button><b x-text="chatPeer(openChatRow())"></b></div>
         <div class="msgs"><div class="msgs-in">
           <!-- own messages: tapping one (tabindex -1) or hovering shows Edit and Delete -->
-          <template x-for="m in chat.msgs" :key="m.id"><div class="msg-row flex items-center" :class="{ me: m.user_id === _acct() }">
+          <template x-for="(m, i) in chat.msgs" :key="m.id"><div class="contents"><template x-if="msgLine(i)"><p class="msg-line" x-text="msgLine(i)"></p></template><div class="msg-row flex items-center" :class="{ me: m.user_id === _acct() }">
             <template x-if="m.user_id === _acct()"><span class="msg-acts flex"><button type="button" class="msg-edit" @click="startEdit(m)" aria-label="Edit" title="Edit"><svg class="ico" aria-hidden="true"><use href="#i-edit"/></svg></button><button type="button" class="msg-del" @click="deleteMsg(m)" aria-label="Delete" title="Delete"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg></button></span></template>
             <div class="msg" :class="{ editing: m.id === chat.editing }" :tabindex="m.user_id === _acct() ? -1 : null" :title="chatWhen(m.created_at)"><span x-text="m.body"></span><template x-if="m.edited_at"><span class="msg-ed">edited</span></template><template x-for="id in m.attachments ?? []" :key="id"><button type="button" class="msg-file flex items-center" x-show="files[id]" @click="openFile(files[id])"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="files[id]?.name"></span><span class="fsz" x-text="fileSize(files[id]?.size ?? 0)"></span></button></template></div>
-          </div></template>
+          </div></div></template>
         </div></div>
         <div class="chat-editing flex items-center" x-show="chat.editing">Editing message<button type="button" @click="endEdit()" aria-label="Cancel edit" title="Cancel (Esc)"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></div>
         <div class="chat-pend flex" x-show="chat.pending.length &amp;&amp; !chat.editing"><template x-for="f in chat.pending" :key="f.key">
@@ -1234,7 +1234,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-if="f.failed"><button type="button" class="retry" @click="_upload(f)">Retry</button></template>
             <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
         </template></div>
-        <div class="chat-comp flex items-end"><div class="chat-input"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><div class="chat-placeholder" x-show="!chat.draft" aria-hidden="true"><span class="chat-prompt" x-text="'Message ' + chatPeer(openChatRow())"></span><span class="chat-keys flex"><span><kbd>↵</kbd> send</span><span><kbd>⇧</kbd><kbd>↵</kbd> new line</span><span><kbd>↑</kbd> edit last</span></span></div></div><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
+        <div class="chat-comp flex items-end"><div class="chat-input"><textarea rows="1" x-ref="chatInput" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" :placeholder="'Message ' + chatPeer(openChatRow())" aria-label="Message"></textarea><div class="chat-placeholder" x-show="!chat.draft" aria-hidden="true"><span class="chat-prompt" x-text="'Message ' + chatPeer(openChatRow())"></span><span class="chat-keys flex"><span><kbd>↵</kbd> send</span><span><kbd>⇧</kbd><kbd>↵</kbd> new line</span><span><kbd>↑</kbd> edit last</span></span></div></div><template x-if="narrow &amp;&amp; filesUrl &amp;&amp; !chat.editing"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template><button type="button" class="send flex items-center justify-center" @mousedown.prevent @click="sendChat()" :disabled="!chatCanSend()" :aria-label="chat.editing ? 'Save' : 'Send'"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button></div>
       </div>
       </template>
     </div>
@@ -1534,7 +1534,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
   <!-- ── Modal dialogs: confirm, shortcuts, trash, palette, filter editor ── -->
   <!-- All modal dialogs live in one backdrop; clicking it closes every open dialog (closeDialogs). -->
-  <div class="dialog-backdrop" :class="{ 'palette-backdrop': palette.open }" x-show="anyDialog()" x-cloak @click="closeDialogs()">
+  <div class="dialog-backdrop" :class="{ 'palette-backdrop': palette.open, draft: !anyDialog() }" x-show="anyDialog() || clDraft()" x-cloak @click="closeDialogs()">
 
     <!-- Import preview — a pasted {"adherod":1} payload and a dropped .ics both land here. NOTHING is
          written until it validates clean: any problem lists itself and the confirm button stays disabled. -->
@@ -1600,26 +1600,19 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </div>
 
     <!-- Keyboard shortcuts cheat-sheet (?) -->
-    <div class="dialog shortcuts-sheet" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" @click.stop x-show="shortcutsOpen">
+    <div class="dialog shortcuts-sheet" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" @click.stop x-show="shortcutsOpen" x-effect="if (shortcutsOpen) shortcutsBuilt = true">
       <div class="sheet-head flex items-center justify-between"><span>Keyboard shortcuts</span><button class="sheet-x flex-none inline-flex items-center justify-center" @click="shortcutsOpen = false" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
+      <!-- unopened, the sheet builds nothing: boot shows none of it -->
       <div class="sk-start">
-        <template x-for="s in [
+        <template x-for="s in shortcutsBuilt ? [
           ['<kbd>␣</kbd> or <span class=nowrap><kbd>⌘</kbd><kbd class=sk-letter>k</kbd></span>','Find anything','find'], ['<kbd class=sk-letter>q</kbd>','Capture a thought','add'],
           ['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd> then <kbd>↵</kbd>','Work through your list'], ['<kbd>⌘</kbd><kbd>↵</kbd>','Save and return'],
           ['<kbd class=sk-letter>x</kbd>','Mark it done'], ['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd>','Take it back']
-        ]" :key="s[1]">
+        ] : []" :key="s[1]">
           <div class="sk-tile"><span class="sk-key" x-html="s[0].replaceAll('⌘', mod)"></span><strong x-text="s[1]"></strong><template x-if="s[2]"><button class="sk-launch" :aria-label="s[1]" :title="s[1]" @click="shortcutsOpen = false; s[2] === 'find' ? openPalette() : quickAdd()">↗</button></template></div>
         </template>
       </div>
-      <div class="sk-reference">
-      <template x-for="g in shortcutGroups()" :key="g.l">
-        <div :class="g.r ? 'sheet-grp' : 'sk-section'"><div class="section-label" x-text="g.l"></div>
-          <template x-for="[k,d] in g.r || []" :key="d">
-            <div class="sk flex items-center gap-6 muted-12"><span x-html="k.replaceAll('⌘', mod).replaceAll(' · ', ' or ')"></span><span x-text="d"></span></div>
-          </template>
-        </div>
-      </template>
-      </div>
+      <div class="sk-reference" x-html="shortcutsBuilt ? shortcutsHtml() : ''"></div>
     </div>
 
     <!-- Bin, b — recover deletions + revert bulk changes from the last 30 days, across reloads -->
@@ -1769,7 +1762,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
     <!-- ── Event + block editors, delete dialog ── -->
     <!-- Event editor (calendar) -->
-    <template x-if="eventEdit"><div class="dialog event-editor" role="dialog" aria-modal="true" aria-label="Event" @click.stop>
+    <template x-if="eventEdit"><div class="dialog event-editor" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="eventEdit.draft ? clDraftPos() : ''" @pointerdown.outside="eventEdit.draft && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (eventEdit = null)">
       <div x-html="evWhenHtml('eventEdit', 'New event')"></div>
       <div class="ev-row flex"><textarea class="inp grow" rows="3" placeholder="Description" aria-label="Description" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea></div>
       <div class="section-label ev-color-label">Color</div>
@@ -1778,8 +1771,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div x-html="evActionsHtml('eventEdit')"></div>
     </div></template>
 
-    <!-- Block editor: a condition-bearing span (drag on week/day to create, click a band to edit) -->
-    <template x-if="blockEdit"><div class="dialog block-editor" role="dialog" aria-modal="true" aria-label="Block" @click.stop>
+    <!-- Block editor: a condition-bearing span (click a time on week/day to create, click a band to edit) -->
+    <template x-if="blockEdit"><div class="dialog block-editor" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!blockEdit.draft" aria-label="Block" @click.stop :style="blockEdit.draft ? clDraftPos() : ''" @pointerdown.outside="blockEdit.draft && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (blockEdit = null)">
       <div class="blk-presets flex flex-wrap gap-6" x-show="!blockEdit.id">
         <button type="button" class="blk-preset" @click="clBlockPreset('work')">Work 8:15–4:30 M–F</button>
         <button type="button" class="blk-preset" @click="clBlockPreset('lunch')">Lunch 12–1 M–F</button>

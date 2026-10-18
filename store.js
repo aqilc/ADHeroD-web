@@ -314,6 +314,11 @@ export const liveRefs = (kind, rows, ids) => (REFS[kind] || []).reduce((out, [co
   const ok = r => r[col] == null || !ids[p] || ids[p].has(r[col]);
   return p === 'location' ? out.map(r => ok(r) ? r : { ...r, [col]: null }) : out.filter(ok);
 }, rows);
+// A user-authored reminder's row, both adapters. The server brain owns fire_at/level; anchored rows carry no absolute `at`, and vice versa.
+export const reminderRow = ({ task_id, anchor, offset_minutes, at, severity, repeat, times, message }, anc = anchor || 'absolute') => ({
+  ref_type: 'task', ref_id: task_id, kind: 'user', anchor: anc,
+  offset_minutes: anc === 'absolute' ? null : (offset_minutes ?? 0), at: anc === 'absolute' ? (at ?? null) : null,
+  severity: severity ?? 'ping', repeat: repeat ?? null, times: times ?? null, message: message ?? null, paused: false });
 
 export function createLocalStore(opts = {}) {
   const storage = opts.storage || globalThis.localStorage;
@@ -670,20 +675,9 @@ export function createLocalStore(opts = {}) {
       async get(id) { return readScheduleItems().find(r => r.id === id) || null; },
     },
 
-    // User-authored reminders (kind:'user'). The server brain owns fire_at/level; the client owns the
-    // sentence — when + severity + repetition + message. Anchored rows carry no absolute `at`, and vice versa.
     reminders: {
       async list() { return readReminders(); },
-      async add({ task_id, anchor, offset_minutes, at, severity, repeat, times, message }) {
-        const anc = anchor || 'absolute';
-        return addRow(REMINDERS_KEY, writeReminders, {
-          ref_type: 'task', ref_id: task_id, kind: 'user', anchor: anc,
-          offset_minutes: anc === 'absolute' ? null : (offset_minutes ?? 0),
-          at: anc === 'absolute' ? (at ?? null) : null,
-          severity: severity ?? 'ping', repeat: repeat ?? null, times: times ?? null,
-          message: message ?? null, paused: false,
-        });
-      },
+      async add(fields) { return addRow(REMINDERS_KEY, writeReminders, reminderRow(fields)); },
       async update(id, fields) { return patchRow(REMINDERS_KEY, writeReminders, id, fields); },
       async remove(id) { return dropRow(REMINDERS_KEY, writeReminders, id); },
     },
