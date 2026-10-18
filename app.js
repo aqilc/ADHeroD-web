@@ -10,6 +10,7 @@ const _scale = (d) => [
   Object.entries(d.font).map(([k, v]) => `--font-${k}:${v}`),
   Object.entries(d.priority).map(([k, v]) => `--p${k}:${v}`),
   Object.entries(d.quick).map(([k, v]) => `--q-${k}:${v}`),
+  Object.entries(d.hue).map(([k, v]) => `--hue-${k}:${v}`),
 ].flat().join(';');
 const themeVars = (family, scheme) => ({ ...DESIGN.light, ...(scheme === 'dark' ? DESIGN.dark : {}), ...DESIGN.themes[family + '-' + scheme]?.over });
 const THEME_COLORS = Object.entries(DESIGN.themes).filter(([, t]) => t.family).map(([id, t]) => {
@@ -22,7 +23,8 @@ function applyTheme(mode, family) {
   const vars = scheme => _vars(themeVars(family, scheme));
   let el = document.getElementById('design-tokens');
   if (!el) { el = document.createElement('style'); el.id = 'design-tokens'; document.head.appendChild(el); }
-  el.textContent = `:root{${_scale(DESIGN)};${vars(mode === 'dark' ? 'dark' : 'light')}}` +
+  // --accent-hue: the light accent in both modes, for icons that keep their natural colour (the dark accent is a pastel)
+  el.textContent = `:root{${_scale(DESIGN)};--accent-hue:${themeVars(family, 'light').accent};${vars(mode === 'dark' ? 'dark' : 'light')}}` +
     (mode === 'system' ? `@media (prefers-color-scheme: dark){:root{${vars('dark')}}}` : '');
   if (mode === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = mode;
@@ -45,7 +47,7 @@ import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
 const SURF_HOME = SURFACES.includes('lists') ? 'lists' : SURFACES[0];
 import { createSupabaseStore } from './supabase-store.js';
-import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, peerName, whenLabel, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
+import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, byCreated, peerName, whenLabel, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
 let _sb, _inFlight = 0;
@@ -109,6 +111,7 @@ const CL_MNAMED = 62, CL_MCHIP = 14, CL_MMORE = 18;   // phone month cell, px: p
 const _groupMemo = new Map();   // byDay cache; busts on any task/event change
 const _placedMemo = new Map();  // task_id → placement ISO; busts on _calDataV (read once per row per pass)
 const _taskIdxMemo = new Map();  // _taskIdx(): children + inverse blocked_by, one pass per _rowV
+const _noKids = new Map();   // _kidsOf a leaf
 const _hay = new Map();   // task id -> picker search string; rebuilding it walked every parent chain per keystroke
 let _hayV = -1;   // _hay's data version (see pickerMatches)
 let _hayOf = new WeakMap();   // candidate array -> { hay, low }: a memoized pool (relationCandidates) reuses its haystack per keystroke
@@ -505,7 +508,7 @@ document.addEventListener('alpine:init', () => {
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
     surfaceOrder: SURFACES, surface: SURF_HOME,   // config.js owns the shipped set
-    chat: { chats: [], open: null, msgs: [], draft: '', drafts: {}, sending: {}, watch: null, editing: null, stash: '', name: '', pending: [] },   // stash: the draft an edit set aside; pending: files on their way up
+    chat: { chats: [], listed: false, open: null, msgs: [], draft: '', drafts: {}, sending: {}, watch: null, editing: null, stash: '', name: '', pending: [] },   // stash: the draft an edit set aside; pending: files on their way up
     attach: [],   // files on their way to a task: a new draft's ({ sid }) until it saves, then bound ({ taskId })
     files: {},   // attachments rows by id, chat's and task chips' both; a sign-in change reloads the page, so it's this account's
     filesUrl: FILES_URL,
@@ -1089,8 +1092,14 @@ document.addEventListener('alpine:init', () => {
       const sb = sbClient();
       if (!this.session || !sb || this.chat.watch) return;
       this.chat.watch = watchMessages(sb, e => this.chatChange(e));
-      this._setChats(await loadChats(sb) ?? []);
-      if (!this.narrow && !this.chat.open && this.chat.chats[0]) this.openChat(this.chat.chats[0].id);   // desktop shows a thread beside the list
+      await this.chatList();
+    },
+    // The first load and its Retry. Until a read lands the list says nothing: "No chats yet" is a fact, never a guess.
+    async chatList() {
+      const chats = await loadChats(sbClient());
+      if (!chats) return void this.notify('Chats not loaded. Check your connection', { actions: [{ label: 'Retry', fn: () => this.chatList() }] });
+      this._setChats(chats);
+      if (!this.narrow && !this.chat.open && chats[0]) this.openChat(chats[0].id);   // desktop shows a thread beside the list
     },
     async openChat(id) {
       if (this.chat.editing) this.endEdit();
@@ -1099,15 +1108,30 @@ document.addEventListener('alpine:init', () => {
       this.chat.draft = draft?.draft ?? '';
       this.chat.pending = draft?.pending ?? [];
       this.chat.open = id; this.chat.msgs = [];
-      await this.chatReload(false);
+      if (id && !(await this.chatReload(false)) && this.chat.open === id) this.notify('Messages not loaded. Check your connection', { actions: [{ label: 'Retry', fn: () => this.openChat(id) }] });
     },
     // The journal's 'message' loader too (_loaders): the open thread, and the list's previews when an edit or delete may have moved them.
     async chatReload(list = true) {
-      const sb = sbClient(), id = this.chat.open;
+      const sb = sbClient(), id = this.chat.open, had = new Set(this.chat.msgs.map(m => m.id));
       const [chats, msgs] = await Promise.all([list && loadChats(sb), id && loadMessages(sb, id)]);
       if (chats) this._setChats(chats);
-      if (msgs && this.chat.open === id) this.chat.msgs = msgs;
+      if (msgs && this.chat.open === id) {
+        const got = new Set(msgs.map(m => m.id));   // a row pushed mid-fetch stays; one shown before that the fetch lacks was deleted
+        this._setMsgs([...msgs, ...this.chat.msgs.filter(m => !had.has(m.id) && !got.has(m.id))].sort(byCreated));
+      }
       if (msgs) this._chatFiles(msgs);
+      return msgs;
+    },
+    // Rows that may lack the one being edited (deleted elsewhere, missed while offline, or by a redo): its edit ends,
+    // and words changed in it stay ahead of the draft it set aside. Unchanged, they'd re-send what was deleted on purpose.
+    _setMsgs(msgs) {
+      const edited = this.chat.msgs.find(m => m.id === this.chat.editing);
+      this.chat.msgs = msgs;
+      if (!edited || msgs.some(m => m.id === edited.id)) return;
+      const typed = this.chat.draft === edited.body ? '' : this.chat.draft;
+      this.endEdit();
+      this.chat.draft = typed + (typed && this.chat.draft ? '\n' : '') + this.chat.draft;
+      this.notify('Message deleted');
     },
     _chatFiles(msgs) { return this._loadFiles(msgs.flatMap(m => m.attachments ?? [])); },
     // Rows for ids not in the map yet, in one read. Signed out, gone or failed: their chips say "File unavailable" (a failed read retries next load).
@@ -1165,7 +1189,7 @@ document.addEventListener('alpine:init', () => {
     },
     // Every load of the list: a chat you joined (or a friend joined) since is named for you.
     _setChats(chats) {
-      this.chat.chats = chats;
+      this.chat.chats = chats; this.chat.listed = true;
       this._nameChats();
     },
     async _nameChats() {
@@ -1209,7 +1233,7 @@ document.addEventListener('alpine:init', () => {
     chatChange({ eventType, new: row, old }) {
       const chat = this.chat.chats.find(c => c.id === (row?.conversation_id ?? old?.conversation_id));
       if (eventType === 'DELETE') {   // carries only the id: a chat whose preview it was re-reads its new last message
-        this.chat.msgs = this.chat.msgs.filter(m => m.id !== old.id);
+        this._setMsgs(this.chat.msgs.filter(m => m.id !== old.id));
         if (this.chat.chats.some(c => c.last?.id === old.id)) loadChats(sbClient()).then(chats => chats && this._setChats(chats));
         return;
       }
@@ -1219,7 +1243,7 @@ document.addEventListener('alpine:init', () => {
         if (chat?.last?.id === row.id) chat.last = row;
         return;
       }
-      if (row.conversation_id === this.chat.open && !this.chat.msgs.some(m => m.id === row.id)) this.chat.msgs.push(row);
+      if (row.conversation_id === this.chat.open && !this.chat.msgs.some(m => m.id === row.id)) { this.chat.msgs.push(row); this.chat.msgs.sort(byCreated); }
       if (!chat) return void loadChats(sbClient()).then(chats => chats && this._setChats(chats));   // a chat we haven't loaded yet
       chat.last = row;
       if (row.user_id !== this._acct() && !(this.surface === 'social' && this.chat.open === chat.id)) {   // soc-1b: a quiet card, never for the chat on screen
@@ -1271,7 +1295,7 @@ document.addEventListener('alpine:init', () => {
     dropNote() { return !this.chatDrop() && !this.composerDrop() ? 'Drop a calendar file to import its events' : this.session ? 'Drop to attach' : 'Sign in to attach files'; },
     // Images, PDFs and text open in a tab (opened before the await, or it's a blocked popup); the rest download.
     async openFile(file) {
-      const tab = /^(image\/|application\/pdf$|text\/plain)/.test(file.mime) ? window.open('', '_blank') : null;
+      const tab = /^(image\/(png|jpe?g|gif|webp|avif|apng|bmp|x-icon|vnd\.microsoft\.icon|heic|heif|tiff|jxl)|application\/pdf|text\/plain)$/i.test(file.mime) ? window.open('', '_blank') : null;   // never SVG: its script would run on this origin
       const blob = await fileBlob(this.filesUrl, this.session.access_token, file.id);
       if (!blob) {
         tab?.close();
@@ -4114,7 +4138,7 @@ document.addEventListener('alpine:init', () => {
       const bar = this._inBar();   // KA: the jot bar's chip keeps the calendar outline, in the day's colour
       if (s) return [bar ? 'i-cal' : 'i-' + s.icon + '-fill', `var(--q-${s.key})`];
       if (on || d.recurrence || d.available_from) return [bar ? 'i-cal' : 'i-cal-fill', 'var(--muted)'];
-      return d.deadline_at ? ['i-flag-fill', 'var(--deadline)'] : ['i-cal', 'var(--muted)'];
+      return d.deadline_at ? ['i-flag-fill', 'var(--p1)'] : ['i-cal', 'var(--muted)'];
     },
     calSugApply(iso) { this.draft.on = iso; this.dreg = 'on'; this.pop = null; },
     dueLabel() {
@@ -5846,9 +5870,9 @@ document.addEventListener('alpine:init', () => {
       if (op.kind === 'complete') {
         // Forward: (re)run setCompleted, capturing the full completion delta so the reverse can undo the whole sweep, not just the target.
         if (op.mode === 'forward') {
-          const { id, done } = op.fwd, kids = this._taskIdx().kids, chain = this._chain(this.byId.get(id)?.parent_id);
-          const reopens = [id, ...chain].filter(x => recActive(this.byId.get(x)?.recurrence)).flatMap(x => descendantIds(this.tasks, x, kids));   // a repeating occurrence reopens its subtasks
-          const fx = this._fxSnap([id, ...pendingSweep(this.tasks, id, this.byId, kids), ...chain, ...reopens]);
+          const { id, done } = op.fwd, chain = this._chain(this.byId.get(id)?.parent_id);
+          const reopens = [id, ...chain].filter(x => recActive(this.byId.get(x)?.recurrence)).flatMap(x => descendantIds(this.tasks, x, this._kidsOf(x)));   // a repeating occurrence reopens its subtasks
+          const fx = this._fxSnap([id, ...pendingSweep(this.tasks, id, this.byId, this._kidsOf(id)), ...chain, ...reopens]);
           if (!done) this._reopenNow(this.byId.get(id)?.parent_id);
           if (!((!done || op.fwd.ticked || await this._checkAllItems(id)) && await this._withPending(id, () => this.store.tasks.setCompleted(id, done)))) {
             const ts = await this.store.tasks.list().catch(() => null), now = ts && new Map(ts.map(t => [t.id, t]));   // unreadable: a throw would skip a batch's rollback
@@ -6330,14 +6354,15 @@ document.addEventListener('alpine:init', () => {
     // ONE pass per data version (_rowV bumps on every tasks write): children in position order + whom each task blocks.
     // Replaces ~7 full scans per composer open (each childTasks template, the progress ring, descendants, relations).
     _taskIdx() {
-      return _memo(_taskIdxMemo, this._rowV, () => { const inv = new Map(), arch = [];
-        for (const o of this.tasks) {
+      return _memo(_taskIdxMemo, this._rowV, () => { const inv = new Map(), arch = [], tasks = this.tasks;
+        for (const o of window.Alpine.raw(tasks)) {   // ids only: no proxy per row
           for (const b of o.blocked_by ?? []) inv.has(b) ? inv.get(b).push(o.id) : inv.set(b, [o.id]);
           if (o.archived_at) arch.push(o.id);
         }
-        return { kids: buildByParent(this.tasks), inv, arch }; }, 1);
+        return { get kids() { return this._kids ??= buildByParent(tasks); }, inv, arch }; }, 1);   // kids on first read: a re-read's _rowsReading wants only inv
     },
     childTasks(id) { return (this._taskIdx().kids.get(id) ?? []).filter(t => t.id !== id); },
+    _kidsOf(id) { return this.hasChildren(id) ? this._taskIdx().kids : _noKids; },   // a leaf's walk builds no index
     // every archived row and all under it: an archived project's subtree leaves Overview, the pickers and the Lists nav
     _shelved() { const ix = this._taskIdx(); return ix.shelved ??= new Set(ix.arch.flatMap(id => descendantIds(this.tasks, id, ix.kids))); },
     addChecklistItem(text) {   // a checklist adds on top; steps, and a phone's (its ghost sits last), append in the order typed
@@ -7504,7 +7529,7 @@ document.addEventListener('alpine:init', () => {
     // show the confirm dialog and return true — the caller must stop and let the dialog finish the job.
     // Returns false when there's nothing to sweep, so the caller completes it directly.
     async confirmSweep(id, complete = () => this.applyComplete(id, true)) {
-      const sweep = pendingSweep(this.tasks, id, this.byId, this._taskIdx().kids);
+      const sweep = pendingSweep(this.tasks, id, this.byId, this._kidsOf(id));
       if (!sweep.length) return false;
       this.askConfirm({ message: 'Completing this will also complete:', bodyHtml: this._sweepHtml(sweep.map(x => this.byId.get(x)).filter(Boolean)), confirmLabel: 'Complete all', onConfirm: complete });
       return true;
@@ -7614,7 +7639,7 @@ document.addEventListener('alpine:init', () => {
       head?.classList.add('leave');
       for (const [id, fx] of held) if (fx.leaves && this.byId.get(id)?.completed_at) {   // undone meanwhile: it stays
         fx.leave = true;
-        fading.push(...descendantIds(this.tasks, id, this._taskIdx().kids).map(sub => this._rowEl(sub)).filter(Boolean));   // its shown subtree fades with it
+        fading.push(...descendantIds(this.tasks, id, this._kidsOf(id)).map(sub => this._rowEl(sub)).filter(Boolean));   // its shown subtree fades with it
       }
       for (const el of fading) el.classList.add('leave');
       setTimeout(() => {
@@ -7674,6 +7699,7 @@ document.addEventListener('alpine:init', () => {
     // Clearing the day (_clCleared: every task planned for today done) by THIS completion: a one-shot moment over the
     // page, named in work done, never a count. Built and removed here: no state, nothing reactive.
     _dayClearFx(id) {
+      if (!onCalendar(this.byId.get(id), this._placedMap())) return;   // not on today's page: no calendar grouped per tick
       const iso = isoDate(new Date()), day = this._clGroup(iso, iso)[iso] || [];
       const cleared = day.some(it => it.kind === 'task-block' && it.id === id) && this._clCleared(day);
       if (!cleared) return;
@@ -8674,7 +8700,7 @@ document.addEventListener('alpine:init', () => {
       // ...and an all-day item is simply a thing you are doing today, whether or not it also runs past today
       for (const it of col.bands) rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 });
       for (const p of [...col.timed].sort((a, b) => a.topPct - b.topPct || b.hPct - a.hPct)) {
-        const min = Math.round(p.topPct * 14.4), mins = Math.max(1, Math.round(p.hPct * 14.4));
+        const min = Math.round(p.topPct * 14.4), mins = Math.max(1, (p.it.end.slice(0, 10) > col.iso ? 1440 : this._clMin(p.it.end)) - min);   // the real end: hPct carries the grid's 20-minute floor
         // a timed due/deadline is still a MOMENT: it keeps its time but never claims a duration, nor splits a free gap
         if (this._clIsMark(p.it)) { rows.push({ key: p.it.kind + p.it.id + min, it: p.it, mark: true, min, mins: 0 }); continue; }
         if (end >= 0 && min - end >= CL_AG_GAP) rows.push({ key: 'free' + end, free: true, min: end, mins: min - end });
@@ -9462,6 +9488,9 @@ document.addEventListener('alpine:init', () => {
 
     async reloadAll(quiet) {
       const store = this.store, gen = ++this._loadGen;
+      // The store's re-pull (a socket drop errors every channel, a return after 30s hidden, online) lands here as 'all': the chat has the same hole.
+      // ceiling: an error on the chat channel alone isn't caught up; watch its status if a missed message ever shows with the store's channel up.
+      if (this.chat.watch) this.chatReload();
       // ONE parallel round-trip set (cloud): the whole account in a single query + the two side lists
       const [b, si, bd, rem, dn] = await Promise.allSettled([store.bootstrap(), store.scheduleItems.list(), store.blockDays.list(), store.reminders.list(), store.dayNotes.list()]);
       if (b.value) await this._loadFiles(b.value.tasks.flatMap(t => t.attachments ?? []));   // as loadTasks

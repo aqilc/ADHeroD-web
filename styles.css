@@ -151,7 +151,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   .canvas.in-thread > :is(.canvas-dots, .settings-gear) { display: none; }
   :is(.soc-out h1, .soc-head) { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
   .social.in-thread:not(.back) .soc-list, .social:not(.in-thread) .thread { display: none; }
-  .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) var(--sp-12); }   /* full bleed, so it slides as a page */
+  .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) calc(var(--sp-12) + var(--kb)); }   /* full bleed, so it slides as a page; its field rides the keyboard */
   .social.back .thread { background: var(--bg-wash), var(--bg); box-shadow: var(--shadow-sm); }
   .th-back { display: flex; }
   .chat-keys { display: none; }
@@ -216,7 +216,6 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .ov-card.sel { border-color: var(--accent); box-shadow: var(--shadow); }
 .ov-head { display: flex; align-items: center; gap: var(--sp-6); font-weight: 600; font-size: var(--fs-13); color: var(--ink); }
 .ov-head .pick-ico { color: var(--muted); }
-.ov-hint { font-size: var(--fs-12); color: var(--muted); }
 /* Lists roller — center-focused project picker. Sits on the LEFT of the deck (own flex column), bigger but fixed-size cards aren't cramped. */
 #ov-stage { display: flex; align-items: center; gap: clamp(var(--sp-12), 3vw, 40px); }
 .ov-roller { flex: none; width: 320px; height: min(78vh, 620px); display: flex; flex-direction: column; }
@@ -299,7 +298,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   h1 { margin: 0; font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
   .date { margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-13); }
 }
-.empty { color: var(--muted); text-align: center; padding: 56px 0; font-size: 14px; }
+.empty { color: var(--muted); text-align: center; padding: 56px 0; font-size: var(--fs-14); }
 .empty-sun { width: 48px; height: 28px; margin-bottom: var(--sp-6); overflow: visible; fill: none; stroke: var(--warm); stroke-width: 2.25; stroke-linecap: round;
   & .ray { transform-box: fill-box; transform-origin: center; } }
 .empty-sun ~ .empty-t { font-size: var(--fs-17); font-weight: 600; color: var(--ink); }
@@ -355,10 +354,11 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
   clip-path: shape(from 12.669% 54.379%, line to 44.511% 83.090%, line to 87.925% 34.868%, arc to 75.075% 23.299% of 8.646% ccw,
     line to 43.239% 58.660%, line to 24.248% 41.537%, arc to 12.669% 54.379% of 8.646% ccw, close);
 }
-/* Waiting on an incomplete blocker: the check IS a lock in the task's ink, no ring; its blocker chip reads red (.row-rel below).
+/* Waiting on an incomplete blocker: the check IS a lock in the task's ink, no ring, the row dimmed; its blocker chip's stop icon is red (.row-rel below).
    Still the check button: a click opens the blocked dialog, which can complete it, so on hover the shackle lifts (user 10-17).
    Pending keeps its border: the spinner is drawn by it. */
 .check.blocked:not(.pending) { border-width: 0; background: none; }
+.item.waiting .title, .item.waiting .m, .item.waiting .badge, .item.waiting .chk-list { opacity: .62; }
 .check .lock-ico { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; color: var(--pc, var(--muted)); pointer-events: none; transition: scale .16s var(--ease-out); }   /* visible: the lifted shackle rises past the viewBox */
 #i-lock .lk-shk { translate: 0 var(--lk-lift, 0px); transition: translate .18s var(--ease-out); }   /* user units: the lift scales with the glyph */
 @media (any-hover: hover) and (any-pointer: fine) { .check.blocked:hover:where(:not(.touch *)) { --lk-lift: -2.5px; --lk-op: .45; } }
@@ -513,7 +513,6 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .row-rel {
   .ico { width: 11px; height: 11px; flex: none; color: var(--rc, var(--muted)); } }
 .row-rel.blocked_by { --rc: var(--p1); }
-.item:not(.done) .row-rel.blocked_by .row-rel-name { color: var(--ink); }   /* a live block reads at ink; a done row's is over: grey */
 .item.done .row-rel { --rc: var(--muted); }
 .row-rel:is(:hover:where(:not(.touch *)), :active) .row-rel-name { text-decoration: underline; text-underline-offset: 2px; }   /* a link: it opens the task (app.js rowRelOpen) */
 /* the blocked-by stop sign is filled (solid) so it reads as an octagon, not a circle, at small sizes */
@@ -634,8 +633,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-more:hover .chk-more-txt { color: var(--muted); }
 /* block hover: flat rect reads as the composer's source area */
 .item.inblock:where(:not(.touch *)) { background-color: var(--hover); border-radius: 0; }   /* a finger's compat mouseover would leave it lit */
-.item.inblock.rb-top { border-top-left-radius: 8px; border-top-right-radius: 8px; }
-.item.inblock.rb-bottom { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+.item.inblock.rb-top { border-top-left-radius: var(--r-8); border-top-right-radius: var(--r-8); }
+.item.inblock.rb-bottom { border-bottom-left-radius: var(--r-8); border-bottom-right-radius: var(--r-8); }
 .item.dragging { opacity: .4; }
 .item.row-hidden { display: none; }   /* dragged task's descendants (move as one block) — applied imperatively */
 .item.edit-hidden { display: none; }  /* edited task's subtree, hidden while the composer covers the row (imperative, no list rebuild) */
@@ -794,7 +793,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .composer-actions .field { position: relative; margin-right: auto; min-width: 0; }
 .field.loc { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .proj-pick { display: inline-flex; align-items: baseline; gap: var(--sp-6); background: none; border: none; min-width: 0;
-  padding: var(--sp-2); color: var(--ink); font-size: 16px; font-weight: 600; letter-spacing: -.01em;
+  padding: var(--sp-2); color: var(--ink); font-size: var(--fs-16); font-weight: 600; letter-spacing: -.01em;
   .hash { color: var(--muted); font-weight: 500; }
   > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :where(html:not(.touch)) &:hover { opacity: .82; }   /* a finger's tap leaves :hover stuck on */
@@ -849,30 +848,34 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     font-family: inherit; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.4em;
     &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
 }
+:where(html:not(.touch)) .composer-card { padding-right: var(--gut); }   /* even sides: the right inset matches the check rail's */
 /* One line at the card's foot (comp-1 A): set values first with a filled icon in their colour (--cc) and their value,
    unset ones as bare icons on the right. Importance and size are icons only. The inline margin lines the first and last
    icons up with the title and the card's right edge. */
 .composer-opts {
   flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-8) 0 0;
-  :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-6)); padding-right: calc(var(--sp-24) + var(--sp-10));   /* touch keeps its order: the phone wasn't part of the pick. The right room is the go's 28px and a 6px gap */
+  :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-10)) 0 calc(-1 * var(--sp-6)); padding-right: calc(var(--sp-24) + var(--sp-10));   /* touch keeps its order: the phone wasn't part of the pick. The right room is the go's 28px and a 6px gap */
     &::after { content: ""; flex: 1; order: -1; }
     .field:has(> .chip.set) { order: -1; } }
   .field { position: relative; }
   .chip { height: 28px; padding: 0 var(--sp-6); gap: var(--sp-8); border: none; border-radius: var(--r-6); background: none;
     font-size: var(--fs-13); color: var(--muted); font-weight: 500;
+    :where(html:not(.touch)) & { gap: var(--sp-4); }   /* a value hugs its icon (KA); touch keeps 8 */
     &:hover { background: var(--hover); color: var(--ink); }
     &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* owns the open pop */
     &.set { color: var(--ink); .ico { color: var(--cc); } }
     :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; }   /* touch keeps words: its row scrolls */
     &.down .ico { rotate: 180deg; } }   /* Someday: the chevrons point down */
-  .chip-rem { --cc: var(--accent); }
-  .chip-loc { --cc: var(--hint-location); }
+  .chip-rem { --cc: var(--accent-hue); }   /* natural hues in both modes: the theme's dark hints are pastels */
+  .chip-loc { --cc: var(--hue-location); }
+  .chip-dur { --cc: var(--hue-duration); }
+  .chip-rel { --cc: var(--p1); }   /* blocked-by red */
   .ico { width: 16px; height: 16px; flex: none; }   /* 16 + the 8 gap: a value starts where the entries' text does */
 }
 .knock { fill: var(--panel); } path.knock { stroke: var(--panel); }   /* the -fill glyphs' cut-outs take the card colour; top level: a <use> clone matches against the sprite, not its host */
 /* Composer inline entries (Things-style): subtask/checklist rows + grayed ghost row */
 .entry-list { gap: 1px; }
-.entry { display: flex; align-items: flex-start; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative; font-size: 14px;
+.entry { display: flex; align-items: flex-start; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative; font-size: var(--fs-14);
   /* multiline entries: box, grip, chevron and trash anchor to the FIRST text line, never the row middle (1lh = the text's line box: the row carries its font size) */
   > :is(.chk-rect, .ghost-check, .entry-chk) { margin-top: calc((1lh - 16px) / 2); }
   .entry-chk { display: flex; }
@@ -948,8 +951,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   .chk-rect { border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--faint) 70%, transparent); }
   .chk-rect::before { content: ''; position: absolute; inset: calc(50% - 12px); border-radius: 50%; }
   .chk-rect.done { background: var(--accent) padding-box; box-shadow: none; &::after { display: none; } }
-  > .ghost .chk-rect { box-shadow: none; &::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: repeating-conic-gradient(color-mix(in srgb, var(--faint) 70%, transparent) 0 36deg, transparent 0 60deg);
-    mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); } }   /* six dashes: a border:dashed draws a "C" this small */
+  > .ghost .chk-rect { box-shadow: none; }
   > .ghost.active .chk-rect { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--faint) 70%, transparent); &::after { display: none; } }   /* typed: solid, like every ghost check */
   .cur .chk-rect { border-width: 1px; box-shadow: inset 0 0 0 2px var(--accent); }
   @media (any-hover: hover) and (any-pointer: fine) {   /* hover previews the tick: an open node lights, a done one goes hollow */
@@ -977,7 +979,13 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* small round check for subtask entries (smaller than the row .check) */
 .check.sm { width: 16px; height: 16px; border-width: 2px; }
 .ghost-check { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px dashed var(--faint); background: none; }
-.entry.chk:not(.step-ghost) .ghost-check { border-radius: var(--r-4); }   /* a step's ghost stays round, like the rail's nodes */
+.entry.chk:not(.step-ghost) .ghost-check { border-radius: var(--r-4); }
+/* every step ghost is the rail's ghost node (the empty state's "First step" too, so it reads as a step, not a subtask) */
+.entry.step-ghost .ghost-check { position: relative; border: 3px solid transparent; }
+.entry.step-ghost.active .ghost-check { border-color: transparent; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--faint) 70%, transparent); }
+:is(.entry-list.steps > .ghost .chk-rect, .entry.step-ghost:not(.active) .ghost-check)::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-conic-gradient(color-mix(in srgb, var(--faint) 70%, transparent) 0 36deg, transparent 0 60deg);
+  mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); }   /* six dashes: a border:dashed draws a "C" this small */
 /* empty state: up to three ghosts with an OR between each */
 .entry-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
   .entry { flex: 0 1 auto; min-width: 0; padding: 0; }   /* together from the left at their own width; shrinks so a long typed line wraps */
@@ -996,8 +1004,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 @container (width < 400px) { .entry-empty:has(> .entry:not(.chk)) { flex-direction: column; align-items: stretch; .entry { flex: none; } .entry-or { align-self: center; } } }
 .ico { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* Popover shell — floating panel of rows. .nav-pop is the same shell anchored to a nav row. */
-.pop, .nav-pop { position: absolute; z-index: 20; background: var(--panel); border: 1px solid var(--edge);
-  border-radius: var(--r); box-shadow: var(--shadow); padding: var(--sp-6); display: flex; flex-direction: column; gap: 1px; }
+.pop, .nav-pop { position: absolute; z-index: 20; background: var(--panel); border: none;   /* the composer card's idiom: no edge, r-lg; rows r-6 sit concentric (14 − 8 inset) */
+  border-radius: var(--r-lg); box-shadow: var(--shadow); padding: var(--sp-8); display: flex; flex-direction: column; gap: 1px; }
 .pop { top: calc(100% + 5px); left: 0; min-width: 192px; }
 .pop-scrim { position: fixed; inset: 0; z-index: -1; }   /* in the composer's stacking context: over the rows, under its own chips */
 .pop-sub-head, .rem-sug-head { padding: var(--sp-6) var(--sp-4) var(--sp-2); }
@@ -1010,7 +1018,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.del, &.del .ico { color: var(--p1); }
   .tick { margin-left: auto; color: var(--accent); }
   .rt { margin-left: auto; flex: none; max-width: 45%; color: var(--muted); font-variant-numeric: tabular-nums; } }   /* trailing hint */
-:is(.pop, .pick-list) .pop-input { padding: var(--sp-8) var(--sp-8); margin: var(--sp-2) 0 var(--sp-4); border: 1px solid var(--edge);
+:is(.pop, .pick-list) .pop-input { padding: var(--sp-8) var(--sp-8); margin: 0 0 var(--sp-4); border: 1px solid var(--edge);
   border-radius: var(--r-6); background: var(--panel); color: var(--ink); font-size: var(--fs-13); width: 100%;
   &::placeholder { color: var(--muted); } }
 /* Priority: horizontal row of color-tinted chips */
@@ -1032,10 +1040,10 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* min-width == max-width: the pop is FIXED at the width it has always rendered at. The one-off sentence used
    to push it there; once R2 cut that sentence to two clauses, width fell to the content (the month header),
    so paging months twitched the pop and the type-ahead placeholder truncated mid-word. */
-.pop.cal { min-width: 280px; max-width: 280px; gap: 1px; max-height: min(840px, calc(100vh - var(--kb) - var(--sp-16))); overflow-y: auto; > * { flex: none; } }
+.pop.cal { min-width: 288px; max-width: 288px; gap: 1px; max-height: min(840px, calc(100vh - var(--kb) - var(--sp-16))); overflow-y: auto; > * { flex: none; } }   /* 272 inside the sp-8 inset: a weekly repeat's sentence keeps two lines */
 .cal-type {
   width: 100%; padding: var(--sp-6) var(--sp-8) var(--sp-8); border: none; border-bottom: 1px solid var(--edge);
-  background: none; color: var(--ink); font-size: 14px; margin-bottom: var(--sp-4);
+  background: none; color: var(--ink); font-size: var(--fs-14); margin-bottom: var(--sp-4);
   &::placeholder { color: var(--muted); }
 }
 .cal-quick {
@@ -1046,13 +1054,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 
 .cal-head {
   padding: 1px var(--sp-4) var(--sp-6);
-  font-size: var(--fs-13); font-weight: 700;
+  font-size: var(--fs-15); font-weight: 700;   /* the month reads at its 15px nav glyphs' size */
   .cal-navs { gap: 1px; }
-  .cal-nav { width: 24px; height: 24px;
-    background: none; border: none; color: var(--muted); border-radius: var(--r-6);
-    .ico { width: 16px; height: 16px; }
-    &.dot .ico { width: 14px; height: 14px; }
-    &:hover { background: var(--hover); color: var(--ink); } }
 }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; touch-action: none;   /* drag on the due grid picks a from→due range */
   &.hint .cal-day { animation: req-pulse .35s ease 2; } }   /* fchip tap: "drag here" */
@@ -1100,13 +1103,10 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .chip .rep-on { width: 12px; height: 12px; flex: none; margin-left: -3px; color: var(--accent); }
 /* V3 phrase-builder zone — the repeat rule as one flowing tappable sentence (design: repeats-ui-explorations-v3.html) */
 .zone {
-  margin-top: var(--sp-4); padding: var(--sp-6) var(--sp-12); text-align: left;   /* horizontal > vertical: line-height 2.05 already pads the sentence vertically */
+  margin-top: var(--sp-4); padding: var(--sp-6) var(--sp-12) var(--sp-6) var(--sp-8); text-align: left;   /* horizontal > vertical: the 26px line already pads the sentence vertically; the rail's 24px buttons take 4 of the left */
   border: 1px solid var(--edge); background: none; border-radius: var(--r-8); min-height: 52px; width: 100%;
-  p { flex: 1; min-width: 0; font-size: var(--fs-13); line-height: 2.05; color: var(--ink); margin: 0; }
-  .zdel { float: right; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
-    border: none; background: none; border-radius: var(--r-6); color: var(--faint); margin: 2px 0 0 4px; cursor: pointer;
-    .ico { width: 12px; height: 12px; flex: none; }
-    &:hover { background: var(--hover); color: var(--p1); } }
+  p { flex: 1; min-width: 0; font-size: var(--fs-13); line-height: calc(24px + var(--sp-2)); color: var(--ink); margin: -1px 0 0; }   /* the rail's pitch, a line's middle on its button's (26/2 − 24/2) */
+  .zdel { float: right; margin: 1px 0 0 4px; }
   /* hint text dims everywhere in the card, not just the ghosted state (the phrase sentence needs it too) */
   .zhint { font-size: var(--fs-11); color: var(--muted); transition: color .15s var(--ease-out); }
 }
@@ -1123,23 +1123,18 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     .ico { width: 11px; height: 11px; }
     &:hover { color: var(--p1); } } }
 .zrail { gap: var(--sp-2); opacity: 1; transform: translateY(0); transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
+  .zbtn .ico { width: 14px; height: 14px; }   /* a hair under .icon-btn.sm's 15: the rail sits beside 13px text */
   @starting-style { opacity: 0; transform: translateY(-4px); } }
 .zone.paused p { color: var(--muted); }
 .zone.paused .c, .zone.paused .st, .zone.paused .st button { background: var(--hover); color: var(--muted); }
 .zone.act { border-color: var(--edge-hi); }   /* the active statement (spatial controls act on it) */
 .addrep { margin-top: var(--sp-2); }
-.zbtn {
-  width: 21px; height: 21px;
-  border: none; background: none; border-radius: var(--r-6); color: var(--muted); cursor: pointer;
-  .ico { width: 13px; height: 13px; flex: none; }
-  &:hover { background: var(--hover); color: var(--ink); }
-  &.on { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); }
-}
+.zbtn.on, .zbtn.on:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); }
 /* sentence chips (.c) + always-visible steppers (.st): own line-height — they must NOT inherit the sentence's tall wrap rhythm */
 .c {
   background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); font-weight: 500;
   font-size: var(--fs-12); border: none; border-radius: var(--r-pill); padding: 0 var(--sp-8);
-  /* centering lives HERE, not in per-chip utilities — a chip that forgets them must not inherit the sentence's 2.05 line-height */
+  /* centering lives HERE, not in per-chip utilities — a chip that forgets them must not inherit the sentence's tall line-height */
   display: inline-flex; align-items: center;
   height: 19px; vertical-align: middle;
   white-space: nowrap; cursor: pointer; transition: background .15s var(--ease-out);
@@ -1204,10 +1199,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* Reminders popover — the sentence rows. Severity reads twice: the lead icon's shape, and the
    dots+word control at the end. Never red (that is the deadline's alone). */
 .pop.rem-pop { min-width: 300px; }
-.rem-lead { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none; border-radius: var(--r-6); color: var(--muted); background: none; border: none; cursor: pointer;
-  .ico { width: 15px; height: 15px; flex: none; color: inherit; }   /* the severity colour, over .pop-item .ico */
-  &:hover { background: var(--hover); }
-  &.ping { color: var(--ink); } &.alarm { color: var(--warm-ink); } }
+.rem-row { .icon-btn .ico { color: inherit; }   /* the severity colour, over .pop-item .ico */
+  .rem-lead.ping { color: var(--ink); } .rem-lead.alarm { color: var(--warm-ink); } }   /* over .icon-btn:hover */
 .rem-seg { padding: 1px var(--sp-6); border-radius: var(--r-4); background: color-mix(in srgb, var(--hover) 70%, transparent); color: var(--ink); }
 .rem-tag { font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 /* ceiling: a tap-to-cycle button, not .seg; a second tap-to-cycle control makes it a primitive */
@@ -1217,20 +1210,17 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--faint); opacity: .4; }
   &.ping .dots i:nth-child(-n+2) { opacity: 1; background: var(--muted); }
   &.alarm .dots i { opacity: 1; background: var(--warm-ink); } }
-.rem-del { color: var(--faint); background: none; border: none; cursor: pointer; padding: 0 var(--sp-2); flex: none;
-  .ico { width: 13px; height: 13px; flex: none; color: inherit; } &:hover { color: var(--muted); } }
 /* a paused reminder still reads as itself, just stood down — never deleted, never hidden */
 .rem-row.paused { .rem-lead, .rem-sev { color: var(--faint); } .rem-seg { background: none; color: var(--faint); } .dots i { opacity: .25; } }
 /* suggestions: grounded, 1–3, one tap to become a row; a covered one is not rendered at all */
 .rem-sug { .plus { margin-left: auto; font-size: var(--fs-17); line-height: 1; color: var(--muted); padding: 0 var(--sp-2); } }
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
-/* light shell: r8, hairline, soft shadow; 28px rows at r4 (concentric: 8 − 4 inset) */
-.pop:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { padding: var(--sp-4); border-color: var(--hair); border-radius: var(--r-8); box-shadow: var(--shadow-sm); }
-:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); border-radius: var(--r-4); }
+/* light shell: soft shadow, 28px rows */
+.pop:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { box-shadow: var(--shadow-sm); }
+:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); }
+.pick-list .pop-item { border-radius: var(--r-4); }   /* concentric: its r8 − 4 inset */
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
-.proj-row { gap: var(--sp-8); }
-.hash-ico { width: 15px; height: 15px; flex: none; color: var(--muted); }
 /* Area picker: a wrapping grid of color-tinted chips with checkmarks (like the importance picker) */
 .area-grid { display: flex; flex-wrap: wrap; gap: var(--sp-6); padding: var(--sp-2) var(--sp-2) var(--sp-6); }
 .area-opt { display: inline-flex; align-items: center; gap: var(--sp-4); padding: var(--sp-4) var(--sp-8); border-radius: var(--r-pill);
@@ -1296,7 +1286,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   height: 28px; margin: 0; padding: 0; border: none; align-items: center;
   .ghost { display: none; }
   /* the go (orc-31 A, KA's): at the card's bar end, over the room .composer-opts leaves; a click is the form's submit, Enter's path */
-  .primary { position: absolute; right: 0; bottom: calc(100% + var(--sp-8) * 2); display: flex; align-items: center; justify-content: center;
+  .primary { position: absolute; right: calc(-1 * var(--sp-4)); bottom: calc(100% + var(--sp-8) * 2); border-radius: var(--r-6); display: flex; align-items: center; justify-content: center;   /* r-6: concentric in the card's corner, --r-lg 14 - 8 */
     width: 28px; height: 28px; padding: 0; border: 0; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out);
     > span { display: none; } .ico { display: block; width: 16px; height: 16px; stroke-width: 2.4; }
     &:active:not(:disabled) { transform: scale(.97); }
@@ -1348,10 +1338,11 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* relation chips shown under the description in the composer */
 .composer-rels { display: flex; flex-wrap: wrap; gap: var(--sp-6); }
 .rel-chip-remove {
-  border: none; background: none; color: var(--muted); font-size: 14px; line-height: 1;
+  border: none; background: none; color: var(--muted); font-size: var(--fs-14); line-height: 1;
   padding: 0; cursor: pointer; display: inline-flex; align-items: center;
   &:hover { color: var(--p1); }
 }
+.rel-chip .rel-chip-remove .ico { width: 11px; height: 11px; }   /* chip-scale, like the date band's .bx */
 /* Relations popup — display wells */
 .rel-wells { display: flex; gap: var(--sp-6); }
 .rel-well { flex: 1; min-width: 0; background: var(--hover); border-radius: var(--r-8); padding: var(--sp-6); min-height: 56px; }
@@ -1360,7 +1351,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   padding: var(--sp-2) var(--sp-6); margin-top: var(--sp-4); font-size: var(--fs-12); color: var(--ink); overflow: hidden;
   > .task-line { flex: 1; min-width: 0; gap: var(--sp-6); }
   .pick-name { flex: 0 1 auto; min-width: 0; max-width: 7rem; }   /* shrinks to its ellipsis before the remove × */
-  .proj { flex: 0 1 auto; min-width: 0; } }   /* wells are half-width — titles give way before the areas do */
+  .proj { flex: 0 1 auto; min-width: 0; }   /* wells are half-width — titles give way before the areas do */
+  .proj:not(:has(.proj-nm)) { flex: none; } }   /* an icon-only project keeps its width: shrunk to 0, its inbox glyph spills under the × */
 /* Drag affordance: cursor signals draggability (no visible glyph needed) */
 .rel-row { cursor: grab; &:active { cursor: grabbing; } }
 /* Rich task line (check + title + areas + #project); see taskLine() in app.js. */
@@ -1396,7 +1388,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .palette-head { padding: var(--sp-12) var(--sp-16); border-bottom: 1px solid var(--hair); }
 .palette-search-ico { width: 18px; height: 18px; color: var(--muted); }
 .palette-input { border: none; background: none; outline: none; color: var(--ink);
-  font-size: 16px; padding: 0; &::placeholder { color: var(--muted); } }
+  font-size: var(--fs-16); padding: 0; &::placeholder { color: var(--muted); } }
 .palette-section { padding: var(--sp-8) var(--sp-16) var(--sp-4); }
 .palette-results { gap: 1px; max-height: 54vh; overflow-y: auto; padding: 0 var(--sp-6) var(--sp-6); }
 .palette-row { gap: var(--sp-8); width: 100%; text-align: left; padding: var(--sp-8) var(--sp-10); border: none; background: none;
@@ -1719,6 +1711,9 @@ textarea.inp { resize: vertical; }
 .icon-btn .ico { width: 15px; height: 15px; flex: none; display: block; }
 .icon-btn:hover { border-color: var(--edge); color: var(--ink); }
 .icon-btn.del:hover { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
+/* the in-row size (popover rows, the repeat rail): 24px is WCAG 2.2's minimum target; hover fills like a row */
+.icon-btn:where(.sm) { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: var(--r-6); cursor: pointer;
+  &:hover { background: var(--hover); } }
 
 /* ===== Calendar (iOS/macOS-style: full-bleed scroll + overlaid chrome) ===== */
 /* --foot (declared on html) reserves the bottom nav strip (.canvas-dots, bottom:10px + its padding) plus a
@@ -2034,7 +2029,7 @@ textarea.inp { resize: vertical; }
 :where(.touch) { .cl-blk-stop { opacity: 1; } .cl-blk-stop::after { content: ""; position: absolute; right: -4px; bottom: -2px; width: max(100%, 40px); height: 32px; }
   .cl-block.is-running .cl-blk-tick { opacity: 0; } .cl-block.is-open .cl-blk-stop::after { top: -2px; bottom: auto; } }
 /* "⌘Z undo stop" under a just-stopped band, above the elapsed wash */
-.cl-stop-hint { position: absolute; left: var(--sp-6); z-index: 6; margin-top: 2px; font-size: var(--fs-11); color: var(--muted); white-space: nowrap; pointer-events: none; }
+.cl-stop-hint { position: absolute; left: var(--sp-6); z-index: 6; margin-top: 2px; white-space: nowrap; pointer-events: none; }
 /* missed: ashen grey — ink tint, never red */
 .cl-block.is-missed { color: var(--muted); --mark: var(--faint); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 .cl-block.is-missed .cl-blk-t { color: var(--muted); opacity: .7; }
@@ -2245,12 +2240,13 @@ textarea.inp { resize: vertical; }
 
 /* DAY agenda — a side panel that slides in over the right edge in day view, listing the day's items */
 /* Side panel: scheduled (this view) + unscheduled + the relocated composer. Slides in from the right. */
-.cl-side { position: absolute; top: var(--bar); right: 0; bottom: 0; width: var(--side); z-index: 21; padding: 12px 16px var(--foot); overflow-y: auto; background: color-mix(in srgb, var(--panel) 96%, transparent); transform: translateX(100%); transition: transform .32s var(--ease-drawer); }   /* z 21: overlaying (clSideOver), the pinned week head (20) runs under it */
+.cl-side { position: absolute; top: var(--bar); right: 0; bottom: 0; width: var(--side); z-index: 21; padding: 12px 16px var(--foot); overflow-y: auto; background: color-mix(in srgb, var(--panel) 96%, transparent); transform: translateX(100%); transition: transform .32s var(--ease-drawer), box-shadow .32s var(--ease-drawer); }   /* z 21: overlaying (clSideOver), the pinned week head (20) runs under it */
 .cl-side.open { transform: none; }
+.cl-side:not(.open) { box-shadow: none; }   /* off-screen, its leftward shadow still fell on the grid's right edge */
 @media (prefers-reduced-motion: reduce) { .cl-side { transition: opacity .15s ease; } .cl-side:not(.open) { opacity: 0; } }   /* fades in instead of sliding; leaves at once */
 .cl-wk, .cl-period-block { contain: paint; }
 .cl-side-top { margin-bottom: var(--sp-8); }
-.cl-side-h { font-size: 16px; font-weight: 700; }   /* sans, not display — calendar stays sans-serif per user */
+.cl-side-h { font-size: var(--fs-16); font-weight: 700; }   /* sans, not display — calendar stays sans-serif per user */
 .cl-side-x { border: 0; font-size: var(--fs-22); line-height: 1; padding: 0 var(--sp-4); }
 .cl-side-composer:empty { display: none; }   /* the relocated composer lives here; nothing to show when idle */
 .cl-side-composer.list { margin: 0 0 var(--sp-8); }   /* cancel .list's negative bleed so the composer sits inside the panel padding, not touching the edges */

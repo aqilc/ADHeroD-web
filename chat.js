@@ -21,6 +21,7 @@ export async function loadMessages(sb, chatId) {
   const rows = ok(await sb.from('messages').select('*').eq('conversation_id', chatId).order('created_at', { ascending: false }).limit(200));
   return rows && rows.reverse();
 }
+export const byCreated = (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id);   // thread order; a realtime row lands where its time says
 
 // `attachments` rides only when there are files: the column is new, and an unknown column fails the whole insert.
 export async function sendMessage(sb, uid, chatId, body, attachments = []) {

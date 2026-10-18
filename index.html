@@ -38,6 +38,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 <svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
   <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4a1 1 0 0 1 .4-.8A6 6 0 0 1 8 2c3 0 5 2 7.333 2q2 0 3.067-.8A1 1 0 0 1 20 4v10a1 1 0 0 1-.4.8A6 6 0 0 1 16 16c-3 0-5-2-8-2a6 6 0 0 0-4 1.528"/></symbol>
   <symbol id="i-prio" viewBox="0 0 24 24"><path d="m6 11 6-6 6 6"/><path d="m6 18 6-6 6 6"/></symbol>
+  <symbol id="i-prio-fill" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 3.6 19.9 11.5 17.6 13.8 12 8.2 6.4 13.8 4.1 11.5Z"/><path d="M12 10.6 19.9 18.5 17.6 20.8 12 15.2 6.4 20.8 4.1 18.5Z"/></symbol>
   <symbol id="i-cal" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
@@ -57,6 +58,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-size-short" viewBox="0 0 24 24"><g transform="translate(12,13.745) scale(1.2222) translate(-12,-12)" stroke-width="1.6364"><path d="M4.083 5h10.834a1.08 1.08 0 0 1 1.083 1.077v8.615c0 2.38 -1.94 4.308 -4.333 4.308h-4.334c-2.393 0 -4.333 -1.929 -4.333 -4.308v-8.615a1.08 1.08 0 0 1 1.083 -1.077 M16 8h2.5c1.38 0 2.5 1.045 2.5 2.333v2.334c0 1.288 -1.12 2.333 -2.5 2.333h-2.5"/></g></symbol>
   <symbol id="i-size-session" viewBox="0 0 24 24"><g transform="translate(12,12) scale(1.2875) translate(-12,-13)" stroke-width="1.5534"><path d="M5 11h14v-3h-14l0 3 M17.5 11l-1.5 10h-8l-1.5 -10 M6 8v-1a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v1"/></g></symbol>
   <symbol id="i-size-multi" viewBox="0 0 24 24"><path d="M1.77 11.49 L10.36 10.59 L10.73 10.64 L10.90 10.73 L11.04 10.85 L11.20 11.07 L11.27 11.34 L11.99 18.16 L12.01 18.55 L11.94 19.23 L11.73 19.86 L11.41 20.44 L10.97 20.96 L10.61 21.27 L10.23 21.51 L9.79 21.72 L9.34 21.85 L8.93 21.92 L5.25 22.30 L4.53 22.25 L3.84 22.05 L3.21 21.71 L2.66 21.25 L2.34 20.87 L2.08 20.44 L1.89 19.99 L1.76 19.51 L1.00 12.42 L1.04 12.10 L1.19 11.80 L1.45 11.59 L1.77 11.49M11.44 12.87 L13.56 12.65 L13.94 12.67 L14.31 12.76 L14.79 13.00 L15.18 13.36 L15.45 13.81 L15.58 14.30 L15.78 16.17 L15.78 16.46 L15.73 16.74 L15.64 17.01 L15.51 17.27 L15.33 17.51 L15.12 17.71 L14.88 17.89 L14.61 18.03 L14.32 18.13 L14.02 18.19 L12.02 18.40M9.97 5.78 L18.57 6.53 L18.85 6.62 L19.10 6.79 L19.28 7.09 L19.33 7.43 L18.73 14.30 L18.65 14.80M8.94 7.72 L9.05 6.53 L9.14 6.23 L9.29 6.03 L9.49 5.88 L9.72 5.80 L9.97 5.78M19.20 8.98 L21.32 9.17 L21.69 9.26 L22.04 9.42 L22.47 9.75 L22.78 10.17 L22.96 10.67 L22.99 11.17 L22.83 13.05 L22.78 13.33 L22.68 13.59 L22.54 13.85 L22.35 14.08 L22.14 14.28 L21.89 14.44 L21.62 14.57 L21.33 14.65 L21.03 14.70 L20.72 14.70 L18.71 14.52M3.57 2.15 L12.29 1.70 L12.48 1.74 L12.66 1.83 L12.82 1.96 L12.94 2.12 L13.06 2.42 L13.09 3.04M3.03 8.34 L2.75 2.94 L2.83 2.64 L3.02 2.39 L3.27 2.22 L3.57 2.15"/></symbol>
+  <symbol id="i-size-tiny-fill" viewBox="0 0 24 24"><g transform="translate(12,12) scale(1.1444) translate(-12,-12)" stroke-width="1.7476"><path d="M16.746 16.726a3 3 0 1 0 .252 -5.555"/><path opacity=".5" d="M8 5a1.4 1.4 0 0 0 -.6 1.2a1.4 1.4 0 0 0 .6 1.2 M12 5a1.4 1.4 0 0 0 -.6 1.2a1.4 1.4 0 0 0 .6 1.2"/><path d="M3 10h14v5a6 6 0 0 1 -6 6h-2a6 6 0 0 1 -6 -6z" fill="currentColor"/><path d="M3 14c.83 .642 2.077 1.017 3.5 1c1.423 .017 2.67 -.358 3.5 -1c.83 -.642 2.077 -1.017 3.5 -1c1.423 -.017 2.67 .358 3.5 1" class="knock" stroke-width="1.4"/></g></symbol>
+  <symbol id="i-size-short-fill" viewBox="0 0 24 24"><g transform="translate(12,13.745) scale(1.2222) translate(-12,-12)" stroke-width="1.6364"><path d="M16 8h2.5c1.38 0 2.5 1.045 2.5 2.333v2.334c0 1.288 -1.12 2.333 -2.5 2.333h-2.5"/><path d="M4.083 5h10.834a1.08 1.08 0 0 1 1.083 1.077v8.615c0 2.38 -1.94 4.308 -4.333 4.308h-4.334c-2.393 0 -4.333 -1.929 -4.333 -4.308v-8.615a1.08 1.08 0 0 1 1.083 -1.077z" fill="currentColor"/></g></symbol>
+  <symbol id="i-size-session-fill" viewBox="0 0 24 24"><g transform="translate(12,12) scale(1.2875) translate(-12,-13)" stroke-width="1.5534"><path d="M6 8v-1a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v1z M5 8h14v3h-14z M17.5 11l-1.5 10h-8l-1.5 -10z" fill="currentColor"/><path d="M6.5 11h11" class="knock" stroke-width="1.2"/></g></symbol>
+  <symbol id="i-size-multi-fill" viewBox="0 0 24 24"><path d="M3.57 2.15 L12.29 1.70 L12.48 1.74 L12.66 1.83 L12.82 1.96 L12.94 2.12 L13.06 2.42 L13.09 3.04 L12 9 L4 13 L3.03 8.34 L2.75 2.94 L2.83 2.64 L3.02 2.39 L3.27 2.22Z" fill="currentColor"/><path d="M9.97 5.78 L18.57 6.53 L18.85 6.62 L19.10 6.79 L19.28 7.09 L19.33 7.43 L18.73 14.30 L18.65 14.80 L10.5 14 L8.94 7.72 L9.05 6.53 L9.14 6.23 L9.29 6.03 L9.49 5.88 L9.72 5.80Z" class="knock" stroke-width="3.5"/><path d="M19.20 8.98 L21.32 9.17 L21.69 9.26 L22.04 9.42 L22.47 9.75 L22.78 10.17 L22.96 10.67 L22.99 11.17 L22.83 13.05 L22.78 13.33 L22.68 13.59 L22.54 13.85 L22.35 14.08 L22.14 14.28 L21.89 14.44 L21.62 14.57 L21.33 14.65 L21.03 14.70 L20.72 14.70 L18.71 14.52" class="knock" stroke-width="3.5"/><path d="M9.97 5.78 L18.57 6.53 L18.85 6.62 L19.10 6.79 L19.28 7.09 L19.33 7.43 L18.73 14.30 L18.65 14.80 L10.5 14 L8.94 7.72 L9.05 6.53 L9.14 6.23 L9.29 6.03 L9.49 5.88 L9.72 5.80Z" fill="currentColor"/><path d="M19.20 8.98 L21.32 9.17 L21.69 9.26 L22.04 9.42 L22.47 9.75 L22.78 10.17 L22.96 10.67 L22.99 11.17 L22.83 13.05 L22.78 13.33 L22.68 13.59 L22.54 13.85 L22.35 14.08 L22.14 14.28 L21.89 14.44 L21.62 14.57 L21.33 14.65 L21.03 14.70 L20.72 14.70 L18.71 14.52"/><path d="M1.77 11.49 L10.36 10.59 L10.73 10.64 L10.90 10.73 L11.04 10.85 L11.20 11.07 L11.27 11.34 L11.99 18.16 L12.01 18.55 L11.94 19.23 L11.73 19.86 L11.41 20.44 L10.97 20.96 L10.61 21.27 L10.23 21.51 L9.79 21.72 L9.34 21.85 L8.93 21.92 L5.25 22.30 L4.53 22.25 L3.84 22.05 L3.21 21.71 L2.66 21.25 L2.34 20.87 L2.08 20.44 L1.89 19.99 L1.76 19.51 L1.00 12.42 L1.04 12.10 L1.19 11.80 L1.45 11.59Z" class="knock" stroke-width="3.5"/><path d="M11.44 12.87 L13.56 12.65 L13.94 12.67 L14.31 12.76 L14.79 13.00 L15.18 13.36 L15.45 13.81 L15.58 14.30 L15.78 16.17 L15.78 16.46 L15.73 16.74 L15.64 17.01 L15.51 17.27 L15.33 17.51 L15.12 17.71 L14.88 17.89 L14.61 18.03 L14.32 18.13 L14.02 18.19 L12.02 18.40" class="knock" stroke-width="3.5"/><path d="M1.77 11.49 L10.36 10.59 L10.73 10.64 L10.90 10.73 L11.04 10.85 L11.20 11.07 L11.27 11.34 L11.99 18.16 L12.01 18.55 L11.94 19.23 L11.73 19.86 L11.41 20.44 L10.97 20.96 L10.61 21.27 L10.23 21.51 L9.79 21.72 L9.34 21.85 L8.93 21.92 L5.25 22.30 L4.53 22.25 L3.84 22.05 L3.21 21.71 L2.66 21.25 L2.34 20.87 L2.08 20.44 L1.89 19.99 L1.76 19.51 L1.00 12.42 L1.04 12.10 L1.19 11.80 L1.45 11.59Z" fill="currentColor"/><path d="M11.44 12.87 L13.56 12.65 L13.94 12.67 L14.31 12.76 L14.79 13.00 L15.18 13.36 L15.45 13.81 L15.58 14.30 L15.78 16.17 L15.78 16.46 L15.73 16.74 L15.64 17.01 L15.51 17.27 L15.33 17.51 L15.12 17.71 L14.88 17.89 L14.61 18.03 L14.32 18.13 L14.02 18.19 L12.02 18.40"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
   <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></symbol>
   <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
@@ -121,7 +126,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-tack" viewBox="0 0 24 24"><path transform="rotate(40 12 12)" fill="currentColor" stroke="none" d="M8 3h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2zM8 4h8v5.77L18.62 15H5.38L8 9.77zM11 14h2v6a1 1 0 0 1-2 0z"/></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
   <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle (user 10-05) -->
-  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M4.5 11V9.5a7.5 7.5 0 0 1 15 0V11h-3V9.5a4.5 4.5 0 0 0-9 0V11z"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M4.5 11h15v7a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3zM12 14a1.6 1.6 0 0 0-.7 3.04V18.4h1.4v-1.36A1.6 1.6 0 0 0 12 14z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M2.5 11.5a9.5 8.5 0 0 1 19 0h-3.25a6.25 5.25 0 0 0-12.5 0z"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M2.5 11.5h19v9a3 3 0 0 1-3 3h-13a3 3 0 0 1-3-3zM12 15.3a1.6 1.6 0 0 0-.7 3.04V19.7h1.4v-1.36A1.6 1.6 0 0 0 12 15.3z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
@@ -472,7 +477,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <span class="rel-chip" :class="[r.type, r.done && 'done']">
               <svg class="ico rel-ico" :class="r.type" :title="relTypeLabel(r.type)"><use href="#i-stop"/></svg>
               <button type="button" class="rel-chip-name" @click="openTaskById(r.id)" x-text="projName(r.id)"></button>
-              <button type="button" class="rel-chip-remove" @click="removeRelation(r.id, r.type)" title="Remove">×</button>
+              <button type="button" class="rel-chip-remove" @click="removeRelation(r.id, r.type)" title="Remove"><svg class="ico"><use href="#i-x"/></svg></button>
             </span>
           </template>
           <template x-for="id in editingTask()?.attachments ?? []" :key="id">
@@ -544,7 +549,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <!-- Importance (app-behavior flag, not a rank) -->
           <div class="field" @click.document.capture="pop === 'imp' && outside($event, $el) && popAway('imp', $event)">
             <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: draft.importance !== 'none', down: draft.importance === 'someday' }" :style="'--cc:' + pc(draft.importance)" :title="impName(draft.importance, 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'imp'" @click="togglePop('imp', $el)">
-              <svg class="ico"><use href="#i-prio"/></svg>
+              <svg class="ico"><use :href="draft.importance !== 'none' && !_inBar() ? '#i-prio-fill' : '#i-prio'"/></svg>
               <span x-text="impName(draft.importance, 'Importance')"></span>
             </button>
             <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
@@ -583,7 +588,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <!-- Duration -->
           <div class="field" @click.document.capture="pop === 'dur' && outside($event, $el) && popAway('dur', $event)">
             <button type="button" class="chip chip-dur inline-flex items-center" :class="{ set: durMinNow() }" :title="durLabel()" aria-haspopup="dialog" :aria-expanded="pop === 'dur'" @click="togglePop('dur', $el)">
-              <svg class="ico"><use :href="sizeNow() ? '#i-size-' + sizeNow() : '#i-clock'"/></svg>
+              <svg class="ico"><use :href="sizeNow() ? '#i-size-' + sizeNow() + (_inBar() ? '' : '-fill') : '#i-clock'"/></svg>
               <span x-text="durLabel()"></span>
             </button>
             <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :class="{ dock: popDock }" :style="popStyle()">
@@ -612,7 +617,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <div class="pop-sub-head" x-show="draft.reminders.length">Reminders</div>
               <template x-for="r in draft.reminders" :key="r.id">
                 <div class="pop-item rem-row" :class="{ paused: r.paused }">
-                  <button type="button" class="rem-lead" :class="[remLead(r).sev, remLead(r).repeating ? 'rep' : '']" @click="remLeadTap(r)">
+                  <button type="button" class="icon-btn sm rem-lead" :class="[remLead(r).sev, remLead(r).repeating ? 'rep' : '']" @click="remLeadTap(r)">
                     <svg class="ico"><use :href="'#' + remLead(r).icon"/></svg>
                   </button>
                   <span class="rem-seg" x-text="remWhen(r)"></span>
@@ -620,7 +625,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <button type="button" class="rem-sev" :class="remLead(r).sev" @click="remCycleSev(r)">
                     <span class="dots"><i></i><i></i><i></i></span><span x-text="remLead(r).sev === 'alarm' ? 'Alarm' : 'Ping'"></span>
                   </button>
-                  <button type="button" class="rem-del" @click="remDrop(r.id)"><svg class="ico"><use href="#i-x"/></svg></button>
+                  <button type="button" class="icon-btn sm rem-del" @click="remDrop(r.id)"><svg class="ico"><use href="#i-x"/></svg></button>
                 </div>
               </template>
               <div class="rem-sug-head" :class="{ sep: draft.reminders.length }" x-show="remSuggest().length">Suggested</div>
@@ -744,7 +749,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" class="pop-item clear" x-show="draft.on || draft.recurrence || draft.deadline_at || draft.available_from" @click="draft.on = ''; draft.dueTime = ''; draft.recurrence = null; draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
           </div>
           <!-- shared: calendar head + grid (in due mode the head carries the On|By register toggle) -->
-          <div class="cal-head flex items-center justify-between"><span class="flex items-center gap-8"><span x-text="calLabel()"></span><span class="dreg swt" :class="{ by: dreg === 'by' }" x-show="pop === 'due' && !repRules().length"><button type="button" data-reg="on" :class="{ on: dreg === 'on' }" :aria-pressed="dreg === 'on'" title="Tap a day to schedule it there (never red)" @click="setDreg('on')">On</button><button type="button" data-reg="by" :class="{ on: dreg === 'by' }" :aria-pressed="dreg === 'by'" title="Tap a day = the deadline; right-click does this from either mode" @click="setDreg('by')">By</button></span></span><span class="cal-navs flex items-center"><button type="button" class="cal-nav inline-flex items-center justify-center" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="cal-nav dot inline-flex items-center justify-center" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="cal-nav inline-flex items-center justify-center" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
+          <div class="cal-head flex items-center justify-between"><span class="flex items-center gap-8"><span x-text="calLabel()"></span><span class="dreg swt" :class="{ by: dreg === 'by' }" x-show="pop === 'due' && !repRules().length"><button type="button" data-reg="on" :class="{ on: dreg === 'on' }" :aria-pressed="dreg === 'on'" title="Tap a day to schedule it there (never red)" @click="setDreg('on')">On</button><button type="button" data-reg="by" :class="{ on: dreg === 'by' }" :aria-pressed="dreg === 'by'" title="Tap a day = the deadline; right-click does this from either mode" @click="setDreg('by')">By</button></span></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
           <!-- the days are html (calPaint), their events delegated here: per-day bindings were half of the pop's open -->
           <div class="cal-grid" :class="{ hint: calPulse }" x-effect="calPaint($el)" @mouseleave="pop === 'clnav' && (clPopHoverWk = '')" @pointerdown="calDown($event)" @pointermove="calMove($event)" @pointerup="calUp($event)" @pointercancel="_calDn = null; calH = null" @click.capture="_calDragged && ($event.stopPropagation(), _calDragged = false)"
             @focusin="calAt($event) && (calFocus = calAt($event).iso)" @keydown="calAt($event) && calKey($event, calAt($event))" @mouseover="calAt($event) && calDayMouseenterFor(calAt($event))" @click="calAt($event) && calDayClickFor(calAt($event))" @contextmenu="calAt($event) && ($event.preventDefault(), pop === 'due' && !repRules().length && calDayBy(calAt($event)))">
@@ -755,15 +760,15 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-for="(r, ri) in repRules()" :key="ri">
             <div class="zone flex gap-6" x-show="pop === 'due'" :class="{ paused: r.paused, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
               <div class="zrail flex-col flex-none">
-                <button type="button" class="zbtn inline-flex items-center justify-center" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion - tap for fixed schedule' : 'Fixed schedule - tap to repeat after completion'" @click="repIdx = ri; toggleFromCompletion()">
+                <button type="button" class="icon-btn sm zbtn" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion - tap for fixed schedule' : 'Fixed schedule - tap to repeat after completion'" @click="repIdx = ri; toggleFromCompletion()">
                   <svg class="ico"><use :href="r.from_completion ? '#i-repeat-done' : '#i-repeat'"/></svg>
                 </button>
-                <button type="button" class="zbtn inline-flex items-center justify-center" :class="{ on: r.paused }" :title="r.paused ? 'Resume' : 'Pause'" @click="repPause(r)">
+                <button type="button" class="icon-btn sm zbtn" :class="{ on: r.paused }" :title="r.paused ? 'Resume' : 'Pause'" @click="repPause(r)">
                   <svg class="ico"><use :href="r.paused ? '#i-play' : '#i-pause'"/></svg>
                 </button>
               </div>
               <p>
-                <button type="button" class="zdel" title="Delete repeat" @click="clearRepeat(ri)"><svg class="ico"><use href="#i-trash"/></svg></button>
+                <button type="button" class="icon-btn sm del zdel" title="Delete repeat" @click="clearRepeat(ri)"><svg class="ico"><use href="#i-trash"/></svg></button>
                 every
                 <span class="st inline-flex items-center"><button type="button" @click="repIdx = ri; setRepeatInterval(-1)">−</button><b x-text="r.interval || 1"></b><button type="button" @click="repIdx = ri; setRepeatInterval(1)">+</button></span>
                 <button type="button" class="c inline-flex items-center" @click="repIdx = ri; cycleRepeatFreq()" x-text="repeatUnitLabel(r)"></button>
@@ -1131,7 +1136,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                       <template x-if="p.it.live"><button type="button" class="cl-blk-stop" @click.stop="clStopBlock(p.it.id, p.it.src)" @keydown.enter.stop @keydown.space.stop>Stop</button></template>
                     </div>
                   </template>
-                  <template x-if="clStopHint(col) != null"><div class="cl-stop-hint" :style="'top:'+clStopHint(col)+'%'"><kbd x-text="keyTip('<kbd>⌘</kbd><kbd>z</kbd>', mod)"></kbd> undo stop</div></template>
+                  <template x-if="clStopHint(col) != null"><div class="cl-stop-hint muted-11" :style="'top:'+clStopHint(col)+'%'"><kbd x-text="keyTip('<kbd>⌘</kbd><kbd>z</kbd>', mod)"></kbd> undo stop</div></template>
                   <div class="cl-block cl-block-drag" :style="clDragBand?.iso === col.iso ? 'top:'+clDragBand.topPct+'%;height:'+clDragBand.hPct+'%;--cc:var(--accent)' : 'display:none'"></div><!-- no x-show: a string :style overwrites its display:none -->
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
                   <!-- DEADLINE: a rule across the day at the hour it bites, the runway above it darkening
@@ -1209,7 +1214,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <span class="when" x-text="chatWhen(c.last?.created_at)"></span><span class="last truncate" x-text="chatLine(c.last)"></span>
           </button>
         </template>
-        <p class="soc-empty" x-show="!chat.chats.length">No chats yet</p>
+        <p class="soc-empty" x-show="chat.listed &amp;&amp; !chat.chats.length">No chats yet</p>
         <button type="button" class="soc-invite" @click="inviteFriend()"><span class="av"><svg class="ico" aria-hidden="true"><use href="#i-link"/></svg></span><b>Invite a friend</b></button>
       </div>
       </template>
@@ -1337,7 +1342,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </button>
     </div>
     </div>
-    <div class="ov-hint"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>↵</kbd> open · <kbd>esc</kbd> close</div>
+    <div class="ov-hint muted-12"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>↵</kbd> open · <kbd>esc</kbd> close</div>
     <!-- Nav settings popovers live OUTSIDE the roller so its overflow (and the overview's backdrop-filter containing block) can't clip them; positioned via navPopXY (viewport coords). -->
     <template x-if="overview && navPopProj()">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
