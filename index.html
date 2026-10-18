@@ -1209,7 +1209,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
         </button></template></div>
         <template x-for="c in chat.chats" :key="c.id">
-          <button type="button" class="chat-row" :class="{ sel: c.id === chat.open, new: chatNew(c) }" @click="openChat(c.id)">
+          <button type="button" class="chat-row" :class="{ sel: c.id === chat.open, new: chatNew(c) }" :aria-current="c.id === chat.open" @click="openChat(c.id)">
             <span class="av" x-text="chatPeer(c).slice(0, 1).toUpperCase()"></span><b class="truncate" x-text="chatPeer(c)"></b>
             <span class="when" x-text="chatWhen(c.last?.created_at)"></span><span class="last truncate" x-text="chatLine(c.last)"></span>
           </button>

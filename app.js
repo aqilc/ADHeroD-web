@@ -1093,6 +1093,19 @@ document.addEventListener('alpine:init', () => {
     async socialStart() {
       const sb = sbClient();
       if (!this.session || !sb || this.chat.watch) return;
+      const acct = this._acct();
+      let saved = this._chatDraftStore()[acct] ?? {};
+      for (const [id, draft] of Object.entries(saved)) this.chat.drafts[id] = { draft, pending: [] };
+      Alpine.effect(() => {   // every chat's typed words, the open one's live (its own while an edit borrows the composer)
+        const texts = Object.fromEntries(Object.entries(this.chat.drafts).map(([id, d]) => [id, d.draft]));
+        if (this.chat.open) texts[this.chat.open] = this.chat.editing ? this.chat.stash : this.chat.draft;
+        const changed = Object.keys({ ...saved, ...texts }).filter(id => (texts[id] || '') !== (saved[id] || ''));
+        if (!changed.length) return;
+        const store = this._chatDraftStore(), mine = store[acct] ??= {};   // only what this tab changed: another tab's chats stay
+        for (const id of changed) if (texts[id]) mine[id] = texts[id]; else delete mine[id];
+        saved = texts;
+        this._writePending(store, 'adherod.chatDrafts');
+      });
       this.chat.watch = watchMessages(sb, e => this.chatChange(e));
       await this.chatList();
     },
@@ -1205,6 +1218,7 @@ document.addEventListener('alpine:init', () => {
     // Every load of the list: a chat you joined (or a friend joined) since is named for you.
     _setChats(chats) {
       this.chat.chats = chats; this.chat.listed = true;
+      this._chatFiles(chats.map(c => c.last).filter(Boolean));   // a files-only preview names its file
       this._nameChats();
     },
     async _nameChats() {
@@ -1222,9 +1236,16 @@ document.addEventListener('alpine:init', () => {
       const at = chat.last.created_at;
       if (await markRead(sbClient(), uid, chat.id, at)) chat.members.find(m => m.user_id === uid).last_read_at = at;
     },
+    // Typed words outlive the tab (a phone evicts it, a sign-in reloads the page), per account.
+    // ceiling: pending files are dropped on reload, uploaded ones too (their ids aren't kept); keep ids if a lost file is reported
+    _chatDraftStore() { try { return JSON.parse(localStorage.getItem('adherod.chatDrafts')) || {}; } catch { return {}; } },
     chatWhen: whenLabel,
     msgLine(i) { return threadLine(this.chat.msgs[i - 1]?.created_at, this.chat.msgs[i].created_at, this._nowDay && new Date()); },   // reads _nowDay: Today turns Yesterday at midnight
-    chatLine(m) { return m?.body || (m?.attachments?.length ? 'File' : ''); },   // a files-only message previews as "File"
+    chatLine(m) {   // a files-only message previews as its first file's name, and how many more
+      if (m?.body || !m?.attachments?.length) return m?.body ?? '';
+      const [first, ...more] = m.attachments;
+      return (this.files[first]?.name ?? 'File') + (more.length ? ` and ${more.length} more` : '');
+    },
     openChatRow() { return this.chat.chats.find(c => c.id === this.chat.open); },
     chatCanSend() { return this.chat.editing ? !!this.chat.draft.trim() : !this.chat.sending[this.chat.open] && (!!this.chat.draft.trim() || !!this.chat.pending.length) && this.chat.pending.every(f => f.row); },
     async sendChat() {
@@ -1253,7 +1274,7 @@ document.addEventListener('alpine:init', () => {
         if (this.chat.chats.some(c => c.last?.id === old.id)) loadChats(sbClient()).then(chats => chats && this._setChats(chats));
         return;
       }
-      if (row.attachments?.length) this._chatFiles([row]);
+      const files = row.attachments?.length && this._chatFiles([row]);
       if (eventType === 'UPDATE') {
         this.chat.msgs = this.chat.msgs.map(m => m.id === row.id ? row : m);
         if (chat?.last?.id === row.id) chat.last = row;
@@ -1263,8 +1284,10 @@ document.addEventListener('alpine:init', () => {
       if (!chat) return void loadChats(sbClient()).then(chats => chats && this._setChats(chats));   // a chat we haven't loaded yet
       chat.last = row;
       if (row.user_id !== this._acct() && !(this.surface === 'social' && this.chat.open === chat.id)) {   // soc-1b: a quiet card, never for the chat on screen
-        const line = this.chatLine(row).split('\n')[0];
-        this.notify(`${this.chatPeer(chat)}: ${line.length > 80 ? line.slice(0, 79) + '…' : line}`, { actions: [{ label: 'Open', fn: () => { this.goSurface('social'); this.openChat(chat.id); } }], timeout: 6000 });
+        Promise.resolve(!row.body && files).then(() => {   // a files-only card names its file
+          const line = this.chatLine(row).split('\n')[0];
+          this.notify(`${this.chatPeer(chat)}: ${line.length > 80 ? line.slice(0, 79) + '…' : line}`, { actions: [{ label: 'Open', fn: () => { this.goSurface('social'); this.openChat(chat.id); } }], timeout: 6000 });
+        });
       }
       this.chat.chats.sort((a, b) => (b.last?.created_at ?? '').localeCompare(a.last?.created_at ?? ''));
     },
@@ -5239,8 +5262,8 @@ document.addEventListener('alpine:init', () => {
     // keyed by editing id or this tab's _newKey) on EVERY change while the composer is open (x-effect → persistDraft).
     // Closing a dirty+unsaved draft KEEPS it (persisted) + makes it ⌘Z-undoable; reopening restores it.
     _pendingMap() { try { return JSON.parse(localStorage.getItem('adherod.draftPending')) || {}; } catch { return {}; } },
-    _writePending(map) {
-      try { localStorage.setItem('adherod.draftPending', JSON.stringify(map)); this._pSaveFailed = false; return true; }
+    _writePending(map, item = 'adherod.draftPending') {
+      try { localStorage.setItem(item, JSON.stringify(map)); this._pSaveFailed = false; return true; }
       catch { if (!this._pSaveFailed) this.toast('Storage is full. This draft won’t survive a reload'); this._pSaveFailed = true; return false; }
     },
     // Clearing a pending draft with its `sid` means THAT draft LANDED (saved, or reverted to the saved state) → its pending
@@ -9630,7 +9653,7 @@ document.addEventListener('alpine:init', () => {
       let local = 0;   // signed in, the wipe also takes what the cloud never had: signed-out tasks, the Bin, unsaved drafts
       try { const def = JSON.parse(localStorage.getItem('adherod.meta'))?.default_project_id; local = JSON.parse(localStorage.getItem('adherod.tasks') || '[]').filter(t => t.id !== def).length; } catch {}   // not the seeded Backlog; catch: a broken store's escape hatch still opens
       const all = trashView(this.journal, Date.now()), smallDays = new Set(all.filter(e => e.kind === 'small').map(e => new Date(e.ts).setHours(0, 0, 0, 0)));   // every account's: jWipe clears the whole journal
-      const bin = all.filter(e => e.kind !== 'small').length + smallDays.size, drafts = Object.keys(this._pendingMap()).length;   // a day's small changes are one row, as trashDays shows them
+      const bin = all.filter(e => e.kind !== 'small').length + smallDays.size, drafts = Object.keys(this._pendingMap()).length + Object.values(this._chatDraftStore()).reduce((n, chats) => n + Object.keys(chats).length, 0);   // a day's small changes are one row, as trashDays shows them; drafts: tasks' and every account's chats'
       const also = [local && `${this._nTasks(local)} saved on this device while signed out`, bin && `${bin} item${bin === 1 ? '' : 's'} in the Bin`, drafts && `${drafts} unsaved draft${drafts === 1 ? '' : 's'}`].filter(Boolean);
       this.askConfirm({
         message: this.session

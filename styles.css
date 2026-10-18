@@ -84,7 +84,9 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .soc-list { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; overflow-y: auto; }
 .chat-row, .soc-invite { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-10); align-items: center; padding: var(--sp-8) var(--sp-10);
   border: 0; border-radius: var(--r-8); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.chat-row:hover, .chat-row.sel, .soc-invite:hover { background: var(--hover); }
+.chat-row:hover, .soc-invite:hover { background: var(--hover); }
+.chat-row.sel { background: color-mix(in srgb, var(--accent) 13%, transparent); }   /* the open chat: the open/selected tint (.chk-sel, .open), never the hover fill */
+.chat-row.sel:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }   /* a hover steps up one, as .item.selected's */
 :is(.chat-row, .soc-invite, .jb-chat) .av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-13); font-weight: 700;
   color: var(--warm-ink); background: color-mix(in srgb, var(--warm) 15%, transparent); }
 .chat-row b { font-size: var(--fs-15); font-weight: 600; }
