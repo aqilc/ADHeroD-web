@@ -8763,10 +8763,10 @@ document.addEventListener('alpine:init', () => {
         + `--stk:${k};--peek:${k === n - 1 ? '100%' : CL_STACK_Y + 'px'};`;
     },
     // ONE look per item wherever a day column renders (week grid, peek pane): state, stack/cascade, cover, bleed.
-    clEvClass(p) { return p.it.kind + ' tier-' + p.tier + (p.stk ? ' cl-stk' : p.lane ? ' cl-casc' : '') + (this.clPlaced === p.it.id ? ' cl-placed' : '') + this.clTaskState(p.it) + (p.cov ? ' cl-cov' : ''); },
+    clEvClass(p) { return p.it.kind + ' tier-' + p.tier + (p.stk ? ' cl-stk' : p.lane ? ' cl-casc' : '') + (this.clPlaced === p.it.id ? ' cl-placed' : '') + this.clTaskState(p.it) + (p.cov ? ' cl-cov' : '') + (this.clHeld(p) ? ' cl-held' : ''); },
     clEvStyle(p, ix) { return 'top:' + p.topPct + '%;height:' + p.hPct + '%;' + this.clEvBox(p) + 'z-index:' + (2 + p.lane) + ';--i:' + ix + ';--cc:' + this.clItemColor(p.it); },
     clBlkClass(p) { const st = p.it.bd?.status;
-      return { 'is-running': p.it.live, 'is-done': st === 'done', 'is-missed': st === 'missed', 'is-skipped': st === 'skipped', 'is-open': this.clBandOpen(p.it), 'is-terrain': p.terrain, 'cl-stk': !!p.stk }; },
+      return { 'is-running': p.it.live, 'is-done': st === 'done', 'is-missed': st === 'missed', 'is-skipped': st === 'skipped', 'is-open': this.clBandOpen(p.it), 'is-terrain': p.terrain, 'cl-stk': !!p.stk, 'cl-held': this.clHeld(p) }; },
     clBlkStyle(p) { return 'top:' + p.topPct + '%;height:' + this.clBandH(p.it, p.hPct) + '%;' + this.clEvBox(p) + 'z-index:' + (p.terrain ? 1 : 2 + p.lane) + ';--cc:' + (p.it.color || 'var(--accent)'); },
     clDlClass(m, mi) { return (mi === 0 ? 'lead' : '') + (m.start.length > 10 ? ' at' : '') + this.clTaskState(m); },
     // C5: rows flow at a readable height; gaps become named free slots; proportion moves to the rail.
@@ -9098,11 +9098,12 @@ document.addEventListener('alpine:init', () => {
     clNewEvent(date, draft = false) {
       this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, countdown: false, notes: '', draft };
     },
-    clEditEvent(id) {
+    clEditEvent(id, tile = false) {
       const e = this.events.find(x => x.id === id); if (!e) return;
-      this.eventEdit = { id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi: e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10), all_day: !!e.all_day, color: e.color || null, countdown: !!e.countdown, notes: e.notes ?? '' };
+      const multi = e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10);
+      this.eventEdit = { draft: tile && !multi, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, countdown: !!e.countdown, notes: e.notes ?? '' };
     },
-    clItemClick(it) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
+    clItemClick(it, tile) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id, tile); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
     // ONE state class for every calendar mark of a task — chip, timeline event, agenda row, chapter band,
@@ -9172,8 +9173,10 @@ document.addEventListener('alpine:init', () => {
     // --- New block/event on the week/day grid. A click on empty time starts a 1h block at its slot; a new editor opened from
     // the grid (that click or ＋) is a draft: its band stays on the grid and its editor sits beside it with no backdrop. While a
     // draft is open a drag redraws it (a press inside it drags the nearer edge) and a click on another time moves it there.
+    // A timed tile opens its item the same way: the ghost stands in for the tile (clHeld) until save or close.
     // No drag creates without an editor (user 10-18): it fights the pan.
     clDraft() { const e = this.eventEdit || this.blockEdit; return e?.draft ? e : null; },
+    clHeld(p) { const d = this.clDraft(); return d?.id === p.it.id && (d.viewIso || p.it.src) === p.it.src; },
     clDraftFocus(el) { if (this.clDraft() && !document.documentElement.classList.contains('touch')) queueMicrotask(() => el.querySelector('.ev-title')?.focus({ preventScroll: true })); },   // a phone's keyboard would bury the grid
     _hm(t) { return +t.slice(0, 2) * 60 + +t.slice(3, 5); },
     // [start, end] minutes the draft covers on iso, to 24:00 when it runs past midnight; null off that day
@@ -9530,7 +9533,7 @@ document.addEventListener('alpine:init', () => {
     clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideOpen = true; this.$nextTick(() => this.editTask(t)); },
     clBlockWeekdays: [{ d: 0, l: 'S' }, { d: 1, l: 'M' }, { d: 2, l: 'T' }, { d: 3, l: 'W' }, { d: 4, l: 'T' }, { d: 5, l: 'F' }, { d: 6, l: 'S' }],
     clNewBlock(date, start, end, draft = false) { this.blockEdit = { date: date || isoDate(this._clAt()), start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], color: null, title: '', est_minutes: null, draft }; },
-    clEditBlock(id, viewIso) {
+    clEditBlock(id, viewIso, tile = false) {
       const b = this.blocks.find(x => x.id === id); if (!b) return;
       const start = timeOf(b.starts_at, '09:00'), end = timeOf(b.ends_at, '10:00'), bd = this.clBlockDay(b.id, viewIso), p = plannedOf(bd);
       // Occurrence⇄rule duality: opened from one of its days, the When fields are THAT day (occ) and move it alone;
@@ -9538,7 +9541,7 @@ document.addEventListener('alpine:init', () => {
       const occ = b.recurrence && viewIso && !b.all_day ? { date: (bd?.planned_start || bd?.actual_start || viewIso).slice(0, 10), start: timeOf(p?.[0] || '', start), end: timeOf(p?.[1] || '', end) } : null;
       this.blockEdit = { id: b.id, title: b.title || '', date: b.starts_at.slice(0, 10), start, end, ...occ, occ, rule: { start, end }, all_day: !!b.all_day, span: this._adSpan(b),
         weekdays: (b.recurrence?.weekdays || []).slice(), location_id: b.location_id || null, areas: (b.areas || []).slice(), color: b.color || null, est_minutes: b.est_minutes ?? null,
-        viewIso: viewIso || null };
+        viewIso: viewIso || null, draft: tile && !b.all_day && b.starts_at.slice(0, 10) === b.ends_at.slice(0, 10) };   // a day's tile alone: past midnight its ghost could sit off screen
     },
     // ONE day of a repeating block moves by an override keyed on its own day (src) — drag and editor alike, never the series.
     async _clMoveBlockDay(id, src, { starts_at, ends_at }, ops) {

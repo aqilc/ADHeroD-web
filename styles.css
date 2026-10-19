@@ -2018,6 +2018,7 @@ textarea.inp { resize: vertical; }
 .cl-blk-t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-11); line-height: 1.35; color: var(--txt); opacity: .5; }
 /* the draft's ghost: the tile it will be (.cl-event or .cl-block), ringed, with a grip on each edge a mouse can drag */
 .cl-block-drag:is(.cl-event, .cl-block) { z-index: 8; pointer-events: none; left: 0; overflow: visible; box-shadow: 0 0 0 2px var(--mark), 0 2px 8px rgb(0 0 0 / .14); }
+.cl-held { visibility: hidden; }   /* its editor's ghost stands in for it */
 .cl-block.cl-block-drag { right: 0; box-shadow: var(--blk-edge), 0 0 0 2px var(--mark); }
 .cl-grip { position: absolute; left: 50%; width: 18px; height: 4px; translate: -50%; border-radius: var(--r-pill); background: var(--mark); box-shadow: 0 0 0 2px var(--bg);
   &.t { top: -3px; } &.b { bottom: -3px; } .touch & { display: none; } }
