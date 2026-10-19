@@ -133,15 +133,20 @@ const _dayLabels = new Map();   // day-view label -> { iso, wd }: labels stay da
 const clEdgeEnd = () => { motion.stop('clEdge'); removeEventListener('dragenter', clEdgeOut, true); };
 const clEdgeOut = e => e.target.closest?.('.cl-pcol') || clEdgeEnd();
 // List-drag ghost: module-level — no binding reads it, so its writes trigger no Alpine effect
-let _dragGhost = null, _dragBlank = null, _dragOff = null, _dragIds = null, _dragGrab = null, _dragDescs = null, _dragSubDepth = 1, _dndHeld = null, _liftTop = null;   // _liftTop: the grabbed row's top as the drag lifts its subtree · _dragIds: the dragged tasks, in shown order · _dragGrab: the grabbed row, kept in the window · _dragDescs: their descendants, out of the list until the drop (see _editShift) · _dragSubDepth: their deepest subtree's depth
+let _dragGhost = null, _dragBlank = null, _dragOff = null, _dragDay = null, _dragIds = null, _dragGrab = null, _dragDescs = null, _dragSubDepth = 1, _dndHeld = null, _liftTop = null;   // _dragDay: a panel row's copy, { row, day } widths and which it shows · _liftTop: the grabbed row's top as the drag lifts its subtree · _dragIds: the dragged tasks, in shown order · _dragGrab: the grabbed row, kept in the window · _dragDescs: their descendants, out of the list until the drop (see _editShift) · _dragSubDepth: their deepest subtree's depth
 // Our drag image, held under the pointer by its grab offset. The browser's own is a snapshot we can neither place
 // nor test (it may carry the source's dim): a blank canvas hides it.
 function dragFollow(e) {   // a move onto a new element brings only a dragenter, so both move it
   if (!_dragOff) return;
-  _dragGhost.style.transform = `translate(${(e.clientX ?? 0) - _dragOff.x}px,${(e.clientY ?? 0) - _dragOff.y}px)`;
+  // a panel row's copy keeps the row's width over the panel and takes one day column's off it, its title wrapping; the swap is instant (a tween re-wraps the title every frame)
+  const day = !!_dragDay && !e.target?.closest?.('.cl-side');
+  if (_dragDay && day !== _dragDay.on) { _dragDay.on = day; _dragGhost.firstElementChild.style.width = (day ? _dragDay.day : _dragDay.row) + 'px'; }
+  const x = day ? Math.min(_dragOff.x, _dragDay.day - 16) : _dragOff.x;   // the grab stays inside the narrowed copy
+  _dragGhost.style.transform = `translate(${(e.clientX ?? 0) - x}px,${(e.clientY ?? 0) - _dragOff.y}px)`;
   _dragGhost.classList.toggle('compact', !!e.target?.closest?.('.peek'));
+  _dragGhost.classList.toggle('day', day);   // the row's title wraps only in the day column: at its own width the copy is the row
 }
-function dragImage(e, html, r) {   // r: the grabbed box
+function dragImage(e, html, r, day) {   // r: the grabbed box · day: a narrower width it takes off the panel
   if (!_dragGhost) {
     _dragGhost = document.createElement('div'); _dragGhost.className = 'drag-ghost'; _dragGhost.inert = true; document.body.appendChild(_dragGhost);   // inert: a hit on the copy at the drag origin cancels the drag
     _dragBlank = document.createElement('canvas'); _dragBlank.style.cssText = 'position:absolute;top:-9999px;width:1px;height:1px'; document.body.appendChild(_dragBlank);
@@ -149,6 +154,7 @@ function dragImage(e, html, r) {   // r: the grabbed box
   }
   _dragGhost.innerHTML = html; _dragGhost.hidden = false;
   _dragOff = { x: (e.clientX ?? 0) - r.left, y: (e.clientY ?? 0) - r.top };
+  _dragDay = day && day < r.width ? { row: r.width, day, on: false } : null;
   dragFollow(e);
   e.dataTransfer.setDragImage?.(_dragBlank, 0, 0);   // absent on synthesized DataTransfer (tests)
 }
@@ -1381,7 +1387,7 @@ document.addEventListener('alpine:init', () => {
     dotStripClick(e) {
       const v = e.target.closest('[data-v]'); if (v) return this.clSetView(v.dataset.v);   // the Plan dot's view segment (phone) — checked first, it sits INSIDE that dot
       const a = e.target.closest('[data-act]')?.dataset.act;   // …and Plan's actions beside it (segHtml)
-      if (a) return a === 'today' ? this.clToday() : a === 'side' ? (this.clSideOpen = !this.clSideOpen) : this.quickAdd();
+      if (a) return a === 'today' ? this.clToday() : a === 'side' ? this.clSideToggle() : this.quickAdd();
       const b = e.target.closest('[data-idx]'); if (!b) return;
       const i = +b.dataset.idx; i === this.surfaceIndex() ? this.openOverview() : this.goSurface(this.surfaceOrder[i]);
     },
@@ -9335,7 +9341,8 @@ document.addEventListener('alpine:init', () => {
       const el = this._clLifted = e.target?.closest?.('.cl-event, .cl-chip, .cl-block, .item, .cl-ch, .cl-ag-row'), col = el?.closest('.cl-pcol'), img = el?.cloneNode(true);
       el?.classList.add('cl-lift'); document.body.classList.toggle('calendar-lift', !!el);
       const r = el?.getBoundingClientRect();   // after the lift: it drops :active's press scale
-      if (img && e.dataTransfer) { img.style.cssText += `;top:0;left:0;width:${r.width}px;height:${r.height}px`; img.setAttribute('x-ignore', ''); dragImage(e, img.outerHTML, r); }   // x-ignore: Alpine would init the copy's directives
+      const day = el?.closest('.cl-side') && [...el.closest('.calendar').querySelectorAll('.cl-pcol, .cl-cell')].find(c => c.getClientRects().length)?.offsetWidth;   // a panel row's copy narrows to it over the grid (dragFollow), its title wrapping
+      if (img && e.dataTransfer) { img.style.cssText += `;top:0;left:0;width:${r.width}px;` + (day ? '' : `height:${r.height}px`); img.setAttribute('x-ignore', ''); dragImage(e, img.outerHTML, r, day); }   // x-ignore: Alpine would init the copy's directives
       // grab: minutes from the item's real start to the pointer, not from its drawn top (a stacked peer steps down) — the
       // drop keeps it, so a sideways move keeps the time. lead: how far that start sits above this column — a tail drawn from 00:00 began the day before.
       const at = col && start?.length > 10 ? minutesBetween(col.dataset.iso + 'T00:00', start) : null, cr = col?.getBoundingClientRect();
@@ -9555,7 +9562,11 @@ document.addEventListener('alpine:init', () => {
       const drag = _sheetDrag; if (!drag || e.pointerId !== drag.id) return;
       _sheetDrag = null; drag.side.style.transition = drag.side.style.transform = '';   // the class transition runs on from where the finger left it
       const dy = e.clientY - drag.y0;
-      if (e.type === 'pointerup' && (dy > drag.side.offsetHeight / 3 || drag.v > 0.4 && dy > 8)) { this.clSideOpen = false; if (this.composer.open) this.closeComposer(); }
+      if (e.type === 'pointerup' && (dy > drag.side.offsetHeight / 3 || drag.v > 0.4 && dy > 8)) this.clSideToggle(false);
+    },
+    clSideToggle(open = !this.clSideOpen) {   // every way to shut the panel closes the composer it hosted, else the edit stays open off-screen
+      const hosted = this.composer.open && this._inPanel(); this.clSideOpen = open;
+      if (hosted && !this._inPanel()) this.closeComposer();
     },
     clSideVisible() { return this.clSideOpen || (this.clView === 'day' && !this.clSideOver); },   // the panel is up in day view (auto) or when toggled — but where it OVERLAYS, auto-opening would bury the day you just opened
     _clRowsHtml(tasks, cache) {

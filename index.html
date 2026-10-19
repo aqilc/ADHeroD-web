@@ -983,7 +983,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </template>
         </div>
         <button class="cl-add inline-flex items-center justify-center" @click="clNewEvent(null, clView === 'week')" title="New event"><svg class="ico"><use href="#i-plus"/></svg></button>
-        <button class="cl-add cl-tray-btn inline-flex items-center justify-center" :class="{ on: clSideOpen }" @click="clSideOpen = !clSideOpen" title="Task panel (this view's tasks and unscheduled)"><svg class="ico" viewBox="0 0 24 24"><use href="#i-panel-r"/></svg></button>
+        <button class="cl-add cl-tray-btn inline-flex items-center justify-center" :class="{ on: clSideOpen }" @click="clSideToggle()" title="Task panel (this view's tasks and unscheduled)"><svg class="ico" viewBox="0 0 24 24"><use href="#i-panel-r"/></svg></button>
       </div>
       </template>
 
@@ -1169,14 +1169,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- staging tray: what still needs a slot (slipped + unscheduled). What IS scheduled is the timeline's job —
            listing it here twice was pure duplication. Composer relocates in here when editing. -->
       <aside class="cl-side" :class="{ open: clSideVisible() }" :inert="!clSideVisible()">   <!-- closed, it is only slid off: Tab reached it and slid the calendar sideways -->
-        <div class="cl-side-top flex items-center justify-between" @pointerdown="clSheetDown($event)" @pointermove="clSheetMove($event)" @pointerup="clSheetUp($event)" @pointercancel="clSheetUp($event)"><span class="cl-side-h">Needs a slot</span><button type="button" class="cl-side-x" @click="clSideOpen = false; if (composer.open) closeComposer()" aria-label="Close panel">×</button></div>
+        <div class="cl-side-top" @pointerdown="clSheetDown($event)" @pointermove="clSheetMove($event)" @pointerup="clSheetUp($event)" @pointercancel="clSheetUp($event)"></div>
         <!-- the one real composer, for a task with no row shown here; a row's opens at its row (relocateComposer) -->
         <ul class="list cl-side-composer"></ul>
         <!-- the sections (_clSideSecs) of REAL task rows, draggable onto a day or time; the two folds open in place -->
         <div @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
           <div class="cl-side-sec resched" x-show="clSideN('res') || clSideN('old')">Reschedule</div>
           <ul class="list cl-side-list flex-col" data-sec="res"><div class="rows" x-effect="renderRows($el, clSideRows('res'))"></div></ul>
-          <button type="button" class="cl-side-sec cl-side-more" x-show="clSideN('old')" :aria-expanded="clSideOlder" @click="clSideFold('old')"><svg class="ico sec-chev"><use href="#i-chev-d"/></svg><span x-text="clSideN('old') + ' older slipped'"></span></button>
+          <button type="button" class="cl-side-sec cl-side-more" x-show="clSideN('old')" :aria-expanded="clSideOlder" @click="clSideFold('old')"><svg class="ico sec-chev"><use href="#i-chev-d"/></svg><span x-text="clSideN('old') + ' older'"></span></button>
           <ul class="list cl-side-list flex-col" data-sec="old"><div class="rows" x-effect="renderRows($el, clSideRows('old'))"></div></ul>
           <div class="cl-side-sec" x-show="clSideN('week')">This week</div>
           <ul class="list cl-side-list flex-col" data-sec="week"><div class="rows" x-effect="renderRows($el, clSideRows('week'))"></div></ul>
@@ -1266,7 +1266,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
          <template x-for="v in clViews()" :key="v"><button type="button" class="pop-item" role="menuitemradio" :aria-checked="clView === v" data-sk="Day / week / month" @click="clSetView(v)"><svg class="ico" aria-hidden="true" x-show="clView === v"><use href="#i-check"/></svg><span class="ico" x-show="clView !== v"></span><span x-text="v[0].toUpperCase() + v.slice(1)"></span></button></template>
          <div class="nav-pop-sep"></div>
          <button type="button" class="pop-item" role="menuitem" @click="clToday()"><svg class="ico" aria-hidden="true"><use href="#i-sun"/></svg>Today</button>
-         <button type="button" class="pop-item" role="menuitemcheckbox" :aria-checked="clSideOpen" @click="clSideOpen = !clSideOpen"><svg class="ico" aria-hidden="true"><use href="#i-panel-r"/></svg>Task panel</button>
+         <button type="button" class="pop-item" role="menuitemcheckbox" :aria-checked="clSideOpen" @click="clSideToggle()"><svg class="ico" aria-hidden="true"><use href="#i-panel-r"/></svg>Task panel</button>
          <button type="button" class="pop-item" role="menuitem" @click="clNewEvent()"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>New event</button>
        </div></template>
        <div class="jb-el" :class="{ on: surface === 'lists' }">

@@ -693,10 +693,10 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .drag-ghost-row { display: flex; align-items: flex-start; gap: var(--sp-8); width: min(480px, calc(100vw - var(--sp-24))); /* readable card, bounded on phones */
   padding: var(--sp-8) var(--sp-10); border-radius: var(--r-8);
   background: var(--panel); box-shadow: var(--shadow-pop); opacity: .95; }
-.drag-ghost-row .row1 { flex-wrap: wrap; }
-.drag-ghost-row .r1l { flex-basis: 100%; flex-wrap: wrap; }
-.drag-ghost-row .r1r:empty { display: none; }
-.drag-ghost-row .title { flex-basis: 100%; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.drag-ghost-row .row1, .drag-ghost.day > .item .row1 { flex-wrap: wrap; }
+.drag-ghost-row .r1l, .drag-ghost.day > .item .r1l { flex-basis: 100%; flex-wrap: wrap; }
+.drag-ghost-row .r1r:empty, .drag-ghost.day > .item .r1r:empty { display: none; }
+.drag-ghost-row .title, .drag-ghost.day > .item .r1l .title { flex-basis: 100%; white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .drag-ghost-chip { display: none; padding: 3px var(--sp-10); border-radius: var(--r-pill);
   background: var(--panel); box-shadow: var(--shadow-pop);
   font-size: var(--fs-12); font-weight: 600; color: var(--ink);
@@ -708,11 +708,13 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .peek { position: fixed; top: 0; right: 0; bottom: 0; z-index: 55; width: min(328px, 44vw);
   display: flex; align-items: stretch; overflow: hidden; pointer-events: none; }   /* clipping wrapper, mirror of .move-rail: the off-screen slide never grows the page */
 .peek.on { pointer-events: auto; }
-.peek-panel { position: relative; flex: 1; min-width: 0; margin: var(--sp-12) 0;
-  background: var(--panel);
+.peek-panel { position: relative; flex: 1; min-width: 0; margin: var(--sp-12) 0; --wash-y: var(--sp-12);
   transform: translateX(100%); opacity: 0; transition: transform .18s var(--ease-out), opacity .18s var(--ease-out); }
-/* the calendar's two side panels, C1b tucked: inner corners rounded, shadow leftward, no box */
-.peek-panel, .cl-side { border-radius: var(--r-lg) 0 0 var(--r-lg); box-shadow: -1px 0 0 var(--hair), -10px 0 28px rgb(0 0 0 / .1); }
+/* the calendar's two side panels, flat (cal-side-5): the page's own wash, placed as the viewport paints it (--wash-y: the panel's
+   top), so the panel reads as more of the calendar; a hairline alone divides. Both sit at the viewport's right edge.
+   ceiling: the wash is placed for a panel at the viewport's top-right, so it drifts while a phone swipe moves the sheet; revisit if a panel docks elsewhere. */
+.peek-panel, .cl-side { box-shadow: -1px 0 0 var(--hair); background: var(--bg-wash) right 0 top calc(-1 * var(--wash-y)) / 100vw 100vh no-repeat, var(--bg); }
+.peek-panel { box-shadow: inset 1px 0 0 var(--hair); }   /* .peek clips anything outside the panel */
 .peek.on .peek-panel { transform: translateX(0); opacity: 1; }
 .peek-head { flex: none; padding: var(--sp-10) var(--sp-10) var(--sp-6); }
 .peek-date { font-size: var(--fs-22); font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
@@ -1455,8 +1457,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .sheet-head { font-family: var(--font-display); font-size: var(--fs-22); font-weight: 600; margin-bottom: var(--sp-10); }
 /* Quiet icon button base — no fill, muted; each site keeps its border, size, and hover delta.
    .icon-btn intentionally carries border:1px solid transparent (dialog control system, ui-lint). */
-.sheet-x, .cl-add, .loc-del, .loc-home, .icon-btn, .cl-side-x { background: none; color: var(--muted); }
-.sheet-x, .cl-add, .loc-del, .loc-home, .cl-side-x { cursor: pointer; }
+.sheet-x, .cl-add, .loc-del, .loc-home, .icon-btn { background: none; color: var(--muted); }
+.sheet-x, .cl-add, .loc-del, .loc-home { cursor: pointer; }
 /* overlay/sheet close control; the Plan bar's ＋ and tray toggle are the same button at the bar's 30px (.cl-add) */
 .sheet-x, .cl-add { width: 28px; height: 28px;
   border: none; border-radius: var(--r-8);
@@ -2281,14 +2283,13 @@ textarea.inp { resize: vertical; }
 
 /* DAY agenda — a side panel that slides in over the right edge in day view, listing the day's items */
 /* Side panel: scheduled (this view) + unscheduled + the relocated composer. Slides in from the right. */
-.cl-side { position: absolute; top: var(--bar); right: 0; bottom: 0; width: var(--side); z-index: 21; padding: 12px 16px var(--foot); overflow-y: auto; background: color-mix(in srgb, var(--panel) 96%, transparent); transform: translateX(100%); transition: transform .32s var(--ease-drawer), box-shadow .32s var(--ease-drawer); }   /* z 21: overlaying (clSideOver), the pinned week head (20) runs under it */
+.cl-side { position: absolute; top: var(--bar); right: 0; bottom: 0; width: var(--side); z-index: 21; padding: 12px 16px var(--foot); overflow-y: auto; --wash-y: var(--bar); transform: translateX(100%); transition: transform .32s var(--ease-drawer), box-shadow .32s var(--ease-drawer); }   /* z 21: overlaying (clSideOver), the pinned week head (20) runs under it */
 .cl-side.open { transform: none; }
 .cl-side:not(.open) { box-shadow: none; }   /* off-screen, its leftward shadow still fell on the grid's right edge */
 @media (prefers-reduced-motion: reduce) { .cl-side { transition: opacity .15s ease; } .cl-side:not(.open) { opacity: 0; } }   /* fades in instead of sliding; leaves at once */
 .cl-wk, .cl-period-block { contain: paint; }
-.cl-side-top { margin-bottom: var(--sp-8); }
-.cl-side-h { font-size: var(--fs-16); font-weight: 700; }   /* sans, not display — calendar stays sans-serif per user */
-.cl-side-x { border: 0; font-size: var(--fs-22); line-height: 1; padding: 0 var(--sp-4); }
+.cl-side-top { min-height: 44px; }   /* the phone sheet's grabber: a finger's height to drag it down by */
+@media (min-width: 641px) { .cl-side-top { display: none; } }   /* the bar's panel button closes it */
 .cl-side-composer:empty { display: none; }   /* the relocated composer lives here; nothing to show when idle */
 .cl-side-composer.list { margin: 0 0 var(--sp-8); }   /* cancel .list's negative bleed so the composer sits inside the panel padding, not touching the edges */
 /* D3: a section head is a THREAD LINE — its label sits in a gap in one hair rule, so it separates without competing
@@ -2302,7 +2303,7 @@ textarea.inp { resize: vertical; }
 .cl-side-list:not(:has(.item)) { display: none; }   /* an empty or folded section takes no room */
 .cl-side-list .item.editing-row ~ .item { order: 2; }   /* the composer (order 1) opens at its row: rows after it stay after it */
 .cl-side-sec.resched { color: var(--warm-ink); }   /* slipped wants attention, never the red that means a deadline */
-/* flat rows, no fold: the gutter shrinks to the row's own inset, and the bleed puts each check under "Needs a slot" */
+/* flat rows, no fold: the gutter shrinks to the row's own inset, and the bleed puts each check at the panel's text edge */
 .cl-side-list.list { --gut: var(--sp-10); margin: 0 calc(-1 * var(--sp-10)); content-visibility: auto; contain-intrinsic-size: auto 400px; }
 .cl-side-list:has(> .composer) { content-visibility: visible; }   /* auto's paint containment would clip the composer's pops and dim */
 .cl-side-list .item.editing-row { visibility: hidden; }   /* its tighter 5px top would peek above the card's 8 */
@@ -2312,7 +2313,7 @@ textarea.inp { resize: vertical; }
 .drag-ghost > .item { background-color: var(--row-hov); }   /* the tray row's copy wears its grabbed (hover) pill */
 @media (any-pointer: fine) { :where(:root:not(.touch)) .cl-side-list .item, :where(:root:not(.touch)) .drag-ghost > .item { --row-pt: 5px; } }   /* D3: tighter, so more clears the fold; a touch row keeps its height */
 .cl-side-list .item.sel { background: var(--hover); }
-.cl-side-list .proj-inbox { display: none; }   /* every undated task is in Backlog: the glyph would mark nearly every row */
+.cl-side-list .proj-inbox, .drag-ghost > .item .proj-inbox { display: none; }   /* every undated task is in Backlog: the glyph would mark nearly every row */
 .cl-side-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
 
 /* YEAR — 12 mini-months, heat-tinted days */
