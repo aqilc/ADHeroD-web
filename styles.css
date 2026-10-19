@@ -2352,7 +2352,8 @@ textarea.inp { resize: vertical; }
 /* title, notes and chip bar: the composer card's (.composer-card .content / .desc, .composer-opts) */
 .ev-title, .ev-notes { display: block; width: 100%; border: none; background: none; padding: 0; outline: none; color: var(--ink); font: inherit;
   &::placeholder { color: var(--muted); } }
-.ev-title { font-size: var(--fs-15); line-height: 18px; font-weight: 500; }
+.ev-title { font-size: var(--fs-15); line-height: 18px; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+  &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
 .ev-notes { margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 1.4; field-sizing: content; resize: vertical; max-height: calc(8lh); }   /* ceiling: field-sizing as .entry-txt (Safari 26.2); below it the notes keep one visible line */
 .cl-opts { margin-top: var(--sp-6); :where(html:not(.touch)) & { padding-right: 0; }   /* the go sits in the foot, not on this line */
   .chip[aria-expanded=true] { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* .chip.open's look, keyed on pop alone: a binding reading pop and the editor runs before the editor's x-if when both change in one tick */

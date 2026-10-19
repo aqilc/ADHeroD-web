@@ -1762,7 +1762,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- ── Event + block editors, delete dialog ── -->
     <!-- Event editor (calendar) -->
     <template x-if="eventEdit"><div class="dialog event-editor" :class="{ swapped: eventEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="clCardStyle(eventEdit)" @pointerdown.outside="eventEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (eventEdit = null)">
-      <input class="ev-title" type="text" placeholder="New event" aria-label="Title" :value="eventEdit.title" @input="eventEdit.title = $event.target.value">
+      <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="New event" x-init="clTitleInit($el, 'eventEdit')" x-effect="eventEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
       <textarea class="ev-notes" rows="1" placeholder="Description" aria-label="Description" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea>
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
@@ -1798,7 +1798,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <button type="button" class="blk-preset" @click="clBlockPreset('lunch')">Lunch 12–1 M–F</button>
         <button type="button" class="blk-preset" @click="clBlockPreset('evening')">Evening 6–10</button>
       </div>
-      <input class="ev-title" type="text" placeholder="At the office" aria-label="Title" :value="blockEdit.title" @input="blockEdit.title = $event.target.value">
+      <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="At the office" x-init="clTitleInit($el, 'blockEdit')" x-effect="blockEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(blockEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(blockEdit.date)[0]"/></svg><span x-text="clWhenLabel(blockEdit)"></span></button>

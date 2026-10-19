@@ -278,8 +278,9 @@ const PILL_SPEC = {
   loc:      { json: 0, label: (s, v) => '📍 ' + v,
               read: (s, d) => d.location.mode === 'any' ? null : (d.location.mode === 'except' ? 'away from ' : '') + (s.locations.find(l => l.id === d.location.ids[0])?.name ?? ''),
               commit: (s, d, v) => { const neg = /^away from /i.test(v), nm = String(v).replace(/^away from /i, ''); const l = s.locByName(nm); d.location = { mode: neg ? 'except' : 'only', ids: l ? [l.id] : [] }; }, clear: (s, d) => { d.location = { mode: 'any', ids: [] }; }, snapshot: (s, d) => ({ mode: d.location.mode, ids: [...d.location.ids] }), restore: (s, d, x) => { d.location = x ? { mode: x.mode, ids: [...x.ids] } : { mode: 'any', ids: [] }; } },
+  // future-guard (no test reds it): refreshRecurrenceDue seeds the composer's day, never an editor's
   rec:      { json: 1, label: (s, v) => s.recurrenceLabel(v), read: (s, d) => d.recurrence || null,
-              commit: (s, d, v) => { d.recurrence = v; s.refreshRecurrenceDue(); }, clear: (s, d) => { d.recurrence = null; }, snapshot: (s, d) => d.recurrence ? JSON.parse(JSON.stringify(d.recurrence)) : null, restore: (s, d, x) => { d.recurrence = x || null; if (d.recurrence) s.refreshRecurrenceDue(); } },
+              commit: (s, d, v) => { d.recurrence = v; if (!_nlpFocus?.cal) s.refreshRecurrenceDue(); }, clear: (s, d) => { d.recurrence = null; }, snapshot: (s, d) => d.recurrence ? JSON.parse(JSON.stringify(d.recurrence)) : null, restore: (s, d, x) => { d.recurrence = x || null; if (d.recurrence) s.refreshRecurrenceDue(); } },
   deadline: { json: 1, label: (s, v) => '⚑ ' + (v.only ? 'only ' : v.from ? dueBadge(v.from).label + ' – ' : '') + dueBadge(v.iso).label + (timeOf(v.iso) ? ' ' + s.fmtTime(timeOf(v.iso)) : ''),
               read: (s, d) => { if (!d.deadline_at) return null; const from = (d.available_from || '').slice(0, 10), only = !!from && from === d.deadline_at.slice(0, 10); return { iso: d.deadline_at, only, from: only ? '' : from }; },
               commit: (s, d, v) => { d.deadline_at = v.iso; if (v.only || v.from) d.available_from = v.from || v.iso.slice(0, 10); },   // only = walled both sides; from = a range ("next month")
@@ -4603,7 +4604,7 @@ document.addEventListener('alpine:init', () => {
       const tok = matchTrailingToken(pending, new Date(), this.locNames());
       const start = tok ? tok.start : pending.search(/\S+$/);   // a non-token word may still fold: [Fri 4:00] + "PM"
       if ((!tok || tok.kind === 'date') && start >= 0 && this.swallowIntoPrevDate(node, start, pending.slice(start), off)) return true;   // [next week] + "sun" → [next week sunday]
-      if (!tok || tok.kind === 'proj' && _nlpFocus) return false;   // a subtask's "#word" stays text
+      if (!tok || !this._nlpTakes(tok)) return false;
       const token = pending.slice(tok.start);
       if (tok.kind === 'area') return this.pillifyArea(node, tok, token, off);         // area tokens carry a NAME → resolve to an id first; the promise lets Enter wait
       this.insertPill(node, tok.start, tok.kind, tok.value, token, off);
@@ -4680,8 +4681,8 @@ document.addEventListener('alpine:init', () => {
     // A title chip mirrors the field it set (x-effect on the title). el._hist.prev.f is the fields as the title's own last edit
     // left them, so a difference is a picker's write: the newest chip of that kind relabels to it, a cleared field drops its chips,
     // a multi kind drops the chips whose value left its list. The relabel is a title ⌘Z step: the undo puts chip and field back.
-    mirrorPills() {
-      const el = this.$refs.content, d = this.draft, now = PILL_KINDS.map(k => JSON.stringify(PILL_SPEC[k].snapshot(this, d)));   // reads every field: the effect's deps
+    mirrorPills(el = this.$refs.content, d = this.draft) {
+      const now = PILL_KINDS.map(k => JSON.stringify(PILL_SPEC[k].snapshot(this, d)));   // reads every field: the effect's deps
       const f = el?._hist?.prev?.f; if (!f) return;
       let hit = false;
       PILL_KINDS.forEach((k, i) => {
@@ -4762,7 +4763,7 @@ document.addEventListener('alpine:init', () => {
     locOpenCount(id) { return this.tasks.filter(t => !t.completed_at && !t.archived_at && !inNotes(t) && (t.location?.ids || []).includes(id)).length; },
     // Open, then immediately re-derive at/frag from the node — the trigger keydown lands before its own character
     // is inserted, so anything already typed past it (a paste, a fast burst) would otherwise be missed.
-    openPicker(type, node, at) { const sp = PICKERS[type], p = this[sp.key]; Object.assign(p, { open: true, frag: '', sel: 0, node, at, left: 0, top: 0 }); this._refreshPicker(p, sp, sp.sel); },
+    openPicker(type, node, at) { if (_nlpFocus?.cal) return; const sp = PICKERS[type], p = this[sp.key]; Object.assign(p, { open: true, frag: '', sel: 0, node, at, left: 0, top: 0 }); this._refreshPicker(p, sp, sp.sel); },
     refreshPicker(type) { const sp = PICKERS[type]; this._refreshPicker(this[sp.key], sp, sp.sel); },
     pickPill(type, id) {
       const sp = PICKERS[type], p = this[sp.key], node = p.node, L = sp.char.length;
@@ -6700,6 +6701,7 @@ document.addEventListener('alpine:init', () => {
       return d;
     },
     focusTitle() { _nlpFocus = null; },     // title regains the default target when it (re)gains focus
+    _nlpTakes(tok) { return _nlpFocus?.cal ? this._clTakes(tok) : !_nlpFocus || tok.kind !== 'proj'; },   // a subtask's "#word" stays text
     // pillInput: the focus an Undo from outside brings (focusin lands after its input). A row's focus handler re-tracks
     // the undone DOM before the input, so its history is kept as it stood.
     markFocus(e) {
@@ -7382,7 +7384,7 @@ document.addEventListener('alpine:init', () => {
       // title is one line — pasted line breaks become spaces.
       e.preventDefault();
       const line = text.replace(/\s*[\r\n]+\s*/g, ' '), segs = tokenizeAll(line, new Date(), this.locNames());
-      if (_nlpFocus) for (const seg of segs) if (seg.kind === 'proj') delete seg.kind;   // a subtask's "#word" stays text
+      for (const seg of segs) if (seg.kind && !this._nlpTakes(seg)) delete seg.kind;
       const sel = getSelection(); const range = sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
       if (!segs.some(s => s.kind)) return this.insertAtRange(range, document.createTextNode(line));
       this.askConfirm({
@@ -9180,6 +9182,41 @@ document.addEventListener('alpine:init', () => {
     clHeld(p) { const d = this.clDraft(); return d?.id === p.it.id && (d.viewIso || p.it.src) === p.it.src; },
     clDraftFocus(el) { if (this.clDraft() && !document.documentElement.classList.contains('touch')) queueMicrotask(() => el.querySelector('.ev-title')?.focus({ preventScroll: true })); },   // a phone's keyboard would bury the grid
     _hm(t) { return +t.slice(0, 2) * 60 + +t.slice(3, 5); },
+    // The editors' title is the composer's pill editor (the same engine, aimed at it): a typed day, time, length, repeat, place
+    // or block area lands on the item's own fields. The draft reads and writes the open editor, so a chip's removal and ⌘Z do too.
+    // Init reads untracked (_appRaw): x-init runs inside the editor's x-if effect, and a tracked read re-runs that effect on each
+    // edit, after the card's bindings, which then read the closed editor on Save.
+    clTitleInit(el, key) {
+      const prev = _nlpFocus;
+      el.innerHTML = titleLive(_appRaw[key].title); el._draft = this._clPillDraft(key);
+      _nlpFocus = { el, draft: _appRaw._clPillDraft(key), cal: true }; el._hist = { undo: [], redo: [], prev: _appRaw._nlpSnap(el, false) }; _nlpFocus = prev;
+      Alpine.onElRemoved(el, () => { if (_nlpFocus?.el === el) _nlpFocus = null; });   // a closed editor's draft is null: the composer's title takes aim again
+    },
+    clTitleAim(el) { if (_nlpFocus?.el !== el) _nlpFocus = { el, draft: el._draft, cal: true }; },
+    clTitleKey(e) {
+      if (this._pillKeydown(e) || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+      e.preventDefault(); this._pillThen(() => this.eventEdit ? this.clSaveEvent() : this.clSaveBlock());
+    },
+    // what the item stores: an event has no areas, importance waits for its column, and Repeat shows weekdays alone
+    _clTakes({ kind, value }) { return kind === 'rec' ? !!this._clRecDays(value) : kind === 'loc' ? !/^away from /i.test(value) : ['date', 'dur'].includes(kind) || kind === 'area' && !!this.blockEdit; },
+    _clRecDays(rule, date) {
+      if (rule.interval !== 1 || rule.ends) return null;
+      return rule.freq === 'day' ? [0, 1, 2, 3, 4, 5, 6] : rule.freq !== 'week' ? null : rule.weekdays?.length ? [...rule.weekdays] : [new Date(date + 'T00:00').getDay()];
+    },
+    _clPillDraft(key) {
+      const s = this, ed = () => s[key], timed = x => { x.all_day = false; return x; };
+      return { ...emptyDraft(),   // the kinds an editor never takes stay inert
+        get content() { return ed().title; }, set content(v) { ed().title = v; },
+        get on() { return ed().date; }, set on(v) { if (v) ed().date = v; },   // a clear keeps the day: a removed chip restores the one before it
+        get dueTime() { return ed().all_day ? '' : ed().start; }, set dueTime(v) { if (v) s.evSetStart(timed(ed()), v); },
+        get durMin() { const x = ed(); return x.all_day ? 0 : (s._hm(x.end) - s._hm(x.start) + 1440) % 1440; },
+        set durMin(v) { const x = ed(); if (v) timed(x).end = s._fmtMin((s._hm(x.start) + v) % 1440); },
+        get recurrence() { const w = ed().weekdays; return w.length ? { freq: 'week', interval: 1, weekdays: [...w] } : null; },
+        set recurrence(v) { ed().weekdays = v ? s._clRecDays(v, ed().date) : []; if (v?.at) this.dueTime = v.at; },
+        get location() { const id = ed().location_id; return { mode: id ? 'only' : 'any', ids: id ? [id] : [] }; }, set location(v) { ed().location_id = v.ids[0] ?? null; },
+        get areas() { return ed().areas || []; }, set areas(v) { ed().areas = v; },
+      };
+    },
     // [start, end] minutes the draft covers on iso, to 24:00 when it runs past midnight; null off that day
     _draftSpan(iso) { const d = this.clDraft(); if (!d || d.all_day || d.date !== iso) return null; const s = this._hm(d.start), e = this._hm(d.end); return [s, e > s ? e : 1440]; },
     clDraftBand(iso) { const s = this._draftSpan(iso); return s ? 'top:' + s[0] / 14.4 + '%;height:' + (s[1] - s[0]) / 14.4 + '%;--cc:' + (this.clDraft().color || 'var(--accent)') : 'display:none'; },
