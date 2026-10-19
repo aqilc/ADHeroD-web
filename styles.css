@@ -878,7 +878,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
     &.set { color: var(--ink); .ico { color: var(--cc); } }
     :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; }   /* touch keeps words: its row scrolls */
     &.down .ico { rotate: 180deg; } }   /* Someday: the chevrons point down */
-  .chip-rem { --cc: var(--accent-hue); }   /* natural hues in both modes: the theme's dark hints are pastels */
+  .chip-rem { --cc: var(--accent); }   /* the light accent on a dark card reads at 2.4:1 */
   .chip-loc { --cc: var(--hue-location); }
   .chip-dur { --cc: var(--hue-duration); }
   .chip-rel { --cc: var(--p1); }   /* blocked-by red */

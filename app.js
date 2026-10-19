@@ -23,8 +23,7 @@ function applyTheme(mode, family) {
   const vars = scheme => _vars(themeVars(family, scheme));
   let el = document.getElementById('design-tokens');
   if (!el) { el = document.createElement('style'); el.id = 'design-tokens'; document.head.appendChild(el); }
-  // --accent-hue: the light accent in both modes, for icons that keep their natural colour (the dark accent is a pastel)
-  el.textContent = `:root{${_scale(DESIGN)};--accent-hue:${themeVars(family, 'light').accent};${vars(mode === 'dark' ? 'dark' : 'light')}}` +
+  el.textContent = `:root{${_scale(DESIGN)};${vars(mode === 'dark' ? 'dark' : 'light')}}` +
     (mode === 'system' ? `@media (prefers-color-scheme: dark){:root{${vars('dark')}}}` : '');
   if (mode === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = mode;
