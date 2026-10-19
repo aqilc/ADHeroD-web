@@ -1769,6 +1769,19 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
           <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()" x-html="evWhenHtml('eventEdit')"></div></template></template>
         </div>
+        <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
+          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: eventEdit.location_id }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="eventEdit.location_id ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="eventEdit.location_id ? locName(eventEdit.location_id) : 'Place'"></span></button>
+          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" x-cloak :style="popStyle()">
+            <button type="button" class="pop-item" :class="{ on: !eventEdit.location_id }" @click="eventEdit.location_id = null; pop = null">Anywhere</button>
+            <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: eventEdit.location_id === l.id }" @click="eventEdit.location_id = l.id; pop = null" x-text="l.name"></button></template>
+          </div></template></template>
+        </div>
+        <div class="field" @click.document.capture="clPopAway('clRepeat', $event, $el)">
+          <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(eventEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(eventEdit) || 'Repeat'"></span></button>
+          <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
+            <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
+          </div></div></template></template>
+        </div>
         <div class="field"><button type="button" class="chip chip-rem ev-countdown inline-flex items-center" :class="{ set: eventEdit.countdown }" title="Count down to this" :aria-pressed="eventEdit.countdown" @click="eventEdit.countdown = !eventEdit.countdown"><svg class="ico"><use href="#i-bell-alarm"/></svg><span>Count down</span></button></div>
         <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
           <button type="button" class="chip chip-color inline-flex items-center" :class="{ set: eventEdit.color }" title="Color" aria-haspopup="dialog" :aria-expanded="pop === 'clColor'" @click="togglePop('clColor', $el)"><svg class="ico"><use href="#i-palette"/></svg></button>

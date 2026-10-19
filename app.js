@@ -3724,8 +3724,8 @@ document.addEventListener('alpine:init', () => {
       if (this._popTrack) { this._popTrack(); this._popTrack = null; }
       this.popDock = this.phoneDock() && !!anchor?.closest('.composer-dock');   // 9B: a phone's composer pop opens in the keyboard's place
       if (!this.pop || !anchor) return _keyboard();
-      const r = anchor.getBoundingClientRect(), m = 8;
-      this.popXY = { left: r.left, top: r.bottom + 5 };
+      const r = anchor.getBoundingClientRect(), m = 8, card = anchor.closest('.event-editor, .block-editor');   // an editor's pop hangs under its card, clear of Delete and Save
+      this.popXY = { left: r.left, top: (card ?? anchor).getBoundingClientRect().bottom + 5 };
       // The handle is published SYNCHRONOUSLY even though the loop below only starts a tick later —
       // otherwise two togglePops in one task both read _popTrack as null and leave TWO loops running,
       // the stale one still writing popXY from its own anchor.
@@ -3738,11 +3738,11 @@ document.addEventListener('alpine:init', () => {
         if (!el) return;
         if (el.matches('.cl-pop') && anchor.matches(':focus-visible')) el.querySelector('input:not([type=checkbox]), button')?.focus();   // opened from the keyboard: its first field next, not 8 Tabs on. future-guard (Chrome puts a click's focus back on the chip): a tap must not raise a date field's keyboard
         const _pos = (ar) => {
-          // Vertically this one FLIPS rather than clamping — above the anchor if the pop would overflow the
-          // bottom edge, or if it's marked data-pos="up". Horizontally it's the shared clamp.
-          const vh = innerHeight - _kb, ph = el.offsetHeight;
-          let top = ar.bottom + 5;
-          if (el.dataset.pos === 'up' || top + ph > vh - m) top = Math.max(m, ar.top - ph - 5);
+          // Vertically this one FLIPS rather than clamping — above the anchor (an editor's: its card) if the pop would
+          // overflow the bottom edge, or if it's marked data-pos="up". Horizontally it's the shared clamp.
+          const vh = innerHeight - _kb, ph = el.offsetHeight, box = card?.getBoundingClientRect() ?? ar;
+          let top = box.bottom + 5;
+          if (el.dataset.pos === 'up' || top + ph > vh - m) top = Math.max(m, box.top - ph - 5);
           return { left: popLeft(ar.left, el.offsetWidth + m, m), top };
         };
         // Follow the anchor every frame: scroll, resize AND any layout move (the composer growing under its chips).
@@ -9096,12 +9096,12 @@ document.addEventListener('alpine:init', () => {
     clOpenDay(iso) { this.clSetView('day'); this.clAnchor = iso; },
     // --- Event editor (create / edit / delete) ---
     clNewEvent(date, draft = false) {
-      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, countdown: false, notes: '', draft };
+      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, location_id: null, weekdays: [], countdown: false, notes: '', draft };
     },
     clEditEvent(id, tile = false) {
       const e = this.events.find(x => x.id === id); if (!e) return;
       const multi = e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10);
-      this.eventEdit = { draft: tile && !multi, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, countdown: !!e.countdown, notes: e.notes ?? '' };
+      this.eventEdit = { draft: tile && !multi, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '' };
     },
     clItemClick(it, tile) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id, tile); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
@@ -9153,7 +9153,8 @@ document.addEventListener('alpine:init', () => {
     _toggleIn(arr, v) { const i = arr.indexOf(v); i < 0 ? arr.push(v) : arr.splice(i, 1); },
     async clSaveEvent() {
       const e = this.eventEdit; if (!e) return;
-      const fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, ...this._evRange(e) };
+      const recurrence = this._clRule(e), fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, recurrence, ...this._evRange(e, this._clAnchor(recurrence, e.date)),
+        location: { mode: e.location_id ? 'only' : 'any', ids: e.location_id ? [e.location_id] : [] } };   // an event has one place: no writer sets 'except' or several
       if (fields.ends_at <= fields.starts_at && e.multi && !e.all_day) return this.toast('The end is before the start');   // stored as typed it would collapse the event
       // a failed write keeps the editor and its edits
       let id = e.id;
@@ -9186,9 +9187,20 @@ document.addEventListener('alpine:init', () => {
     // the editors' chip bar: When as the date chip names a day ("Today 7:00 – 9:00", a passed day its date), Repeat what a save stores
     clWhenLabel(e) { return dueBadge(e.date, undefined, true).label + (e.all_day ? '' : ' ' + this.clDraftTime(e)); },
     clWhenLook(iso) { const s = this._sugs().find(s => s.iso === iso); return s ? ['i-' + s.icon + '-fill', `var(--q-${s.key})`] : ['i-cal-fill', 'var(--muted)']; },
-    clRepeatLabel(e) {
-      const r = this.blocks.find(b => b.id === e.id)?.recurrence, wds = e.weekdays.slice().sort((a, b) => a - b);
-      return recurrenceLabel(r && `${wds}` === `${(r.weekdays || []).slice().sort((a, b) => a - b)}` ? r : wds.length ? { freq: 'week', weekdays: wds } : null);   // clSaveBlock's keep rule
+    clRepeatLabel(e) { return recurrenceLabel(this._clRule(e)); },
+    _clDays(rule) { return rule?.freq === 'week' ? (rule.weekdays || []).slice().sort((a, b) => a - b) : []; },   // the days the Repeat pop shows: weekly only (a monthly "2nd Tue" names a day too)
+    // the pop authors weekdays alone: a rule it can't show (daily, monthly) survives a save that leaves its days alone,
+    // and a weekly rule keeps its step, end and skipped days when its days change
+    _clRule(e) {
+      const rule = (e === this.eventEdit ? this.events : this.blocks).find(x => x.id === e.id)?.recurrence, wds = e.weekdays.slice().sort((a, b) => a - b);
+      if (rule && `${wds}` === `${this._clDays(rule)}`) return rule;
+      return !wds.length ? null : rule?.freq === 'week' ? { ...rule, weekdays: wds } : { freq: 'week', interval: 1, weekdays: wds };
+    },
+    // a weekly series starts on its first chosen weekday on/after date, so expansion is correct
+    _clAnchor(rule, date) {
+      const d0 = new Date(date + 'T00:00');
+      for (let i = 0; i < 7 && rule?.weekdays?.length && !rule.weekdays.includes(d0.getDay()); i++) d0.setDate(d0.getDate() + 1);
+      return isoDate(d0);
     },
     // a click off the card closes its pop alone: the card and its edits stay
     clPopAway(name, e, el) { if (this.pop !== name || !this.outside(e, el)) return; this.popAway(name, e); if (!this.pop && !e.target.closest('.event-editor, .block-editor')) e.stopPropagation(); },
@@ -9540,7 +9552,7 @@ document.addEventListener('alpine:init', () => {
       // the series' own times ride the Repeat row (rule) and move every day.
       const occ = b.recurrence && viewIso && !b.all_day ? { date: (bd?.planned_start || bd?.actual_start || viewIso).slice(0, 10), start: timeOf(p?.[0] || '', start), end: timeOf(p?.[1] || '', end) } : null;
       this.blockEdit = { id: b.id, title: b.title || '', date: b.starts_at.slice(0, 10), start, end, ...occ, occ, rule: { start, end }, all_day: !!b.all_day, span: this._adSpan(b),
-        weekdays: (b.recurrence?.weekdays || []).slice(), location_id: b.location_id || null, areas: (b.areas || []).slice(), color: b.color || null, est_minutes: b.est_minutes ?? null,
+        weekdays: this._clDays(b.recurrence), location_id: b.location_id || null, areas: (b.areas || []).slice(), color: b.color || null, est_minutes: b.est_minutes ?? null,
         viewIso: viewIso || null, draft: tile && !b.all_day && b.starts_at.slice(0, 10) === b.ends_at.slice(0, 10) };   // a day's tile alone: past midnight its ghost could sit off screen
     },
     // ONE day of a repeating block moves by an override keyed on its own day (src) — drag and editor alike, never the series.
@@ -9555,14 +9567,7 @@ document.addEventListener('alpine:init', () => {
       const e = this.blockEdit; if (!e) return;
       const b = this.blocks.find(x => x.id === e.id), o = e.occ, moved = o && (e.date !== o.date || e.start !== o.start || e.end !== o.end);
       const s = o ? { ...e, date: b.starts_at.slice(0, 10), ...e.rule } : e;   // opened on one day: the series keeps its anchor and takes the Repeat row's times
-      // the Repeat row only authors weekly rules: one it can't (daily, every 2 weeks, exdates) survives a save that leaves its days alone
-      const wds = e.weekdays.slice().sort((a, b) => a - b), rule = b?.recurrence, keep = rule && `${wds}` === `${(rule.weekdays || []).slice().sort((a, b) => a - b)}`;
-      let date = s.date, recurrence = keep ? rule : wds.length ? { freq: 'week', interval: 1, weekdays: wds } : null;
-      if (recurrence?.weekdays?.length) {   // weekly: anchor on the first selected weekday on/after the chosen date so expansion is correct
-        const d0 = new Date(date + 'T00:00');
-        for (let i = 0; i < 7 && !recurrence.weekdays.includes(d0.getDay()); i++) d0.setDate(d0.getDate() + 1);
-        date = isoDate(d0);
-      }
+      const recurrence = this._clRule(e), date = this._clAnchor(recurrence, s.date);
       const est_minutes = e.est_minutes === '' || e.est_minutes == null ? null : +e.est_minutes;
       const core = { title: e.title.trim(), all_day: e.all_day, recurrence, location_id: e.location_id || null, areas: e.areas, color: e.color || null, est_minutes, ...this._evRange(s, date) };
       if (e.id) {
