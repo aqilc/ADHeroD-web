@@ -1137,7 +1137,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                     </div>
                   </template>
                   <template x-if="clStopHint(col) != null"><div class="cl-stop-hint muted-11" :style="'top:'+clStopHint(col)+'%'"><kbd x-text="keyTip('<kbd>⌘</kbd><kbd>z</kbd>', mod)"></kbd> undo stop</div></template>
-                  <div class="cl-block cl-block-drag" :style="clDraftBand(col.iso)"></div><!-- no x-show: a string :style overwrites its display:none -->
+                  <!-- the draft's ghost: the tile it will be, ringed; no x-show: a string :style overwrites its display:none -->
+                  <div class="cl-block-drag" :class="eventEdit?.draft ? 'cl-event' : 'cl-block'" :style="clDraftBand(col.iso)"><template x-if="eventEdit?.draft"><span class="cl-event-b"><span class="cl-event-t" x-text="eventEdit.title"></span><span class="cl-event-tm" x-text="clDraftTime()"></span></span></template><template x-if="blockEdit?.draft"><span class="cl-blk-t" x-text="blockEdit.title"></span></template><span class="cl-grip t"></span><span class="cl-grip b"></span></div>
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
                   <!-- DEADLINE: a rule across the day at the hour it bites, the runway above it darkening
                        toward it. The label is STICKY to the bottom of the scroller, so a deadline can never be
@@ -1760,27 +1761,75 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
     <!-- ── Event + block editors, delete dialog ── -->
     <!-- Event editor (calendar) -->
-    <template x-if="eventEdit"><div class="dialog event-editor" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="eventEdit.draft ? clDraftPos() : ''" @pointerdown.outside="eventEdit.draft && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (eventEdit = null)">
-      <div x-html="evWhenHtml('eventEdit', 'New event')"></div>
-      <div class="ev-row flex"><textarea class="inp grow" rows="3" placeholder="Description" aria-label="Description" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea></div>
-      <div class="section-label ev-color-label">Color</div>
-      <div class="ev-row ev-colors flex flex-wrap items-center gap-8" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div>
-      <div class="ev-row flex items-center"><label class="ev-allday ev-countdown inline-flex items-center gap-6"><input type="checkbox" :checked="eventEdit.countdown" @change="eventEdit.countdown = $event.target.checked"> Count down to this</label></div>
+    <template x-if="eventEdit"><div class="dialog event-editor" :class="{ swapped: eventEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="clCardStyle(eventEdit)" @pointerdown.outside="eventEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (eventEdit = null)">
+      <input class="ev-title" type="text" placeholder="New event" aria-label="Title" :value="eventEdit.title" @input="eventEdit.title = $event.target.value">
+      <textarea class="ev-notes" rows="1" placeholder="Description" aria-label="Description" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea>
+      <div class="composer-opts cl-opts flex items-center">
+        <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
+          <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
+          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()" x-html="evWhenHtml('eventEdit')"></div></template></template>
+        </div>
+        <div class="field"><button type="button" class="chip chip-rem ev-countdown inline-flex items-center" :class="{ set: eventEdit.countdown }" title="Count down to this" :aria-pressed="eventEdit.countdown" @click="eventEdit.countdown = !eventEdit.countdown"><svg class="ico"><use href="#i-bell-alarm"/></svg><span>Count down</span></button></div>
+        <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
+          <button type="button" class="chip chip-color inline-flex items-center" :class="{ set: eventEdit.color }" title="Color" aria-haspopup="dialog" :aria-expanded="pop === 'clColor'" @click="togglePop('clColor', $el)"><svg class="ico"><use href="#i-palette"/></svg></button>
+          <template x-if="pop === 'clColor'"><template x-teleport="body"><div class="pop cl-pop ev-colors" x-cloak :style="popStyle()" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div></template></template>
+        </div>
+      </div>
       <div x-html="evActionsHtml('eventEdit')"></div>
     </div></template>
 
     <!-- Block editor: a condition-bearing span (click a time on week/day to create, click a band to edit) -->
-    <template x-if="blockEdit"><div class="dialog block-editor" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!blockEdit.draft" aria-label="Block" @click.stop :style="blockEdit.draft ? clDraftPos() : ''" @pointerdown.outside="blockEdit.draft && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (blockEdit = null)">
+    <template x-if="blockEdit"><div class="dialog block-editor" :class="{ swapped: blockEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!blockEdit.draft" aria-label="Block" @click.stop :style="clCardStyle(blockEdit)" @pointerdown.outside="blockEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (blockEdit = null)">
       <div class="blk-presets flex flex-wrap gap-6" x-show="!blockEdit.id">
         <button type="button" class="blk-preset" @click="clBlockPreset('work')">Work 8:15–4:30 M–F</button>
         <button type="button" class="blk-preset" @click="clBlockPreset('lunch')">Lunch 12–1 M–F</button>
         <button type="button" class="blk-preset" @click="clBlockPreset('evening')">Evening 6–10</button>
       </div>
-      <div x-html="evWhenHtml('blockEdit', 'At the office')"></div>
-      <div class="ev-row blk-capacity flex items-center">
-        <span class="ev-lab">Usable min</span>
-        <input class="ev-field" type="number" min="0" step="5" placeholder="whole span"
-          :value="blockEdit.est_minutes ?? ''" @input="blockEdit.est_minutes = $event.target.value">
+      <input class="ev-title" type="text" placeholder="At the office" aria-label="Title" :value="blockEdit.title" @input="blockEdit.title = $event.target.value">
+      <div class="composer-opts cl-opts flex items-center">
+        <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
+          <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(blockEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(blockEdit.date)[0]"/></svg><span x-text="clWhenLabel(blockEdit)"></span></button>
+          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()" x-html="evWhenHtml('blockEdit')"></div></template></template>
+        </div>
+        <div class="field" @click.document.capture="clPopAway('clRepeat', $event, $el)">
+          <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(blockEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(blockEdit) || 'Repeat'"></span></button>
+          <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()">
+            <div class="flex flex-wrap items-center gap-6">
+              <template x-for="w in clBlockWeekdays" :key="w.d">
+                <button type="button" class="blk-wd" :class="{ sel: blockEdit.weekdays.includes(w.d) }" @click="_toggleIn(blockEdit.weekdays, w.d)" x-text="w.l"></button>
+              </template>
+            </div>
+            <template x-if="blockEdit.occ"><div class="ev-row flex items-center" x-html="evTimesHtml('blockEdit.rule')"></div></template>
+          </div></template></template>
+        </div>
+        <div class="field" x-show="areas.length" @click.document.capture="clPopAway('clArea', $event, $el)">
+          <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: blockEdit.areas.length }" :style="'--cc:' + (areaObjs(blockEdit.areas)[0]?.color || 'var(--ink)')" title="Areas" aria-haspopup="dialog" :aria-expanded="pop === 'clArea'" @click="togglePop('clArea', $el)"><svg class="ico"><use :href="blockEdit.areas.length ? '#i-tag-fill' : '#i-tag-tag'"/></svg><span x-text="areaObjs(blockEdit.areas).map(a => a.name).join(', ') || 'Areas'"></span></button>
+          <template x-if="pop === 'clArea'"><template x-teleport="body"><div class="pop cl-pop area-pop" x-cloak :style="popStyle()">
+            <div class="area-grid area-cluster items-center">
+              <template x-for="l in areas" :key="l.id">
+                <button type="button" class="area-opt" :class="areaTier(l.id) + (blockEdit.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="_toggleIn(blockEdit.areas, l.id)" x-html="areaOptHtml(l, blockEdit.areas.includes(l.id))"></button>
+              </template>
+            </div>
+          </div></template></template>
+        </div>
+        <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
+          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: blockEdit.location_id }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="blockEdit.location_id ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="blockEdit.location_id ? locName(blockEdit.location_id) : 'Place'"></span></button>
+          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" x-cloak :style="popStyle()">
+            <button type="button" class="pop-item" :class="{ on: !blockEdit.location_id }" @click="blockEdit.location_id = null; pop = null">Anywhere</button>
+            <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: blockEdit.location_id === l.id }" @click="blockEdit.location_id = l.id; pop = null" x-text="l.name"></button></template>
+          </div></template></template>
+        </div>
+        <div class="field" @click.document.capture="clPopAway('clUsable', $event, $el)">
+          <button type="button" class="chip chip-usable inline-flex items-center" :class="{ set: +blockEdit.est_minutes }" title="Usable time" aria-haspopup="dialog" :aria-expanded="pop === 'clUsable'" @click="togglePop('clUsable', $el)"><svg class="ico"><use href="#i-clock"/></svg><span x-text="+blockEdit.est_minutes ? durFmt(+blockEdit.est_minutes) + ' usable' : 'Usable time'"></span></button>
+          <template x-if="pop === 'clUsable'"><template x-teleport="body"><div class="pop cl-pop blk-capacity" x-cloak :style="popStyle()">
+            <span class="ev-lab">Usable min</span>
+            <input class="ev-field" type="number" min="0" step="5" placeholder="whole span" :value="blockEdit.est_minutes ?? ''" @input="blockEdit.est_minutes = $event.target.value" @keydown.enter="pop = null">
+          </div></template></template>
+        </div>
+        <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
+          <button type="button" class="chip chip-color inline-flex items-center" :class="{ set: blockEdit.color }" title="Color" aria-haspopup="dialog" :aria-expanded="pop === 'clColor'" @click="togglePop('clColor', $el)"><svg class="ico"><use href="#i-palette"/></svg></button>
+          <template x-if="pop === 'clColor'"><template x-teleport="body"><div class="pop cl-pop ev-colors" x-cloak :style="popStyle()" @click="swatchPick($event, v => blockEdit.color = v)" x-html="swatchRow(blockEdit.color)"></div></template></template>
+        </div>
       </div>
       <template x-if="blockEdit.id && clDayPanel(blocks.find(b => b.id === blockEdit.id), blockEdit.viewIso)">
         <div class="ev-row blk-today">
@@ -1819,32 +1868,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="ghost" @click="clSetBlockDay(blockEdit.id, { planned_start: null, planned_end: null, actual_start: null, actual_end: null }, blockEdit.viewIso, 'Reset block occurrence')">Reset this day</button>
         </div>
       </template>
-      <div class="blk-field">
-        <label class="section-label">Repeat</label>
-        <div class="flex flex-wrap items-center gap-6">
-          <template x-for="w in clBlockWeekdays" :key="w.d">
-            <button type="button" class="blk-wd" :class="{ sel: blockEdit.weekdays.includes(w.d) }" @click="_toggleIn(blockEdit.weekdays, w.d)" x-text="w.l"></button>
-          </template>
-          <template x-if="blockEdit.occ"><span x-html="evTimesHtml('blockEdit.rule')"></span></template>
-        </div>
-      </div>
-      <div class="blk-field">
-        <label class="section-label">Location</label>
-        <select class="ev-field" @change="blockEdit.location_id = $event.target.value || null">
-          <option value="" :selected="!blockEdit.location_id">Anywhere (free)</option>
-          <template x-for="l in locations" :key="l.id"><option :value="l.id" :selected="blockEdit.location_id === l.id" x-text="l.name"></option></template>
-        </select>
-      </div>
-      <div class="blk-field" x-show="areas.length">
-        <label class="section-label">Areas</label>
-        <div class="blk-chips flex flex-wrap gap-6">
-          <template x-for="a in areas" :key="a.id">
-            <button type="button" class="blk-chip" :class="{ sel: blockEdit.areas.includes(a.id) }" @click="_toggleIn(blockEdit.areas, a.id)" x-text="a.name"></button>
-          </template>
-        </div>
-      </div>
-      <div class="section-label ev-color-label">Color</div>
-      <div class="ev-row ev-colors flex flex-wrap items-center gap-8" @click="swatchPick($event, v => blockEdit.color = v)" x-html="swatchRow(blockEdit.color)"></div>
       <div class="blk-field" x-show="clAttachedTasks().length">
         <label class="section-label">Attached tasks</label>
         <template x-for="si in clAttachedTasks()" :key="si.id">

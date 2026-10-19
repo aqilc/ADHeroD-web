@@ -307,6 +307,7 @@ const OVERLAYS = [
   [c => c.importPreview, c => c.importPreview = null, 1],   // above the rest: it is the frontmost thing when open
   [c => c.delAsk, c => c.delAsk = null, 1], [c => c.locMgr, c => c.locMgr = false, 1],
   [c => c.filterEdit, c => c.filterEdit = null, 1],
+  [c => c.pop && (c.eventEdit || c.blockEdit), c => c.pop = null],   // an editor's chip pop closes before its editor
   [c => c.eventEdit && !c.eventEdit.draft, c => c.eventEdit = null, 1], [c => c.blockEdit && !c.blockEdit.draft, c => c.blockEdit = null, 1],
   [c => c.clDraft(), c => c.eventEdit = c.blockEdit = null],   // a new block/event drawn on the grid: no backdrop, the grid stays live
   [c => c.settingsOpen, c => c.settingsOpen = false],   // corner settings popup — own light backdrop, below the dialogs
@@ -3735,6 +3736,7 @@ document.addEventListener('alpine:init', () => {
         if (dead) return;
         const el = document.querySelector('body > .pop');   // the teleported one: list menus are .pop too, drawn through their leave
         if (!el) return;
+        if (el.matches('.cl-pop') && anchor.matches(':focus-visible')) el.querySelector('input:not([type=checkbox]), button')?.focus();   // opened from the keyboard: its first field next, not 8 Tabs on. future-guard (Chrome puts a click's focus back on the chip): a tap must not raise a date field's keyboard
         const _pos = (ar) => {
           // Vertically this one FLIPS rather than clamping — above the anchor if the pop would overflow the
           // bottom edge, or if it's marked data-pos="up". Horizontally it's the shared clamp.
@@ -4105,9 +4107,15 @@ document.addEventListener('alpine:init', () => {
       requestAnimationFrame(() => document.querySelector(`.pop.cal .cal-day[aria-label="${DAY_NAME.format(new Date(this.calFocus + 'T00:00'))}"]`)?.focus());
     },
     // HAZARD: args must be string literals ('eventEdit'/'blockEdit'), never reactive values — a reactive arg changes the x-html string on state updates, causing re-render that kills the input caret mid-typing.
-    evWhenHtml(key, ph) { return `<input class="ev-title" type="text" placeholder="${ph}" :value="${key}.title" @input="${key}.title = $event.target.value"><div class="ev-row flex items-center"><label class="ev-allday inline-flex items-center gap-6"><input type="checkbox" :checked="${key}.all_day" @change="${key}.all_day = $event.target.checked"> All-day</label></div><div class="ev-row flex items-center"><input class="ev-field" type="date" :value="${key}.date" @input="${key}.date = $event.target.value"><template x-if="!${key}.all_day">${this.evTimesHtml(key)}</template></div>`; },
-    evTimesHtml(key) { return `<span class="ev-times inline-flex items-center gap-6"><input class="ev-field" type="time" :value="${key}.start" @input="${key}.start = $event.target.value"><span class="ev-dash">–</span>${key === 'eventEdit' ? `<template x-if="eventEdit.multi"><input class="ev-field" type="date" :value="_evRange(eventEdit).ends_at.slice(0, 10)" @input="$event.target.value && (eventEdit.span = Math.round((new Date($event.target.value) - new Date(eventEdit.date)) / 86400000))"></template>` : ''}<input class="ev-field" type="time" :value="${key}.end" @input="${key}.end = $event.target.value"></span>`; },   // ceiling: a blanked end-date segment keeps the last full date, which Save stores; refuse Save on a blank date if a user reports it
-    evActionsHtml(key) { const del = key === 'eventEdit' ? 'clDeleteEvent' : 'clDeleteBlock', save = key === 'eventEdit' ? 'clSaveEvent' : 'clSaveBlock'; return `<div class="dialog-actions flex items-center gap-8"><button class="ghost danger" x-show="${key}.id" @click="${del}()">Delete</button><span class="spacer"></span><button class="ghost" @click="${key} = null">Cancel</button><button class="primary" @click="${save}()">Save</button></div>`; },
+    evWhenHtml(key) { return `<div class="ev-row flex items-center"><label class="ev-allday inline-flex items-center gap-6"><input type="checkbox" :checked="${key}.all_day" @change="${key}.all_day = $event.target.checked"> All-day</label></div><div class="ev-row flex items-center"><input class="ev-field" type="date" :value="${key}.date" @input="${key}.date = $event.target.value"><template x-if="!${key}.all_day">${this.evTimesHtml(key)}</template></div>`; },
+    evTimesHtml(key) { return `<span class="ev-times inline-flex items-center gap-6"><input class="ev-field" type="time" :value="${key}.start" @input="evSetStart(${key}, $event.target.value)"><span class="ev-dash">–</span>${key === 'eventEdit' ? `<template x-if="eventEdit.multi"><input class="ev-field" type="date" :value="_evRange(eventEdit).ends_at.slice(0, 10)" @input="$event.target.value && (eventEdit.span = Math.round((new Date($event.target.value) - new Date(eventEdit.date)) / 86400000))"></template>` : ''}<input class="ev-field" type="time" :value="${key}.end" @input="${key}.end = $event.target.value"></span>`; },   // ceiling: a blanked end-date segment keeps the last full date, which Save stores; refuse Save on a blank date if a user reports it
+    // the foot holds the item's one decision (a new one's kind: the standard .seg, its picked segment drawn as the tile) and the go
+    evActionsHtml(key) {
+      const ev = key === 'eventEdit', del = ev ? 'clDeleteEvent' : 'clDeleteBlock', save = ev ? 'clSaveEvent' : 'clSaveBlock';
+      return `<div class="dialog-actions cl-card-foot flex items-center gap-8"><template x-if="!${key}.id"><div class="seg cl-kind"><button type="button" :class="{ on: ${ev} }" :aria-pressed="${ev}" @click="clSetKind('event')">Event</button><button type="button" :class="{ on: ${!ev} }" :aria-pressed="${!ev}" @click="clSetKind('block')">Block</button></div></template>
+        <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id" @click="${del}()" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
+        <button type="button" class="primary cl-go" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
+    },
     calCells() {
       const { y, m } = this.cal, lead = new Date(y, m, 1).getDay(), todayIso = isoDate(new Date());
       // Preview upcoming occurrences of the draft's recurrence as subtle dots — visible month only (cheap).
@@ -9170,8 +9178,34 @@ document.addEventListener('alpine:init', () => {
     _hm(t) { return +t.slice(0, 2) * 60 + +t.slice(3, 5); },
     // [start, end] minutes the draft covers on iso, to 24:00 when it runs past midnight; null off that day
     _draftSpan(iso) { const d = this.clDraft(); if (!d || d.all_day || d.date !== iso) return null; const s = this._hm(d.start), e = this._hm(d.end); return [s, e > s ? e : 1440]; },
-    clDraftBand(iso) { const s = this._draftSpan(iso); return s ? 'top:' + s[0] / 14.4 + '%;height:' + (s[1] - s[0]) / 14.4 + '%;--cc:var(--accent)' : 'display:none'; },
+    clDraftBand(iso) { const s = this._draftSpan(iso); return s ? 'top:' + s[0] / 14.4 + '%;height:' + (s[1] - s[0]) / 14.4 + '%;--cc:' + (this.clDraft().color || 'var(--accent)') : 'display:none'; },
+    clDraftTime(e = this.eventEdit) { const r = this._evRange(e); return this.clTimeLabel({ start: r.starts_at, end: r.ends_at }); },
+    // the editors' chip bar: When as the date chip names a day ("Today 7:00 – 9:00", a passed day its date), Repeat what a save stores
+    clWhenLabel(e) { return dueBadge(e.date, undefined, true).label + (e.all_day ? '' : ' ' + this.clDraftTime(e)); },
+    clWhenLook(iso) { const s = this._sugs().find(s => s.iso === iso); return s ? ['i-' + s.icon + '-fill', `var(--q-${s.key})`] : ['i-cal-fill', 'var(--muted)']; },
+    clRepeatLabel(e) {
+      const r = this.blocks.find(b => b.id === e.id)?.recurrence, wds = e.weekdays.slice().sort((a, b) => a - b);
+      return recurrenceLabel(r && `${wds}` === `${(r.weekdays || []).slice().sort((a, b) => a - b)}` ? r : wds.length ? { freq: 'week', weekdays: wds } : null);   // clSaveBlock's keep rule
+    },
+    // a click off the card closes its pop alone: the card and its edits stay
+    clPopAway(name, e, el) { if (this.pop !== name || !this.outside(e, el)) return; this.popAway(name, e); if (!this.pop && !e.target.closest('.event-editor, .block-editor')) e.stopPropagation(); },
+    // the editor wears its tile's colour; a draft's sits beside its ghost
+    clCardStyle(e) { return '--cc:' + (e.color || 'var(--accent)') + ';' + (e.draft ? this.clDraftPos() : ''); },
+    // a new item's Event | Block: the same draft as the other kind, every field kept so switching back loses nothing
+    clSetKind(kind) {
+      const d = this.eventEdit || this.blockEdit; if (!d || d.id || (kind === 'event') === !!this.eventEdit) return;
+      this.eventEdit = this.blockEdit = null;
+      kind === 'event' ? this.clNewEvent(d.date, d.draft) : this.clNewBlock(d.date, d.start, d.end, d.draft);
+      Object.assign(this.eventEdit || this.blockEdit, d, { swapped: true });   // swapped: no second entrance
+    },
     _clSlot(y, rect) { return Math.max(0, Math.min(1425, Math.floor((y - rect.top) / rect.height * 96) * 15)); },   // the 15-min slot at y
+    // the end follows a moved start, keeping the length (as a grid move does); a multi-day end changes day with it
+    evSetStart(o, t) {
+      if (!t || !o.start) return o.start = t;
+      const e = this._hm(o.end) + this._hm(t) - this._hm(o.start);
+      if (o.multi) o.span += Math.floor(e / 1440);
+      Object.assign(o, { start: t, end: this._fmtMin((e % 1440 + 1440) % 1440) });
+    },
     _setDraft(iso, s, e) { Object.assign(this.clDraft(), { date: iso, start: this._fmtMin(s), end: this._fmtMin(e % 1440) }); },   // 24:00 → 00:00, which _evRange rolls to the next day
     clGridDown(e, iso) {
       // armed only when nothing but a draft is open: the press that closes a pop, the composer or a selection makes nothing
@@ -9195,13 +9229,13 @@ document.addEventListener('alpine:init', () => {
     // beside its day's column, on the side with room (narrowed to fit if neither has it); else flush right (day view), centred on a phone
     clDraftPos() {
       if (innerWidth < 760) return 'margin-inline:auto';
-      const d = this.clDraft(), w = 420;   // .event-editor/.block-editor's width · ceiling: placed when the draft's day changes, not on a page turn under it; recompute on clAnchor if a turn strands it
+      const d = this.clDraft(), w = 480;   // .event-editor/.block-editor's width · ceiling: placed when the draft's day changes, not on a page turn under it; recompute on clAnchor if a turn strands it
       const col = [...document.querySelectorAll(`.cl-pcol[data-iso="${d.date}"]`)].find(c => { const r = c.getBoundingClientRect(); return r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
       const right = r ? innerWidth - r.right - 16 : 0, left = r ? r.left - 16 : 0, fit = Math.max(right, left);   // room beside it, 8px gaps
-      if (right >= w) return 'margin-left:' + (r.right + 8) + 'px';
-      if (left >= w) return 'margin-left:' + (r.left - 8 - w) + 'px';
-      if (fit < 320) return 'margin-left:' + (innerWidth - 16 - w) + 'px';
-      return 'min-width:0;width:' + fit + 'px;margin-left:' + (right >= left ? r.right + 8 : 8) + 'px';
+      if (right >= w) return 'left:' + (r.right + 8) + 'px;--from:0 0';
+      if (left >= w) return 'left:' + (r.left - 8 - w) + 'px;--from:100% 0';
+      if (fit < 320) return 'left:' + (innerWidth - 16 - w) + 'px';
+      return 'min-width:0;width:' + fit + 'px;left:' + (right >= left ? r.right + 8 + 'px;--from:0 0' : '8px;--from:100% 0');
     },
     clGridUp() { this._blkDrag = null; },
     clGridClick(e, iso) {

@@ -869,6 +869,14 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-10)) 0 calc(-1 * var(--sp-6)); padding-right: calc(var(--sp-24) + var(--sp-10));   /* touch keeps its order: the phone wasn't part of the pick. The right room is the go's 28px and a 6px gap */
     &::after { content: ""; flex: 1; order: -1; }
     .field:has(> .chip.set) { order: -1; } }
+  /* the unset chips never wrap off alone (evd-4; a tablet too, not the phone's one scrolling line): lines fill from the bottom
+     right, so they always share the last line with set chips, set ones first; the reversed order keeps reading order */
+  /* ceiling: the plain wrap stays without sibling-index() (Firefox) and in a desktop window under 641px (the phone's width, whose
+     .touch bar scrolls instead); nth-child orders or a phone class on <html> if a user reports a lone chip there */
+  @media (min-width: 641px) { @supports (order: sibling-index()) { flex-direction: row-reverse; flex-wrap: wrap-reverse; justify-content: flex-end;
+    > *, .field:has(> .chip.set) { order: calc(-1 * sibling-index()); }
+    &::after { order: -100; }
+    > .field:not(:has(> .chip.set)) { order: calc(-100 - sibling-index()); } } }
   .field { position: relative; }
   .chip { height: 28px; padding: 0 var(--sp-6); gap: var(--sp-8); border: none; border-radius: var(--r-6); background: none;
     font-size: var(--fs-13); color: var(--muted); font-weight: 500;
@@ -1886,7 +1894,7 @@ textarea.inp { resize: vertical; }
 /* Normalized thread ramp: hue comes from the item's --cc, lightness+chroma are FIXED per theme, so every
    colour lands at the same perceived weight with guaranteed text contrast (raw color-mix made blue read
    twice as heavy as gold). Derived per-element because --cc is set inline. */
-.cl-chip, .cl-event, .cl-block, .cl-rail-seg, .cl-rail-blk, .cl-ag-row, .cl-ch, .cl-dl, .cl-dl-t { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
+.cl-chip, .cl-event, .cl-block, .event-editor, .block-editor, .cl-rail-seg, .cl-rail-blk, .cl-ag-row, .cl-ch, .cl-dl, .cl-dl-t { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
 /* THE MARK — an inset, fully-rounded capsule. NOT a border-left: a stripe on a rounded box inherits the
    corner curve and reads as a bright sliver welded to the side. This floats inside the padding instead. */
 .cl-chip::before, .cl-event::before { content: ""; position: absolute; left: 3px; top: 2px; bottom: 2px; width: 3px; border-radius: var(--r-pill); background: var(--mark); }
@@ -2008,7 +2016,11 @@ textarea.inp { resize: vertical; }
 .cl-block { position: absolute; left: 0; right: 0; z-index: 1; overflow: hidden; padding: 1px var(--sp-6) 1px var(--sp-8); cursor: pointer; background: color-mix(in srgb, var(--tint) var(--cal-blk), transparent);
   --blk-edge: inset 5px 0 0 color-mix(in srgb, var(--mark) 30%, transparent), inset 0 2px 0 color-mix(in srgb, var(--mark) 26%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--mark) 14%, transparent); box-shadow: var(--blk-edge); }
 .cl-blk-t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-11); line-height: 1.35; color: var(--txt); opacity: .5; }
-.cl-block-drag { z-index: 3; pointer-events: none; background: color-mix(in srgb, var(--cc) 22%, transparent); border: 1px dashed color-mix(in srgb, var(--cc) 55%, transparent); }
+/* the draft's ghost: the tile it will be (.cl-event or .cl-block), ringed, with a grip on each edge a mouse can drag */
+.cl-block-drag:is(.cl-event, .cl-block) { z-index: 8; pointer-events: none; left: 0; overflow: visible; box-shadow: 0 0 0 2px var(--mark), 0 2px 8px rgb(0 0 0 / .14); }
+.cl-block.cl-block-drag { right: 0; box-shadow: var(--blk-edge), 0 0 0 2px var(--mark); }
+.cl-grip { position: absolute; left: 50%; width: 18px; height: 4px; translate: -50%; border-radius: var(--r-pill); background: var(--mark); box-shadow: 0 0 0 2px var(--bg);
+  &.t { top: -3px; } &.b { bottom: -3px; } .touch & { display: none; } }
 /* H-states-D1: running = accent left rail + warm tint; keep border-left so getComputedStyle(el).borderLeftWidth > 0 */
 .cl-block.is-running { border-left: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); --mark: var(--accent); }
 /* Running reads as a breathing GLOW on the band itself (a dot at left:6px would sit on the title's first characters; the glow needs no room). Opacity-only
@@ -2312,27 +2324,59 @@ textarea.inp { resize: vertical; }
 /* clickable items open the event editor / drill to the day */
 .cl-chip.event, .cl-event.event { cursor: pointer; }
 /* Event editor dialog (the block editor is the same shell + the extras below) */
-.event-editor, .block-editor { width: 420px; }
-.ev-title { font-family: var(--font-display); width: 100%; border: none; border-bottom: 1px solid var(--edge); background: none; color: var(--ink); font-size: var(--fs-17); font-weight: 600; padding: var(--sp-2) 0 var(--sp-8); outline: none; }
-.ev-title::placeholder { color: var(--muted); }
+/* the editor wears its tile: an event the tint and pill (scaled a little to the card), a block square with the band's spine and cap */
+.event-editor, .block-editor { width: 480px; position: relative; padding: 14px 14px var(--sp-8) 18px; }
+.event-editor { border-radius: var(--r-6); background: var(--tint);
+  &::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 4px; border-radius: var(--r-pill); background: var(--mark); } }
+.block-editor { border-radius: 0; background: color-mix(in srgb, var(--tint) var(--cal-blk), var(--panel));
+  box-shadow: inset 6px 0 0 color-mix(in srgb, var(--mark) 30%, transparent), inset 0 2px 0 color-mix(in srgb, var(--mark) 26%, transparent), var(--shadow); }
+.dialog-backdrop.draft > :is(.event-editor, .block-editor) { position: fixed; margin: 0; top: anchor(--cl-draft top, 64px); position-try-fallbacks: flip-block, --cl-foot;   /* level with the ghost's top, else its bottom */
+  transform-origin: var(--from, 0 0); transition: opacity .2s var(--ease-out), transform .2s var(--ease-out);
+  &:not(.swapped) { @starting-style { opacity: 0; transform: scale(.97); } } }
+@position-try --cl-foot { top: auto; bottom: 8px; }
+@media (max-width: 759px) { .dialog-backdrop.draft > :is(.event-editor, .block-editor) { position: static; } }
+@media (prefers-reduced-motion: reduce) { .dialog-backdrop.draft > :is(.event-editor, .block-editor) { @starting-style { transform: none; } } }
+.cl-block-drag { anchor-name: --cl-draft; }
+.cl-card-foot { margin-top: var(--sp-8); min-height: 28px;
+  .del-btn { color: var(--muted); padding: var(--sp-6); border-radius: var(--r-8); &:hover { color: var(--p1); background: var(--hover); } .ico { width: 16px; height: 16px; } }
+  .cl-go { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; .ico { width: 16px; height: 16px; stroke-width: 2.4; } } }
+/* the standard control sized to its words; the picked kind is drawn as its tile */
+.cl-kind.seg { margin: 0; flex: none; button { flex: none; height: 24px; padding: 0 var(--sp-12); }
+  button.on { position: relative; color: var(--txt); padding-left: var(--sp-16); } }
+.event-editor .cl-kind button.on { background: var(--tint);
+  &::before { content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 3px; border-radius: var(--r-pill); background: var(--mark); } }
+.block-editor .cl-kind button.on { border-radius: 0; background: color-mix(in srgb, var(--tint) calc(var(--cal-blk) * 2), var(--panel)); box-shadow: inset 4px 0 0 color-mix(in srgb, var(--mark) 35%, transparent), var(--shadow-sm); }
+.touch .cl-kind.seg button { height: 36px; padding: 0 var(--sp-16); }
+.touch .cl-card-foot { min-height: 40px; .cl-go { width: 40px; height: 40px; border-radius: var(--r-pill); .ico { width: 20px; height: 20px; } } }
+/* title, notes and chip bar: the composer card's (.composer-card .content / .desc, .composer-opts) */
+.ev-title, .ev-notes { display: block; width: 100%; border: none; background: none; padding: 0; outline: none; color: var(--ink); font: inherit;
+  &::placeholder { color: var(--muted); } }
+.ev-title { font-size: var(--fs-15); line-height: 18px; font-weight: 500; }
+.ev-notes { margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 1.4; field-sizing: content; resize: vertical; max-height: calc(8lh); }   /* ceiling: field-sizing as .entry-txt (Safari 26.2); below it the notes keep one visible line */
+.cl-opts { margin-top: var(--sp-6); :where(html:not(.touch)) & { padding-right: 0; }   /* the go sits in the foot, not on this line */
+  .chip[aria-expanded=true] { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* .chip.open's look, keyed on pop alone: a binding reading pop and the editor runs before the editor's x-if when both change in one tick */
+  .chip-repeat { --cc: var(--accent-hue); }
+  .chip-usable { --cc: var(--hue-duration); } }
+.pop.cl-pop { z-index: 201;   /* over the dialog backdrop */
+  > .ev-row:first-child { margin-top: 0; }
+  &.ev-colors { flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--sp-8); max-width: 260px; }
+  &.blk-capacity { flex-direction: row; align-items: center; gap: var(--sp-8); .ev-field { width: 96px; } }
+  .pop-item.on { color: var(--accent); } }
 .ev-row { gap: var(--sp-12); margin-top: var(--sp-12); }
-/* date start – end overflows 372px: the end pair (an event's end date only when multi-day) sits under the start; .ev-row spares the block's Repeat-row times */
-:is(.event-editor, .block-editor) .ev-row:has(.ev-times) { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; row-gap: var(--sp-8); }
-:is(.event-editor, .block-editor) .ev-row .ev-times { display: contents; }
-:is(.event-editor, .block-editor) .ev-row .ev-times input[type=time] ~ input[type=time] { grid-column: 2; }
-:is(.event-editor, .block-editor) .ev-row .ev-dash, .event-editor .ev-row .ev-times input[type=date] { grid-area: 2 / 1; justify-self: end; }   /* the dash leads the end line */
-.event-editor .ev-row .ev-times:has(input[type=date]) .ev-dash { justify-self: start; translate: calc(-100% - var(--sp-6)); }   /* hung left of the end date */
+/* the When pop's date start – end overflows a phone: the end pair (an event's end date only when multi-day) sits under the start; the Repeat pop's times are its own row */
+.cl-pop .ev-row:has(> input[type=date] ~ .ev-times) { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; row-gap: var(--sp-8); }
+.cl-pop .ev-row .ev-times { display: contents; }
+.cl-pop .ev-row .ev-times input[type=time] ~ input[type=time] { grid-column: 2; }
+.cl-pop .ev-row .ev-dash, .cl-pop .ev-row .ev-times input[type=date] { grid-area: 2 / 1; justify-self: end; }   /* the dash leads the end line */
+.cl-pop .ev-row .ev-times:has(input[type=date]) .ev-dash { justify-self: start; translate: calc(-100% - var(--sp-6)); }   /* hung left of the end date */
+.blk-field { margin-top: var(--sp-12); }
 .ev-allday { font-size: var(--fs-13); color: var(--ink); cursor: pointer; }
 /* .ev-field appearance is the shared .inp rule; only ev-specific layout lives here */
 .ev-dash { color: var(--muted); }
 .ev-lab { color: var(--muted); font-size: var(--fs-13); flex: none; white-space: nowrap; }
-.ev-color-label { margin-top: var(--sp-12); }
-/* Block editor extras: weekday repeat toggles + area condition chips */
-.blk-field { margin-top: var(--sp-12); }
+/* Block editor extras: weekday repeat toggles */
 .section-label { display: block; margin-bottom: var(--sp-6); }
 .blk-wd { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel); color: var(--ink); font-size: var(--fs-12); }
-.blk-chip { padding: var(--sp-4) var(--sp-10); border-radius: var(--r-lg); border: 1px solid var(--edge); background: var(--panel); color: var(--ink); font-size: var(--fs-12); }
-.blk-chip.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); border-color: var(--accent); color: var(--accent); }
 .blk-presets { margin-bottom: var(--sp-10); }
 .blk-preset { padding: var(--sp-4) var(--sp-10); border-radius: var(--r-lg); border: 1px solid var(--edge); background: var(--hover); color: var(--muted); font-size: var(--fs-12); cursor: pointer; transition: background-color .12s; }
 .blk-preset:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }
