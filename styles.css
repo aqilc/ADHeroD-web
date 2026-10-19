@@ -998,9 +998,14 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 :is(.entry-list.steps > .ghost .chk-rect, .entry.step-ghost:not(.active) .ghost-check)::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
   background: repeating-conic-gradient(color-mix(in srgb, var(--faint) 70%, transparent) 0 36deg, transparent 0 60deg);
   mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); }   /* six dashes: a border:dashed draws a "C" this small */
+/* First step beside the subtask ring (comp-ui-1 G3): the rail in small, two nodes joined by a line; a phone's type-picker row keeps the six dashes */
+.entry.step-ghost:not(.active, :has(> .type-pick)) .ghost-check::after { --ghost-ink: color-mix(in srgb, var(--faint) 70%, transparent); inset: -3px; mask: none; background:
+  radial-gradient(circle at 50% 3.5px, transparent 1.6px, var(--ghost-ink) 1.9px 3.3px, transparent 3.6px), radial-gradient(circle at 50% 12.5px, transparent 1.6px, var(--ghost-ink) 1.9px 3.3px, transparent 3.6px),
+  linear-gradient(var(--ghost-ink), var(--ghost-ink)) 50% 50% / 2px 3px no-repeat; }
 /* empty state: up to three ghosts with an OR between each */
-.entry-empty { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
+.entry-empty { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
   .entry { flex: 0 1 auto; min-width: 0; padding: 0; }   /* together from the left at their own width; shrinks so a long typed line wraps */
+  .entry:not(:has(> .type-pick)) > .entry-txt { align-self: baseline; }   /* the entry's baseline is its text's, not the icon box's: the ORs sit on it. A phone's picker row centres */
   .entry-or { font-size: var(--fs-11); font-weight: 600; color: var(--muted); letter-spacing: .04em; flex: none; }
 }
 /* three ghosts can't share a phone-width line (a wrap strands an OR at a line's end): they stack, each OR centred between */
