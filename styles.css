@@ -2355,7 +2355,7 @@ textarea.inp { resize: vertical; }
 .ev-title { font-size: var(--fs-15); line-height: 18px; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
   &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
 .ev-notes { margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 1.4; field-sizing: content; resize: vertical; max-height: calc(8lh); }   /* ceiling: field-sizing as .entry-txt (Safari 26.2); below it the notes keep one visible line */
-.cl-opts { margin-top: var(--sp-6); :where(html:not(.touch)) & { padding-right: 0; }   /* the go sits in the foot, not on this line */
+.cl-opts { margin-top: var(--sp-6); :where(html:not(.touch)) & { padding-right: 0; margin-right: calc(-1 * var(--sp-6)); }   /* the go sits in the foot: the last chip's ink ends on its edge, as the first's starts on the text */
   .chip[aria-expanded=true] { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* .chip.open's look, keyed on pop alone: a binding reading pop and the editor runs before the editor's x-if when both change in one tick */
   .chip-repeat { --cc: var(--accent-hue); }
   .chip-usable { --cc: var(--hue-duration); } }

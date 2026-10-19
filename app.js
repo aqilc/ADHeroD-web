@@ -9283,11 +9283,12 @@ document.addEventListener('alpine:init', () => {
       if (innerWidth < 760) return 'margin-inline:auto';
       const d = this.clDraft(), w = 480;   // .event-editor/.block-editor's width · ceiling: placed when the draft's day changes, not on a page turn under it; recompute on clAnchor if a turn strands it
       const col = [...document.querySelectorAll(`.cl-pcol[data-iso="${d.date}"]`)].find(c => { const r = c.getBoundingClientRect(); return r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
-      const right = r ? innerWidth - r.right - 16 : 0, left = r ? r.left - 16 : 0, fit = Math.max(right, left);   // room beside it, 8px gaps
-      if (right >= w) return 'left:' + (r.right + 8) + 'px;--from:0 0';
-      if (left >= w) return 'left:' + (r.left - 8 - w) + 'px;--from:100% 0';
+      // room beside it: 2px from its column, almost touching (a wider gap showed the next day's bar, user 10-19), 8px from the window
+      const right = r ? innerWidth - r.right - 10 : 0, left = r ? r.left - 10 : 0, fit = Math.max(right, left);
+      if (right >= w) return 'left:' + (r.right + 2) + 'px;--from:0 0';
+      if (left >= w) return 'left:' + (r.left - 2 - w) + 'px;--from:100% 0';
       if (fit < 320) return 'left:' + (innerWidth - 16 - w) + 'px';
-      return 'min-width:0;width:' + fit + 'px;left:' + (right >= left ? r.right + 8 + 'px;--from:0 0' : '8px;--from:100% 0');
+      return 'min-width:0;width:' + fit + 'px;left:' + (right >= left ? r.right + 2 + 'px;--from:0 0' : '8px;--from:100% 0');
     },
     clGridUp() { this._blkDrag = null; },
     clGridClick(e, iso) {
