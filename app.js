@@ -1181,8 +1181,8 @@ document.addEventListener('alpine:init', () => {
       if (!error || refused) localStorage.removeItem('adherod.invite');
       // redeem_invite refuses your own link like a used one
       if (error?.code === 'P0001') {
-        const live = await sb.from('invites').select('id').eq('id', invite).eq('user_id', this._acct()).is('used_at', null).gt('expires_at', new Date().toISOString());
-        return this.notify(live.data?.length ? 'That invite link is yours. Send it to a friend' : 'That invite link has been used or has expired');
+        const live = await sb.from('invites').select('id').eq('id', invite).eq('user_id', this._acct()).gt('uses_left', 0).gt('expires_at', new Date().toISOString());
+        return this.notify(live.data?.length ? 'That invite link is yours. Send it to a friend' : 'That invite link is used up or has expired');
       }
       if (error) return this.notify(refused ? 'Invite not opened' : status ? 'Invite not opened. Try again later' : 'Invite not opened. Check your connection');
       await this.chatReload();
@@ -1198,7 +1198,7 @@ document.addEventListener('alpine:init', () => {
       }
       const copy = async () => {
         const copied = await navigator.clipboard.writeText(url).then(() => true, () => false);
-        if (copied) this.notify('Invite link copied. It works once, for 14 days');
+        if (copied) this.notify('Invite link copied. It works for 5 friends over 14 days');
         return copied;
       };
       // Safari refuses a write that follows the insert's await; a click on Copy is a fresh gesture
@@ -9671,9 +9671,12 @@ document.addEventListener('alpine:init', () => {
         if (error) { this.authMsg = error.message; this.authErr = true; }
         return;
       }
-      // one email carries both a link and a 6-digit code (templates: pg_mail/mail/mail.js); shouldCreateUser:false blocks new-account creation
-      const { error } = await sb.auth.signInWithOtp({ email: this.authEmail, options: { emailRedirectTo: location.href, shouldCreateUser: false } });
-      this.authMsg = error ? error.message : 'Tap the link in the email, or enter its code below.';
+      // One email carries both a link and a 6-digit code (templates: pg_mail/mail/mail.js). A new email makes an account only
+      // with an invite waiting: the server's before-user-created hook (pg_mail/functions/invite_signup.sql) checks it has uses left.
+      // ceiling: the mail link opened on another device signs in without the invite; the friend opens the invite link again
+      const invite = localStorage.getItem('adherod.invite');
+      const { error } = await sb.auth.signInWithOtp({ email: this.authEmail, options: { emailRedirectTo: location.href, shouldCreateUser: !!invite, data: invite ? { invite } : undefined } });
+      this.authMsg = error?.code === 'otp_disabled' ? "No account with this email. To sign up, open a friend's invite link." : error ? error.message : 'Tap the link in the email, or enter its code below.';
       this.authErr = !!error;
       this.authSent = !error;
     },
