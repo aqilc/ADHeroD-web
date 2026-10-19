@@ -117,9 +117,11 @@ let _hayV = -1;   // _hay's data version (see pickerMatches)
 let _hayOf = new WeakMap();   // candidate array -> { hay, low }: a memoized pool (relationCandidates) reuses its haystack per keystroke
 const _seqIn = (low, f) => { let at = 0; for (let k = 0; k < f.length; k++) if (!(at = low.indexOf(f[k], at) + 1)) return false; return true; };   // f in order within low; both lowercased
 const _relMemo = new Map(), _candMemo = new Map();   // _relIdx / relationCandidates, one entry each
-const _clSideOut = { res: { rows: [], html: new Map() }, un: { rows: [], html: new Map(), more: 0 } };   // clSideRows(): each kind's last rows + their key (_rowV|day(|tick)) + id → row html; hidden, the last rows show
+const _clSideOut = Object.fromEntries(['res', 'old', 'week', 'due', 'more'].map(k => [k, { rows: [], html: new Map(), n: 0 }]));   // clSideRows(): each section's last rows + their key (_rowV|day(|tick)) + id → row html; hidden, the last rows show
+let _clSecs = { key: '' };   // _clSideSecs(): the panel's sections, built once per change
 let _clSideV = -1;   // the _rowV the tray's cached row html holds for: _patchTask keeps it current, any other bump leaves it behind
 let _clAdNxH = null;   // last written --adh (the incoming claims rail height)
+let _sheetDrag = null;   // clSheetDown(): the finger dragging the phone panel's head
 const _clPgCache = new Map();   // day/week periods by index: scale-free days + bands, and their packed cols at one scale
 const _clWkCache = new Map();   // month week rows by index, off the Alpine proxy (a reactive Map deep-proxies every cell)
 const _nextMemo = new Map();   // repeat rule + anchor + day → the occurrence its row shows (whenShown): one step-walk per repeat per day
@@ -204,7 +206,7 @@ let _doneModel = null;                // the Done list's, the same shape, memois
 let _chkHeld = null, _chkHeldT = 0, _chkOut = null, _chkDraftList = null;   // a checklist whose ticks show in place: app._holdChk
 let _appRaw = null;   // the component unproxied (init): visibleRows rebuilds on it
 // _patchRows → visibleRows: { ids, drop, sort, key, v } = rebuild ONLY these rows of the memo keyed `key` (drop: roots leaving it; sort: parents whose children moved), once _rowV is `v`
-const GLIDE_ROWS = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head)';   // what _glideFrom moves
+const GLIDE_ROWS = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head), .cl-side :is(.rows > [data-id], .cl-side-sec)';   // what _glideFrom moves
 // Shown ones only: a hidden one (Done before its first row) reads as top 0, so it would glide in across the list
 const glideEls = () => [...document.querySelectorAll(GLIDE_ROWS)].filter(el => el.checkVisibility());
 const _push = new Map();   // task id → the Steps tick waiting for its re-rendered row (_stepTick)
@@ -464,7 +466,7 @@ document.addEventListener('alpine:init', () => {
     blockDays: [],          // block_day answer rows (start/skip/undo written here and on Android)
     dayNotes: [],           // named days (B·V3): { date, label }
     clView: 'month',        // calendar view: day | week | month
-    clSideOpen: false, clSideMore: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle; 'peek-ad' while a drag hovers the Peek all-day strip
+    clSideOpen: false, clSideOlder: false, clSideMore: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle; 'peek-ad' while a drag hovers the Peek all-day strip
     peekPin: false, peekIso: '', peekEdgeHot: null, peekMonHot: '',   // Peek Pane (C2): drag-summoned docked day column on Lists; pin keeps it for batch planning; edge-dwell paging + month-dwell state
     clDropPreview: null,   // { iso, min, h, label } — live ghost of where a drag will land in a week/day column
     clAnchor: isoDate(new Date()),   // calendar anchor date (YYYY-MM-DD); drives the visible period
@@ -769,7 +771,7 @@ document.addEventListener('alpine:init', () => {
       // The soft keyboard's height (0 when down), from what the visual viewport lost: a phone docks the composer's chips + Save on it.
       // Its metrics land on their readers alone (uninherited, styles.css): set on <html>, each change restyled every element.
       const root = document.documentElement, sheet = new CSSStyleSheet();
-      sheet.replaceSync('.app, .app::after, .composer-dock, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, :is(.chat-comp, .jb-chat) textarea, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
+      sheet.replaceSync('.app, .app::after, .composer-dock, .cl-side, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, :is(.chat-comp, .jb-chat) textarea, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
       // A docked pop (9B) counts as the keyboard: it takes the keyboard's place, so the dock rides it the same way.
       const vars = sheet.cssRules[0].style;
       _keyboard = () => {
@@ -2168,7 +2170,7 @@ document.addEventListener('alpine:init', () => {
     // Imperative row state, by id, onto an <li> a morph created (a kept one keeps its classes; each state's writer restamps live rows).
     _stampRow(el) {
       const id = el.dataset.id, c = el.classList;
-      if (id === this.editing) { c.add('editing-row'); el.style.height = this.startH + 'px'; }
+      if (id === this.editing) this._editRow(el);
       // The edited subtree, asked LIVE: a snapshot at open missed subtasks added while editing — the window (_editShift)
       // modelled them under the composer, the list still drew them, and every row past it came in that much late.
       else if (this.editing && this._chain(this.byId.get(id)?.parent_id).includes(this.editing)) c.add('edit-hidden');
@@ -2187,11 +2189,14 @@ document.addEventListener('alpine:init', () => {
         }
       }
       _push.get(id)?.(el);
-      const fx = _cele.get(id);
-      if (fx && !fx.quiet && this.byId.get(id)?.completed_at) {
-        c.add('cele', fx.mode, ...fx.leave ? ['leave'] : []);
-        if (fx.ember) el.querySelector('.check')?.insertAdjacentHTML('beforeend', fx.ember);
-      }
+      this._celeMark(el);
+    },
+    _editRow(el) { el.classList.add('editing-row'); el.style.height = this.startH + 'px'; },   // the composer covers it, grown from its height
+    _celeMark(el) {   // a rewarded row wears its reward when (re)made
+      const fx = _cele.get(el.dataset.id);
+      if (!fx || fx.quiet || !this.byId.get(el.dataset.id)?.completed_at) return;
+      el.classList.add('cele', fx.mode, ...fx.leave ? ['leave'] : []);
+      if (fx.ember) el.querySelector('.check')?.insertAdjacentHTML('beforeend', fx.ember);
     },
     // The scroll-coordinate top of an entry, straight out of the model — a windowed list can be asked to go
     // to a row that has no element at all.
@@ -2238,7 +2243,7 @@ document.addEventListener('alpine:init', () => {
       el._parts = parts; const made = this.morphRows(el, parts);
       if (pin) { const r = this._rowEl(pin.id); if (r) pin.sc.scrollTop += r.getBoundingClientRect().top - pin.top; }
       if (made.length && el.closest('.surface-lists')) { _fitDone = -1; queueMicrotask(() => { for (const n of made) this._stampRow(n); this.paintSel(); this._rehover(); }); this.fitRows(); }   // list rows only; a microtask reads the state subscribing no effect
-      else if (made.length && el.closest('.cl-side')) this._fitSide(el.closest('.cl-side'), made);
+      else if (made.length && el.closest('.cl-side')) { for (const n of made) { this._celeMark(n); if (n.dataset.id === this.editing) this._editRow(n); } this._fitSide(el.closest('.cl-side'), made); }
       if (before) queueMicrotask(() => this._glideFrom(before, false));
     },
     // The browser anchors a morph, except inside a close's collapse (closeComposer holds anchoring off) or under an arrival's
@@ -2762,7 +2767,7 @@ document.addEventListener('alpine:init', () => {
       // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. Close never
       // scrolls either, so an in-view edit leaves the list put.
       if (!this.composer.open) {
-        const sc = this.editing && this._listScroller(), r = sc && this._rowEl(this.editing);
+        const sc = this.editing && this._editScroller(), r = sc && (this._inPanel() ? this._trayEl(this.editing) : this._rowEl(this.editing));
         const top = r ? r.getBoundingClientRect().top - sc.getBoundingClientRect().top : null;
         // …unless _ensureRow jumped us here to render the row at all: it lands near the top of the viewport,
         // which reads as "already in view" and would leave a composer opened on the LAST row below the fold.
@@ -2796,15 +2801,14 @@ document.addEventListener('alpine:init', () => {
           c.focus({ preventScroll: true }); _opened = c;
           if (!ghost && (this.editing || this.draftRestored)) this._caret(c);   // a restored draft goes on where its typing stopped
         }
-        if (this._inPanel()) return;   // the panel hosts it: hidden Lists' scroller isn't the open's to move
         if (!this._skipOpenScroll) this._showComposer();   // off-screen → glide composer into view
-        else { const sc = this._listScroller(); if (sc) this._glide(sc, sc.scrollTop, 420, this.$refs.grow); }   // in-view: hold against grow-induced anchor drift
+        else { const sc = this._editScroller(); if (sc) this._glide(sc, sc.scrollTop, 420, this.$refs.grow); }   // in-view: hold against grow-induced anchor drift
       }));
     },
     // ONE glide, aimed at the composer WHILE IT GROWS: a live target absorbs the growth instead of chasing it (two
     // browser animations racing over a growing element were the open/close stutter). No-op when it's already in view.
     _showComposer() {
-      const comp = this.$refs.composer, sc = this._listScroller(); if (!comp || !sc?.contains(comp)) return;   // hosted outside the list (the jot bar): its scroll is the reader's
+      const comp = this.$refs.composer, sc = this._editScroller(); if (!comp || !sc?.contains(comp)) return;   // hosted outside the list (the jot bar): its scroll is the reader's
       const start = sc.scrollTop, pad = this._seenTop(sc);
       this._glide(sc, () => {
         // A live target has to survive the target MOVING: relocateComposer re-parents this element between
@@ -2821,7 +2825,7 @@ document.addEventListener('alpine:init', () => {
     // Imperative edit styling (no list rebuild): crossfade height on the edited row + hide its subtree. Run on
     // open/close; rows a morph creates later are stamped by _stampRow.
     applyEditDom() {
-      for (const el of document.querySelectorAll('.surface-lists .item.editing-row')) { el.classList.remove('editing-row'); el.style.height = ''; }
+      for (const el of document.querySelectorAll('.item.editing-row')) { el.classList.remove('editing-row'); el.style.height = ''; }
       const before = !this.editing && _arrive.size && this._rowTops();
       for (const el of document.querySelectorAll('.surface-lists .item.edit-hidden')) {
         el.classList.remove('edit-hidden');
@@ -2829,6 +2833,7 @@ document.addEventListener('alpine:init', () => {
       }
       if (before) queueMicrotask(() => this._glideFrom(before, false));
       if (!this.editing) return;
+      const tray = this._inPanel() && this._trayEl(this.editing); if (tray) this._editRow(tray);
       const sub = new Set([this.editing]);   // the edited subtree: only its rows take edit state, so only they get stamped
       for (const id of sub) for (const k of this.childTasks(id)) sub.add(k.id);   // a Set: a parent cycle ends the walk
       for (const el of document.querySelectorAll('.surface-lists .list .item')) if (sub.has(el.dataset.id)) this._stampRow(el);   // one pass over the rows, not a query per hidden descendant
@@ -2843,8 +2848,8 @@ document.addEventListener('alpine:init', () => {
     // physically moved into the target .list on open; $refs survive; setNav/goSurface close it on switch
     relocateComposer() {
       const el = this.$refs.composer; if (!el) return;
-      // Plan+panel → panel; a completed task → the Done list; otherwise the active Lists list
-      const dest = this._inPanel() ? document.querySelector('.cl-side-composer')
+      // Plan+panel → the panel, at the task's row; a completed task → the Done list; otherwise the active Lists list
+      const dest = this._inPanel() ? (this.editing && this._trayEl(this.editing)?.closest('.cl-side-list') || document.querySelector('.cl-side-composer'))
         : this._inBar() ? document.querySelector('.jb-host')
         : this.editingDone() ? document.querySelector('.list-done .list')
         : document.querySelector('.surface-lists .list');
@@ -3204,6 +3209,7 @@ document.addEventListener('alpine:init', () => {
       _closeRange = null;
     },
     _listScroller() { return _staticEl('.surface-lists .app'); },
+    _editScroller() { return this._inPanel() ? _staticEl('.cl-side') : this._listScroller(); },   // the open's: the panel hosts it on Plan
     _rowOffscreen(sc, el) { const r = el.getBoundingClientRect().top - sc.getBoundingClientRect().top; return r < this._seenTop(sc) - 1 || r + el.offsetHeight > this._seenH(sc) + 1; },
     _seenTop(sc) { return parseFloat(getComputedStyle(sc).scrollPaddingTop) || 0; },   // a sticky header covers the scroller's top (the jot bar's, G-A)
     // How much of the scroller the reader SEES: the nav strip covers its bottom --foot band, and a phone's soft
@@ -3400,7 +3406,7 @@ document.addEventListener('alpine:init', () => {
       _viewHold = false; this._heldV++; _heldRes?.(); _heldP = _heldRes = null;
     },
     _viewFree() { return _viewHold ? _heldP ??= new Promise(res => _heldRes = res) : Promise.resolve(); },
-    composerMt() { return (this.editing && !this._inBar() && !this._inPanel() ? -this.startH : 0) + 'px'; },   // over its row; the bar's task and the panel's (its row is hidden) have none
+    composerMt() { return (this.editing && !this._inBar() && (!this._inPanel() || this.$refs.composer?.parentElement.matches('.cl-side-list')) ? -this.startH : 0) + 'px'; },   // over its row; the bar's task and a panel task with no row shown have none
     // A terminal action (done, duplicate, archive) closes the composer: its open edits land first. False = they didn't, and
     // the composer keeps them — a dirty draft closed over would only survive as a recoverable pending draft.
     async _saveOpenEdits(d) { return this._live(d) && (this._draftSig() === this._draftBase || await this.submitComposer() === true); },
@@ -3412,7 +3418,8 @@ document.addEventListener('alpine:init', () => {
       if (!await this._saveOpenEdits(d)) return;
       if (!this._closingComposer) _viewHold = true;   // the row leaves the list once the composer has collapsed over it
       // ceiling: the hold spans the completion write, so a slow signed-in write delays other rows' changes until it lands; start it at the landing if that shows
-      try { await this.toggle(t); if (this.byId.get(t.id)?.completed_at && this._live(d)) this.closeComposer(true); }
+      const tray = this.surface === 'plan';   // its tray row comes back done for the reward's beat, counted from the collapse's end
+      try { await this.toggle(t, tray ? { t } : null); if (this.byId.get(t.id)?.completed_at && this._live(d)) this.closeComposer(true)?.then(() => tray && _cele.has(t.id) && this._celeLinger()); }
       finally { if (!this._closingComposer) this._releaseView(); }
     },
     // A task's stored fields → a fresh composer draft (shared by editTask + subtask editors).
@@ -3456,7 +3463,7 @@ document.addEventListener('alpine:init', () => {
       _jumped = !ev;   // the in-place rule is for a row the reader TAPPED; a palette/keyboard open lifts the whole composer in (B3)
       // ev.currentTarget is the list (<ul>); resolve the actual row by id
       // windowed: a programmatic open must window the row in before it can be measured — not for the panel, whose jump would move hidden Lists
-      const row = ev?.currentTarget?.classList.contains('item') ? ev.currentTarget : this._inPanel() || this.jotted ? this._rowEl(t.id) : this._ensureRow(t.id);
+      const row = ev?.currentTarget?.classList.contains('item') ? ev.currentTarget : this._inPanel() ? this._trayEl(t.id) : this.jotted ? this._rowEl(t.id) : this._ensureRow(t.id);
       // programmatic opens lack a source row — fall back to a visible row height (else startH=0 loses overlap)
       this.startH = row?.offsetHeight || [...document.querySelectorAll('.list .item')].find(el => el.offsetParent !== null)?.offsetHeight || 34;
       // block height = row + its shown subtask rows (measured before they hide)
@@ -6999,6 +7006,7 @@ document.addEventListener('alpine:init', () => {
     _rehover() { const r = _rowMap?.get(_hoverId) ?? _doneMap?.get(_hoverId); if (r) this.hoverRow(r); },   // a re-rendered block row comes back without its classes
     clearHover() { for (const li of _hoverEls) li.classList.remove('inblock', 'rb-top', 'rb-bottom'); _hoverEls = []; _hoverId = null; },
     _rowEl(id) { return document.querySelector('.surface-lists .list .item[data-id="' + id + '"]'); },
+    _trayEl(id) { return document.querySelector('.cl-side .item[data-id="' + id + '"]'); },
     // drag "nest here" outline — one element, not a reactive :class on every row. dwell: .drop-dwell while the pointer waits out
     // DWELL on it, then .drop-into. No row: no dwell either.
     _setDropInto(id, dwell = false, deep = false) {   // deep: the row is past MAX_DEPTH for this drag, drawn red
@@ -7620,9 +7628,12 @@ document.addEventListener('alpine:init', () => {
         for (const r of rows) if (!this.byId.get(r.t.id)?.completed_at) _cele.delete(r.t.id);
         if (!this.byId.get(row.t.id)?.completed_at) return;
         if (head && this.byId.get(this.navSel.id)?.completed_at) this._celeHead(this.byId.get(this.navSel.id));
-        clearTimeout(_celeT);   // ONE linger, restarted by each tick: a burst exits together, never shifting rows under the pointer
-        _celeT = setTimeout(() => this._celeExit(), motion.t(600));
+        this._celeLinger();
       };
+    },
+    _celeLinger() {   // ONE linger, restarted by each tick: a burst exits together, never shifting rows under the pointer
+      clearTimeout(_celeT);
+      _celeT = setTimeout(() => this._celeExit(), motion.t(600));
     },
     // A pointer tick on a Steps row (docs/ui/task-list.md §Steps, docs/ui/motion.md), one phase after another: the rail
     // fills down to the next step in the task's colour, that step's node lights, then the write lands and the next step's
@@ -7698,7 +7709,7 @@ document.addEventListener('alpine:init', () => {
       head?.classList.add('leave');
       for (const [id, fx] of held) if (fx.leaves && this.byId.get(id)?.completed_at) {   // undone meanwhile: it stays
         fx.leave = true;
-        fading.push(...descendantIds(this.tasks, id, this._kidsOf(id)).map(sub => this._rowEl(sub)).filter(Boolean));   // its shown subtree fades with it
+        fading.push(...descendantIds(this.tasks, id, this._kidsOf(id)).map(sub => this._rowEl(sub)).concat(this._trayEl(id)).filter(Boolean));   // its shown subtree fades with it
       }
       for (const el of fading) el.classList.add('leave');
       setTimeout(() => {
@@ -7906,7 +7917,7 @@ document.addEventListener('alpine:init', () => {
     // --- Calendar (continuous Month · page-per-week Week/Day — iOS/macOS-Calendar-style) ---
     listView() { return this.surface === 'lists'; },   // task-list views (all/backlog/project/area/filter) live on the Lists surface
     // Open = not completed/archived/a project/a parent. Callers append their own clauses (block-fill adds unscheduled/overdue).
-    _openLeaf(t) { return !t.completed_at && !t.archived_at && placeable(t) && !this.hasChildren(t.id); },
+    _openLeaf(t, held = false) { return (!t.completed_at || held && _cele.has(t.id)) && !t.archived_at && placeable(t) && !this.hasChildren(t.id); },
     async loadEvents() { const ev = await this.store.events.list(); _calDataV++; this.events = ev; },
     // must bust _calDataV too — without it a block added between two event loads never reaches the memo, and the
     // calendar keeps drawing the previous set until some unrelated task/event change happens to bump the sig
@@ -8057,7 +8068,8 @@ document.addEventListener('alpine:init', () => {
       const todayIso = this._nowDay, narrow = this.narrow;
       // phone: a named day's two-line name stands over its chips, so the row's height decides how many show: [all, before a "+N"]
       const named = narrow && [Math.min(3, Math.floor((this.clRowH - CL_MNAMED) / CL_MCHIP)), Math.max(0, Math.floor((this.clRowH - CL_MNAMED - CL_MMORE) / CL_MCHIP))];
-      const sig = _calDataV + '|' + todayIso + '|' + narrow + '|' + named + (named ? '|' + this.dayNotes.map(d => d.date) : '');   // the names: a reactive read, so one arriving re-runs this
+      const shelf = this._clShelf(), shelved = new Set(shelf);
+      const sig = _calDataV + '|' + todayIso + '|' + narrow + '|' + named + '|' + shelf + (named ? '|' + this.dayNotes.map(d => d.date) : '');   // the names: a reactive read, so one arriving re-runs this
       if (_clWkSig !== sig || _clWkCache.size > 200) { _clWkSig = sig; _clWkCache.clear(); }   // size: a long scroll would otherwise keep every row it ever passed
       const end = Math.min(CL_TOTAL_WEEKS, this.clVisStart + this.clVisCount);
       for (let idx = Math.max(0, this.clVisStart); idx < end; idx++) {
@@ -8066,7 +8078,7 @@ document.addEventListener('alpine:init', () => {
           const ws = this._weekDate(idx);
           const cols = Array.from({ length: 7 }, (_, i) => {
             const d = new Date(ws); d.setDate(d.getDate() + i);
-            const iso = isoDate(d), items = (byDay[iso] || []).map(it => {
+            const iso = isoDate(d), items = (byDay[iso] || []).filter(it => it.kind !== 'task-block' || !shelved.has(it.id)).map(it => {
               if (it.allDay || !it.end) return it;
               const start = it.start.slice(0, 10), end = new Date(it.end.slice(0, 10) + 'T00:00');
               if (it.end.endsWith('T00:00')) end.setDate(end.getDate() - 1);
@@ -8541,15 +8553,16 @@ document.addEventListener('alpine:init', () => {
       // ref on a hit so Alpine's x-for no-ops instead of re-diffing every column/event. _calDataV busts on any data change.
       // scale key: the week packs by px-per-minute (tier, stacking); a day page is scale-free — its agenda tier binds in the template
       const scale = span === 1 ? 0 : this.clHourH;
-      const sig = this.clView + '|' + start + '|' + end + '|' + scale + '|' + span + '|' + todayIso + '|' + _calDataV;   // no clock: an open band's foot follows it at render (clBandH)
+      const shelf = this._clShelf(), sig = this.clView + '|' + start + '|' + end + '|' + scale + '|' + span + '|' + todayIso + '|' + _calDataV + '|' + shelf;   // no clock: an open band's foot follows it at render (clBandH)
       if (_clBlocksSig === sig) return _clBlocksCache;
       // Per period: a turn builds only the incoming one, and a zoom step only re-packs (scale), never re-reads a day.
-      const dataSig = this._clDataSig();
+      const dataSig = this._clDataSig(shelf);
       if (_clPgSig !== dataSig || _clPgCache.size > 60) { _clPgSig = dataSig; _clPgCache.clear(); }   // size: a long travel would keep every period it passed
       // grouped 8 periods at a time: calendarItems scans every task whatever the span, so a turn mostly hits the memo
       const base = start - start % 8, from = this._periodDate(base), toD = this._periodDate(base + 7 + this.clPVisCount); toD.setDate(toD.getDate() + span - 1);
       const out = [];
       let byDay = null;   // one calendarItems pass over the window, only if a period misses
+      const shelved = new Set(shelf);
       for (let idx = start; idx < end; idx++) {
         let pg = _clPgCache.get(idx);
         if (!pg) {
@@ -8557,7 +8570,7 @@ document.addEventListener('alpine:init', () => {
           byDay ||= this._clGroup(isoDate(from), isoDate(toD));
           const days = Array.from({ length: span }, (_, i) => {
             const d = new Date(ps); d.setDate(d.getDate() + i); const iso = isoDate(d);
-            return this._clColumn(iso, byDay[iso] || []);
+            return this._clColumn(iso, (byDay[iso] || []).filter(it => it.kind !== 'task-block' || !shelved.has(it.id)));
           });
           _clPgCache.set(idx, pg = { days, bands: this._clWeekBands(days) });
         }
@@ -8787,7 +8800,7 @@ document.addEventListener('alpine:init', () => {
       const lead = r.mark ? (r.it.kind === 'task-deadline' ? 'Deadline' : 'Due') : r.allday ? (r.it.spanStart === false ? 'Continues' : '') : this._clCross(r.it) ? this.clTimeLabel(r.it) : this.durFmt(r.mins);
       return lead + (a ? (lead ? ' · ' : '') + a.name : '');
     },
-    _clDataSig() { return this.clView + '|' + this._periodSpan() + '|' + this._nowDay + '|' + _calDataV; },
+    _clDataSig(shelf = this._clShelf()) { return this.clView + '|' + this._periodSpan() + '|' + this._nowDay + '|' + _calDataV + '|' + shelf; },
     // An x-effect runs once per flush: one woken by byId runs before the x-for hands it the new col, so take the col from the cache.
     _clColNow(key, col) {
       if (_clPgSig !== this._clDataSig()) this.clBlocks();
@@ -9399,7 +9412,7 @@ document.addEventListener('alpine:init', () => {
     // ceiling: the open "N more" list renders every undated task; window it past ~500
     clUnscheduled() {
       const pm = this._placedMap(), need = [], rest = [];
-      const all = this.tasks.filter(t => this._openLeaf(t) && !this.whenOf(t, pm)).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+      const all = this.tasks.filter(t => this._openLeaf(t, true) && !this.whenOf(t, pm)).sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
       for (const t of all) (t.deadline_at || t.importance === 'must' || t.importance === 'focus' ? need : rest).push(t);
       need.sort((a, b) => !a.deadline_at - !b.deadline_at || (a.deadline_at || '').localeCompare(b.deadline_at || '') || (a.importance !== 'must') - (b.importance !== 'must'));
       return [need, rest];
@@ -9413,8 +9426,26 @@ document.addEventListener('alpine:init', () => {
     clReschedule() {
       void this._nowTickV;   // refresh as the clock passes each task's time
       const at = localStamp(new Date()), b = { today: at.slice(0, 10), at }, pm = this._placedMap();
-      return this.tasks.filter(t => this._openLeaf(t) && this._overdue(t, b, pm))
+      return this.tasks.filter(t => this._openLeaf(t, true) && this._overdue(t, b, pm))
         .sort((x, y) => this.whenOf(x, pm).localeCompare(this.whenOf(y, pm)));   // the moment it slipped past
+    },
+    // The phone panel is a sheet whose head drags it down (emil §10): it follows the finger and stops at its top; let go past
+    // a third of its height, or on a downward flick (> .4px/ms over the last move, Vaul's drawer), and it closes, else it settles back.
+    clSheetDown(e) {
+      if (!PHONE_MQ.matches || _sheetDrag || e.target.closest('button')) return;
+      _sheetDrag = { id: e.pointerId, y0: e.clientY, y: e.clientY, t: e.timeStamp, v: 0, side: e.currentTarget.parentElement };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    clSheetMove(e) {
+      const drag = _sheetDrag; if (!drag || e.pointerId !== drag.id) return;
+      drag.v = (e.clientY - drag.y) / Math.max(1, e.timeStamp - drag.t); drag.y = e.clientY; drag.t = e.timeStamp;
+      drag.side.style.transition = 'none'; drag.side.style.transform = `translateY(${Math.max(0, e.clientY - drag.y0)}px)`;   // imperative: no Alpine pass per move
+    },
+    clSheetUp(e) {
+      const drag = _sheetDrag; if (!drag || e.pointerId !== drag.id) return;
+      _sheetDrag = null; drag.side.style.transition = drag.side.style.transform = '';   // the class transition runs on from where the finger left it
+      const dy = e.clientY - drag.y0;
+      if (e.type === 'pointerup' && (dy > drag.side.offsetHeight / 3 || drag.v > 0.4 && dy > 8)) { this.clSideOpen = false; if (this.composer.open) this.closeComposer(); }
     },
     clSideVisible() { return this.clSideOpen || (this.clView === 'day' && !this.clSideOver); },   // the panel is up in day view (auto) or when toggled — but where it OVERLAYS, auto-opening would bury the day you just opened
     _clRowsHtml(tasks, cache) {
@@ -9427,18 +9458,40 @@ document.addEventListener('alpine:init', () => {
         return { id: t.id, html };
       });
     },
-    // One build per change, shared by the list, its x-if/x-show and its rows. Hidden (panel shut or Plan away):
+    // The panel's sections. Reschedule: slips from the last 7 days; older ones fold.
+    // This week: a date window open today that closes within 7 days (typed "this week"). Due in two weeks: an undated
+    // deadline. The rest of the undated fold behind "N more".
+    _clSideSecs() {
+      const today = this._nowDay, key = this._rowV + '|' + today + '|' + this._nowTickV + '|' + this._foldV + '|' + _calDataV + '|' + this._celeV;
+      if (_clSecs.key === key) return _clSecs;
+      const d = new Date(today + 'T00:00'), day = n => isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
+      const pm = this._placedMap(), wk = day(-7), end = day(6), soon = day(14), res = [], old = [];
+      for (const t of this.clReschedule()) (this.whenOf(t, pm) >= wk ? res : old).push(t);
+      const week = this.tasks.filter(t => { const w = this._openLeaf(t, true) && this.whenOf(t, pm), from = (t.available_from || '').slice(0, 10);
+        return w && w.length === 10 && from && from <= today && from < w && w >= today && w <= end; });
+      const [need, rest] = this.clUnscheduled(), due = [], more = [];
+      for (const t of need) (t.deadline_at && t.deadline_at.slice(0, 10) <= soon ? due : more).push(t);
+      return _clSecs = { key, res, old, week, due, more: more.concat(rest) };
+    },
+    _clShelf() { return this.clSideVisible() ? this._clSideSecs().week.map(t => t.id) : []; },   // This week's tasks sit in the open panel, not on their last day (grid and month)
+    // One build per change, shared by the list, its x-show and its rows. Hidden (panel shut or Plan away):
     // keep the last rows and read no task, so a Lists edit wakes nothing; showing re-runs this.
     clSideRows(kind) {
       const side = _clSideOut[kind]; if (!this.clSideVisible() || this._clHidden()) return side.rows;
-      const res = kind === 'res', clock = res ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, ed = this.editing, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV + '|' + ed + '|' + this.clSideMore;   // the tick: re-list for the timed deadlines it left uncached
+      const shut = kind === 'old' ? !this.clSideOlder : kind === 'more' && !this.clSideMore;
+      const clock = kind === 'res' || kind === 'old' ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV + '|' + _calDataV + '|' + this._celeV + '|' + shut;   // the tick: re-list for the timed deadlines it left uncached
       if (side.key === key) return side.rows;
       if (_clSideV !== this._rowV) { for (const s of Object.values(_clSideOut)) s.html.clear(); _clSideV = this._rowV; }   // not only patches since: any row may differ
       if (side.clock !== clock) side.html.clear();   // rows read the clock (due and deadline badges)
-      const [need, rest] = res ? [this.clReschedule(), []] : this.clUnscheduled();
-      return Object.assign(side, { key, clock, more: rest.length, rows: this._clRowsHtml((this.clSideMore ? need.concat(rest) : need).filter(t => t.id !== ed), side.html) }).rows;   // the edited task is the composer's, as on Lists: its row ticked too completed it behind a composer left open
+      const ts = this._clSideSecs()[kind];
+      return Object.assign(side, { key, clock, n: ts.length, rows: shut ? [] : this._clRowsHtml(ts, side.html) }).rows;
     },
-    clSideMoreN() { return this.clSideRows('un') && _clSideOut.un.more; },   // the plain undated tasks behind the "N more" line
+    clSideN(kind) { this.clSideRows(kind); return _clSideOut[kind].n; },   // a section's size, folded or not
+    clSideFold(kind) {   // shut, a fold has nowhere for a composer open on its row: it closes, as on a tap outside
+      const open = kind === 'old' ? 'clSideOlder' : 'clSideMore';
+      if (this[open] && this.composer.open && _clSideOut[kind].rows.some(r => r.id === this.editing)) this.closeComposer();
+      this[open] = !this[open];
+    },
     clRowClick(e) { const el = e.target.closest?.('.item'); const t = el && this.byId.get(el.dataset.id); if (t) this.onRowClick({ t }, e); },
     clSideDragStart(e) { const el = e.target.closest?.('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
     clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideOpen = true; this.$nextTick(() => this.editTask(t)); },

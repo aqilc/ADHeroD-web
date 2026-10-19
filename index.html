@@ -384,7 +384,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
       <!-- ── Composer: title, pills, relations, entries ── -->
       <!-- composer: bottom for new; overlaps edited row (pulled up) for check+title crossfade -->
-      <li class="composer" x-ref="composer" x-effect="persistDraft()" @focus.capture="markFocus($event)" @paste.capture="composerPaste($event)" :style="'order:' + (editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
+      <li class="composer" x-ref="composer" x-effect="persistDraft()" @focus.capture="markFocus($event)" @paste.capture="composerPaste($event)" :style="'order:' + (_inPanel() ? 1 : editing ? editIndex()*2 : visibleRows().length*2) + ';margin-top:' + composerMt() + (composer.open ? '' : ';display:none')"
           @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); _pillThen(() => submitAndClose()); }">
         <div class="composer-grow" x-ref="grow" x-effect="persistDraft(true)" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
         <form class="composer-card" @submit.prevent="_pillThen(() => submitComposer())">
@@ -1168,25 +1168,23 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- staging tray: what still needs a slot (slipped + unscheduled). What IS scheduled is the timeline's job —
            listing it here twice was pure duplication. Composer relocates in here when editing. -->
       <aside class="cl-side" :class="{ open: clSideVisible() }" :inert="!clSideVisible()">   <!-- closed, it is only slid off: Tab reached it and slid the calendar sideways -->
-        <div class="cl-side-top flex items-center justify-between"><span class="cl-side-h">Needs a slot</span><button type="button" class="cl-side-x" @click="clSideOpen = false; if (composer.open) closeComposer()" aria-label="Close panel">×</button></div>
-        <!-- the one real composer relocates in here when editing a task on this surface -->
+        <div class="cl-side-top flex items-center justify-between" @pointerdown="clSheetDown($event)" @pointermove="clSheetMove($event)" @pointerup="clSheetUp($event)" @pointercancel="clSheetUp($event)"><span class="cl-side-h">Needs a slot</span><button type="button" class="cl-side-x" @click="clSideOpen = false; if (composer.open) closeComposer()" aria-label="Close panel">×</button></div>
+        <!-- the one real composer, for a task with no row shown here; a row's opens at its row (relocateComposer) -->
         <ul class="list cl-side-composer"></ul>
-        <!-- Reschedule: slipped tasks (past their time/due, not done) — drag them to a new slot -->
-        <template x-if="clSideRows('res').length">
-          <div>
-            <div class="cl-side-sec resched">Reschedule <span class="cl-side-hint">slipped · drag to a new slot</span></div>
-            <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
-              <div class="rows flex-col gap-4" x-effect="renderRows($el, clSideRows('res'))"></div>
-            </ul>
-          </div>
-        </template>
-        <div class="cl-side-sec">Unscheduled <span class="cl-side-hint">drag onto a day</span></div>
-        <!-- same REAL task rows; draggable onto a day/time to schedule -->
-        <ul class="list cl-side-list" @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
-          <div class="rows flex-col gap-4" x-effect="renderRows($el, clSideRows('un'))"></div>
-        </ul>
-        <button type="button" class="cl-side-sec cl-side-more" x-show="clSideMoreN()" @click="clSideMore = !clSideMore" x-text="clSideMore ? 'Show less' : clSideMoreN() + ' more'"></button>
-        <div class="cl-side-empty" x-show="!clSideRows('un').length && !clSideMoreN()">Nothing unscheduled</div>
+        <!-- the sections (_clSideSecs) of REAL task rows, draggable onto a day or time; the two folds open in place -->
+        <div @click="clRowClick($event)" @dragstart="clSideDragStart($event)" @dragend="clDragEndSchedule()">
+          <div class="cl-side-sec resched" x-show="clSideN('res') || clSideN('old')">Reschedule</div>
+          <ul class="list cl-side-list flex-col" data-sec="res"><div class="rows" x-effect="renderRows($el, clSideRows('res'))"></div></ul>
+          <button type="button" class="cl-side-sec cl-side-more" x-show="clSideN('old')" :aria-expanded="clSideOlder" @click="clSideFold('old')"><svg class="ico sec-chev"><use href="#i-chev-d"/></svg><span x-text="clSideN('old') + ' older slipped'"></span></button>
+          <ul class="list cl-side-list flex-col" data-sec="old"><div class="rows" x-effect="renderRows($el, clSideRows('old'))"></div></ul>
+          <div class="cl-side-sec" x-show="clSideN('week')">This week</div>
+          <ul class="list cl-side-list flex-col" data-sec="week"><div class="rows" x-effect="renderRows($el, clSideRows('week'))"></div></ul>
+          <div class="cl-side-sec" x-show="clSideN('due')">Due in two weeks</div>
+          <ul class="list cl-side-list flex-col" data-sec="due"><div class="rows" x-effect="renderRows($el, clSideRows('due'))"></div></ul>
+          <button type="button" class="cl-side-sec cl-side-more" x-show="clSideN('more')" :aria-expanded="clSideMore" @click="clSideFold('more')"><svg class="ico sec-chev"><use href="#i-chev-d"/></svg><span x-text="clSideN('more') + ' more unscheduled'"></span></button>
+          <ul class="list cl-side-list flex-col" data-sec="more"><div class="rows" x-effect="renderRows($el, clSideRows('more'))"></div></ul>
+          <div class="cl-side-empty" x-show="!['res', 'old', 'week', 'due', 'more'].some(k => clSideN(k))">Nothing needs a slot</div>
+        </div>
       </aside>
 
     </section>

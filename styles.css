@@ -1596,7 +1596,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .sec-row:first-child { padding-top: var(--sp-4); }
 .sec-chev { width: 14px; height: 14px; flex: none; margin: 0 var(--sp-2) 0 -16px; color: var(--faint);
   transition: transform .15s var(--ease-out), color .12s var(--ease-out); }
-.sec-row:hover .sec-chev { color: var(--ink); }
+.sec-row:hover .sec-chev, .cl-side-more:hover .sec-chev { color: var(--ink); }
 /* the picker's project pie, sized for a section head — same mark in both places, so "this section is a project
    and it's this far along" needs no second vocabulary. ::after inset scales with it (4px would leave no core). */
 .sec-pie { width: 12px; height: 12px; flex: none; margin-left: var(--sp-8); }
@@ -2267,19 +2267,24 @@ textarea.inp { resize: vertical; }
    with the rows (bold left caps read as three stacked panels) */
 .cl-side-sec { display: flex; align-items: center; gap: var(--sp-8); margin: var(--sp-16) 0 var(--sp-6); font-size: var(--fs-10); letter-spacing: .12em; }
 .cl-side-sec::before, .cl-side-sec::after { content: ""; flex: 1; height: 1px; background: var(--hair); }
-.cl-side-hint { font-size: var(--fs-10); font-weight: 500; letter-spacing: .04em; text-transform: none; color: var(--muted); }
-.cl-side-hint::before { content: "· "; }
-.cl-side-more { width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }   /* the thread line as a button: the plain undated tasks fold behind it */
+.cl-side-more { width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }   /* a fold: the whole line is the button */
 .cl-side-more:hover { color: var(--ink); }
+.cl-side-more .sec-chev { margin: 0 calc(-1 * var(--sp-4)) 0 0; }
+.cl-side-more[aria-expanded=false] .sec-chev { transform: rotate(-90deg); }   /* shut points right, as a Lists section head */
+.cl-side-list:not(:has(.item)) { display: none; }   /* an empty or folded section takes no room */
+.cl-side-list .item.editing-row ~ .item { order: 2; }   /* the composer (order 1) opens at its row: rows after it stay after it */
 .cl-side-sec.resched { color: var(--warm-ink); }   /* slipped wants attention, never the red that means a deadline */
 /* flat rows, no fold: the gutter shrinks to the row's own inset, and the bleed puts each check under "Needs a slot" */
 .cl-side-list.list { --gut: var(--sp-10); margin: 0 calc(-1 * var(--sp-10)); content-visibility: auto; contain-intrinsic-size: auto 400px; }
+.cl-side-list:has(> .composer) { content-visibility: visible; }   /* auto's paint containment would clip the composer's pops and dim */
+.cl-side-list .item.editing-row { visibility: hidden; }   /* its tighter 5px top would peek above the card's 8 */
 /* C1c pill rows: they LIGHT ON HOVER and fill when selected — never filled at rest. A permanent --hover fill
    turned the tray into a stack of grey slabs, which is exactly the heaviness C2 set out to remove. */
 .cl-side-list .item, .drag-ghost > .item { border-radius: var(--r); --row-hov: color-mix(in srgb, var(--hover) 60%, var(--accent) 8%); }
 .drag-ghost > .item { background-color: var(--row-hov); }   /* the tray row's copy wears its grabbed (hover) pill */
 @media (any-pointer: fine) { :where(:root:not(.touch)) .cl-side-list .item, :where(:root:not(.touch)) .drag-ghost > .item { --row-pt: 5px; } }   /* D3: tighter, so more clears the fold; a touch row keeps its height */
 .cl-side-list .item.sel { background: var(--hover); }
+.cl-side-list .proj-inbox { display: none; }   /* every undated task is in Backlog: the glyph would mark nearly every row */
 .cl-side-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
 
 /* YEAR — 12 mini-months, heat-tinted days */
@@ -2433,7 +2438,12 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   @container (min-height: 116px) { .cl-chip:not(.cl-span) { -webkit-line-clamp: 2; } }
   /* a single filling a band's lane above another band takes the band's one line and height, or the lower band steps down on that day */
   .cl-chip:not(.cl-span):has(~ .cl-span:not(.cl-pad)) { -webkit-line-clamp: 1; line-height: 1.45; padding-block: 1px; }
-  .cl-side { width: 86%; }              /* the task panel overlays most of the screen on mobile */
+  /* the task panel is a sheet under the day it schedules into; its head drags it down (app.js clSheetDown) */
+  .cl-side { top: auto; left: 0; width: auto; height: 46dvh; padding-top: 0; background: var(--panel); border-radius: var(--r-lg) var(--r-lg) 0 0;
+    box-shadow: 0 -1px 0 var(--hair), 0 -10px 28px rgb(0 0 0 / .1); transform: translateY(100%); }
+  .cl-side-top { position: sticky; top: 0; z-index: 1; margin: 0 calc(-1 * var(--sp-16)); padding: var(--sp-16) var(--sp-16) var(--sp-8); background: inherit; touch-action: none; }
+  .cl-side-top::before { content: ""; position: absolute; top: var(--sp-6); left: calc(50% - 18px); width: 36px; height: 4px; border-radius: var(--r-4); background: var(--hair); }   /* the grabber */
+  .touch.kb .cl-side { bottom: var(--kb); padding-bottom: var(--sp-8); }   /* editing a row: the sheet rides the keyboard */
   .topbar-title { min-width: 0; text-align: center; }   /* center the short heading over the wider date line */
   /* filter line never wraps on phone — mirrors the .crowded layout unconditionally so 0-1 tokens
      stay single-row. Sort/group clause hides when search is open (user is filtering) or when a
@@ -2511,6 +2521,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 @media (max-width: 640px) {
   .touch.kb .composer-dock { position: sticky; bottom: calc(var(--kb) - var(--list-end)); z-index: 1;
     padding-bottom: var(--sp-8); background: var(--panel); box-shadow: 0 0 0 100vmax var(--panel); clip-path: inset(0 -100vmax); }
+  .touch.kb .cl-side .composer-dock { bottom: 0; }   /* the sheet already stands on the keyboard: its --kb again put the dock over the title */
   /* 9A: one row from the card's left edge: the project, the set values then bare icons (sideways when crowded, under a
      fade), ··· and the go button. Cancel goes (a tap outside closes); the unset Size, Place and Relations, Show in
      Overview and Delete move into ···; the description and entries sit behind the Steps and notes chip (app.js notesHidden). */
@@ -2730,7 +2741,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .set-sub { flex: 1 0 100%; order: 1; margin: 1px 0 0 25px; }   /* 25px = icon (15) + the row's gap-10, so the description lines up under its title, not under the icon */
 .set-sub:has(kbd) { flex: none; order: 0; margin-left: auto; }
 /* every settings row is named by a glyph as well as a word — scanning a settings list is a recognition task */
-.set-ico { width: 15px; height: 15px; flex: none; color: var(--muted); }
+.set-ico { width: 15px; height: 15px; flex: none; overflow: visible; color: var(--muted); }   /* visible: #i-lock's shackle rises past the viewBox */
 .set-danger .set-ico { color: inherit; }
 .set-row .seg { margin: 0 0 0 auto; }
 .set-row .seg button { flex: none; padding-inline: var(--sp-10); }
