@@ -45,6 +45,9 @@ export const minutesBetween = (a, b) => (wall(b) - wall(a)) / 60000;
 // dateOnly ⇒ a bare day (all-day spans end date-only); otherwise a timed "YYYY-MM-DDTHH:MM"
 export const addMinutes = (iso, mins, dateOnly) => { const d = new Date(wall(iso).getTime() + mins * 60000); return isNaN(d) ? iso : dateOnly ? _iso(d) : d.toISOString().slice(0, 16); };   // unparseable → zero-length, never a throw
 
+// Going / Not going for one day (true | false | undefined = unanswered). A one-off reads its only answer, so a move keeps it.
+// ceiling: a series keeps a key per answered day, never pruned; drop past days on save if a row grows past ~1K
+export const goingOn = (ev, day) => ev.recurrence?.freq ? ev.going?.[day] : Object.values(ev.going ?? {})[0];
 export const placeable = t => t.parent_id !== null && !t.overview;   // projects + overview items are containers, never placed
 const recursDaily = rule => [].concat(rule ?? []).some(r => r?.freq === 'day' && (r.interval || 1) === 1);   // tasks store an array of rules
 export const onCalendar = (t, placed) => !!(placed?.has(t.id) || t.deadline_at || t.recurrence && t.recur_from);   // the only tasks calendarItems draws: an edit to any other leaves the calendar alone
@@ -62,7 +65,7 @@ export function calendarItems(events, tasks, fromIso, toIso, placed) {
     const dur = Math.max(0, minutesBetween(ev.starts_at, ev.ends_at) || 0), daily = recursDaily(ev.recurrence);
     for (const start of occurrencesInRange(ev.recurrence, ev.starts_at, back(Math.ceil(dur / 1440) + 1), toIso)) {
       const end = addMinutes(start, dur, ev.all_day);
-      if (overlaps(start, end)) items.push({ kind: 'event', id: ev.id, title: ev.title, start, end, allDay: ev.all_day, color: ev.color, daily });
+      if (overlaps(start, end)) items.push({ kind: 'event', id: ev.id, title: ev.title, start, end, allDay: ev.all_day, color: ev.color, daily, going: goingOn(ev, dateOf(start)) });
     }
   }
   const inRange = iso => { const day = dateOf(iso); return day >= from && day <= to; };

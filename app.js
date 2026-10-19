@@ -36,7 +36,7 @@ import { inNotes, openBlockers } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, sevOf, userReminders, offsetLabel } from './reminders.js';
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, bodyText } from './search.js';
-import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
+import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
@@ -4118,6 +4118,7 @@ document.addEventListener('alpine:init', () => {
     evActionsHtml(key) {
       const ev = key === 'eventEdit', del = ev ? 'clDeleteEvent' : 'clDeleteBlock', save = ev ? 'clSaveEvent' : 'clSaveBlock';
       return `<div class="dialog-actions cl-card-foot flex items-center gap-8"><template x-if="!${key}.id"><div class="seg cl-kind"><button type="button" :class="{ on: ${ev} }" :aria-pressed="${ev}" @click="clSetKind('event')">Event</button><button type="button" :class="{ on: ${!ev} }" :aria-pressed="${!ev}" @click="clSetKind('block')">Block</button></div></template>
+        <template x-if="${ev} && eventEdit.id && eventEdit.day >= _nowDay"><div class="cl-going flex items-center gap-8"><span>Going?</span><div class="seg"><button type="button" :class="{ on: eventEdit.going === true }" :aria-pressed="eventEdit.going === true" @click="clSetGoing(true)">Going</button><button type="button" :class="{ on: eventEdit.going === false }" :aria-pressed="eventEdit.going === false" @click="clSetGoing(false)">Not going</button></div></div></template>
         <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id" @click="${del}()" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
         <button type="button" class="primary cl-go" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
     },
@@ -8658,7 +8659,7 @@ document.addEventListener('alpine:init', () => {
     // grades size and warmth, so nearness is felt before it is read.
     clCountdowns() {
       const today = this._nowDay, t0 = new Date(today + 'T00:00'), now = new Date();
-      return this.events.filter(e => e.countdown && e.starts_at?.slice(0, 10) >= today).sort((a, b) => a.starts_at < b.starts_at ? -1 : 1).slice(0, 3)
+      return this.events.filter(e => e.countdown && e.starts_at?.slice(0, 10) >= today && goingOn(e, e.starts_at.slice(0, 10)) !== false).sort((a, b) => a.starts_at < b.starts_at ? -1 : 1).slice(0, 3)
         .map(e => { const iso = e.starts_at.slice(0, 10);
           return { id: e.id, title: e.title, n: deadlineLeft(iso, now).label.split(' ')[0], prox: Math.max(0, 1 - (new Date(iso + 'T00:00') - t0) / 864e5 / 14) }; });
     },
@@ -8832,7 +8833,7 @@ document.addEventListener('alpine:init', () => {
           + html` data-id="${r.key}" tabindex="${r.free ? -1 : 0}"${raw(!r.free && this._dndKind(it.kind) ? ' draggable="true"' : '')}`
           + html` style="--i:${ix};--cc:${r.free ? 'var(--muted)' : this.clItemColor(it)}"><span class="cl-ag-t">${r.allday ? 'All day' : this.clAgTime(r.min)}`
           + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n">${r.free ? this.durFmt(r.mins) + ' free' : it.title}`
-          + html`</span><span class="cl-ag-d">${r.free ? '' : this.clAgSub(r)}</span></span></div>` };
+          + html`</span><span class="cl-ag-d">${r.free ? '' : this.clAgSub(r)}${!r.free && this.clAsks(it) ? raw(html`<b class="cl-ask">· Going?</b>`) : ''}</span></span></div>` };
       });
       if (!rows.length) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });
       if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });
@@ -8859,6 +8860,7 @@ document.addEventListener('alpine:init', () => {
     clHours() { return CL_HOURS; },
     clHourLabel(h) { return h === 0 ? '' : h < 12 ? h + ' AM' : h === 12 ? 'Noon' : (h - 12) + ' PM'; },
     clNowPct() { return this.clNowMin() / 1440 * 100; },
+    clAsks(it) { return it.kind === 'event' && it.going === undefined && it.start.slice(0, 10) === this._nowDay && (it.end.slice(0, 10) > this._nowDay || this._clMin(it.end) > this.clNowMin()); },   // G1: an unanswered event asks on its day until it ends
     clNowMin() { void this._nowTickV; const n = new Date(); return n.getHours() * 60 + n.getMinutes(); },
     // The clock marks read the tick only on today's column, and not while Plan is hidden (peek shows off-Plan): each
     // tick restyled every column's hidden line. Showing Plan re-runs them off `surface`, so the line is never a minute late.
@@ -9105,18 +9107,25 @@ document.addEventListener('alpine:init', () => {
     clNewEvent(date, draft = false) {
       this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, location_id: null, weekdays: [], countdown: false, notes: '', ticket: '', attachments: [], files: [], draft };
     },
-    clEditEvent(id, tile = false) {
+    clEditEvent(id, tile = false, day = null) {
       const e = this.events.find(x => x.id === id); if (!e) return;
+      day = e.recurrence?.freq ? day : e.ends_at.slice(0, 10);   // a repeating event answers per occurrence (no day, no answer); a one-off until its last day
       const multi = e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10);
-      this.eventEdit = { draft: tile && !multi, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [] };
+      this.eventEdit = { draft: tile && !multi, viewIso: e.recurrence?.freq ? day : null, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [], day, going: day ? goingOn(e, day) ?? null : null };
       this._loadFiles(this.eventEdit.attachments);
     },
-    clItemClick(it, tile) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id, tile); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
+    // applies on press, as a block's Skip today does: an editor closed unsaved keeps it
+    async clSetGoing(v) {
+      const e = this.eventEdit, was = this.events.find(x => x.id === e.id); if (!was || e.going === v) return;
+      const going = was.recurrence?.freq ? { ...was.going, [e.day]: v } : { [was.starts_at.slice(0, 10)]: v };
+      if (await this._journalRowChange(v ? 'Going' : 'Not going', 'event', e.id, () => this.store.events.update(e.id, { going }))) e.going = v;
+    },
+    clItemClick(it, tile) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
-    // ONE state class for every calendar mark of a task — chip, timeline event, agenda row, chapter band,
+    // ONE state class for every calendar mark of a task (and a Not going event) — chip, timeline event, agenda row, chapter band,
     // due/deadline mark, so a finished deadline never reads like a live one.
-    clTaskState(it) { const t = this.clIsTask(it) && this.byId.get(it.id); return !t ? '' : t.archived_at ? ' archived' : t.completed_at ? ' done' : ''; },
+    clTaskState(it) { const t = this.clIsTask(it) && this.byId.get(it.id); return it.going === false ? ' not-going' : !t ? '' : t.archived_at ? ' archived' : t.completed_at ? ' done' : ''; },
     // checkHtml's row args for a task off the list (mkRow builds the list's) — same blocked/paused/prog states as list rows.
     // imp: the composer's check shows the DRAFT's importance, not the stored one.
     _chkArgs(t, imp = t.importance) {
@@ -9168,6 +9177,8 @@ document.addEventListener('alpine:init', () => {
       if (fields.ends_at <= fields.starts_at && e.multi && !e.all_day) return this.toast('The end is before the start');   // stored as typed it would collapse the event
       const was = e.id && this.events.find(x => x.id === e.id);
       if (was && fields.ticket === (was.ticket ?? null) && fields.attachments.join() === (was.attachments ?? []).join()) { delete fields.ticket; delete fields.attachments; }   // unchanged stays unsent: an UPDATE naming them fails until db:apply
+      const start = fields.starts_at.slice(0, 10);
+      if (was?.recurrence?.freq && !recurrence && Object.keys(was.going ?? {}).some(k => k !== start)) fields.going = was.going[start] == null ? {} : { [start]: was.going[start] };   // a series ending as a one-off keeps its own day's answer alone
       // a failed write keeps the editor and its edits
       let id = e.id;
       if (id) {
@@ -9189,7 +9200,8 @@ document.addEventListener('alpine:init', () => {
     // A timed tile opens its item the same way: the ghost stands in for the tile (clHeld) until save or close.
     // No drag creates without an editor (user 10-18): it fights the pan.
     clDraft() { const e = this.eventEdit || this.blockEdit; return e?.draft ? e : null; },
-    clHeld(p) { const d = this.clDraft(); return d?.id === p.it.id && (d.viewIso || p.it.src) === p.it.src; },
+    clHeld(p) { const d = this.clDraft(), at = p.it.src ?? p.it.start.slice(0, 10); return d?.id === p.it.id && (d.viewIso || at) === at; },
+    _draftOn(d) { return d === this.eventEdit && d.viewIso || d.date; },   // a repeating event's ghost stands on the occurrence clicked; its date stays the series' start
     clDraftFocus(el) { if (this.clDraft() && !document.documentElement.classList.contains('touch')) queueMicrotask(() => el.querySelector('.ev-title')?.focus({ preventScroll: true })); },   // a phone's keyboard would bury the grid
     _hm(t) { return +t.slice(0, 2) * 60 + +t.slice(3, 5); },
     // The editors' title is the composer's pill editor (the same engine, aimed at it): a typed day, time, length, repeat, place
@@ -9228,7 +9240,7 @@ document.addEventListener('alpine:init', () => {
       };
     },
     // [start, end] minutes the draft covers on iso, to 24:00 when it runs past midnight; null off that day
-    _draftSpan(iso) { const d = this.clDraft(); if (!d || d.all_day || d.date !== iso) return null; const s = this._hm(d.start), e = this._hm(d.end); return [s, e > s ? e : 1440]; },
+    _draftSpan(iso) { const d = this.clDraft(); if (!d || d.all_day || this._draftOn(d) !== iso) return null; const s = this._hm(d.start), e = this._hm(d.end); return [s, e > s ? e : 1440]; },
     clDraftBand(iso) { const s = this._draftSpan(iso); return s ? 'top:' + s[0] / 14.4 + '%;height:' + (s[1] - s[0]) / 14.4 + '%;--cc:' + (this.clDraft().color || 'var(--accent)') : 'display:none'; },
     clDraftTime(e = this.eventEdit) { const r = this._evRange(e); return this.clTimeLabel({ start: r.starts_at, end: r.ends_at }); },
     // the editors' chip bar: When as the date chip names a day ("Today 7:00 – 9:00", a passed day its date), Repeat what a save stores
@@ -9268,7 +9280,11 @@ document.addEventListener('alpine:init', () => {
       if (o.multi) o.span += Math.floor(e / 1440);
       Object.assign(o, { start: t, end: this._fmtMin((e % 1440 + 1440) % 1440) });
     },
-    _setDraft(iso, s, e) { Object.assign(this.clDraft(), { date: iso, start: this._fmtMin(s), end: this._fmtMin(e % 1440) }); },   // 24:00 → 00:00, which _evRange rolls to the next day
+    _setDraft(iso, s, e) {
+      const d = this.clDraft(), on = d === this.eventEdit && d.viewIso;
+      if (on && iso !== on) return;   // a series' ghost redraws its times on its own day: a drag never moves the series' start
+      Object.assign(d, { ...!on && { date: iso }, start: this._fmtMin(s), end: this._fmtMin(e % 1440) });   // 24:00 → 00:00, which _evRange rolls to the next day
+    },
     clGridDown(e, iso) {
       // armed only when nothing but a draft is open: the press that closes a pop, the composer or a selection makes nothing
       const open = OVERLAYS.filter(([o]) => o(this)).length, armed = open === (this.clDraft() ? 1 : 0) && !e.target.closest('.cl-event, .cl-block:not(.cl-block-drag)');
@@ -9292,7 +9308,7 @@ document.addEventListener('alpine:init', () => {
     clDraftPos() {
       if (innerWidth < 760) return 'margin-inline:auto';
       const d = this.clDraft(), w = 480;   // .event-editor/.block-editor's width · ceiling: placed when the draft's day changes, not on a page turn under it; recompute on clAnchor if a turn strands it
-      const col = [...document.querySelectorAll(`.cl-pcol[data-iso="${d.date}"]`)].find(c => { const r = c.getBoundingClientRect(); return r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
+      const col = [...document.querySelectorAll(`.cl-pcol[data-iso="${this._draftOn(d)}"]`)].find(c => { const r = c.getBoundingClientRect(); return r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
       // room beside it: 2px from its column, almost touching (a wider gap showed the next day's bar, user 10-19), 8px from the window
       const right = r ? innerWidth - r.right - 10 : 0, left = r ? r.left - 10 : 0, fit = Math.max(right, left);
       if (right >= w) return 'left:' + (r.right + 2) + 'px;--from:0 0';
@@ -9429,7 +9445,7 @@ document.addEventListener('alpine:init', () => {
           if (!d.date) { this.notify('Drag this occurrence from the week or day view to move it'); return; }
           if (fields.starts_at === (it.all_day ? d.date : d.date + 'T' + this._fmtMin(this._clMin(it.starts_at)))) return;   // dropped where it already is
           const fail = async (msg = 'Failed moving this occurrence. Try again?') => { await this._reloadFor('event'); this.notify(msg); };
-          const copy = await this.store.events.add({ title: it.title, notes: it.notes, color: it.color, location: it.location, countdown: it.countdown, ticket: it.ticket, attachments: it.attachments, all_day: false, ...fields }).catch(() => null);
+          const copy = await this.store.events.add({ title: it.title, notes: it.notes, color: it.color, location: it.location, countdown: it.countdown, ticket: it.ticket, attachments: it.attachments, ...it.going?.[d.date] != null && { going: { [fields.starts_at.slice(0, 10)]: it.going[d.date] } }, all_day: false, ...fields }).catch(() => null);
           if (!copy) return fail();
           const was = { recurrence: it.recurrence }, after = { recurrence: { ...it.recurrence, exdates: [...(it.recurrence.exdates || []), d.date] } };
           // A lost response (cloud patch → null) can hide a write that landed: re-read before rolling back, or the

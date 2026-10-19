@@ -1154,7 +1154,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
                     <div class="cl-event" :class="clEvClass(p)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id, p.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it, true)" :style="clEvStyle(p, ix)">
                       <template x-if="p.it.kind === 'task-block'"><span x-html="clCheckHtml(p.it,'cl-evt-check')" @click.stop="clToggleTask(p.it.id)"></span></template>
-                      <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm" x-text="clTimeLabel(p.it)"></span></span>
+                      <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm"><span x-text="clTimeLabel(p.it)"></span><template x-if="clAsks(p.it)"><b class="cl-ask">· Going?</b></template></span></span>
                     </div>
                   </template>
                 </div>

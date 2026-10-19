@@ -1911,7 +1911,8 @@ textarea.inp { resize: vertical; }
 /* Done / archived, WHEREVER a task shows up on the calendar. Marks (a due date, a deadline) had no state at
    all, so a deadline you'd already met read exactly like one still hanging over you. */
 .cl-event.done .cl-event-t, .cl-ag-row.done .cl-ag-n, .cl-ch.done .cl-ch-t, .cl-chip.done .cl-chip-t,
-.cl-dl-t.done span:not(.cl-dl-w) { text-decoration: line-through; }
+.cl-dl-t.done span:not(.cl-dl-w), .cl-event.not-going .cl-event-t, .cl-ag-row.not-going .cl-ag-n, .cl-ch.not-going .cl-ch-t, .cl-chip.not-going .cl-chip-t { text-decoration: line-through; }
+.cl-event.not-going, .cl-ag-row.not-going, .cl-ch.not-going, .cl-chip.not-going { opacity: .6; }   /* Not going: still there, struck; .45 read illegible */
 .cl-event.done, .cl-ag-row.done, .cl-ch.done, .cl-chip.done, .cl-dl-t.done, .cl-dl.done,
 .cl-event.archived, .cl-ag-row.archived, .cl-ch.archived, .cl-chip.archived, .cl-dl-t.archived, .cl-dl.archived { opacity: .55; }
 .cl-chip.done .cl-chip-t { text-decoration: line-through; opacity: .55; }
@@ -2195,6 +2196,7 @@ textarea.inp { resize: vertical; }
 /* density tiers — a 15-min standup must not speak with the same voice as a 3-hour block */
 .cl-event-b { display: block; min-width: 0; overflow: hidden; }
 .cl-event-tm { display: block; font-size: var(--fs-10); line-height: 1.3; opacity: .75; font-variant-numeric: tabular-nums; }
+.cl-event-tm:has(.cl-ask) { opacity: 1; > span { opacity: .75; } }   /* the label dims, the Going? ask keeps its contrast */
 /* .cl-cov = something is drawn OVER this one, so only its top strip shows: the time joins the title on that
    surviving line instead of sitting on a second line under the cascade. Same layout the compact tier uses. */
 .cl-event.tier-compact, .cl-event.cl-cov { display: flex; align-items: baseline; gap: var(--sp-4); }
@@ -2208,6 +2210,9 @@ textarea.inp { resize: vertical; }
    time rides directly beside the title, inside the strip that stays visible. */
 .cl-event.cl-cov .cl-event-b { width: auto; }
 .cl-event.cl-cov .cl-event-tm { text-align: left; }
+/* G1's ask shows whole after the time or wraps onto a row the 1lh clips, never as "Goi…" */
+.cl-event:is(.tier-compact, .cl-cov) .cl-event-tm:has(.cl-ask) { display: flex; flex-wrap: wrap; justify-content: flex-end; height: 1lh; > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; } }
+.cl-event.cl-cov .cl-event-tm:has(.cl-ask) { justify-content: flex-start; }
 .cl-event.tier-tiny { padding-top: 0; padding-bottom: 0; line-height: 1; }
 .cl-event.tier-tiny .cl-event-tm { display: none; }
 .cl-event.tier-tiny .cl-event-t { font-size: var(--fs-10); }
@@ -2347,12 +2352,15 @@ textarea.inp { resize: vertical; }
   .del-btn { color: var(--muted); padding: var(--sp-6); border-radius: var(--r-8); &:hover { color: var(--p1); background: var(--hover); } .ico { width: 16px; height: 16px; } }
   .cl-go { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; .ico { width: 16px; height: 16px; stroke-width: 2.4; } } }
 /* the standard control sized to its words; the picked kind is drawn as its tile */
-.cl-kind.seg { margin: 0; flex: none; button { flex: none; height: 24px; padding: 0 var(--sp-12); }
+:is(.cl-kind, .cl-going .seg) { margin: 0; flex: none; button { flex: none; height: 24px; padding: 0 var(--sp-12); } }
+.cl-going > span { font-size: var(--fs-13); font-weight: 600; white-space: nowrap; }
+.cl-ask { margin-left: .25em; color: color-mix(in srgb, var(--accent) 72%, var(--ink)); font-weight: 700; }   /* plain accent fails contrast at 10–11px */
+.cl-kind.seg {
   button.on { position: relative; color: var(--txt); padding-left: var(--sp-16); } }
 .event-editor .cl-kind button.on { background: var(--tint);
   &::before { content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 3px; border-radius: var(--r-pill); background: var(--mark); } }
 .block-editor .cl-kind button.on { border-radius: 0; background: color-mix(in srgb, var(--tint) calc(var(--cal-blk) * 2), var(--panel)); box-shadow: inset 4px 0 0 color-mix(in srgb, var(--mark) 35%, transparent), var(--shadow-sm); }
-.touch .cl-kind.seg button { height: 36px; padding: 0 var(--sp-16); }
+.touch :is(.cl-kind, .cl-going .seg) button { height: 36px; padding: 0 var(--sp-16); }
 .touch .cl-card-foot { min-height: 40px; .cl-go { width: 40px; height: 40px; border-radius: var(--r-pill); .ico { width: 20px; height: 20px; } } }
 /* title, notes and chip bar: the composer card's (.composer-card .content / .desc, .composer-opts) */
 .ev-title, .ev-notes { display: block; width: 100%; border: none; background: none; padding: 0; outline: none; color: var(--ink); font: inherit;

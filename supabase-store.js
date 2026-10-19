@@ -101,7 +101,7 @@ function hydrateEvent(row) {
     recurrence: row.recurrence ?? null,
     location: { mode: row.location_mode ?? 'any', ids: row.location_ids ?? [] },
     color: row.color ?? null, source: row.source ?? 'local', external_id: row.external_id ?? null, ics_seq: row.ics_seq ?? null,
-    countdown: row.countdown ?? false, ticket: row.ticket ?? null, attachments: row.attachments ?? [],
+    countdown: row.countdown ?? false, ticket: row.ticket ?? null, attachments: row.attachments ?? [], going: row.going ?? {},
     created_at: row.created_at, updated_at: row.updated_at,
   };
 }
@@ -122,8 +122,8 @@ function hydrateBlock(row) {
 
 // hydrateEvent/hydrateBlock's inverse for the fields present: the app's shape back to columns.
 const eventCols = ({ location, ...f }) => ({ ...f, ...location !== undefined && { location_mode: location?.mode ?? 'any', location_ids: location?.ids ?? [] } });
-const ticketCols = f => (f.ticket || f.attachments?.length) && { ticket: f.ticket ?? null, attachments: f.attachments ?? [] };
-const sansTicket = ({ ticket, attachments, ...f }) => f;
+const lateCols = f => { const late = { ...(f.ticket || f.attachments?.length) && { ticket: f.ticket ?? null, attachments: f.attachments ?? [] }, ...Object.keys(f.going ?? {}).length && { going: f.going } }; return Object.keys(late).length ? late : null; };
+const sansLate = ({ ticket, attachments, going, ...f }) => f;
 const blockCols = ({ areas, ...f }) => ({ ...f, ...areas !== undefined && { area_ids: areas ?? [] } });
 
 // The update payload every table builds: the named columns the caller actually passed, nulled rather than dropped.
@@ -485,9 +485,9 @@ export function createSupabaseStore(client) {
       // reject_past_reminder refuses an unpaused user reminder over 26h past, reading its floating `at` as UTC: that one can't come back
       if (table === 'reminders' && !(rows = rows.filter(r => !(r.kind === 'user' && !r.paused && Date.parse(r.at + 'Z') < Date.now() - 936e5))).length) return true;
       const cols = { events: eventCols, blocks: blockCols }[table] ?? (r => r);   // the rows come from the app's lists
-      const late = table === 'events' ? new Map(rows.map(r => [r.id, ticketCols(r)]).filter(([, f]) => f)) : null;   // out of the upsert: see events.add
-      if (late) live ??= new Set();   // a row already stored keeps its own ticket
-      const put = await upsertLive(kind, table, rows.map(r => ({ ...cols(late ? sansTicket(r) : r), user_id: uid })), 'id', live);   // a row whose parent went since stays out
+      const late = table === 'events' ? new Map(rows.map(r => [r.id, lateCols(r)]).filter(([, f]) => f)) : null;   // out of the upsert: see events.add
+      if (late) live ??= new Set();   // a row already stored keeps its own ticket and answers
+      const put = await upsertLive(kind, table, rows.map(r => ({ ...cols(late ? sansLate(r) : r), user_id: uid })), 'id', live);   // a row whose parent went since stays out
       if (put?.length) { COLL[table]?.invalidate(); if (table === 'areas') { _areasLoaded = false; _cacheV++; } }   // a restore is a bulk re-insert — refetch once, don't patch N rows
       for (const r of put || []) if (late?.has(r.id) && !live.has(r.id) && (await client.from('events').update(late.get(r.id)).eq('id', r.id).eq('user_id', uid)).error) return false;
       return !!put;
@@ -505,7 +505,7 @@ export function createSupabaseStore(client) {
     events: {
       list: () => COLL.events.list(),
       get: id => COLL.events.one(id),
-      // ticket + attachments ride an UPDATE: an INSERT naming them fails whole until db:apply. A failed one takes the new row back.
+      // ticket, attachments and going ride an UPDATE: an INSERT naming them fails whole until db:apply. A failed one takes the new row back.
       async add(fields) {
         const row = await COLL.events.insert({
           title: fields.title || '', notes: fields.notes ?? null,
@@ -513,11 +513,11 @@ export function createSupabaseStore(client) {
           color: fields.color ?? null, source: 'local', external_id: fields.external_id ?? null, ics_seq: fields.ics_seq ?? null,
           location_mode: fields.location?.mode ?? 'any', location_ids: fields.location?.ids ?? [],
           recurrence: fields.recurrence ?? null, countdown: !!fields.countdown,
-        }), late = ticketCols(fields);
+        }), late = lateCols(fields);
         if (!row || !late) return row;
         return await COLL.events.patch(row.id, late) ?? (await COLL.events.del(row.id), null);
       },
-      update: (id, fields) => COLL.events.patch(id, eventCols(pick(fields, ['title', 'notes', 'starts_at', 'ends_at', 'all_day', 'color', 'source', 'external_id', 'ics_seq', 'recurrence', 'location', 'countdown', 'ticket', 'attachments']))),
+      update: (id, fields) => COLL.events.patch(id, eventCols(pick(fields, ['title', 'notes', 'starts_at', 'ends_at', 'all_day', 'color', 'source', 'external_id', 'ics_seq', 'recurrence', 'location', 'countdown', 'ticket', 'attachments', 'going']))),
       remove: id => COLL.events.del(id),
     },
 
