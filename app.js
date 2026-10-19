@@ -984,6 +984,7 @@ document.addEventListener('alpine:init', () => {
         if (!over.length) break;
         for (const l2 of over) l2.classList.add(cls);                          // WRITE
       }
+      for (const [el, l2] of line2s) { const fill = el.querySelector('.body > .l2-fill'); if (fill) l2.append(fill); }   // marks only fill a line 2 the row earned (user 10-18), after its shrink steps
       return l2s.length;
     },
     // Share eligibility with the writer: a rung that cannot move anything needs no title measurement.
@@ -1039,6 +1040,7 @@ document.addEventListener('alpine:init', () => {
     _unfit(el) {
       for (const { n, home, i } of (el._moved || []).sort((a, b) => a.i - b.i)) { n.classList.remove('shed-hid'); home.insertBefore(n, home.children[i] || null); }
       el._moved = null; el._lad = 0;
+      const fill = el.querySelector('.row2.meta > .l2-fill'); if (fill) el.querySelector('.body').append(fill);
       el.querySelector('.row2.meta')?.remove(); el.querySelector('.hid-more')?.remove();
       el.querySelector('.r1l')?.classList.remove('icons-only', 'rolled');
       const rels = el.querySelector('.row-rels'); if (rels) this._relNames(rels);

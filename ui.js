@@ -238,7 +238,12 @@ export const rowBodyHtml = (r, opts = {}) => {
   const titleHtml = (r.titleHtml ?? mdTitle(t.content)).replaceAll('</code>', _copyCode + '</code>');   // cached inline-only title; copy controls belong to full rows, not pickers
   const row1 = (left, right) => `<div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${left}</div><div class="r1r flex items-center gap-8 min-w-0">${right}</div></div>`;
   // Plan's tray: one flat line — check, title, project, when. Nothing that unfolds, nests or ages (user, decision #79).
-  if (opts.tray) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}</div>`;
+  // 2C (wid-taste-1): its checklist, notes and relations ride as marks the ladder moves onto line 2 once one exists (app.js _ladder).
+  if (opts.tray) {
+    const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;
+    const fill = m(n, r.step ? 'i-steps' : 'i-list-check', cl.filter(c => c.done).length + '/' + n) + m(t.notes || plain && cl.length, 'i-edit', '') + m(r.rels.length, 'i-link', '');
+    return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${fill ? `<span class="l2-fill flex items-center">${fill}</span>` : ''}</div>`;
+  }
   // One chip per item, blockers then files; the ladder drops names one at a time and rolls a kind's >3 into its first chip's count (app.js _relIcon).
   const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map(rl =>
     `<button type="button" class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11" data-act="rel" data-kind="${rl.type}" data-rel="${esc(rl.id)}" aria-label="${esc(rl.label)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${rl.n ? `<span class="row-rel-n">${rl.n}</span>` : ''}</button>`).join('')}</div>` : '';

@@ -471,7 +471,12 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
    the only thing needing a rule, because it is flex:none at 7rem and would win space here exactly as it
    does on line 1. → docs/ui/task-list.md §Row overflow */
 .row2.meta { flex-wrap: wrap; row-gap: var(--sp-2); }
+.row2.meta:not(.l2-shrink) .proj { width: 7rem; max-width: max-content; flex: 1000 0 auto; }   /* packs at line 1's cap, so it never opens a row, then takes its row's slack before the marks: "Admin Paperwork" was cut off with the line free (user 10-19) */
 .row2.meta.l2-shrink .proj { flex: 0 1 auto; min-width: 0; }
+/* 2C marks (tray): they take what line 2's last row has left and clip whole marks past it, never opening or wrapping
+   a line. Basis 0 keeps the box on that row; its negative margin cancels the line's gap (which would wrap it), so each mark carries its own. */
+.body > .l2-fill { display: none; }
+.row2.meta > .l2-fill { flex: 1 1 0; min-width: 0; flex-wrap: wrap; height: 1lh; overflow: hidden; margin-left: calc(-1 * var(--sp-8)); > * { margin-left: var(--sp-8); } }
 .row2.meta.l2-shrink .m.loc > span { max-width: 3.5rem; }
 .desc-line { font-size: var(--fs-12); color: var(--muted); }   /* prose ALWAYS owns its own line — never a ladder candidate, never on the meta line */
 .desc-line a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
