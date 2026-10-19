@@ -9175,7 +9175,7 @@ document.addEventListener('alpine:init', () => {
 
     // --- New block/event on the week/day grid. A click on empty time starts a 1h block at its slot; a new editor opened from
     // the grid (that click or ＋) is a draft: its band stays on the grid and its editor sits beside it with no backdrop. While a
-    // draft is open a drag redraws it (a press inside it drags the nearer edge) and a click on another time moves it there.
+    // draft is open a drag redraws it (a press inside it drags the nearer edge) and a click off it closes it.
     // A timed tile opens its item the same way: the ghost stands in for the tile (clHeld) until save or close.
     // No drag creates without an editor (user 10-18): it fights the pan.
     clDraft() { const e = this.eventEdit || this.blockEdit; return e?.draft ? e : null; },
@@ -9296,10 +9296,8 @@ document.addEventListener('alpine:init', () => {
       const s = this._clSlot(e.clientY, e.currentTarget.getBoundingClientRect()), d = this.clDraft();
       if (!d) return this.clNewBlock(iso, this._fmtMin(s), this._fmtMin((s + 60) % 1440), true);
       const span = this._draftSpan(iso);
-      if (span && s >= span[0] && s < span[1]) return;   // a click inside it keeps it: only another time moves it
-      const len = d.all_day ? 60 : (this._hm(d.end) - this._hm(d.start) + 1440) % 1440 || 1440;   // its whole length, past midnight too
-      if (d.all_day) d.all_day = false;
-      this._setDraft(iso, s, s + len);   // past midnight, as a fresh click there
+      if (span && s >= span[0] && s < span[1]) return;   // a click on its own ghost keeps it
+      this.eventEdit = this.blockEdit = null;   // any other click closes it, as the composer's does: only a drag moves it (user 10-19)
     },
 
     // --- Drag-to-(re)schedule (HTML5 DnD) — wall-clock local strings, never toISOString (tz shift) ---
@@ -9543,15 +9541,15 @@ document.addEventListener('alpine:init', () => {
         return { id: t.id, html };
       });
     },
-    // The panel's sections. Reschedule: slips from the last 7 days; older ones fold.
+    // The panel's sections. Reschedule: what slipped; older ones fold: a deadline over 2 weeks gone, else a slip over 7 days.
     // This week: a date window open today that closes within 7 days (typed "this week"). Due in two weeks: an undated
     // deadline. The rest of the undated fold behind "N more".
     _clSideSecs() {
       const today = this._nowDay, key = this._rowV + '|' + today + '|' + this._nowTickV + '|' + this._foldV + '|' + _calDataV + '|' + this._celeV;
       if (_clSecs.key === key) return _clSecs;
       const d = new Date(today + 'T00:00'), day = n => isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + n));
-      const pm = this._placedMap(), wk = day(-7), end = day(6), soon = day(14), res = [], old = [];
-      for (const t of this.clReschedule()) (this.whenOf(t, pm) >= wk ? res : old).push(t);
+      const pm = this._placedMap(), wk = day(-7), lapsed = day(-14), end = day(6), soon = day(14), res = [], old = [];
+      for (const t of this.clReschedule()) ((t.deadline_at ? t.deadline_at.slice(0, 10) >= lapsed : this.whenOf(t, pm) >= wk) ? res : old).push(t);
       const week = this.tasks.filter(t => { const w = this._openLeaf(t, true) && this.whenOf(t, pm), from = (t.available_from || '').slice(0, 10);
         return w && w.length === 10 && from && from <= today && from < w && w >= today && w <= end; });
       const [need, rest] = this.clUnscheduled(), due = [], more = [];
