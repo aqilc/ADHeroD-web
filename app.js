@@ -1329,6 +1329,7 @@ document.addEventListener('alpine:init', () => {
     dropPending(pending) {
       this.chat.pending = this.chat.pending.filter(f => f !== pending);
       this.attach = this.attach.filter(f => f !== pending);
+      if (this.eventEdit) this.eventEdit.files = this.eventEdit.files.filter(f => f !== pending);
     },
     chatPaste(e) {
       if (!this.filesUrl || !e.clipboardData?.files.length || e.clipboardData.types.includes('text/plain')) return;   // Excel and Word put a picture of copied text beside it
@@ -1337,7 +1338,8 @@ document.addEventListener('alpine:init', () => {
     },
     chatDrop() { return !!this.filesUrl && this.surface === 'social' && !!this.chat.open && !this.chat.editing; },
     composerDrop() { return !!this.filesUrl && this.composer.open && !this._closingComposer; },   // an open task or draft takes dropped and pasted files
-    dropNote() { return !this.chatDrop() && !this.composerDrop() ? 'Drop a calendar file to import its events' : this.session ? 'Drop to attach' : 'Sign in to attach files'; },
+    eventDrop() { return !!this.filesUrl && !!this.eventEdit; },
+    dropNote() { return !this.chatDrop() && !this.composerDrop() && !this.eventDrop() ? 'Drop a calendar file to import its events' : this.session ? 'Drop to attach' : 'Sign in to attach files'; },
     // Images, PDFs and text open in a tab (opened before the await, or it's a blocked popup); the rest download.
     async openFile(file) {
       const tab = /^(image\/(png|jpe?g|gif|webp|avif|apng|bmp|x-icon|vnd\.microsoft\.icon|heic|heif|tiff|jxl)|application\/pdf|text\/plain)$/i.test(file.mime) ? window.open('', '_blank') : null;   // never SVG: its script would run on this origin
@@ -7478,6 +7480,7 @@ document.addEventListener('alpine:init', () => {
       if (this.chatDrop()) return this.addFiles(e.dataTransfer.files);   // an open chat takes any file
       const dropped = [...(e.dataTransfer.files || [])], files = dropped.filter(f => f.name.toLowerCase().endsWith('.ics'));
       if (this.composerDrop() && files.length < dropped.length) return this.attachFiles(dropped);   // so does an open composer, but calendar files still import
+      if (this.eventDrop() && files.length < dropped.length) return this.session ? this.addFiles(dropped, this.eventEdit.files) : this.toast('Sign in to attach files');   // and an open event, as its ticket
       if (!files.length) return;   // not ours — stay silent, same as a non-.ics drop on macOS
       try { this.openImport('ics', (await Promise.all(files.map(f => f.text()))).join('\n'), files.map(f => f.name).join(', ')); }
       catch { this.toast('Failed reading that calendar'); }   // unreadable file, or a time parseICS can't place
@@ -9100,12 +9103,13 @@ document.addEventListener('alpine:init', () => {
     clOpenDay(iso) { this.clSetView('day'); this.clAnchor = iso; },
     // --- Event editor (create / edit / delete) ---
     clNewEvent(date, draft = false) {
-      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, location_id: null, weekdays: [], countdown: false, notes: '', draft };
+      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, location_id: null, weekdays: [], countdown: false, notes: '', ticket: '', attachments: [], files: [], draft };
     },
     clEditEvent(id, tile = false) {
       const e = this.events.find(x => x.id === id); if (!e) return;
       const multi = e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10);
-      this.eventEdit = { draft: tile && !multi, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '' };
+      this.eventEdit = { draft: tile && !multi, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [] };
+      this._loadFiles(this.eventEdit.attachments);
     },
     clItemClick(it, tile) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id, tile); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
@@ -9157,9 +9161,13 @@ document.addEventListener('alpine:init', () => {
     _toggleIn(arr, v) { const i = arr.indexOf(v); i < 0 ? arr.push(v) : arr.splice(i, 1); },
     async clSaveEvent() {
       const e = this.eventEdit; if (!e) return;
+      if (!e.files.every(f => f.row)) return this.toast(e.files.some(f => f.failed) ? 'A file didn’t upload. Retry or remove it' : 'Files are still uploading');
       const recurrence = this._clRule(e), fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, recurrence, ...this._evRange(e, this._clAnchor(recurrence, e.date)),
+        ticket: e.ticket.trim() || null, attachments: [...new Set([...e.attachments, ...e.files.map(f => f.row.id)])],
         location: { mode: e.location_id ? 'only' : 'any', ids: e.location_id ? [e.location_id] : [] } };   // an event has one place: no writer sets 'except' or several
       if (fields.ends_at <= fields.starts_at && e.multi && !e.all_day) return this.toast('The end is before the start');   // stored as typed it would collapse the event
+      const was = e.id && this.events.find(x => x.id === e.id);
+      if (was && fields.ticket === (was.ticket ?? null) && fields.attachments.join() === (was.attachments ?? []).join()) { delete fields.ticket; delete fields.attachments; }   // unchanged stays unsent: an UPDATE naming them fails until db:apply
       // a failed write keeps the editor and its edits
       let id = e.id;
       if (id) {
@@ -9421,7 +9429,7 @@ document.addEventListener('alpine:init', () => {
           if (!d.date) { this.notify('Drag this occurrence from the week or day view to move it'); return; }
           if (fields.starts_at === (it.all_day ? d.date : d.date + 'T' + this._fmtMin(this._clMin(it.starts_at)))) return;   // dropped where it already is
           const fail = async (msg = 'Failed moving this occurrence. Try again?') => { await this._reloadFor('event'); this.notify(msg); };
-          const copy = await this.store.events.add({ title: it.title, notes: it.notes, color: it.color, location: it.location, countdown: it.countdown, all_day: false, ...fields }).catch(() => null);
+          const copy = await this.store.events.add({ title: it.title, notes: it.notes, color: it.color, location: it.location, countdown: it.countdown, ticket: it.ticket, attachments: it.attachments, all_day: false, ...fields }).catch(() => null);
           if (!copy) return fail();
           const was = { recurrence: it.recurrence }, after = { recurrence: { ...it.recurrence, exdates: [...(it.recurrence.exdates || []), d.date] } };
           // A lost response (cloud patch → null) can hide a write that landed: re-read before rolling back, or the

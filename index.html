@@ -1764,6 +1764,17 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <template x-if="eventEdit"><div class="dialog event-editor" :class="{ swapped: eventEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="clCardStyle(eventEdit)" @pointerdown.outside="eventEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (eventEdit = null)">
       <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="New event" x-init="clTitleInit($el, 'eventEdit')" x-effect="eventEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
       <textarea class="ev-notes" rows="1" placeholder="Description" aria-label="Description" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea>
+      <div class="composer-rels ev-files" x-show="eventEdit.attachments.length || eventEdit.files.length">
+        <template x-for="id in eventEdit.attachments" :key="id">
+          <span class="msg-file pend flex items-center"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><button type="button" class="truncate" @click="openFileId(id)" x-text="fileName(id)"></button>
+            <button type="button" class="drop" @click="eventEdit.attachments = eventEdit.attachments.filter(x => x !== id)" :aria-label="'Remove ' + fileName(id)"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
+        </template>
+        <template x-for="f in eventEdit.files" :key="f.key">
+          <span class="msg-file pend flex items-center" :class="{ failed: f.failed, up: !f.row &amp;&amp; !f.failed }" :style="{ '--pct': f.pct }"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="f.name"></span>
+            <template x-if="f.failed"><button type="button" class="retry" @click="_upload(f)">Retry</button></template>
+            <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
+        </template>
+      </div>
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
@@ -1781,6 +1792,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
             <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
           </div></div></template></template>
+        </div>
+        <div class="field" @click.document.capture="clPopAway('clTicket', $event, $el)">
+          <button type="button" class="chip chip-ticket inline-flex items-center" :class="{ set: eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length }" title="Ticket" aria-haspopup="dialog" :aria-expanded="pop === 'clTicket'" @click="togglePop('clTicket', $el)"><svg class="ico"><use href="#i-clip"/></svg><span x-show="eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length">Ticket</span></button>
+          <template x-if="pop === 'clTicket'"><template x-teleport="body"><div class="pop cl-pop ev-ticket" x-cloak :style="popStyle()">
+            <textarea class="ev-field" rows="1" placeholder="Link or code" aria-label="Link or code" :value="eventEdit.ticket" @input="eventEdit.ticket = $event.target.value" @keydown.enter.prevent="pop = null"></textarea>
+            <template x-if="/https?:\/\/\S+/.test(eventEdit.ticket)"><a class="pop-item" :href="eventEdit.ticket.match(/https?:\/\/\S+/)[0]" target="_blank" rel="noopener"><svg class="ico"><use href="#i-link"/></svg>Open link</a></template>
+            <template x-if="eventDrop() && session"><label class="pop-item"><svg class="ico"><use href="#i-clip"/></svg>Attach file<input type="file" multiple hidden @change="addFiles($event.target.files, eventEdit.files); $event.target.value = ''; pop = null"></label></template>
+          </div></template></template>
         </div>
         <div class="field"><button type="button" class="chip chip-rem ev-countdown inline-flex items-center" :class="{ set: eventEdit.countdown }" title="Count down to this" :aria-pressed="eventEdit.countdown" @click="eventEdit.countdown = !eventEdit.countdown"><svg class="ico"><use href="#i-bell-alarm"/></svg><span>Count down</span></button></div>
         <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">

@@ -2359,6 +2359,7 @@ textarea.inp { resize: vertical; }
   &::placeholder { color: var(--muted); } }
 .ev-title { font-size: var(--fs-15); line-height: 18px; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
   &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
+.ev-files { margin-top: var(--sp-6); .truncate:is(button) { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; } }
 .ev-notes { margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 1.4; field-sizing: content; resize: vertical; max-height: calc(8lh); }   /* ceiling: field-sizing as .entry-txt (Safari 26.2); below it the notes keep one visible line */
 .cl-opts { margin-top: var(--sp-6); :where(html:not(.touch)) & { padding-right: 0; margin-right: calc(-1 * var(--sp-6)); }   /* the go sits in the foot: the last chip's ink ends on its edge, as the first's starts on the text */
   .chip[aria-expanded=true] { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* .chip.open's look, keyed on pop alone: a binding reading pop and the editor runs before the editor's x-if when both change in one tick */
@@ -2368,6 +2369,7 @@ textarea.inp { resize: vertical; }
   > .ev-row:first-child { margin-top: 0; }
   &.ev-colors { flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--sp-8); max-width: 260px; }
   &.blk-capacity { flex-direction: row; align-items: center; gap: var(--sp-8); .ev-field { width: 96px; } }
+  &.ev-ticket { gap: var(--sp-4); .ev-field { width: 240px; margin-bottom: var(--sp-4); line-height: 1.4; field-sizing: content; resize: none; max-height: calc(6lh + var(--sp-12)); overflow-wrap: anywhere; } }   /* wraps: a pasted message shows its code past the link */
   .pop-item.on { color: var(--accent); } }
 .ev-row { gap: var(--sp-12); margin-top: var(--sp-12); }
 /* the When pop's date start – end overflows a phone: the end pair (an event's end date only when multi-day) sits under the start; the Repeat pop's times are its own row */
