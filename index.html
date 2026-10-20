@@ -1533,7 +1533,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
   <!-- ── Modal dialogs: confirm, shortcuts, trash, palette, filter editor ── -->
   <!-- All modal dialogs live in one backdrop; clicking it closes every open dialog (closeDialogs). -->
-  <div class="dialog-backdrop" :class="{ 'palette-backdrop': palette.open, draft: !anyDialog() }" x-show="anyDialog() || clDraft()" x-cloak @click="closeDialogs()">
+  <div class="dialog-backdrop" :class="{ 'palette-backdrop': palette.open, draft: !anyDialog(), docked: pop === 'clWhen' && popDock }" x-show="anyDialog() || clDraft()" x-cloak @click="closeDialogs()">
 
     <!-- Import preview — a pasted {"adherod":1} payload and a dropped .ics both land here. NOTHING is
          written until it validates clean: any problem lists itself and the confirm button stays disabled. -->
@@ -1778,7 +1778,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
-          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()" x-html="evWhenHtml('eventEdit')"></div></template></template>
+          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" x-cloak :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('eventEdit')"></div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
           <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: eventEdit.location_id }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="eventEdit.location_id ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="eventEdit.location_id ? locName(eventEdit.location_id) : 'Place'"></span></button>
@@ -1821,7 +1821,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(blockEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(blockEdit.date)[0]"/></svg><span x-text="clWhenLabel(blockEdit)"></span></button>
-          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()" x-html="evWhenHtml('blockEdit')"></div></template></template>
+          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" x-cloak :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('blockEdit')"></div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clRepeat', $event, $el)">
           <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(blockEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(blockEdit) || 'Repeat'"></span></button>
@@ -1831,7 +1831,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="blk-wd" :class="{ sel: blockEdit.weekdays.includes(w.d) }" @click="_toggleIn(blockEdit.weekdays, w.d)" x-text="w.l"></button>
               </template>
             </div>
-            <template x-if="blockEdit.occ"><div class="ev-row flex items-center" x-html="evTimesHtml('blockEdit.rule')"></div></template>
+            <template x-if="blockEdit.occ"><div class="ev-row" x-html="evTimesHtml('blockEdit.rule')"></div></template>
           </div></template></template>
         </div>
         <div class="field" x-show="areas.length" @click.document.capture="clPopAway('clArea', $event, $el)">

@@ -2381,14 +2381,29 @@ textarea.inp { resize: vertical; }
   &.ev-ticket { gap: var(--sp-4); .ev-field { width: 240px; margin-bottom: var(--sp-4); line-height: 1.4; field-sizing: content; resize: none; max-height: calc(6lh + var(--sp-12)); overflow-wrap: anywhere; } }   /* wraps: a pasted message shows its code past the link */
   .pop-item.on { color: var(--accent); } }
 .ev-row { gap: var(--sp-12); margin-top: var(--sp-12); }
-/* the When pop's date start – end overflows a phone: the end pair (an event's end date only when multi-day) sits under the start; the Repeat pop's times are its own row */
-.cl-pop .ev-row:has(> input[type=date] ~ .ev-times) { display: grid; grid-template-columns: repeat(3, auto); justify-content: start; row-gap: var(--sp-8); }
-.cl-pop .ev-row .ev-times { display: contents; }
-.cl-pop .ev-row .ev-times input[type=time] ~ input[type=time] { grid-column: 2; }
-.cl-pop .ev-row .ev-dash, .cl-pop .ev-row .ev-times input[type=date] { grid-area: 2 / 1; justify-self: end; }   /* the dash leads the end line */
-.cl-pop .ev-row .ev-times:has(input[type=date]) .ev-dash { justify-self: start; translate: calc(-100% - var(--sp-6)); }   /* hung left of the end date */
+/* the When pop (evd-6): the week strip or a month, start – end, the composer's hour grid and quarters (.tpop, here in place) */
+.pop.cl-pop:is(.ev-when, :has(.ev-times)) { width: 296px; }   /* the block Repeat pop's times too */
+.pop.cl-pop.ev-when { gap: var(--sp-8); }
+.cl-pop .tpop { position: static; width: auto; }
+.ev-when:has(.ev-month) .ev-hours { display: none; }   /* the month takes their place, so the pop stays clear of the card */
+.touch .ev-when:has(.ev-month) .ev-times { display: none; }   /* a phone's month: the grid and All day alone, inside the dock's 45vh */
+.ev-month .cal-grid { touch-action: pan-y; }   /* no range drag here: a swipe scrolls the dock */
+.ev-days { gap: var(--sp-4);
+  .tpop { flex: 1; } .thg { grid-template-columns: repeat(7, 1fr); }
+  .th { height: 34px; flex-direction: column; line-height: 1.1; em { margin: 0; } } }
+.ev-times { display: flex; flex-direction: column; gap: var(--sp-8); min-width: 280px; }
+.ev-fields { gap: var(--sp-6); }
+.ev-time { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--sp-6); height: 30px; padding: 0 var(--sp-8); border: 1px solid var(--edge); border-radius: var(--r-6);
+  color: var(--ink); font-size: var(--fs-13); font-weight: 600; cursor: text;
+  input { flex: 1; min-width: 0; padding: 0; border: none; background: none; color: inherit; font: inherit; outline: none; }
+  em { flex: none; font-style: normal; font-weight: 400; font-size: var(--fs-11); color: var(--muted); }
+  &.on { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent); }
+  &:has(input[aria-invalid=true]) { border-color: var(--p1); } }
+.cl-pop .ev-allday.on { background: color-mix(in srgb, var(--accent) 13%, transparent); font-weight: 600; }
+/* touch: 40px targets, the strip and All day 44 */
+.touch .cl-pop { .ev-days .th, .ev-allday { height: 44px; } :is(.ev-hours .th, .ev-time, .ev-days .icon-btn) { height: 40px; min-width: 40px; }
+  .tpop .th { font-size: var(--fs-13); em { font-size: var(--fs-11); } } .tq button { height: 40px; padding: 0; font-size: var(--fs-13); } .ev-time { font-size: var(--fs-15); } }
 .blk-field { margin-top: var(--sp-12); }
-.ev-allday { font-size: var(--fs-13); color: var(--ink); cursor: pointer; }
 /* .ev-field appearance is the shared .inp rule; only ev-specific layout lives here */
 .ev-dash { color: var(--muted); }
 .ev-lab { color: var(--muted); font-size: var(--fs-13); flex: none; white-space: nowrap; }
@@ -2583,6 +2598,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 @property --kb { syntax: '<length>'; inherits: false; initial-value: 0px; }   /* keyboard() sets both on their readers only */
 @property --dock { syntax: '<length>'; inherits: false; initial-value: 0px; }
 @property --keys { syntax: '<length>'; inherits: false; initial-value: 0px; }   /* the keyboard alone: a docked pop (9B) stands on it */
+@property --when { syntax: '<length>'; inherits: false; initial-value: 0px; }   /* an editor's docked When: its card rests on it */
 @property --field { syntax: '<length>'; inherits: false; initial-value: 44px; }   /* the jot bar's chat field's height (watchField) */
 .composer-dock { display: contents; }
 @media (max-width: 640px) {
@@ -2607,6 +2623,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .touch .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
     .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
   /* 9B: a pop from the dock opens in the keyboard's place (app.js popDock), so the dock rides it as it rides the keyboard */
+  .dialog-backdrop.docked { padding-bottom: calc(var(--keys) + var(--when)); place-items: end center; }   /* the editor's card rests on its docked When (a class: an <html>:has() re-matched on every DOM write) */
   .touch .pop.dock { position: fixed; inset: auto 0 var(--keys); width: auto; min-width: 0; max-width: none; max-height: min(45vh, 70vh - var(--keys)); overflow-y: auto;   /* a keyboard's height */
     border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + var(--safe-b));
     transition: transform .2s var(--ease-drawer); @starting-style { transform: translateY(100%); } }

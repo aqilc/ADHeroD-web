@@ -165,7 +165,7 @@ let _intoAt = null, _intoSeen = null, _dropSlot = null, _ghostAt = null, _ghostG
 let _listHay = new Map(), _listHayV = -1;   // task id → its lowercased searchable text, per _rowV (a _rowStale bump drops only its ids): built once, not per keystroke
 let _visMemo = null, _visKey = '', _doneMemo = [], _secMemo = [], _hitRank = new Map(), _qfToday = '', _qfTmr = '', _qfWk = '';   // _doneMemo: completed rows for the section below the add-task button
 let _rowMap = null, _doneMap = null, _parentMap = null;   // id→row + parent→[childRows] Maps maintained alongside _visMemo for O(1) hover/rowFromEl lookup
-const _areaUseMemo = new Map(), _palMemo = new Map(), _filterMemo = new Map(), _treeMemo = new Map();   // areaTier usage per _rowV · searchResults per q|_rowV · filterMatches per q|_rowV|day · tree order per _rowV
+const _areaUseMemo = new Map(), _palMemo = new Map(), _filterMemo = new Map(), _treeMemo = new Map(), _sideMemo = new Map();   // areaTier usage per _rowV · searchResults per q|_rowV · filterMatches per q|_rowV|day · tree order per _rowV · sidebar project order per _rowV
 // Raw DOM refs — kept outside Alpine state so they're never proxied.
 let _hoverEls = [], _hoverId = null, _fitQ = 0, _fitW = false, _dropEl = null, _kbEl = null, _selSet = new Set();
 const _notifTimers = new Map();   // card id → { left, at, timer, holds }: a held card's time stays put
@@ -179,7 +179,7 @@ let _viewHold = false, _heldP = null, _heldRes = null;   // a collapsing compose
 let _closeRange = null;   // trailing space from a composer's close; never part of the windowed rows
 let _addSlot = 0;   // the Add task row's height + margin, measured while shown: a new task grows from it and collapses back into it
 let _kb = 0;   // the soft keyboard's height (init's keyboard()): pops sit above it
-let _keys = 0, _keyboard = () => false;   // the keyboard alone, and init's keyboard(): a docked pop re-reads it as it opens, resizes and closes
+let _keys = 0, _when = 0, _keyboard = () => false;   // the keyboard alone, and init's keyboard(): a docked pop re-reads it as it opens, resizes and closes
 let _field;   // init's ResizeObserver for the jot bar's chat field (watchField)
 let _editPin = null, _editEnd = null;   // mirror `editing` / the collapse's target height OUTSIDE Alpine (listHtml reads both; a reactive read there would make composer open/close rebuild the list)
 let _listW = -1, _fitV = 0;         // list width + the generation every row's fit is stamped with (see _fit)
@@ -585,6 +585,7 @@ document.addEventListener('alpine:init', () => {
     railHot: null,    // rail target currently under the drag (kind+id)
     _t: null,
     pop: null, popXY: { left: 0, top: 0 }, popDock: false,
+    evPick: 's', evMonth: false,   // the When pop's picked field (start/end) and its month grid in place of the week strip
     titleEmpty: true,
     areaPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
     projPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
@@ -778,13 +779,15 @@ document.addEventListener('alpine:init', () => {
       // The soft keyboard's height (0 when down), from what the visual viewport lost: a phone docks the composer's chips + Save on it.
       // Its metrics land on their readers alone (uninherited, styles.css): set on <html>, each change restyled every element.
       const root = document.documentElement, sheet = new CSSStyleSheet();
-      sheet.replaceSync('.app, .app::after, .composer-dock, .cl-side, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, :is(.chat-comp, .jb-chat) textarea, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
+      sheet.replaceSync('.app, .app::after, .dialog-backdrop, .composer-dock, .cl-side, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, :is(.chat-comp, .jb-chat) textarea, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
       // A docked pop (9B) counts as the keyboard: it takes the keyboard's place, so the dock rides it the same way.
       const vars = sheet.cssRules[0].style;
       _keyboard = () => {
         const keys = Math.max(0, Math.round(innerHeight - visualViewport.offsetTop - visualViewport.height));   // a tap on a docked pop's field raises the keyboard under it
-        const h = keys + (this.pop && this.popDock && document.querySelector('body > .pop.dock')?.offsetHeight || 0); if (h === _kb && keys === _keys) return false;
-        _kb = h; _keys = keys; vars.setProperty('--kb', h + 'px'); vars.setProperty('--keys', keys + 'px'); root.classList.toggle('kb', h > 0);
+        const dock = this.pop && this.popDock && document.querySelector('body > .pop.dock'), when = dock && dock.matches('.ev-when') ? dock.offsetHeight : 0, h = keys + (when ? 0 : dock?.offsetHeight || 0);   // an editor's docked When lifts its card alone (--when on .dialog-backdrop), not the tray
+        if (h === _kb && keys === _keys && when === _when) return false;
+        _kb = h; _keys = keys; _when = when; vars.setProperty('--kb', h + 'px'); vars.setProperty('--keys', keys + 'px'); vars.setProperty('--when', when + 'px');
+        root.classList.toggle('kb', h > 0);
         return true;
       };
       _field = new ResizeObserver(([e]) => vars.setProperty('--field', e.borderBoxSize[0].blockSize + 'px'));   // the bar's chat field: a thread keeps its last message above it
@@ -1882,7 +1885,8 @@ document.addEventListener('alpine:init', () => {
       if (by === 'project') { const def = this.store.defaultProject(), path = [];
         for (let p = this.byId.get(t.parent_id), n = 0; p?.overview && p.id !== def && n < 50; p = this.byId.get(p.parent_id), n++) path.unshift(p);   // n: cyclic cloud data
         const top = path.shift();
-        return top ? { k: top.id, label: top.content || 'Project', rank: top.position ?? 0, path } : { k: '_none', label: 'No project', rank: LAST }; }
+        const side = top && _memo(_sideMemo, this._rowV, () => new Map(this.overviewProjectRows().map(({ p }, i) => [p.id, i])), 1);   // the sidebar's order: a position ranks siblings only, and a project can sit under Backlog
+        return top ? { k: top.id, label: top.content || 'Project', rank: side.get(top.id) ?? LAST - 1, path } : { k: '_none', label: 'No project', rank: LAST }; }
       if (by === 'area') { const a = this.areaObjs(t.area_ids)[0];
         return a ? { k: a.id, label: a.name, rank: a.position ?? 0 } : { k: '_none', label: 'No area', rank: LAST }; }
       if (by === 'importance') { const v = t.importance || 'none';
@@ -3733,7 +3737,7 @@ document.addEventListener('alpine:init', () => {
       this.calFocus = null;
       // Kill any live anchor tracker before opening a new pop
       if (this._popTrack) { this._popTrack(); this._popTrack = null; }
-      this.popDock = this.phoneDock() && !!anchor?.closest('.composer-dock');   // 9B: a phone's composer pop opens in the keyboard's place
+      this.popDock = this.phoneDock() && (!!anchor?.closest('.composer-dock') || name === 'clWhen');   // 9B: a phone's composer pop, and an editor's When, opens in the keyboard's place
       if (!this.pop || !anchor) return _keyboard();
       const r = anchor.getBoundingClientRect(), m = 8, card = anchor.closest('.event-editor, .block-editor');   // an editor's pop hangs under its card, clear of Delete and Save
       this.popXY = { left: r.left, top: (card ?? anchor).getBoundingClientRect().bottom + 5 };
@@ -3747,7 +3751,7 @@ document.addEventListener('alpine:init', () => {
         if (dead) return;
         const el = document.querySelector('body > .pop');   // the teleported one: list menus are .pop too, drawn through their leave
         if (!el) return;
-        if (el.matches('.cl-pop') && anchor.matches(':focus-visible')) el.querySelector('input:not([type=checkbox]), button')?.focus();   // opened from the keyboard: its first field next, not 8 Tabs on. future-guard (Chrome puts a click's focus back on the chip): a tap must not raise a date field's keyboard
+        if (el.matches('.cl-pop') && anchor.matches(':focus-visible')) (el.querySelector('.ev-when input') ?? el.querySelector('input, button'))?.focus();   // opened from the keyboard: its first field next, not 8 Tabs on. future-guard (Chrome puts a click's focus back on the chip): a tap must not raise a date field's keyboard
         const _pos = (ar) => {
           // Vertically this one FLIPS rather than clamping — above the anchor (an editor's: its card) if the pop would
           // overflow the bottom edge, or if it's marked data-pos="up". Horizontally it's the shared clamp.
@@ -3778,7 +3782,7 @@ document.addEventListener('alpine:init', () => {
           if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) { this.pop = null; return cleanup(); }
           prev = k;
           if (!this.popDock) this.popXY = _pos(a);
-          else if (_keyboard()) {   // lift the card over the panel, as the caret reveal does over the keyboard; never its top off screen
+          else if (_keyboard() && anchor.closest('.composer')) {   // lift the card over the panel, as the caret reveal does over the keyboard; never its top off screen. An editor's card rides --kb (styles.css)
             const card = anchor.closest('.composer'), r = card.getBoundingClientRect(), over = Math.min(r.bottom - (vh - _kb), r.top);   // not $refs: a pop's own item (···'s Size) has none
             if (over > 0) card.closest('.app').scrollTop += over;
           }
@@ -4067,8 +4071,8 @@ document.addEventListener('alpine:init', () => {
       else if (dl) this.draft.deadline_at = dl.slice(0, 10) + (v ? 'T' + v : '');
       else if (!by) this.draft.dueTime = v;
     },
-    tpopHours() {
-      const t = this.timeGet(), cur = t ? +t.slice(0, 2) : -1;
+    tpopHours(t = this.timeGet()) {
+      const cur = t ? +t.slice(0, 2) : -1;
       return Array.from({ length: 18 }, (_, i) => {
         const h = i + 6;
         return { h, lbl: h === 12 ? 12 : h % 12, ap: h === 6 ? 'a' : (h === 12 || h === 18) ? 'p' : '', on: h === cur };
@@ -4118,8 +4122,63 @@ document.addEventListener('alpine:init', () => {
       requestAnimationFrame(() => document.querySelector(`.pop.cal .cal-day[aria-label="${DAY_NAME.format(new Date(this.calFocus + 'T00:00'))}"]`)?.focus());
     },
     // HAZARD: args must be string literals ('eventEdit'/'blockEdit'), never reactive values — a reactive arg changes the x-html string on state updates, causing re-render that kills the input caret mid-typing.
-    evWhenHtml(key) { return `<div class="ev-row flex items-center"><label class="ev-allday inline-flex items-center gap-6"><input type="checkbox" :checked="${key}.all_day" @change="${key}.all_day = $event.target.checked"> All-day</label></div><div class="ev-row flex items-center"><input class="ev-field" type="date" :value="${key}.date" @input="${key}.date = $event.target.value"><template x-if="!${key}.all_day">${this.evTimesHtml(key)}</template></div>`; },
-    evTimesHtml(key) { return `<span class="ev-times inline-flex items-center gap-6"><input class="ev-field" type="time" :value="${key}.start" @input="evSetStart(${key}, $event.target.value)"><span class="ev-dash">–</span>${key === 'eventEdit' ? `<template x-if="eventEdit.multi"><input class="ev-field" type="date" :value="_evRange(eventEdit).ends_at.slice(0, 10)" @input="$event.target.value && (eventEdit.span = Math.round((new Date($event.target.value) - new Date(eventEdit.date)) / 86400000))"></template>` : ''}<input class="ev-field" type="time" :value="${key}.end" @input="${key}.end = $event.target.value"></span>`; },   // ceiling: a blanked end-date segment keeps the last full date, which Save stores; refuse Save on a blank date if a user reports it
+    // D1 T1 E1 (evd-6): a week strip (a month grid behind its button), the start and end fields, an hour grid and quarters that set the picked one
+    evWhenHtml(key) {
+      const ev = key === 'eventEdit';
+      return `<template x-if="!evMonth"><div class="ev-days flex items-center"><div class="tpop"><div class="thg"><template x-for="d in evDays(${key}, ${ev})" :key="d.iso"><button type="button" class="th" :class="{ on: d.on }" :data-iso="d.iso" :aria-label="d.label" @click="evPickDay(${key}, d.iso, ${ev})"><span x-text="d.wd"></span><em x-text="d.d"></em></button></template></div></div><button type="button" class="icon-btn sm" aria-label="Pick a date" @click="evOpenMonth(${key}, ${ev})"><svg class="ico"><use href="#i-cal"/></svg></button></div></template>
+        <template x-if="evMonth"><div class="ev-month"><div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
+          <div class="cal-grid"><template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><span class="cal-dow" x-text="w"></span></template><template x-for="c in evMonthCells(${key}, ${ev})" :key="c.iso"><button type="button" class="cal-day" :class="c.cls" :data-iso="c.iso" :aria-label="c.label" @click="evPickDay(${key}, c.iso, ${ev})"><span x-text="c.d"></span></button></template></div></div></template>
+        <template x-if="!${key}.all_day">${this.evTimesHtml(key)}</template>
+        <button type="button" class="pop-item ev-allday" :class="{ on: ${key}.all_day }" :aria-pressed="${key}.all_day" @click="${key}.all_day = !${key}.all_day"><svg class="ico"><use href="#i-sun"/></svg><span>All day</span></button>`;
+    },
+    // typed: "130p", "1:30pm", "13:30" (Enter or leaving the field); ↑/↓ 15 min. A phone's field takes the keyboard on its second tap: the first picks it
+    evTimesHtml(key) {
+      const field = (f, name, more = '') => `<label class="ev-time" :class="{ on: evPick === '${f}' }"><input aria-label="${name}" autocomplete="off" :readonly="phoneDock() && evPick !== '${f}'" :value="evLabel(${key}.${f === 's' ? 'start' : 'end'})" @focus="evPick = '${f}'; if (!document.documentElement.classList.contains('touch')) { $el.select(); $el._sel = true }" @mouseup="$el._sel && $event.preventDefault(); $el._sel = false" @change="evType(${key}, '${f}', $el)" @keydown.enter.prevent="evType(${key}, '${f}', $el)" @keydown.up.prevent="evNudge(${key}, '${f}', 15)" @keydown.down.prevent="evNudge(${key}, '${f}', -15)">${more}</label>`;
+      return `<div class="ev-times" x-init="evPick = 's'"><div class="ev-fields flex items-center">${field('s', 'Start')}<span class="ev-dash">–</span>${field('e', 'End', `<em x-text="evLen(${key})"></em>`)}</div>
+        <div class="tpop ev-hours"><div class="thg"><template x-for="h in tpopHours(evT(${key}))" :key="h.h"><button type="button" class="th" :class="{ on: h.on }" @click="evHour(${key}, h.h)"><span x-text="h.lbl"></span><em x-show="h.ap" x-text="h.ap"></em></button></template></div>
+          <div class="tq"><template x-for="q in [0, 15, 30, 45]" :key="q"><button type="button" :class="{ on: +evT(${key}).slice(3) === q }" @click="evQuarter(${key}, q)" x-text="':' + String(q).padStart(2, '0')"></button></template></div></div></div>`;
+    },
+    evT(o) { return this.evPick === 'e' ? o.end : o.start; },
+    _evSet(o, f, t) { f === 'e' ? o.end = t : this.evSetStart(o, t); },   // the start keeps the length
+    evHour(o, h) { this._evSet(o, this.evPick, String(h).padStart(2, '0') + this.evT(o).slice(2)); },
+    evQuarter(o, q) { this._evSet(o, this.evPick, this.evT(o).slice(0, 3) + String(q).padStart(2, '0')); },
+    evNudge(o, f, d) { this._evSet(o, f, this._fmtMin((this._hm(f === 'e' ? o.end : o.start) + d + 1440) % 1440)); },
+    evType(o, f, el) {
+      const { time } = parseDateText(el.value.trim().replace(/^(\d{1,2}):?(\d{2})?\s*([ap])m?$/i, (_, h, m, ap) => `${h}:${m || '00'}${ap}m`));   // "130p" → "1:30pm"
+      if (time) this._evSet(o, f, time);
+      if (time || !el.value.trim()) el.value = this.evLabel(f === 'e' ? o.end : o.start);
+      el.ariaInvalid = time || !el.value.trim() ? null : 'true';   // unread text stays, flagged
+    },
+    evLabel(t) { return this.fmtTime(t).replace(/^\d+(?=[ap])/, '$&:00'); },   // 1:00pm, as typed
+    evLen(o) {
+      const m = (o.multi ? o.span * 1440 : 0) + this._hm(o.end) - this._hm(o.start), len = o.multi || m >= 0 ? m : m + 1440, d = Math.floor(len / 1440);   // as _evRange: a single-day end before the start is the next day
+      return len <= 0 ? '' : (d ? d + 'd' : '') + (d && len % 1440 ? ' ' : '') + this.durFmt(len % 1440);
+    },
+    // the picked field's day: an event's end day when End is picked
+    evDay(o, ev) { return (ev && this.evPick === 'e' && !o.all_day ? this._evRange(o).ends_at : o.date).slice(0, 10); },
+    evDays(o, ev) {
+      const on = this.evDay(o, ev), today = new Date(); today.setHours(0, 0, 0, 0);
+      const d = new Date(on + 'T00:00'), off = Math.round((d - today) / 864e5), from = off >= 0 && off < 7 ? today : d;   // starts today, or at a day outside the week
+      return Array.from({ length: 7 }, (_, i) => {
+        const day = new Date(from); day.setDate(from.getDate() + i);
+        const iso = isoDate(day), n = Math.round((day - today) / 864e5);
+        return { iso, on: iso === on, d: day.getDate(), label: DAY_NAME.format(day), wd: n === 0 ? 'Today' : n === 1 ? 'Tmr' : day.toLocaleDateString([], { weekday: 'short' }) };
+      });
+    },
+    evOpenMonth(o, ev) { const d = new Date(this.evDay(o, ev) + 'T00:00'); this.cal = { y: d.getFullYear(), m: d.getMonth() }; this.evMonth = true; },
+    evMonthCells(o, ev) {
+      const { y, m } = this.cal, lead = new Date(y, m, 1).getDay(), on = this.evDay(o, ev), today = isoDate(new Date());
+      return Array.from({ length: 42 }, (_, i) => {
+        const day = new Date(y, m, 1 - lead + i), iso = isoDate(day);
+        return { iso, d: day.getDate(), label: DAY_NAME.format(day), cls: { out: day.getMonth() !== m, today: iso === today, sel: iso === on } };
+      });
+    },
+    // End picked on an event: the day is its end day (a multi-day event, kept as picked: Save refuses one before the start); else the start's, which the end follows
+    evPickDay(o, iso, ev) {
+      if (ev && this.evPick === 'e' && !o.all_day) Object.assign(o, { multi: true, span: Math.round((new Date(iso) - new Date(o.date)) / 864e5) });
+      else o.date = iso;
+      this.evMonth = false;
+    },
     // the foot holds the item's one decision (a new one's kind: the standard .seg, its picked segment drawn as the tile) and the go
     evActionsHtml(key) {
       const ev = key === 'eventEdit', del = ev ? 'clDeleteEvent' : 'clDeleteBlock', save = ev ? 'clSaveEvent' : 'clSaveBlock';
@@ -9346,7 +9405,7 @@ document.addEventListener('alpine:init', () => {
       // grab: minutes from the item's real start to the pointer, not from its drawn top (a stacked peer steps down) — the
       // drop keeps it, so a sideways move keeps the time. lead: how far that start sits above this column — a tail drawn from 00:00 began the day before.
       const at = col && start?.length > 10 ? minutesBetween(col.dataset.iso + 'T00:00', start) : null, cr = col?.getBoundingClientRect();
-      const lead = at != null && (kind === 'event' || kind === 'block') ? Math.max(0, -at) : 0;
+      const lead = at != null ? Math.max(0, -at) : 0;
       const grab = col ? Math.max(0, (e.clientY - cr.top) / cr.height * 1440 - (at ?? (r.top - cr.top) / cr.height * 1440)) : 0;   // never above the start: a synthetic dragstart has clientY 0
       this._clDnd = { kind, id, grab, lead, ...(srcIso && { date: srcIso.slice(0, 10) }), ...(end && { span: { starts_at: start, ends_at: end } }) };   // date: the occurrence's own day (block/event)
       this._clDnd.allDay = (kind === 'event' || kind === 'block') && !!this._dndRow(this._clDnd)?.all_day;   // clDropOn keeps it all-day wherever it lands
@@ -9419,15 +9478,15 @@ document.addEventListener('alpine:init', () => {
       this._clPlaced(d.id);
       const dm = allDay ? null : this._dropMin(e, d.grab, d.lead);   // null ⇒ month cell or all-day row (date only)
       if (this.dragId) this.dragEnd();   // capture drop geometry before closing the list's Peek Pane
-      const stamp = dm == null ? iso : iso + 'T' + this._fmtMin(dm);
+      const stamp = dm == null ? iso : addMinutes(iso + 'T00:00', dm), on = stamp.slice(0, 10), hm = stamp.slice(11) || null;   // before 00:00 = the day before
       if (d.kind === 'task' || d.kind === 'due' || d.kind === 'deadline') {
         const { blk, timed } = this._dropBlock(e, d) || {}, attached = 'Attached to ' + (blk?.title || 'block'), has = blk && this.scheduleItems.some(x => x.block_id === blk.id && x.task_id === d.id);
         if (blk && !timed) return has || this.perform(attached, { kind: 'create', target: 'scheduleItem', fields: { task_id: d.id, block_id: blk.id } }, { fail: 'Failed attaching. Try again?' });   // attached once
-        if (blk) return this._saveSched(d.id, { on: iso, dueTime: this._fmtMin(dm), block: has ? null : blk.id }, has ? 'Rescheduled task' : attached + ' at ' + this._clHMA(dm));   // a drop on a block is always in a column: dm is set
+        if (blk) return this._saveSched(d.id, { on, dueTime: hm, block: has ? null : blk.id }, has ? 'Rescheduled task' : attached + ' at ' + this._clHMA(dm));   // a drop on a block is always in a column: dm is set
         if (d.kind === 'deadline' || d.kind === 'due') {
           const field = d.kind === 'deadline' ? 'deadline_at' : 'recur_from';
           await this.perform('Rescheduled ' + (d.kind === 'deadline' ? 'deadline' : 'due date'), { kind: 'update', target: 'task', id: d.id, after: { [field]: stamp } });
-        } else await this._saveSched(d.id, { on: iso, dueTime: dm == null ? null : this._fmtMin(dm) }, 'Rescheduled task');   // plain task drop → its date-item
+        } else await this._saveSched(d.id, { on, dueTime: hm }, 'Rescheduled task');   // plain task drop → its date-item
       } else {
         const it = this._dndRow(d); if (!it) return;
         const span = this._dndSpan(d, it);
