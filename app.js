@@ -2254,7 +2254,7 @@ document.addEventListener('alpine:init', () => {
       el._parts = parts; const made = this.morphRows(el, parts);
       if (pin) { const r = this._rowEl(pin.id); if (r) pin.sc.scrollTop += r.getBoundingClientRect().top - pin.top; }
       if (made.length && el.closest('.surface-lists')) { _fitDone = -1; queueMicrotask(() => { for (const n of made) this._stampRow(n); this.paintSel(); this._rehover(); }); this.fitRows(); }   // list rows only; a microtask reads the state subscribing no effect
-      else if (made.length && el.closest('.cl-side')) { for (const n of made) { this._celeMark(n); if (n.dataset.id === this.editing) this._editRow(n); } this._fitSide(el.closest('.cl-side'), made); }
+      else if (made.length && el.closest('.cl-side')) { for (const n of made) { this._celeMark(n); _push.get(n.dataset.id)?.(n); if (n.dataset.id === this.editing) this._editRow(n); } this._fitSide(el.closest('.cl-side'), made); }
       if (before) queueMicrotask(() => this._glideFrom(before, false));
     },
     // The browser anchors a morph, except inside a close's collapse (closeComposer holds anchoring off) or under an arrival's
@@ -2942,11 +2942,11 @@ document.addEventListener('alpine:init', () => {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'collapse') return this.toggleTaskCollapse(r.t.id);
       if (act === 'rel') return this.rowRelOpen(r.t, e.target.closest('.row-rel'));
-      if (act === 'check') return r.step ? (e.detail ? this._stepTick(r.t.id) : this.toggleChk(r.t.id, r.step.ci)) : this.toggle(r.t, e.detail ? r : null);   // a pointer tick celebrates; a key's (detail 0) stays instant
+      if (act === 'check') return r.step ? (e.detail ? this._stepTick(r.t.id, false, r) : this.toggleChk(r.t.id, r.step.ci)) : this.toggle(r.t, e.detail ? r : null);   // a pointer tick celebrates; a key's (detail 0) stays instant
       if (act === 'chk-more') { this.chkOpen.has(r.t.id) ? this.chkOpen.delete(r.t.id) : this.chkOpen.add(r.t.id); this._dropRowHtml(r.t.id); this._paintRows(); return; }   // reveal/re-hide the collapsed done items; repaint here — no effect may have read chkOpen for this row
       // the checkbox OR its text toggles a checklist item; plain (uncheckable) items fall through to editTask
       const chk = e.target.closest('.chk-rect, .chk-txt')?.closest('.chk-row, .step-next');   // a Steps row's preview ticks by its node
-      if (chk && !r.t.checklist_plain) return chk.matches('.step-next') && e.detail ? this._stepTick(r.t.id, true) : this.toggleChk(r.t.id, +chk.dataset.ci, e.detail ? r : null);
+      if (chk && !r.t.checklist_plain) return chk.matches('.step-next') && e.detail ? this._stepTick(r.t.id, true, r) : this.toggleChk(r.t.id, +chk.dataset.ci, e.detail ? r : null);
       this.editTask(r.t, e);
     },
     // first swatch = clear; '' → null; shared by editors + nav popovers
@@ -7662,11 +7662,11 @@ document.addEventListener('alpine:init', () => {
     // it and pushes the preview line alone. The step that finishes the task takes the completion reward instead. Keys and
     // ⌘Z never come here: they stay instant. A second tap hurries the first to its end (motion.seq), then ticks what's
     // current by then.
-    _stepTick(id, preview = false) {
+    _stepTick(id, preview = false, row = null) {
       let block, before, d = 0, p0 = 0, fs = 0, faint;
       return motion.seq('step:' + id,
         async s => {
-          const r = _rowMap.get(id) ?? _doneMap.get(id), el = this._rowEl(id), step = preview ? r?.next : r?.step;   // a done task's row is in the Done list
+          const r = row?.tray ? row : _rowMap.get(id) ?? _doneMap.get(id), el = row?.tray ? this._trayEl(id) : this._rowEl(id), step = preview ? r?.next : r?.step;   // a done task's row is in the Done list
           if (!step) return;
           if (r.t.completed_at) return this.toggleChk(id, step.ci);   // swept Steps can have open steps, but no rendered rail
           if (!preview && !r.next) return this.toggleChk(id, step.ci, r);   // the last step takes the task's reward, after any sweep confirmation
@@ -9613,7 +9613,10 @@ document.addEventListener('alpine:init', () => {
       if (this[open] && this.composer.open && _clSideOut[kind].rows.some(r => r.id === this.editing)) this.closeComposer();
       this[open] = !this[open];
     },
-    clRowClick(e) { const el = e.target.closest?.('.item'); const t = el && this.byId.get(el.dataset.id); if (t) this.onRowClick({ t }, e); },
+    clRowClick(e) {   // a Steps row's check and preview node tick its steps, as in the list: they need the row's step and next
+      const el = e.target.closest?.('.item'), t = el && this.byId.get(el.dataset.id); if (!t) return;
+      this.onRowClick(el.querySelector('.step-block') ? { ...this.mkRow(t, 0, buildByParent(this.tasks), this.byId, this.store.defaultProject(), new Date(), undefined, this._placedMap()), tray: true } : { t }, e);
+    },
     clSideDragStart(e) { const el = e.target.closest?.('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
     clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideOpen = true; this.$nextTick(() => this.editTask(t)); },
     clBlockWeekdays: [{ d: 0, l: 'S' }, { d: 1, l: 'M' }, { d: 2, l: 'T' }, { d: 3, l: 'W' }, { d: 4, l: 'T' }, { d: 5, l: 'F' }, { d: 6, l: 'S' }],

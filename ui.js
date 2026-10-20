@@ -210,7 +210,7 @@ export const rowBodyHtml = (r, opts = {}) => {
   const chkCount = (r.chk || t.checklist || []).length;
   const chev = (opts.chevron !== false && r.fold !== false && (r.childCount || (!r.step && chkCount)))   // a Steps row shows no checklist to fold   // r.fold: false in a view that ignores folding
     ? `<button type="button" class="row-chev${r.depth > 0 ? ' boxed' : ''}" data-act="collapse" aria-label="Fold" aria-expanded="${!r.collapsed}"${r.collapsed ? ' style="transform:rotate(-90deg)"' : ''}><svg class="ico"><use href="#i-chev-d"/></svg></button>` : '';
-  const recArr = recList(t.recurrence), check = checkHtml(opts.tray ? { ...r, hasProgress: false } : r, 'button', '', recArr);   // the tray drops the checklist ring; same builder the link picker uses, so both read the task's state identically
+  const recArr = recList(t.recurrence), check = checkHtml(opts.tray && !r.step ? { ...r, hasProgress: false } : r, 'button', '', recArr);   // the tray drops the checklist ring, never a Steps pie; same builder the link picker uses, so both read the task's state identically
   const areas = r.areas.length ? `<span class="areas inline-flex items-center gap-6 flex-none"${r.areas.length === 1 ? ` style="--tc:${esc(r.areas[0].color)}"` : ''}>${r.areas.map(areaChipHtml).join('')}</span>` : '';
   // Goals are DELIBERATELY not drawn in the list row — parked until the goals rework, and the dead
   // `.goal`/`.goals-chips` chrome went with them (the empty-string placeholder and mkRow's per-row
@@ -237,9 +237,15 @@ export const rowBodyHtml = (r, opts = {}) => {
   const rep = m(badges && t.recurrence && !r.due, repHref.slice(1), '');   // a repeat with no date hosts the glyph itself
   const titleHtml = (r.titleHtml ?? mdTitle(t.content)).replaceAll('</code>', _copyCode + '</code>');   // cached inline-only title; copy controls belong to full rows, not pickers
   const row1 = (left, right) => `<div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${left}</div><div class="r1r flex items-center gap-8 min-w-0">${right}</div></div>`;
-  // Plan's tray: one flat line — check, title, project, when. Nothing that unfolds, nests or ages (user, decision #79).
+  const chkMd = s => md(s, { inline: true, literal: !_hasFence(s), copy: true });
+  // Steps: the current step hangs under the (smaller) title at title size, its ::desc on a line of its own, then the
+  // next open step on the rail — its node ticks it (app.js onRowClick). It stands in for the task's description, which stays in the composer.
+  const step = r.step && !done ? `<div class="step-block" style="--pc:${esc(r.pc)}"><div class="row-step"><span class="chk-txt">${chkMd(r.step.txt)}</span></div>${r.step.desc ? `<div class="step-desc truncate">${chkMd(r.step.desc)}</div>` : ''}${r.next
+    ? `<div class="step-next flex items-center" data-ci="${r.next.ci}"><span class="chk-rect step-node" role="checkbox" aria-checked="false" aria-label="Tick the next step"></span><span class="step-next-txt truncate min-w-0">${chkMd(r.next.txt)}</span></div>` : ''}</div>` : '';
+  // Plan's tray: one flat line — check, title, project, when (a Steps row adds its step block). Nothing that unfolds, nests or ages (user, decision #79).
   // 2C (wid-taste-1): its checklist, notes and relations ride as marks the ladder moves onto line 2 once one exists (app.js _ladder).
   if (opts.tray) {
+    if (step) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${step}</div>`;   // a Steps row leads with its step, as in the list (user 10-20)
     const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;
     const fill = m(n, r.step ? 'i-steps' : 'i-list-check', cl.filter(c => c.done).length + '/' + n) + m(t.notes || plain && cl.length, 'i-edit', '') + m(r.rels.length, 'i-link', '');
     return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${fill ? `<span class="l2-fill flex items-center">${fill}</span>` : ''}</div>`;
@@ -263,14 +269,9 @@ export const rowBodyHtml = (r, opts = {}) => {
   const plain = !!t.checklist_plain;   // uncheckable: plain notes list — bullets instead of boxes, no done styling
   const { rows: clRows, hidden, more } = chkVisible(cl, plain, opts.chkOpen, opts.chkHeld);
   const morePlaceholder = more ? `<button type="button" class="chk-row flex gap-8 chk-more" data-act="chk-more"><span class="chk-more-txt">${hidden ? '…' + hidden + ' more' : 'Show less'}</span></button>` : '';
-  const chkMd = s => md(s, { inline: true, literal: !_hasFence(s), copy: true });
   const renderRow = ({ ci, done, txt, desc }) =>
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
   const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
-  // Steps: the current step hangs under the (smaller) title at title size, its ::desc on a line of its own, then the
-  // next open step on the rail — its node ticks it (app.js onRowClick). It stands in for the task's description, which stays in the composer.
-  const step = r.step && !done ? `<div class="step-block" style="--pc:${esc(r.pc)}"><div class="row-step"><span class="chk-txt">${chkMd(r.step.txt)}</span></div>${r.step.desc ? `<div class="step-desc truncate">${chkMd(r.step.desc)}</div>` : ''}${r.next
-    ? `<div class="step-next flex items-center" data-ci="${r.next.ci}"><span class="chk-rect step-node" role="checkbox" aria-checked="false" aria-label="Tick the next step"></span><span class="step-next-txt truncate min-w-0">${chkMd(r.next.txt)}</span></div>` : ''}</div>` : '';
   return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;
 };
 
