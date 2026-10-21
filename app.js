@@ -208,7 +208,7 @@ const WIN_MARGIN = 600, WIN_KEEP = 200, WIN_RUN = 120, SEC_H = 30;   // SEC_H: s
 let _winSt = 0, _winAt = 0, _winV = 0, _winD = 0, _winRun = WIN_RUN, _win = new WeakMap(), _restT = 0;   // the last scroll event's scrollTop, timeStamp, velocity (px/ms), travel (px), runway (ms) · the kept window per list model { s, e } · the at-rest re-grow timer
 let _model = null;                    // { rows, ent:[{id,order,h,mk,d,html,r}], ix:Map(id→i), total } — the flat <li> sequence
 let _doneModel = null;                // the Done list's, the same shape, memoised on completedRows()
-let _chkHeld = null, _chkHeldT = 0, _chkOut = null, _chkDraftList = null;   // a checklist whose ticks show in place: app._holdChk
+let _chkHeld = null, _chkHeldT = 0, _chkOut = null, _chkDraftList = null, _chkExit = null;   // a checklist whose ticks show in place: app._holdChk · _chkExit: the ids a pointer delete fades out (paintChk consumes it)
 let _appRaw = null;   // the component unproxied (init): visibleRows rebuilds on it
 // _patchRows → visibleRows: { ids, drop, sort, key, v } = rebuild ONLY these rows of the memo keyed `key` (drop: roots leaving it; sort: parents whose children moved), once _rowV is `v`
 const GLIDE_ROWS = '.surface-lists :is(.rows > [data-id], .add-task-btn, .list-done-head), .cl-side :is(.rows > [data-id], .cl-side-sec)';   // what _glideFrom moves
@@ -584,7 +584,7 @@ document.addEventListener('alpine:init', () => {
     railList: [],     // move-rail drop targets, populated while a task row is dragged
     railHot: null,    // rail target currently under the drag (kind+id)
     _t: null,
-    pop: null, popXY: { left: 0, top: 0 }, popDock: false,
+    pop: null, popXY: { left: 0, top: 0 }, popDock: false, rowMenu: [], rowAt: { x: 0, y: 0 },
     evPick: 's', evMonth: false,   // the When pop's picked field (start/end) and its month grid in place of the week strip
     titleEmpty: true,
     areaPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
@@ -6519,9 +6519,13 @@ document.addEventListener('alpine:init', () => {
     // The composer's entry rows are plain DOM, not x-fors: mounting ~12 Alpine directives per row made a long list the
     // open's longest frame. One effect per list paints them keyed by id, after the list's ghost; a row keeps its element
     // and rewrites only what changed. Every row renders: drag, ↓/Tab, the grow's measure, zebra, copy and find read them all.
-    _paintKeyed(list, items, mk, set) {
+    _paintKeyed(list, items, mk, set, exit) {
       const want = new Set(items.map(x => x.id)), old = new Map();
-      for (const el of [...list.children]) if (el.dataset.id) want.has(el.dataset.id) ? old.set(el.dataset.id, el) : el.remove();   // leavers first: no row shuffles past them
+      for (const el of [...list.children]) {   // leavers first: no row shuffles past them
+        const id = el.dataset.id;
+        if (el.dataset.out) want.has(el.dataset.out) && el.remove();   // brought back (⌘Z) mid-exit: one row, the new one
+        else if (id) want.has(id) ? old.set(id, el) : exit?.has(id) ? this._rowOut(el) : el.remove();
+      }
       let at = list.querySelector(':scope > .ghost') || list.firstElementChild;   // the sub ghost's x-if may mount after this paint: its <template> anchors, and it mounts right after that
       for (const x of items) {
         let el = old.get(x.id);
@@ -6533,10 +6537,31 @@ document.addEventListener('alpine:init', () => {
         at = el;
       }
     },
+    // A row the pointer deleted fades where it stood, out of the flow (the rows below slide up: _slideEntries), then goes.
+    // Unreadable meanwhile: no data-id (data-out keeps who it was), inert, last in the DOM (a first step's rail follows its next row), and the readers skip .chk-out.
+    _rowOut(el) {
+      const { offsetTop, offsetLeft, offsetWidth } = el;
+      el.dataset.out = el.dataset.id; delete el.dataset.id; el.inert = true;
+      el.classList.remove('chk-sel', 'cur'); el.classList.add('chk-out');
+      Object.assign(el.style, { top: offsetTop + 'px', left: offsetLeft + 'px', width: offsetWidth + 'px' });
+      el.parentNode.append(el);
+      const out = motion.go(null, el, { opacity: [1, 0] }, { duration: DESIGN.motion.constant, easing: DESIGN.ease.out, fill: 'forwards' });
+      out.onfinish = out.oncancel = () => el.remove();
+    },
+    _entryTops(els, key = el => el.dataset.id) { return new Map(els.map(el => [key(el), el.getBoundingClientRect().top])); },
+    _slideEntries(els, before, key = el => el.dataset.id) {
+      const tops = els.map(el => el.getBoundingClientRect().top);   // all reads first: an animate() between two reads forces a layout each
+      for (const [i, el] of els.entries()) {   // the one slide, each row from where it showed; one arriving ("…N more") fades in
+        const from = before.get(key(el)), dy = from - tops[i];
+        if (from == null || dy) motion.soften(el.animate(from == null ? { opacity: [0, 1] } : { translate: [`0 ${dy}px`, '0 0'] }, { duration: 200, easing: DESIGN.ease['in-out'] }));
+      }
+    },
     paintChk(list, force) {
+      const exit = _chkExit; _chkExit = null;   // one pointer delete's ids: every other removal leaves at once
       if (!list?.isConnected) return;
       _chkDraftList = list;
       if (this.notesHidden()) return;
+      const rowEls = () => [...list.querySelectorAll(':scope > .entry:not(.chk-out)')], before = exit && this._entryTops(rowEls());
       const plain = this.chkPlain(), find = this.chkFind(), grip = this.editing && !this.chkGhost.trim(), ae = document.activeElement;   // ae: the row being typed in
       const cur = this.chkSteps() ? this.draft.checklist.find(x => !x.done) : null;
       this._paintKeyed(list, this.checklistRows(), () => { const el = CHK_ROW.cloneNode(true); el._r = el.firstChild; el._t = el._r.nextSibling; return el; }, (el, item) => {
@@ -6548,7 +6573,8 @@ document.addEventListener('alpine:init', () => {
         // text is read raw: tracked, the row read before it took focus re-ran this whole paint on its first key.
         // Text written outside the row's own editor (undo) repaints via syncChkRows.
         if (!el._t.contains(ae)) { const h = this.chkHl(window.Alpine.raw(item)); if (force || el._t._h !== h) el._t.innerHTML = el._t._h = h; }
-      });
+      }, exit);
+      if (before) this._slideEntries(rowEls(), before);
     },
     // The draft's subtask rows: stored ones still stored (another device may delete one), and new ones.
     shownSubs() { return this.editing ? this.draft.subs.filter(s => s.add || this.byId.has(s.id)) : []; },
@@ -6586,7 +6612,7 @@ document.addEventListener('alpine:init', () => {
     // The painted rows' events, delegated from the list (the ghost row has no data-id and keeps its own handlers).
     chkRowEv(e) {
       const item = this._chkItem(e.target); if (!item) return;
-      if (e.type === 'click') return e.target.closest('.chk-rect') ? this.chkPlain() || this.toggleChecklistItem(item) : e.target.closest('.entry-del') && this.removeChecklistItem(item);
+      if (e.type === 'click') return e.target.closest('.chk-rect') ? this.chkPlain() || this.toggleChecklistItem(item) : e.target.closest('.entry-del') && (_chkExit = e.detail && (motion.scale || motion.gentle) ? new Set([item.id]) : null, this.removeChecklistItem(item));   // detail 0: a key pressed the ×
       const txt = e.target.closest('.entry-txt'); if (!txt) return;
       if (e.type === 'pointerdown') return this.chkRowDown(e);
       if (e.type === 'pointerup') return this.chkRowUp(txt, e);
@@ -6925,7 +6951,7 @@ document.addEventListener('alpine:init', () => {
     },
     // VISUAL order (ghost → open bucket → done bucket) — sort by on-screen top so the CSS-ordered ghost-on-top
     // layout is respected regardless of DOM order.
-    _entryFields(list) { return [...list.querySelectorAll('.entry-txt')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top); },
+    _entryFields(list) { return [...list.querySelectorAll(':scope > :not(.chk-out) .entry-txt')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top); },
     // One rung of the focus ladder (entries ↔ description ↔ title), either direction. The caret always lands at the
     // END: on the way UP you're arriving from below, where the down-ladder lands it at 0.
     _focusEntry(next) {
@@ -7012,7 +7038,7 @@ document.addEventListener('alpine:init', () => {
     _chkSelTint() {
       const sel = getSelection(), r = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
       if (!this.composer.open || !r && !_chkTinted) return;   // collapsed caret, nothing tinted = every keystroke: skip the row query
-      const rows = document.querySelectorAll('.composer-entries .entry.chk:not(.ghost)');
+      const rows = document.querySelectorAll('.composer-entries .entry.chk:not(.ghost, .chk-out)');
       const hit = r ? [...rows].filter(el => r.intersectsNode(el.querySelector('.entry-txt'))) : [];
       const on = hit.length >= 2 ? new Set(hit) : null;
       for (const el of rows) el.classList.toggle('chk-sel', !!on?.has(el));
@@ -7022,7 +7048,7 @@ document.addEventListener('alpine:init', () => {
     chkCopy(e) {
       const sel = getSelection(); if (!e.clipboardData || !sel?.rangeCount || sel.isCollapsed) return;
       const range = sel.getRangeAt(0);
-      const items = [...e.currentTarget.querySelectorAll('.entry.chk:not(.ghost) .entry-txt')].filter(el => range.intersectsNode(el));
+      const items = [...e.currentTarget.querySelectorAll('.entry.chk:not(.ghost, .chk-out) .entry-txt')].filter(el => range.intersectsNode(el));
       if (!items.length) return;   // the ghost's textarea, a subtask row: native
       e.clipboardData.setData('text/plain', items.length < 2 ? range.toString() : items.map(el => '- ' + el.textContent.trim()).join('\n'));   // one item: its source, hidden markers included
       e.preventDefault();
@@ -7055,7 +7081,7 @@ document.addEventListener('alpine:init', () => {
     // SAVED task — that is the scope of "no grip in the composer": it was asked for on the NEW-task composer,
     // where nothing is saved yet and the grip crowds the row. Removing it from both took it off saved tasks too.
     initEntrySort(el, kind) {
-      makeSortable(el, { itemSel: kind === 'sub' ? '.entry:not(.ghost)' : '.entry:not(.ghost):not(.done)', handleSel: '.entry-grip',
+      makeSortable(el, { itemSel: kind === 'sub' ? '.entry:not(.ghost, .chk-out)' : '.entry:not(.ghost, .chk-out, .done)', handleSel: '.entry-grip',
         onCommit: (from, to) => kind === 'sub' ? this.reorderSubtasks(from, to) : this.reorderChecklist(from, to) });
     },
     _reorderChecklist(cl, from, to, plain) {
@@ -7128,6 +7154,23 @@ document.addEventListener('alpine:init', () => {
       const r = id ? this._rowFromEl(el) : null;
       r ? this.hoverRow(r, e) : this.clearHover();
     },
+    // Right-click a row: the composer's actions (index.html .row-pop), on the selection when the row is in it. Shift, a field,
+    // selected text and a phone's long-press keep the browser's menu.
+    rowMenuOpen(e) {
+      const id = e.target.closest?.('.item')?.dataset.id;
+      if (!id || this.narrow || e.shiftKey || e.target.closest('input, textarea, [contenteditable=true]') || !getSelection().isCollapsed) return;
+      e.preventDefault();
+      this.rowMenu = this.sel.length > 1 && this.sel.includes(id) ? [...this.sel] : [id];
+      this.rowAt = { x: e.clientX, y: e.clientY };
+      this.pop = 'row';
+    },
+    rowMenuPlace(el, at) { el.style.left = popLeft(at.x, el.offsetWidth + 8, 8) + 'px'; el.style.top = popTop(at.y, el.offsetHeight + 8) + 'px'; },
+    rowTask() { return this.rowMenu.length === 1 ? this.byId.get(this.rowMenu[0]) ?? null : null; },
+    rowArchived() { return this.rowMenu.every(id => this.byId.get(id)?.archived_at); },
+    rowCopy() { return this._copyText(this._selRoots(this.rowMenu).map(id => this.taskMd(this.byId.get(id))).join('\n'), 'Copied as markdown'); },
+    rowDelete() { const t = this.rowTask(); return !t ? this.selDelete() : this.askDeleteTask(t.id, 'row') || this.perform('Deleted', { target: 'task', kind: 'delete', id: t.id }); },
+    rowNote(t) { return this.perform(inNotes(t) ? 'Made it a task' : 'Made it a note', { kind: 'update', target: 'task', id: t.id, after: { task_type: inNotes(t) ? null : 'note' } }); },
+    rowEdit(fn) { this.editTask(this.rowTask()); fn(); },   // the converts and Overview are the composer's draft edits: they open the task, as there
     listClick(e) {
       const sec = e.target.closest?.('.sec-row');
       if (sec) return this.toggleSec(sec.dataset.sec);
@@ -7275,17 +7318,13 @@ document.addEventListener('alpine:init', () => {
         return void addEventListener('pointerup', () => setTimeout(() => _chkHeld === held && !_chkHeldT && this._releaseChk(false)), { once: true });
       }
       const id = _chkHeld.key, rows = () => [...this._chkListEl(id)?.querySelectorAll(':scope > [data-id], :scope > [data-ci], :scope > .chk-more') ?? []], key = el => el.dataset.id || el.dataset.ci || 'more';
-      const before = new Map(rows().map(el => [key(el), el.getBoundingClientRect().top]));
+      const before = this._entryTops(rows(), key);
       clearTimeout(_chkHeldT);
       removeEventListener('pointerover', _chkOut);
       _chkHeld = null;
       if (id === 'draft') this.paintChk(_chkDraftList);
       else { this._dropRowHtml(id); this._paintRows(); }
-      const els = rows(), tops = els.map(el => el.getBoundingClientRect().top);   // all reads first: an animate() between two reads forces a layout each
-      for (const [i, el] of els.entries()) {   // the one slide, each row from where it showed; one arriving ("…N more") fades in
-        const from = before.get(key(el)), dy = from - tops[i];
-        if (from == null || dy) motion.soften(el.animate(from == null ? { opacity: [0, 1] } : { translate: [`0 ${dy}px`, '0 0'] }, { duration: 200, easing: DESIGN.ease['in-out'] }));
-      }
+      this._slideEntries(rows(), before, key);
     },
     async _toggleChk(taskId, i, row = null) {
       const task = this.byId.get(taskId); if (!task) return;
@@ -7430,11 +7469,14 @@ document.addEventListener('alpine:init', () => {
     // fresh checklist ids, drop identity/status/subtree. Routed through perform() so ⌘Z removes the copy.
     async duplicateEditing() {
       const id = this.editing, d = this.draft; if (!this.byId.get(id) || !await this._saveOpenEdits(d)) return;
+      if (this._live(d)) this.closeComposer(true);   // a clean draft is still open: close first (saved=true → don't keep a draft)
+      await this.duplicate(id);
+    },
+    duplicate(id) {
       const src = this.byId.get(id), f = { checklist: (src.checklist || []).map(c => ({ ...c, id: crypto.randomUUID() })) };   // fresh item ids; identity/status/subtree deliberately absent from the whitelist
       for (const k of ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'parent_id',
         'area_ids', 'goal_ids', 'color', 'favorite', 'place', 'location', 'recurrence', 'milestone', 'checklist_plain', 'task_type']) f[k] = src[k];
-      if (this._live(d)) this.closeComposer(true);   // a clean draft is still open: close first (saved=true → don't keep a draft)
-      await this.perform('Duplicated task', { target: 'task', kind: 'create', fields: f });
+      return this.perform('Duplicated task', { target: 'task', kind: 'create', fields: f });
     },
     anyDialog() { return OVERLAYS.some(([open, , dialog]) => dialog && open(this)); },
     modalOpen() { return this.settingsOpen || this.anyDialog(); },   // the page behind is inert while true
@@ -7874,10 +7916,10 @@ document.addEventListener('alpine:init', () => {
     // Archive cascades as completion does: the open tasks inside go with it, after the same ask; done ones stay done. One store
     // write stamps them all with one instant, and that instant is what Unarchive reads back: it reopens only the rows under it
     // carrying it, never one archived on its own (another instant). One ⌘Z step either way.
-    archive(id, val, then = () => {}) {
-      const t = this.byId.get(id); if (!t) return;
-      const kids = descendantIds(this.tasks, id, this._taskIdx().kids).slice(1).map(x => this.byId.get(x)).filter(k => cascades(t, k, val));
-      const ids = [id, ...kids.map(k => k.id)], what = this.isOverviewProject(t) ? 'project' : 'task';
+    archive(roots, val, then = () => {}) {   // roots: an id, or a selection's roots (one entry, one ⌘Z)
+      const ts = [roots].flat().map(id => this.byId.get(id)).filter(t => t && !t.archived_at === val); if (!ts.length) return;
+      const kids = ts.flatMap(t => descendantIds(this.tasks, t.id, this._taskIdx().kids).slice(1).map(x => this.byId.get(x)).filter(k => cascades(t, k, val)));
+      const ids = [...ts.map(t => t.id), ...kids.map(k => k.id)], what = ts.length > 1 ? this._nTasks(ts.length) : this.isOverviewProject(ts[0]) ? 'project' : 'task';
       let wrote;
       const set = async () => !!(wrote = await this.store.tasks.setArchived(ids, val));
       // Unarchive keeps the dates that passed meanwhile (user, tweak-11a: "the dates are still valuable information to understand the timeline

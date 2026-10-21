@@ -126,7 +126,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-tack" viewBox="0 0 24 24"><path transform="rotate(40 12 12)" fill="currentColor" stroke="none" d="M8 3h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2zM8 4h8v5.77L18.62 15H5.38L8 9.77zM11 14h2v6a1 1 0 0 1-2 0z"/></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
   <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle (user 10-05). 19 wide, 24 tall; up 4/3 so its ink mass centres on the box; joint and shift are multiples of 4/3, whole pixels in an 18px box at 1-3x (no seam) -->
-  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M2.526 9.333V8.141a9.474 9.474 0 0 1 18.947 0V9.333h-3.789V8.141a5.684 5.684 0 0 0-11.368 0V9.333z"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M2.526 9.333h18.947v9.545a3.789 3.789 0 0 1-3.789 3.789h-11.368a3.789 3.789 0 0 1-3.789-3.789zM12 13.5a2.021 2.021 0 0 0-.884 3.84V19.058h1.768v-1.718A2.021 2.021 0 0 0 12 13.5z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M2.526 9.333V8.141a9.474 9.474 0 0 1 18.947 0V9.333h-3.789V8.141a5.684 5.684 0 0 0-11.368 0V9.333z"/><rect class="lk-leg" fill="currentColor" stroke="none" x="2.526" y="6.833" width="3.789" height="2.5"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M2.526 9.333h18.947v9.545a3.789 3.789 0 0 1-3.789 3.789h-11.368a3.789 3.789 0 0 1-3.789-3.789zM12 13.5a2.021 2.021 0 0 0-.884 3.84V19.058h1.768v-1.718A2.021 2.021 0 0 0 12 13.5z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
@@ -371,7 +371,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </div>
     <!-- rows: one innerHTML parse (not x-for) — ~1s→~50ms; events delegated to <ul>; hover/drag/kbfocus imperative -->
     <ul class="list flex-col" x-effect="paintSel()" x-init="initListSort($el)"
-        @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)"
+        @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)" @contextmenu="rowMenuOpen($event)"
         @dragstart="listDragStart($event)" @dragenter.prevent="listDragOver($event)" @dragover.prevent="listDragOver($event)" @dragleave="listDragLeave($event)" @drop.prevent="listDrop($event)" @dragend="dragEnd()">
       <!-- direct innerHTML (not x-html): x-html walks ~9000 nodes for Alpine directives — rows carry none -->
       <!-- preserve the scroller position across rebuilds: replacing every row (esp. while the composer's edit-row is mid-list) otherwise clamps scrollTop to 0 -->
@@ -869,10 +869,26 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- Done: a real task list (same row components) so subtasks show and the composer can relocate in + open inline. -->
     <div class="list-done" x-show="(showCompleted || qfArchived) && completedRows().length" x-cloak>
       <div class="list-done-head flex items-center gap-6"><span x-text="showCompleted && qfArchived ? 'Done &amp; Archived' : qfArchived ? 'Archived' : 'Done'"></span><span class="list-done-n" x-text="completedRows().length"></span><span class="head-rule"></span></div>
-      <ul class="list flex-col" @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)">
+      <ul class="list flex-col" @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)" @contextmenu="rowMenuOpen($event)">
         <div class="rows" x-effect="renderRows($el, doneHtml())"></div>
       </ul>
     </div>
+
+    <!-- Right-click a row (rowMenuOpen): the composer's own actions, in its order; a selection gets the ones that act on many -->
+    <template x-if="pop === 'row'"><template x-teleport="body"><div class="pop row-pop" role="menu" x-effect="rowMenuPlace($el, rowAt)" @click="pop = null"
+         @pointerdown.window.capture="$el.contains($event.target) || (pop = null)" @scroll.window.capture="pop = null"><template x-if="rowTask()"><div class="contents">
+      <button type="button" class="pop-item" role="menuitem" @click="duplicate(rowTask().id)"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
+      <button type="button" class="pop-item" role="menuitem" x-show="hasChildren(rowTask().id) || rowTask().task_type === 'steps' &amp;&amp; rowTask().checklist?.length" @click="rowEdit(() => convertTo('checklist'))"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
+      <button type="button" class="pop-item" role="menuitem" x-show="rowTask().task_type !== 'steps' &amp;&amp; rowTask().task_type !== 'note' &amp;&amp; (hasChildren(rowTask().id) || rowTask().checklist?.length)" @click="rowEdit(() => convertTo('steps'))"><svg class="ico"><use href="#i-steps"/></svg>Convert to steps</button>
+      <button type="button" class="pop-item" role="menuitem" x-show="rowTask().checklist?.length" @click="rowEdit(() => convertToSubtasks())"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
+      <button type="button" class="pop-item" role="menuitem" x-show="rowTask().checklist?.length" @click="rowEdit(() => toggleChecklistPlain())"><svg class="ico"><use :href="rowTask().checklist_plain ? '#i-list-check' : '#i-all'"/></svg><span x-text="rowTask().checklist_plain ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
+      <button type="button" class="pop-item" role="menuitem" x-show="!rowTask().overview" @click="rowEdit(() => askShowInOverview())"><svg class="ico"><use href="#i-overview"/></svg>Show in Overview</button>
+      <button type="button" class="pop-item" role="menuitem" @click="rowNote(rowTask())"><svg class="ico"><use href="#i-tack"/></svg><span x-text="rowTask().task_type === 'note' ? 'Make it a task' : 'Make it a note'"></span></button>
+    </div></template>
+      <button type="button" class="pop-item" role="menuitem" @click="archive(_selRoots(rowMenu), !rowArchived())"><svg class="ico"><use href="#i-archive"/></svg><span x-text="rowArchived() ? 'Unarchive' : 'Archive'"></span></button>
+      <button type="button" class="pop-item" role="menuitem" @click="rowCopy()"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
+      <button type="button" class="pop-item del" role="menuitem" @click="rowDelete()"><svg class="ico"><use href="#i-trash"/></svg><span x-text="rowTask() ? 'Delete task' : 'Delete ' + _nTasks(rowMenu.length)"></span></button>
+    </div></template></template>
 
     <!-- Drag-to-move edge rail: revealed while a task row is dragged (dragId); compact drop targets for
          Backlog + every project + every area. Fixed wrapper clips the panel; pointer-events off unless .on. -->

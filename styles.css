@@ -371,9 +371,10 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px s
 .item.waiting .title, .item.waiting .m, .item.waiting .badge, .item.waiting .chk-list { opacity: .62; }
 .check .lock-ico { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; color: var(--pc, var(--muted)); pointer-events: none; transition: scale .16s var(--ease-out); }   /* visible: the lifted shackle rises past the viewBox */
 #i-lock .lk-shk { translate: 0 var(--lk-lift, 0px); transition: translate .18s var(--ease-out); }   /* user units: the lift scales with the glyph */
-@media (any-hover: hover) and (any-pointer: fine) { .check.blocked:hover:where(:not(.touch *)) { --lk-lift: -2.5px; --lk-op: .45; } }
+#i-lock .lk-leg { transform-box: view-box; transform-origin: 0 9.333px; scale: 1 var(--lk-leg, 0); transition: scale .18s var(--ease-out); }   /* fills the lifted gap so the left leg stays seated: an overlap would double a translucent ink */
+@media (any-hover: hover) and (any-pointer: fine) { .check.blocked:hover:where(:not(.touch *)) { --lk-lift: -2.5px; --lk-leg: 1; --lk-op: .45; } }
 .check.blocked:active .lock-ico { scale: .92; }
-@media (prefers-reduced-motion: reduce) { #i-lock .lk-shk { translate: none; opacity: var(--lk-op, 1); transition: opacity .18s var(--ease-out); } .check.blocked:active .lock-ico { scale: none; } }   /* the shackle fades instead of lifting */
+@media (prefers-reduced-motion: reduce) { #i-lock .lk-shk { translate: none; opacity: var(--lk-op, 1); transition: opacity .18s var(--ease-out); } #i-lock .lk-leg { scale: 1 0; } .check.blocked:active .lock-ico { scale: none; } }   /* the shackle fades instead of lifting */
 /* Paused recurrence: themed border + pause icon instead of checkmark. */
 .check.paused { border-color: var(--gold); }
 .check.paused .pause-ico { position: absolute; inset: 0; margin: auto; width: 8px; height: 8px; color: var(--gold); fill: currentColor; stroke: none; pointer-events: none; }
@@ -565,6 +566,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 .chk-list .chk-desc { margin-bottom: -1lh; }   /* never sets the row's height: its descent runs into the text's */
 /* any sortable.js item being dragged lifts above its siblings + the indent guide; siblings' shift transition is set inline */
 .sorting { position: relative; z-index: 5; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
+/* a checklist row's plate frames its box evenly (4px above, below and left), not the row's baseline-set edges */
+.chk-list .chk-row.sorting { background: none; box-shadow: none; }
+.chk-list .chk-row.sorting::before { content: ""; position: absolute; z-index: -1; inset: calc((1lh - 16px) / 2 - 3px) 0 calc(1lh / 2 - 13px) -4px; background: var(--panel); border-radius: var(--r-6); box-shadow: var(--shadow); }
 .chk-rect { width: 16px; height: 16px; padding: 0; flex: none; border-radius: var(--r-4); border: 1px solid transparent; background: color-mix(in srgb, var(--faint) 30%, transparent) padding-box; position: relative; transition: background-color .12s, border-color .12s; }   /* padding:0 resets the <button> UA padding — without it border-box forces a 16×14 rectangle; 16px matches .check.sm + .ghost-check. Open = a 14px tile: the transparent border keeps the 16px footprint and hit area; 30% still reads on the zebra band */
 .chk-list .chk-rect:not(.plain)::before { content: ""; position: absolute; inset: -4px -2px; }   /* 3px past the 16px box: boxes tile down the column, meeting mid-gap — no row flash, never a neighbour's tick */
 /* text 2px lower via padding, its box 1px taller above: item texts tile with no gap, so moving between them never flashes the row */
@@ -642,6 +646,8 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
   > .ring { position: absolute; inset: -2.25px; border-radius: 50%; pointer-events: none;
     background: conic-gradient(var(--pc) 0 186deg, transparent 0 198deg, var(--pc) 0 225deg, transparent 0 237deg, var(--pc) 0 264deg, transparent 0 276deg, var(--pc) 0 303deg, transparent 0 315deg, var(--pc) 0 342deg, transparent 0 354deg, var(--pc) 0);   /* solid runs past 12 and 6 o'clock so the rail lands on stroke */
     mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); } }
+/* archived Steps: the Steps ring in the archived ink, no pie, the archived dash */
+.check.steps.archived { &, &:hover { background: transparent; } > .ring { --pc: color-mix(in srgb, var(--muted) 45%, transparent); } }
 /* clickable: reveals/re-hides the collapsed done items (B7). Button reset — it inherits the row's box, not the UA's. */
 .chk-more { padding: 1px 0 1px 24px; border: 0; background: none; cursor: pointer; text-align: left; }
 .chk-more-txt { font-size: var(--fs-11); color: var(--muted); }
@@ -960,7 +966,9 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
 /* Zebra: bands follow the VISUAL order counted from the BOTTOM (adds unshift at the top, so every existing row keeps
    its band); find-hits float away (order:-1) with their own highlight, so the rest alternate among themselves. CSS,
    not a per-row :class — deriving each row's parity from a fresh sort was O(n²) on opening a long checklist. */
-.entry-list > .entry.chk:where(:nth-last-child(even of .entry.chk:not(.ghost, .chk-hit))) { background: color-mix(in srgb, var(--faint) 20%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--faint) 20%, var(--panel)); }
+.entry-list > .entry.chk:where(:nth-last-child(even of .entry.chk:not(.ghost, .chk-hit, .chk-out))) { background: color-mix(in srgb, var(--faint) 20%, transparent); border-radius: var(--r-6); --row-bg: color-mix(in srgb, var(--faint) 20%, var(--panel)); }
+/* A row the pointer deleted fades in place (_rowOut): out of the flow, at the top/left/width it was given. */
+.entry-list > .entry.chk-out { position: absolute; margin: 0; pointer-events: none; }
 /* Steps (docs/ui/task-list.md §Steps): stored order, no zebra, the ghost last. One unbroken rail threads the nodes and
    meets each ring (a node's 3px border is transparent; its padding box hides the line): done filled, the walked path
    orange up to the current step's accent ring, later ones hollow with muted text, the ghost a dashed node. Each node hits a 24px circle. */
@@ -1246,10 +1254,11 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .rem-row.paused { .rem-lead, .rem-sev { color: var(--faint); } .rem-seg { background: none; color: var(--faint); } .dots i { opacity: .25; } }
 /* suggestions: grounded, 1–3, one tap to become a row; a covered one is not rendered at all */
 .rem-sug { .plus { margin-left: auto; font-size: var(--fs-17); line-height: 1; color: var(--muted); padding: 0 var(--sp-2); } }
+.pop.row-pop { position: fixed; }   /* rowMenuPlace: at the pointer */
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 /* light shell: soft shadow, 28px rows */
-.pop:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { box-shadow: var(--shadow-sm); }
-:is(.proj-pop, .rem-pop, .cal, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); }
+.pop:is(.proj-pop, .row-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { box-shadow: var(--shadow-sm); }
+:is(.proj-pop, .row-pop, .rem-pop, .cal, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); }
 .pick-list .pop-item { border-radius: var(--r-4); }   /* concentric: its r8 − 4 inset */
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
