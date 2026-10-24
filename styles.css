@@ -2316,7 +2316,7 @@ textarea.inp { resize: vertical; }
 /* flat rows, no fold: the gutter shrinks to the row's own inset, and the bleed puts each check at the panel's text edge */
 .cl-side-list.list { --gut: var(--sp-10); margin: 0 calc(-1 * var(--sp-10)); content-visibility: auto; contain-intrinsic-size: auto 400px; }
 .cl-side-list:has(> .composer) { content-visibility: visible; }   /* auto's paint containment would clip the composer's pops and dim */
-.cl-side-list .item.editing-row { visibility: hidden; }   /* its tighter 5px top would peek above the card's 8 */
+.cl-side-list:has(.composer-grow.grown) .item.editing-row { visibility: hidden; }   /* its tighter 5px top would peek above the card's 8; a closing card fades over it, as in Lists */
 /* C1c pill rows: they LIGHT ON HOVER and fill when selected — never filled at rest. A permanent --hover fill
    turned the tray into a stack of grey slabs, which is exactly the heaviness C2 set out to remove. */
 .cl-side-list .item, .drag-ghost > .item { border-radius: var(--r); --row-hov: color-mix(in srgb, var(--hover) 60%, var(--accent) 8%); }

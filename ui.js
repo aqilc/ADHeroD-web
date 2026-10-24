@@ -36,15 +36,18 @@ const _codeBlock = (src, info, compact) => { const key = String(info || '').toLo
 // ceiling: triple-backtick fences only; use a parser if nested fences or full Markdown are requested.
 const _fences = /```([\s\S]*?)(```|$)/g;
 const _hasFence = src => String(src ?? '').includes('```');
-const _chkSep = src => { const s = String(src ?? ''); return (_hasFence(s) ? s.replace(_fences, m => ' '.repeat(m.length)) : s).indexOf('::'); };   // the fence test first: replace() alone costs ~2x per row
+// One left-to-right scan for a backslash escape of a mark or a code span: an escaped backtick opens no span, a backslash inside one is literal.
+const _escOrCode = /\\([\\`*_~[\]()#:-])|`([^`\n]+)`/g;
+const _chkMask = new RegExp(_fences.source + '|' + _escOrCode.source, 'g');   // blanks what can't hold a note's "::"
+const _chkSep = src => { const s = String(src ?? ''); return (/[`\\]/.test(s) ? s.replace(_chkMask, m => ' '.repeat(m.length)) : s).indexOf('::'); };   // the test first: replace() alone costs ~2x per row
 export const chkParts = (c, ci) => { const sep = _chkSep(c.text); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; };
 const _sentinel = (src, mark) => { while (src.includes(mark)) mark += mark[0]; return mark; };
 // XSS-safe markdown for task descriptions (headings, bold, italic, code, links, bullets). Inline-styled spans, not a document renderer.
 const _md = (src, opts = {}) => {
   if (src == null || src === '') return '';
   const codes = [], raw = String(src), C = _sentinel(raw, '\uE000'), CE = C + '\uE001';
-  // pull inline code out first so its content isn't touched by later rules
-  let s = raw.replace(/`([^`\n]+)`/g, (_, c) => `${C}${codes.push(`<code>${esc(c)}${opts.copy ? _copyCode : ''}</code>`) - 1}${CE}`);
+  // pull inline code and escaped marks out first so later rules don't touch them
+  let s = raw.replace(_escOrCode, (_, mark, c) => `${C}${codes.push(mark || `<code>${esc(c)}${opts.copy ? _copyCode : ''}</code>`) - 1}${CE}`);
   const inline = (t) => {
     const links = [], L = _sentinel(t, '\uE002'), LE = L + '\uE003';
     t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => `${L}${links.push(_link(url, txt)) - 1}${LE}`);
@@ -100,12 +103,14 @@ export const mdCut = (src, start, min) => {
 };
 const _tok = (open, inner, close) => `<span class="dm-tok"><span class="dm-mark">${open}</span>${inner}<span class="dm-mark">${close}</span></span>`;
 const _dLine = (line, literal) => {   // literal: a title's, where # and - stay text
-  const parts = [], S = _sentinel(line, '\uE000'), E = S + '\uE001';
-  const stash = (html) => S + (parts.push(html) - 1) + E;   // pull code/links out so their text isn't bold/italic-scanned
-  let t = line.replace(/`([^`\n]+)`/g, (_, c) => stash(`<span class="dm-tok"><span class="dm-mark">\`</span><code>${esc(c)}</code><span class="dm-mark">\`</span></span>`));
-  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => {
-    const u = _mdUrl(url);
-    return stash(_tok('[', u ? `<a class="dm-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(txt)}</a>` : esc(txt), `](${esc(url)})`));
+  const parts = [], srcs = [], S = _sentinel(line, '\uE000'), E = S + '\uE001', re = new RegExp(S + '(\\d+)' + E, 'g');
+  const stash = (html, src) => S + (parts.push(html), srcs.push(src) - 1) + E;   // pull code/links out so their text isn't bold/italic-scanned
+  const unstash = s => s.replace(re, (_, i) => unstash(parts[+i]));   // a link's text can hold stashed escapes or code
+  let t = line.replace(_escOrCode, (m, mark, c) => stash(mark ? `<span class="dm-tok"><span class="dm-mark">\\</span>${mark}</span>` : `<span class="dm-tok"><span class="dm-mark">\`</span><code>${esc(c)}</code><span class="dm-mark">\`</span></span>`, m));
+  t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, txt, url) => {
+    url = url.replace(re, (_, i) => srcs[+i]);   // a URL is source text: its marker shows it as typed
+    const u = _mdUrl(url.replace(_escOrCode, (m, mark) => mark || m));   // the href drops escapes, as md()'s does
+    return stash(_tok('[', u ? `<a class="dm-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(txt)}</a>` : esc(txt), `](${esc(url)})`), m);
   });
   t = esc(t);
   t = t.replace(/\*\*([^*\n]+)\*\*/g, (_, x) => _tok('**', `<strong>${x}</strong>`, '**'));
@@ -115,7 +120,7 @@ const _dLine = (line, literal) => {   // literal: a title's, where # and - stay 
   const li = !literal && t.match(/^([-*] )|^(\d+\. )/), h = !literal && !li && t.match(/^(#{1,3})(\s[\s\S]*)?$/);
   if (li) t = (li[1] ? `<span class="dm-tok"><span class="dm-mark dm-li">${li[1]}</span></span>` : `<span class="dm-mark dm-ol">${li[2]}</span>`) + t.slice(li[0].length);   // a number always shows
   else if (h) t = `<span class="dm-tok dm-h h${h[1].length}"><span class="dm-mark">${h[1]}${h[2]?.[0] || ''}</span>${h[2]?.slice(1) || ''}</span>`;   // the space after # is a marker too: the heading starts flush
-  return t.replace(new RegExp(S + '(\\d+)' + E, 'g'), (_, i) => parts[+i]);
+  return unstash(t);
 };
 
 // Which checklist items a list row actually shows: 3+ done collapse behind "…N more" (open items unaffected;

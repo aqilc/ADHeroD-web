@@ -4180,6 +4180,15 @@ document.addEventListener('alpine:init', () => {
       if (ev && this.evPick === 'e' && !o.all_day) Object.assign(o, { multi: true, span: Math.round((new Date(iso) - new Date(o.date)) / 864e5) });
       else o.date = iso;
       this.evMonth = false;
+      this._clFollow(o);
+    },
+    // a draft's card rests on its tile (styles.css --cl-draft): a day picked off the shown page turns the page there, at the same hour, or both leave the screen
+    _clFollow(o) {
+      if (o !== this.clDraft() || (this.clView !== 'day' && this.clView !== 'week')) return;
+      const day = new Date(this._draftOn(o) + 'T00:00');
+      if (this._periodIdx(day) === this._periodIdx(this._clAt())) return;
+      this.clAnchor = isoDate(this.clView === 'week' ? this._clWeekStart(day) : day);
+      this.clRecalcPages(); this._clScrollToPeriod(8, this._clHour(), true);
     },
     // the foot holds the item's one decision (a new one's kind: the standard .seg, its picked segment drawn as the tile) and the go
     evActionsHtml(key) {
@@ -5306,7 +5315,7 @@ document.addEventListener('alpine:init', () => {
           ['<b>every week ending sep 1</b>','End on a date']]},
         {l:'Description Markdown',r:[
           ['<b>**bold**</b> · <b>*italic*</b> · <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],
-          ['<b>```code```</b>','Code block'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> · <b>- Item</b>','Heading / bullet']]}
+          ['<b>```code```</b>','Code block'],['<b>\\*</b>','Show a mark as typed'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> · <b>- Item</b>','Heading / bullet']]}
       ];
     },
     // The sheet's reference as one string: static text needs no ~180 bindings.
@@ -7427,9 +7436,7 @@ document.addEventListener('alpine:init', () => {
       let ok = false;
       try {
         for (const item of items) {
-          const sep = item.text.indexOf('::');
-          const content = sep >= 0 ? item.text.slice(0, sep).trim() : item.text;
-          const desc = sep >= 0 ? item.text.slice(sep + 2).trim() : null;
+          const { txt, desc: note } = chkParts(item), content = txt.trim(), desc = note.trim();   // a :: inside backticks or escaped isn't the note's
           const task = await this._newTask({ content, parent_id: id, ...(desc ? { notes: desc } : {}) }, made.length);
           if (!task) throw 0;
           made.push(task.id);
@@ -7445,7 +7452,7 @@ document.addEventListener('alpine:init', () => {
         ok = true;
       } catch {
         // undo partial creates; checklist intact. A take-back that fails leaves its subtask: said, never a clean rollback.
-        const left = (await Promise.allSettled(made.map(k => this.store.tasks.remove(k)))).flatMap((r, i) => r.value ? [] : [`“${items[i].text.split('::')[0].trim()}”`]);
+        const left = (await Promise.allSettled(made.map(k => this.store.tasks.remove(k)))).flatMap((r, i) => r.value ? [] : [`“${chkParts(items[i]).txt.trim()}”`]);
         this.toast('Failed converting to subtasks. Checklist kept' + (left.length ? `, and ${left.join(', ')} stayed as ${left.length > 1 ? 'subtasks' : 'a subtask'}` : ''));
       }
       await this.loadTasks();
@@ -9338,7 +9345,7 @@ document.addEventListener('alpine:init', () => {
       const s = this, ed = () => s[key], timed = x => { x.all_day = false; return x; };
       return { ...emptyDraft(),   // the kinds an editor never takes stay inert
         get content() { return ed().title; }, set content(v) { ed().title = v; },
-        get on() { return ed().date; }, set on(v) { if (v) ed().date = v; },   // a clear keeps the day: a removed chip restores the one before it
+        get on() { return ed().date; }, set on(v) { if (v) { ed().date = v; s._clFollow(ed()); } },   // a clear keeps the day: a removed chip restores the one before it
         get dueTime() { return ed().all_day ? '' : ed().start; }, set dueTime(v) { if (v) s.evSetStart(timed(ed()), v); },
         get durMin() { const x = ed(); return x.all_day ? 0 : (s._hm(x.end) - s._hm(x.start) + 1440) % 1440; },
         set durMin(v) { const x = ed(); if (v) timed(x).end = s._fmtMin((s._hm(x.start) + v) % 1440); },
@@ -9416,8 +9423,9 @@ document.addEventListener('alpine:init', () => {
     // beside its day's column, on the side with room (narrowed to fit if neither has it); else flush right (day view), centred on a phone
     clDraftPos() {
       if (innerWidth < 760) return 'margin-inline:auto';
-      const d = this.clDraft(), w = 480;   // .event-editor/.block-editor's width · ceiling: placed when the draft's day changes, not on a page turn under it; recompute on clAnchor if a turn strands it
-      const col = [...document.querySelectorAll(`.cl-pcol[data-iso="${this._draftOn(d)}"]`)].find(c => { const r = c.getBoundingClientRect(); return r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
+      const d = this.clDraft(), w = 480;   // .event-editor/.block-editor's width
+      const dow = new Date(this._draftOn(d) + 'T00:00').getDay();   // every page lays its columns at the same x: its weekday's column on a rendered page stands in for a page _clFollow is still turning to
+      const col = [...document.querySelectorAll('.cl-pcol')].find(c => { const r = c.getBoundingClientRect(); return (this.clView === 'day' || new Date(c.dataset.iso + 'T00:00').getDay() === dow) && r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
       // room beside it: 2px from its column, almost touching (a wider gap showed the next day's bar, user 10-19), 8px from the window
       const right = r ? innerWidth - r.right - 10 : 0, left = r ? r.left - 10 : 0, fit = Math.max(right, left);
       if (right >= w) return 'left:' + (r.right + 2) + 'px;--from:0 0';
