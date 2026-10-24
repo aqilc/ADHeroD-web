@@ -6791,7 +6791,7 @@ document.addEventListener('alpine:init', () => {
     insertChkAfter(item) {
       const it = { id: crypto.randomUUID(), text: '', done: false };
       this.draft.checklist.splice(this.draft.checklist.indexOf(item) + 1, 0, it);
-      this.$nextTick(() => document.querySelector(`.composer-entries .entry.chk[data-id="${it.id}"] .entry-txt`)?.focus());
+      queueMicrotask(() => document.querySelector(`.composer-entries .entry.chk[data-id="${it.id}"] .entry-txt`)?.focus());   // after Alpine's flush draws the row; $nextTick waits on a starting x-transition and the next keys type into the item above
     },
     // --- Subtask rows are pill editors too: the SAME title engine, aimed via _nlpFocus at the focused row. ---
     // On focus, point the engine at this row and rebuild its sub-draft from the pills already in its DOM (the
@@ -6962,9 +6962,12 @@ document.addEventListener('alpine:init', () => {
       } else if (el.selectionStart !== (down ? el.value.length : 0)) return;
       if (down ? this.moveEntryFocus(el, 1) : this.moveEntryFocus(el, -1) || this._focusEntry(this.$refs.desc)) e.preventDefault();
     },
-    // VISUAL order (ghost → open bucket → done bucket) — sort by on-screen top so the CSS-ordered ghost-on-top
-    // layout is respected regardless of DOM order.
-    _entryFields(list) { return [...list.querySelectorAll(':scope > :not(.chk-out) .entry-txt')].sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top); },
+    // Every shown entry field in VISUAL order, across the lists (subtasks → checklist; ghost → open → done bucket): by
+    // on-screen band, so CSS order beats DOM order; fields side by side in one band (the empty state's row) keep DOM order.
+    _entryFields() {
+      const fields = [...document.querySelectorAll('.composer-entries .entry-txt')].filter(el => !el.closest('.chk-out') && el.getClientRects().length).map(el => [el, el.getBoundingClientRect()]);
+      return fields.sort(([, a], [, b]) => a.bottom <= b.top ? -1 : b.bottom <= a.top ? 1 : 0).map(([el]) => el);
+    },
     // One rung of the focus ladder (entries ↔ description ↔ title), either direction. The caret always lands at the
     // END: on the way UP you're arriving from below, where the down-ladder lands it at 0.
     _focusEntry(next) {
@@ -6989,17 +6992,12 @@ document.addEventListener('alpine:init', () => {
       document.execCommand('delete');
     },
     moveEntryFocus(el, dir) {
-      const list = el.closest('.entry-list'); if (!list) return false;
-      const fields = this._entryFields(list);
-      return this._focusEntry(fields[fields.indexOf(el) + dir]);
+      const fields = this._entryFields(), i = fields.indexOf(el);
+      return i >= 0 && this._focusEntry(fields[i + dir]);
     },
-    // Bottom rung of the ArrowDown ladder (title → description → entries): a real entry list's first row, else the
-    // empty state's First step; a note has none, so down stays put.
-    focusFirstEntry() {
-      const list = document.querySelector('.composer-entries .entry-list');
-      const first = list ? this._entryFields(list)[0] : document.querySelector('.composer-entries .step-ghost .entry-txt');
-      return !!first?.getClientRects().length && this._focusEntry(first);
-    },
+    // Bottom rung of the ArrowDown ladder (title → description → entries): the first entry field shown; a note has
+    // none, so down stays put.
+    focusFirstEntry() { return this._focusEntry(this._entryFields()[0]); },
     // Enter on a subtask row: commit (blur → rename) and jump to the ghost "new subtask" prompt.
     focusEntryGhost(input) { input.closest('.entry-list')?.querySelector('.entry.ghost .entry-txt')?.focus(); },
     // Never repaint an active editor: native typing/selection/undo own its DOM until blur.
@@ -8345,8 +8343,10 @@ document.addEventListener('alpine:init', () => {
       if (moved) queueMicrotask(() => {
         this._clPositionZone(zt);   // a title the move lists is created in Alpine's flush after this handler: place it before the paint
         if (!walking || document.activeElement !== document.body) return;
-        // the flush recycled the focused day: a day in view takes focus now, or the next key lands on body (→ turns the surface)
-        if (this._clMTo == null) this.clDayInView = isoDate(this._weekDate(this._clRowsInView()[0]));
+        // the flush recycled the focused day: a day in view takes focus now, or the next key lands on body (→ turns the surface).
+        // A walk glides to the stop and keeps it; a step glides away from it, so the stop becomes the first day where it lands.
+        const [at, rows] = this._clRowsInView(), stop = this._weekIdx(new Date(this._clStop() + 'T00:00'));
+        if (stop < at || stop >= at + rows) this.clDayInView = isoDate(this._weekDate(at));
         this._clLandDay();
       });
       const t = performance.now();
@@ -9219,7 +9219,7 @@ document.addEventListener('alpine:init', () => {
     },
     clToday(turn = true) {
       const now = new Date(), gap = now.getFullYear() * 12 + now.getMonth() - this.clFocusYM;
-      this.clAnchor = isoDate(now); this.clDayFocus = null;   // the Tab stop comes back with today
+      this.clAnchor = isoDate(now); this.clDayFocus = this.clDayInView = null;   // the Tab stop comes back with today
       if (this.clView !== 'month') return queueMicrotask(() => this._clScrollToPeriod(8, undefined, turn));   // not $nextTick: a surface switch holds that two frames
       if (!turn || !gap) return this.clScrollToAnchor();   // already in today's month: no idle glide leaving its target behind
       if (this.reduceMotion()) { this.clScrollToAnchor(); return this._clSettle(); }   // lands at once; today's month fades in
@@ -9327,7 +9327,8 @@ document.addEventListener('alpine:init', () => {
     clDraft() { const e = this.eventEdit || this.blockEdit; return e?.draft ? e : null; },
     clHeld(p) { const d = this.clDraft(), at = p.it.src ?? p.it.start.slice(0, 10); return d?.id === p.it.id && (d.viewIso || at) === at; },
     _draftOn(d) { return d === this.eventEdit && d.viewIso || d.date; },   // a repeating event's ghost stands on the occurrence clicked; its date stays the series' start
-    clDraftFocus(el) { if (this.clDraft() && !document.documentElement.classList.contains('touch')) queueMicrotask(() => el.querySelector('.ev-title')?.focus({ preventScroll: true })); },   // a phone's keyboard would bury the grid
+    // A new item opens for its title (docs/ui/dialogs.md "typing first"); a phone's keyboard would bury the grid under a draft
+    clDraftFocus(el) { const e = this.eventEdit || this.blockEdit; if (e.draft ? !document.documentElement.classList.contains('touch') : !e.id) queueMicrotask(() => el.querySelector('.ev-title')?.focus({ preventScroll: true })); },
     _hm(t) { return +t.slice(0, 2) * 60 + +t.slice(3, 5); },
     // The editors' title is the composer's pill editor (the same engine, aimed at it): a typed day, time, length, repeat, place
     // or block area lands on the item's own fields. The draft reads and writes the open editor, so a chip's removal and ⌘Z do too.
