@@ -34,13 +34,13 @@ import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, 
 import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, jMigrate } from './recovery.js';
 import { inNotes, openBlockers } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, sevOf, userReminders, offsetLabel } from './reminders.js';
-import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
+import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, queryStates, bodyText } from './search.js';
 import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
-import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip } from './ui.js';
+import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
 import { makeSortable, edgeScrollStep, edgeSpeed, sorting, DWELL } from './sortable.js';
 import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
@@ -620,6 +620,7 @@ document.addEventListener('alpine:init', () => {
     // LocalStore needs no auth; cloud adopts the existing session before loading.
     async init() {
       _appRaw = window.Alpine.raw(this.$el._x_dataStack[0]);
+      setTaskTitles(id => this.byId.get(id)?.content ?? null);
       this._userAt(this._listScroller());   // remember a wheel stream BEFORE the first glide starts
       const loaded = this._jQueue(() => this._journalLoad());   // before any await: a boot-window write queues behind it
       this._serial('journal', () => loaded);   // a ⌘Z pressed before the read lands steps once it has, never into an empty journal
@@ -758,6 +759,8 @@ document.addEventListener('alpine:init', () => {
         _linkPress = el && { el, x: e.clientX, y: e.clientY, from: document.caretPositionFromPoint(e.clientX, e.clientY), moved: false };
         if (el) e.preventDefault();
       }, true);
+      // A task link elsewhere (a row's note line, chat) opens the task here; the composer's opens its link card first.
+      document.addEventListener('click', e => { const a = e.target.closest?.('a.tlink:not(.dm-link)'); if (a) { e.preventDefault(); e.stopPropagation(); this.openTaskLink(a.href); } }, true);
       document.addEventListener('click', e => { const a = _linkPress && !_linkPress.moved && e.target.closest('a.dm-link'); if (a) { e.preventDefault(); _linkCard = _linkPress; this.linkUrl = a.href; this.togglePop('link', a); } });
       document.addEventListener('mouseup', () => { _press = null; this._pastMarks(); this.liveReveal(); }, true);
       // A click on blank page closes the composer, like Esc. Only when it is the top overlay at the PRESS (a pop or dialog
@@ -1760,7 +1763,7 @@ document.addEventListener('alpine:init', () => {
           // below-the-line stays flat: it's a review list, not a tree. Uncached: the row may also be an open match's context row up top
           if (t.archived_at && !named.has('archived')) { if (this.qfArchived) done.push(Object.assign(build(t, 0), { fold })); }
           else if (t.completed_at && !t.archived_at && !named.has('done') && !_cele.has(t.id)) { if (this.showCompleted) done.push(Object.assign(build(t, 0), { fold })); }
-          else if (this.qfOpen) hits.push(t);
+          else if (this.qfOpen || t.completed_at || t.archived_at) hits.push(t);   // a named done/archived row stays with Open off
         }
         const keep = new Map(), def = this.store.defaultProject();   // id → true = matched, false = pulled in only as an ancestor
         for (const t of hits) {
@@ -3954,7 +3957,7 @@ document.addEventListener('alpine:init', () => {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
       this.dreg = !this.repRules().length && this.draft.on ? 'on' : 'by';   // hydrate: a placed task opens in On
-      this.endPicking = false; this.tpop = false;
+      this.endPicking = false; this.tpop = false; this._typedN = 1;
       this._calTo(this.draft[this._dateKey()] || this.draft.on || isoDate(new Date()));
       this.$nextTick(() => this.pop === name && !this.popDock && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it
     },
@@ -3983,7 +3986,7 @@ document.addEventListener('alpine:init', () => {
     setRepeatFreq(freq) {
       const r = this.curRule();
       if (!r) { this.draft.recurrence = { freq, interval: 1, from_completion: false, ends: null, done_count: 0 }; this.repIdx = 0; }
-      else { r.freq = freq; if (freq !== 'week') delete r.weekdays; if (freq !== 'month') delete r.month_day; }
+      else { r.freq = freq; if (freq !== 'week') delete r.weekdays; if (freq !== 'month') { delete r.month_day; delete r.nth; } }
       this.refreshRecurrenceDue();
     },
     // [+ repeat]: stack another statement (recurrence becomes an array; a single rule stays a plain object)
@@ -4018,7 +4021,7 @@ document.addEventListener('alpine:init', () => {
       if (!r) return null;
       const anchor = new Date((this.draft.on || isoDate(new Date())).slice(0, 10) + 'T00:00');
       if (r.freq === 'week') return r.weekdays?.length ? r.weekdays.map(i => WEEKDAYS[i]).join(' ') : WEEKDAYS[anchor.getDay()];
-      if (r.freq === 'month') return 'the ' + ordinal(r.month_day || anchor.getDate());
+      if (r.freq === 'month') return 'the ' + (monthOn(r) ?? ordinal(anchor.getDate()));
       if (r.freq === 'year') return anchor.toLocaleDateString([], { month: 'short', day: 'numeric' });
       return null;
     },
@@ -4273,10 +4276,11 @@ document.addEventListener('alpine:init', () => {
         const rec = parseRecurrence(this.draft.dateText);
         if (rec) {
           const { time } = parseDateText(this.draft.dateText);   // "every 2 days at 5pm" — the time rides along
-          if (time) rec.at = time;
-          const rs = this.repRules();
-          if (rs.length > 1) { const arr = [...rs]; arr[Math.min(this.repIdx, arr.length - 1)] = rec; this.draft.recurrence = arr; }
-          else this.draft.recurrence = rec;   // no rules or a single one: the phrase IS the rule
+          const rules = [].concat(rec), arr = [...this.repRules()];   // "first and third sunday" is two rules
+          if (time) rules.forEach(r => { r.at = time; });
+          arr.splice(Math.min(this.repIdx, arr.length - 1), this._typedN, ...rules);   // the phrase replaces the statement(s) it set on the last keystroke
+          this._typedN = rules.length;
+          this.draft.recurrence = arr.length > 1 ? arr : arr[0];
           this.refreshRecurrenceDue();
           if (close) { this.draft.dateText = ''; this.pop = null; }
           return;
@@ -4629,7 +4633,10 @@ document.addEventListener('alpine:init', () => {
       this._redraw(el, html + titleLive(text), frag => { frag.querySelectorAll('.nlp-pill').forEach((p, i) => p.replaceWith(pills[i])); el.replaceChildren(frag); });
     },
     _setCaret(el, off) { if (off != null) this._caret(...this._pointAt(el, off)); },
-    linkOpen() { this.pop = null; window.open(this.linkUrl, '_blank', 'noopener'); },
+    linkOpen() { this.pop = null; this.linkUrl.startsWith('adherod://task/') ? this.openTaskLink(this.linkUrl) : window.open(this.linkUrl, '_blank', 'noopener'); },
+    // The address names only the task, never whose it is: whoever can see it opens it.
+    openTaskLink(url) { const id = url.slice('adherod://task/'.length); this.byId.has(id) ? this.openTaskById(id) : this.toast("Can't open this task"); },
+    taskLink(t) { return 'adherod://task/' + t.id; },
     linkCopy() { this.pop = null; return this._copyText(this.linkUrl, 'Link copied'); },
     // Edit: the caret goes where the link was pressed, which shows its markers.
     linkEdit() {
@@ -5259,6 +5266,9 @@ document.addEventListener('alpine:init', () => {
       const out = new Set(), inv = this._taskIdx().inv;
       const down = id => { if (out.has(id)) return; out.add(id); for (const c of _visBP.get(id) || []) down(c.id); };
       for (const id of ids) down(id);   // every subtree before any other row: one already in `out` ends the walk at it
+      // ceiling: a scan of every task's notes for a link to the changed ones; index the links past ~20k tasks
+      const keys = [...ids].map(id => 'adherod://task/' + id), links = s => s && keys.some(k => s.includes(k));
+      for (const t of this.tasks) if (links(t.notes) || t.checklist?.some(c => links(c.text))) out.add(t.id);
       for (const id of ids) {
         for (const b of inv.get(id) ?? []) out.add(b);
         if (up) for (const a of this._chain(this.byId.get(id).parent_id)) out.add(a);
@@ -7103,6 +7113,7 @@ document.addEventListener('alpine:init', () => {
       for (const k of this.childTasks(t.id)) out.push(this.taskMd(k, depth + 1));
       return out.join('\n');
     },
+    copyEditingLink() { const t = this.editingTask(); if (t) return this._copyText(this.taskLink(t), 'Link copied'); },
     copyEditingMd() {
       const t = this.editingTask(); if (!t) return;
       const md = this.taskMd({ ...t, content: this.draft.content || t.content, notes: this.draft.notes, checklist: this.draft.checklist });
@@ -7207,6 +7218,7 @@ document.addEventListener('alpine:init', () => {
     rowMenuPlace(el, at) { el.style.left = popLeft(at.x, el.offsetWidth + 8, 8) + 'px'; el.style.top = popTop(at.y, el.offsetHeight + 8) + 'px'; },
     rowTask() { return this.rowMenu.length === 1 ? this.byId.get(this.rowMenu[0]) ?? null : null; },
     rowArchived() { return this.rowMenu.every(id => this.byId.get(id)?.archived_at); },
+    rowCopyLink() { const ids = this._selRoots(this.rowMenu); return this._copyText(ids.map(id => this.taskLink(this.byId.get(id))).join('\n'), ids.length > 1 ? 'Links copied' : 'Link copied'); },
     rowCopy() { return this._copyText(this._selRoots(this.rowMenu).map(id => this.taskMd(this.byId.get(id))).join('\n'), 'Copied as markdown'); },
     rowDelete() { const t = this.rowTask(); return !t ? this.selDelete() : this.askDeleteTask(t.id, 'row') || this.perform('Deleted', { target: 'task', kind: 'delete', id: t.id }); },
     rowNote(t) { return this.perform(inNotes(t) ? 'Made it a task' : 'Made it a note', { kind: 'update', target: 'task', id: t.id, after: { task_type: inNotes(t) ? null : 'note' } }); },

@@ -247,12 +247,11 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .rl-wrap.rl-focus .rl-box { border-color: var(--rlc, var(--accent)); background: color-mix(in srgb, var(--rlc, var(--accent)) 9%, var(--bg)); box-shadow: var(--shadow); }
 .rl-ic { width: 28px; height: 28px; flex: none; display: flex; align-items: center; justify-content: center; color: var(--muted); }   /* an uncoloured glyph (Backlog, a filter) is muted like an uncoloured project ring, never the text's ink */
 .rl-ic .ico { width: 18px; height: 18px; flex: none; }
-/* A project's mark in every slot: done share (--p 0–1) as an arc over a pie core, in --pc. Blind-ID 10-24: a thin ring
-   read as a checkbox empty and a spinner part-full; the filled core reads as a status pie. Tints are transparent: any fill. */
-.pring { display: inline-block; width: 15px; height: 15px; flex: none; border-radius: 50%; position: relative;
-  background: conic-gradient(color-mix(in srgb, var(--pc) 55%, transparent) calc(var(--p) * 360deg), color-mix(in srgb, var(--pc) 22%, transparent) 0);
-  &::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background: conic-gradient(var(--pc) calc(var(--p) * 360deg), color-mix(in srgb, var(--pc) 40%, transparent) 0);
-    mask: radial-gradient(farthest-side, transparent calc(74% - .5px), #000 74%); } }
+/* A project's mark in every slot: done share (--p 0–1) as an arc on its track, in --pc, no fill inside
+   (user 10-24: "filled in with a tint rather than just progress arcs."). Tints are transparent: any background. */
+.pring { display: inline-block; width: 15px; height: 15px; flex: none; border-radius: 50%;
+  background: conic-gradient(var(--pc) calc(var(--p) * 360deg), color-mix(in srgb, var(--pc) 40%, transparent) 0);
+  mask: radial-gradient(farthest-side, transparent calc(74% - .5px), #000 74%); }
 .rl-ic.pring { width: 20px; height: 20px; margin: var(--sp-4); }   /* the 28px glyph box, ring at the 18px glyphs' ink */
 .rl-nm { flex: 1; font-size: var(--fs-15); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rl-wrap.rl-focus .rl-nm { color: color-mix(in srgb, var(--rlc, var(--accent)) 35%, var(--ink)); font-weight: 700; }
@@ -523,7 +522,9 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
   .dm-tok:not(.on) > .dm-li { font-size: inherit; line-height: inherit; color: transparent; position: relative;   /* line-height: the dot sits on the text line, not at the 0-height box's top */
     &::before { content: "•"; position: absolute; left: .15em; color: var(--muted); } }
   .dm-ol { color: var(--muted); }
+  .dm-tok:not(.on) > .tlink { > .dm-mark { font-size: 0; line-height: 0; } &::after { content: attr(data-title); } }   /* a task link shows its title, the address stays the text */
 }
+.tlink.gone { color: var(--muted); }
 /* A huge description's blocks (app.js _descHtml) skip style, layout and paint off screen; `auto` keeps a drawn one's height,
    --h holds one never drawn (measured at blur, else estimated by _descSize). */
 .desc-block { content-visibility: auto; contain-intrinsic-size: auto var(--h, 1lh); }

@@ -9,9 +9,19 @@ export const keyTip = (keycaps, mod) => keycaps.split(' or ')[0].replaceAll('</k
   .replace(/<[^>]+>/g, '').replaceAll('⌘', mod).replace(/(?<=[⌘+])[a-z]$/, c => c.toUpperCase());
 
 // Sanitize link: only http(s)/mailto allowed (bare email → mailto, www. → https); anything else (javascript: etc.) rejected.
-const _mdUrl = u => /^(https?:\/\/|mailto:)/i.test(u) ? u
+const _mdUrl = u => /^(https?:\/\/|mailto:|adherod:\/\/task\/[\w-]+$)/i.test(u) ? u
   : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u) ? 'mailto:' + u
   : /^www\.[^\s]+$/i.test(u) ? 'https://' + u : '';
+// A task link (adherod://task/<id>) draws as the task's current title, for whoever can see the task: app.js sets the
+// lookup (null = not theirs or gone, which says so). Notes and checklists only: mdTitle's memo would keep a renamed title.
+const TLINK = /(^|[\s(])(adherod:\/\/task\/([\w-]+))/g;
+let _taskTitle = () => null;
+export const setTaskTitles = f => { _taskTitle = f; };
+const _tlink = (url, id, live) => {
+  const t = _taskTitle(id), label = esc(t ?? "Can't open this task"), mark = live ? `<span class="dm-mark">${esc(url)}</span>` : '';
+  const el = t == null ? `<span class="tlink gone" data-title="${label}">${mark || label}</span>` : `<a class="tlink${live ? ' dm-link' : ''}" href="${esc(url)}" data-title="${label}">${mark || label}</a>`;
+  return live ? `<span class="dm-tok">${el}</span>` : el;
+};
 const _link = (url, text) => { const u = _mdUrl(url); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text); };
 const _langs = { bash: 'bash', sh: 'bash', cmd: 'cmd', bat: 'cmd', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', rust: 'rust', rs: 'rust', c: 'c' };
 const _keys = {
@@ -52,6 +62,7 @@ const _md = (src, opts = {}) => {
   const inline = (t) => {
     const links = [], L = _sentinel(t, '\uE002'), LE = L + '\uE003';
     t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => `${L}${links.push(_link(url, txt)) - 1}${LE}`);
+    if (!opts.title) t = t.replace(TLINK, (_, pre, url, id) => `${pre}${L}${links.push(_tlink(url, id)) - 1}${LE}`);
     t = t.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<)]+)/gi, (_, pre, url) => `${pre}${L}${links.push(_link(url, url)) - 1}${LE}`);
     t = esc(t);
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
@@ -113,6 +124,7 @@ const _dLine = (line, literal) => {   // literal: a title's, where # and - stay 
     const u = _mdUrl(url.replace(_escOrCode, (m, mark) => mark || m));   // the href drops escapes, as md()'s does
     return stash(_tok('[', u ? `<a class="dm-link" href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(txt)}</a>` : esc(txt), `](${esc(url)})`), m);
   });
+  if (!literal) t = t.replace(TLINK, (m, pre, url, id) => pre + stash(_tlink(url, id, true), url));
   t = esc(t);
   t = t.replace(/\*\*([^*\n]+)\*\*/g, (_, x) => _tok('**', `<strong>${x}</strong>`, '**'));
   t = t.replace(/~~([^~\n]+)~~/g, (_, x) => _tok('~~', `<s>${x}</s>`, '~~'));
@@ -152,7 +164,7 @@ export const titleLive = src => _dLine(String(src ?? ''), true);
 const _titleMemo = new Map();   // ceiling: cleared past 20k titles; an LRU if a corpus that size churns it
 export const mdTitle = src => {
   let html = _titleMemo.get(src);
-  if (html === undefined) { if (_titleMemo.size >= 2e4) _titleMemo.clear(); _titleMemo.set(src, html = md(src, { literal: true })); }
+  if (html === undefined) { if (_titleMemo.size >= 2e4) _titleMemo.clear(); _titleMemo.set(src, html = md(src, { literal: true, title: true })); }
   return html;
 };
 

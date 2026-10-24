@@ -208,8 +208,11 @@ export function parseDateText(s, now = new Date(), whole = false) {
 // so every word that surface RENDERS is typeable, including its empty-value glyphs (`–`, `∞`, `never`).
 const REC_DAY_RE = '(?:sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|urday)?\\b';
 const REC_DAYS = '(?:(?:' + REC_DAY_RE + ')(?:\\s*,\\s*|\\s+)?)+';
-const REC_RULE = 'other\\s+(?:' + REC_DAYS + '|days?|weeks?|months?|years?)|' + REC_DAYS + '|weekday|\\d+\\s*(?:days?|weeks?|months?|years?)|days?|weeks?|months?|years?|\\d{1,2}(?:st|nd|rd|th)';
-const REC_ON = '\\s+on\\s+(' + REC_DAYS + '|the\\s+\\d{1,2}(?:st|nd|rd|th))';   // must hug the rule, so "work on the deck" is prose
+// An nth weekday ("first sunday", store `nth`) and the month's last day (month_day 31, clamped to month-end) name a monthly day.
+const REC_NTH = '(?:first|second|third|fourth|fifth|last|[1-5](?:st|nd|rd|th))', REC_NTH_N = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, last: -1 };
+const REC_NTH_DAY = REC_NTH + '\\s+' + REC_DAY_RE, REC_OF_MONTH = '(?:\\s+of\\s+(?:the|every)\\s+month)?';
+const REC_RULE = '(?:' + REC_NTH_DAY + '|last\\s+day)' + REC_OF_MONTH + '|other\\s+(?:' + REC_DAYS + '|days?|weeks?|months?|years?)|' + REC_DAYS + '|weekday|\\d+\\s*(?:days?|weeks?|months?|years?)|days?|weeks?|months?|years?|\\d{1,2}(?:st|nd|rd|th)';
+const REC_ON = '\\s+on\\s+(' + REC_DAYS + '|(?:the\\s+)?(?:' + REC_NTH_DAY + '|last\\s+day)|the\\s+\\d{1,2}(?:st|nd|rd|th))';   // must hug the rule, so "work on the deck" is prose
 const REC_AT = '\\s+at\\s+(–|\\d{1,2}(?::\\d{2})?\\s*[ap]m|(?:[01]?\\d|2[0-3]):[0-5]\\d)';   // a TIME only — never "at <place>"
 // The count needs `for` or the popover's own comma (", 3 times"): a bare "<n> times" is ordinary English
 // ("every day 2 times daily" is a frequency, not an end) and eating it silently loses title text. The
@@ -218,6 +221,12 @@ const REC_END = '(?:\\s*,\\s*|\\s+for\\s+)(\\d+|∞)\\s+times?|\\s+x(\\d+)|(?:\\
 const REC_FULL = '\\severy(!?)(?:\\s+(' + REC_RULE + '))?(?:' + REC_ON + ')?(?:' + REC_AT + ')?((?:' + REC_END + ')*)(?=\\s|$)';
 const REC_END_ALL = new RegExp(REC_END, 'gi'), REC_DAYS_ALL = new RegExp(REC_DAY_RE, 'g'), REC_DAY_LEAD = new RegExp('^' + REC_DAY_RE);
 const REC_ONE = new RegExp(REC_FULL, 'i'), REC_EACH = new RegExp(REC_FULL, 'gi');
+// The day named BEFORE the rule: "the 1st and 15th of every month", "first and third sunday of every 2 months".
+const REC_ITEM = '(?:first|second|third|fourth|fifth|last|\\d{1,2}(?:st|nd|rd|th))';
+const REC_OF = '\\s(?:on\\s+)?(?:the\\s+)?(' + REC_ITEM + '(?:(?:\\s*,\\s*|\\s+)(?:and\\s+)?' + REC_ITEM + ')*)(?:\\s+(' + REC_DAY_RE + '|day))?\\s+of\\s+every(!?)\\s+((?:\\d+\\s*|other\\s+)?months?)(?:' + REC_AT + ')?((?:' + REC_END + ')*)(?=\\s|$)';
+const REC_OF_ONE = new RegExp(REC_OF, 'i'), REC_OF_EACH = new RegExp(REC_OF, 'gi'), REC_ITEM_ALL = new RegExp(REC_ITEM, 'gi');
+const REC_MONTH_DAY = new RegExp('^(?:the\\s+)?(?:(' + REC_NTH + ')\\s+(' + REC_DAY_RE + ')|last\\s+day)', 'i');
+const nthOf = w => REC_NTH_N[w.toLowerCase()] ?? parseInt(w);
 // End clauses may co-occur and repeat; `ends` is single-valued, so the LAST clause with a real value wins
 // (reading order) — "∞ times"/"ending never" are placeholders, so a printed "3 times, ending never" survives.
 // Returns the prose it could NOT resolve, to hand back to the title as the sibling `only`/`by` matchers do.
@@ -236,22 +245,39 @@ function buildRecurrence(bang, rule, on, at, tail, now) {
   const body = (rule || '').toLowerCase().replace(/^other\s+/, ''), other = body.length < (rule || '').length;   // "every other" = every 2
   const n = body.match(/^(\d+)/), interval = n ? +n[1] : other ? 2 : 1;
   const wdays = t => (t.match(REC_DAYS_ALL) || []).map(d => DAYS.indexOf(d.slice(0, 3)));
-  if (/weekday/.test(body)) Object.assign(rec, { freq: 'week', weekdays: [1, 2, 3, 4, 5] });
+  const monthOf = m => Object.assign(rec, { freq: 'month' }, m[1] ? { nth: nthOf(m[1]), weekdays: wdays(m[2]) } : { month_day: 31 });   // a REC_MONTH_DAY match
+  const bodyDay = body.match(REC_MONTH_DAY);
+  if (bodyDay) monthOf(bodyDay);
+  else if (/weekday/.test(body)) Object.assign(rec, { freq: 'week', weekdays: [1, 2, 3, 4, 5] });
   else if (REC_DAY_LEAD.test(body)) Object.assign(rec, { freq: 'week', weekdays: wdays(body), interval });
   else if (/days?$/.test(body)) Object.assign(rec, { freq: 'day', interval });
   else if (/weeks?$/.test(body)) Object.assign(rec, { freq: 'week', interval });
   else if (/months?$/.test(body)) Object.assign(rec, { freq: 'month', interval });
   else if (/years?$/.test(body)) Object.assign(rec, { freq: 'year', interval });
   else if (/^\d/.test(body)) Object.assign(rec, { freq: 'month', month_day: interval });   // "15th"
-  const onLow = (on || '').toLowerCase();   // the "on …" chip OWNS the freq it implies (weekly set / monthly day)
-  if (/^the\b/.test(onLow)) Object.assign(rec, { freq: 'month', month_day: +onLow.match(/\d+/)[0] });
+  const onLow = (on || '').toLowerCase(), onDay = onLow.match(REC_MONTH_DAY);   // the "on …" chip OWNS the freq it implies (weekly set / monthly day)
+  if (onDay) monthOf(onDay);
+  else if (/^the\b/.test(onLow)) Object.assign(rec, { freq: 'month', month_day: +onLow.match(/\d+/)[0] });
   else if (onLow) Object.assign(rec, { freq: 'week', weekdays: wdays(onLow) });
   if (at && at !== '–') rec.at = parseTime(at);
   return { rec, rest: applyEnds(rec, tail, now) };
 }
+// REC_OF's match → { rec, rest }: one rule, or one per nth for "first and third sunday" (`nth` holds one weekday).
+function buildOf(items, unit, bang, rule, at, tail, now) {
+  const { rec, rest } = buildRecurrence(bang, rule, '', at, tail, now), ns = items.match(REC_ITEM_ALL).map(nthOf);
+  if (unit && !/^day$/i.test(unit)) {
+    if (ns.some(n => n > 5)) return {};
+    const rules = ns.map(nth => ({ ...rec, ends: rec.ends && { ...rec.ends }, nth, weekdays: [DAYS.indexOf(unit.slice(0, 3).toLowerCase())] }));
+    return { rec: rules.length > 1 ? rules : rules[0], rest };
+  }
+  const md = [...new Set(ns.map(n => n < 0 ? 31 : n))].sort((a, b) => a - b);
+  if (md.some(n => n < 1 || n > 31)) return {};
+  return { rec: Object.assign(rec, { month_day: md.length > 1 ? md : md[0] }), rest };
+}
 export function parseRecurrence(s, now = new Date()) {
-  const m = (' ' + (s || '') + ' ').match(REC_ONE);
-  return m ? buildRecurrence(m[1], m[2], m[3], m[4], m[5], now).rec ?? null : null;
+  const t = ' ' + (s || '').replace(/^\s*(dai|week|month|year)ly\b/i, (_, u) => 'every ' + (/^dai/i.test(u) ? 'day' : u)) + ' ';   // the field's "daily": a title keeps its -ly words
+  const of = t.match(REC_OF_ONE), m = !of && t.match(REC_ONE);
+  return (of ? buildOf(...of.slice(1, 7), now) : m ? buildRecurrence(m[1], m[2], m[3], m[4], m[5], now) : {}).rec ?? null;
 }
 
 const DPRE = '(?:on\\s+)?';   // "on" is filler before a date; by/due are the DEADLINE register (§11), matched earlier
@@ -292,6 +318,12 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   });
 
   // consumed before dates so "every monday" is a rule, not a dueIso
+  s = s.replace(REC_OF_EACH, (_m, items, unit, bang, rule, at, tail) => {
+    const { rec, rest } = buildOf(items, unit, bang, rule, at, tail, now);
+    if (!rec) return _m;
+    o.recurrence = rec;
+    return rest ? rest + ' ' : ' ';
+  });
   s = s.replace(REC_EACH, (_m, bang, rule, on, at, tail) => {
     const { rec, rest } = buildRecurrence(bang, rule, on, at, tail, now);
     if (!rec) return _m;
@@ -378,7 +410,7 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   s = s.replace(AT_HOUR_ANY, (_, h) => (o.dueTime = atHour(h, o.dueIso > isoDate(now), now), ' '));
   // the popover shows `at <time>` INSIDE the repeat sentence — so a time with a rule and no one-off date
   // rides the RULE (matches applyDateText). A one-off date present ("friday at 5pm every week") keeps its time.
-  if (o.recurrence && o.dueTime && !o.dueIso) { o.recurrence.at = o.dueTime; o.dueTime = ''; }
+  if (o.recurrence && o.dueTime && !o.dueIso) { [].concat(o.recurrence).forEach(r => { r.at = o.dueTime; }); o.dueTime = ''; }
 
   if (locations && locations.length) {
     const byLen = [...locations].sort((a, b) => b.length - a.length);
@@ -500,14 +532,22 @@ export function foldIntoDate(pillToken, word, now = new Date(), locations = []) 
   return solo?.kind === 'date' && solo.value.iso && solo.value.iso === cls.value.iso ? null : { ...cls, token };
 }
 export const ordinal = d => d + (d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th');
+// The monthly day a rule names: "1st Sun", "last Fri", "last day" (month_day 31 clamps to month-end), "1st, 15th"; null when none.
+export function monthOn(r) {
+  if (r?.freq !== 'month') return null;
+  if (r.nth != null && r.weekdays?.length) return (r.nth < 0 ? 'last' : ordinal(r.nth)) + ' ' + WEEKDAYS[r.weekdays[0]];
+  return r.month_day ? [].concat(r.month_day).map(d => d === 31 ? 'last day' : ordinal(d)).join(', ') : null;
+}
 export function recurrenceLabel(rec) {
   if (!rec) return '';
+  if (Array.isArray(rec)) return rec.map(recurrenceLabel).join(' + ');
   const n = rec.interval || 1;
   // A day set or a month day NAMES the step — but an interval > 1 still counts ("every 2 weeks on Mon" ≠ "Every Mon").
   if (rec.freq === 'week' && rec.weekdays?.length) {
     const wd = [...rec.weekdays].sort((a, b) => a - b), days = wd.join() === '1,2,3,4,5' ? null : wd.map(d => WEEKDAYS[d]).join(', ');
     return n > 1 ? `Every ${n} weeks on ${days ?? 'weekdays'}` : days ? 'Every ' + days : 'Weekdays';
   }
-  if (rec.freq === 'month' && rec.month_day) return n > 1 ? `Every ${n} months on the ${ordinal(rec.month_day)}` : 'Every ' + ordinal(rec.month_day);
+  const on = monthOn(rec);
+  if (on) return n > 1 ? `Every ${n} months on the ${on}` : 'Every ' + on;
   return n > 1 ? `Every ${n} ${rec.freq}s` : 'Every ' + rec.freq;
 }

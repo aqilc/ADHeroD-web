@@ -792,7 +792,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </template>
         </div></template></template>
         <template x-if="pop === 'link'"><template x-teleport="body"><div class="pop link-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('link', $event)" @mousedown.prevent>
-          <span class="link-host truncate" x-text="linkUrl.replace(/^\w+:(\/\/)?(www\.)?/, '').replace(/\/$/, '')"></span>
+          <span class="link-host truncate" x-text="linkUrl.startsWith('adherod://task/') ? byId.get(linkUrl.slice(15))?.content ?? '' : linkUrl.replace(/^\w+:(\/\/)?(www\.)?/, '').replace(/\/$/, '')"></span>
           <button type="button" class="pop-item" @click="linkOpen()"><svg class="ico"><use href="#i-external"/></svg>Open</button>
           <button type="button" class="pop-item" @click="linkCopy()"><svg class="ico"><use href="#i-copy"/></svg>Copy</button>
           <button type="button" class="pop-item" @click="linkEdit()"><svg class="ico"><use href="#i-edit"/></svg>Edit</button>
@@ -830,6 +830,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <template x-if="editing"><div class="contents">
                 <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
                 <button type="button" class="pop-item" x-show="phoneDock()" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
+                <button type="button" class="pop-item" @click="copyEditingLink(); pop = null"><svg class="ico"><use href="#i-link"/></svg>Copy link</button>
                 <button type="button" class="pop-item" x-show="shownSubs().length > 0 || chkSteps() && draft.checklist.length > 0" @click="convertTo('checklist'); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
                 <button type="button" class="pop-item" x-show="!chkSteps() && !typeFront(true) && (shownSubs().length > 0 || draft.checklist.length > 0)" @click="convertTo('steps'); pop = null"><svg class="ico"><use href="#i-steps"/></svg>Convert to steps</button>
                 <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="convertToSubtasks(); pop = null"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
@@ -884,6 +885,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </div></template>
       <button type="button" class="pop-item" role="menuitem" @click="archive(_selRoots(rowMenu), !rowArchived())"><svg class="ico"><use href="#i-archive"/></svg><span x-text="rowArchived() ? 'Unarchive' : 'Archive'"></span></button>
       <button type="button" class="pop-item" role="menuitem" @click="rowCopy()"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
+      <button type="button" class="pop-item" role="menuitem" @click="rowCopyLink()"><svg class="ico"><use href="#i-link"/></svg>Copy link</button>
       <button type="button" class="pop-item del" role="menuitem" @click="rowDelete()"><svg class="ico"><use href="#i-trash"/></svg><span x-text="rowTask() ? 'Delete task' : 'Delete ' + _nTasks(rowMenu.length)"></span></button>
     </div></template></template>
 
