@@ -2947,7 +2947,7 @@ document.addEventListener('alpine:init', () => {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'collapse') return this.toggleTaskCollapse(r.t.id);
       if (act === 'rel') return this.rowRelOpen(r.t, e.target.closest('.row-rel'));
-      if (act === 'check') return r.step ? (e.detail ? this._stepTick(r.t.id, false, r) : this.toggleChk(r.t.id, r.step.ci)) : this.toggle(r.t, e.detail ? r : null);   // a pointer tick celebrates; a key's (detail 0) stays instant
+      if (act === 'check') return r.t.archived_at ? undefined : r.step ? (e.detail ? this._stepTick(r.t.id, false, r) : this.toggleChk(r.t.id, r.step.ci)) : this.toggle(r.t, e.detail ? r : null);   // a pointer tick celebrates; a key's (detail 0) stays instant
       if (act === 'chk-more') { this.chkOpen.has(r.t.id) ? this.chkOpen.delete(r.t.id) : this.chkOpen.add(r.t.id); this._dropRowHtml(r.t.id); this._paintRows(); return; }   // reveal/re-hide the collapsed done items; repaint here — no effect may have read chkOpen for this row
       // the checkbox OR its text toggles a checklist item; plain (uncheckable) items fall through to editTask
       const chk = e.target.closest('.chk-rect, .chk-txt')?.closest('.chk-row, .step-next');   // a Steps row's preview ticks by its node
@@ -3429,7 +3429,7 @@ document.addEventListener('alpine:init', () => {
     // Ticking the composer's own check finishes the task — like archive, that's terminal, so the composer closes.
     // Un-completing keeps it open, and the close is conditional on the task actually ending up done (a sweep prompt can cancel).
     async toggleEditing() {
-      const t = this.byId.get(this.editing), d = this.draft; if (!t) return;
+      const t = this.byId.get(this.editing), d = this.draft; if (!t || t.archived_at) return;   // an archived check is inert: no save either
       if (t.completed_at) return this.toggle(t);
       if (!await this._saveOpenEdits(d)) return;
       if (!this._closingComposer) _viewHold = true;   // the row leaves the list once the composer has collapsed over it
@@ -3725,6 +3725,7 @@ document.addEventListener('alpine:init', () => {
     calPaint(grid) {
       const cells = grid._cells = this.calCells(), due = this.pop === 'due', stop = this.calStop();
       const days = cells.map((c, i) => html`<button type="button" class="cal-day" data-i="${i}" aria-label="${c.label}"><span>${c.d}</span><i class="bar l"></i><i class="bar r"></i>${raw(due && c.ord ? `<b class="ordn">${c.ord}</b>` : '')}</button>`).join('');
+      const walking = grid.contains(document.activeElement);
       if (grid._days !== days) { grid._days = days; for (const b of [...grid.getElementsByClassName('cal-day')]) b.remove(); grid.insertAdjacentHTML('beforeend', days); }
       const els = grid.getElementsByClassName('cal-day');
       cells.forEach((c, i) => {
@@ -3732,6 +3733,8 @@ document.addEventListener('alpine:init', () => {
         if (b.className !== cls) b.className = cls;
         if (b.tabIndex !== tab) b.tabIndex = tab;
       });
+      // a new month removed the focused day: the stop takes focus now, or the next held key lands on body
+      if (walking && !grid.contains(document.activeElement)) els[cells.findIndex(c => c.iso === stop)]?.focus();
     },
     calAt(e) { const b = e.target.closest?.('.cal-day'); return b && e.currentTarget._cells[b.dataset.i]; },
     togglePop(name, anchor) {
@@ -6616,8 +6619,7 @@ document.addEventListener('alpine:init', () => {
     },
     // A stored row with open subtasks of its own asks first, as the list's tick does; Save's complete op sweeps them.
     tickSub(s, c) {
-      if (inNotes(c ?? s.fields)) return;   // its tack is inert: a note never completes
-      if (c?.archived_at) return this.toast('Archived. Unarchive it first');   // as the list's tick
+      if (inNotes(c ?? s.fields) || c?.archived_at) return;   // a note's tack and an archived check are inert, as the list's
       const before = this._subsSnap(), tick = () => { s.done = !s.done; this._pushSubs('Ticked subtask', before); }; return !s.done && c ? this.confirmSweep(c.id, tick).then(asked => asked || tick()) : tick(); },
     _chkItem(el) { return el.closest?.('.entry.chk')?._item ?? null; },
     // The painted rows' events, delegated from the list (the ghost row has no data-id and keeps its own handlers).
@@ -7735,7 +7737,7 @@ document.addEventListener('alpine:init', () => {
     _sweepHtml(items) { return html`<div class="sweep-list">${items.map(it => raw(html`<div class="task-line">${raw(this.taskLine(it))}</div>`))}</div>`; },
     async toggle(t, row = null) {
       if (inNotes(t) && !t.completed_at) return;   // a note never completes (x, the row, the composer); one that came in done reopens
-      if (t.archived_at) { this.toast('Archived. Unarchive it first'); return; }   // dash checkbox is inert
+      if (t.archived_at) return;   // an archived check is inert
       if (!t.completed_at && await this.confirmSweep(t.id)) return;
       const finish = !t.completed_at, id = t.id;
       const start = finish && row && this.celebrations !== 'off' ? this._celebrate(row, true) : null;   // before the write: its render holds the row and any completed ancestors
@@ -8339,7 +8341,14 @@ document.addEventListener('alpine:init', () => {
       const zt = this.clZoneTitles();    // ONE layout pass, shared by the heading and the positioner — same rule as _clSetPos
       this._clScrollState(y, zt);
       this._clPositionZone(zt);   // sync: place the over-header titles THIS frame (reactive :style lags a frame → teleports on fast scroll)
-      if (moved) queueMicrotask(() => this._clPositionZone(zt));   // a title the move lists is created in Alpine's flush after this handler: place it before the paint
+      const walking = moved && this.$refs.clMonth.contains(document.activeElement);
+      if (moved) queueMicrotask(() => {
+        this._clPositionZone(zt);   // a title the move lists is created in Alpine's flush after this handler: place it before the paint
+        if (!walking || document.activeElement !== document.body) return;
+        // the flush recycled the focused day: a day in view takes focus now, or the next key lands on body (→ turns the surface)
+        if (this._clMTo == null) this.clDayInView = isoDate(this._weekDate(this._clRowsInView()[0]));
+        this._clLandDay();
+      });
       const t = performance.now();
       // our OWN settle glide: it still virtualizes, but it is not a gesture — re-lighting the chrome here is a flicker.
       // It still POSTPONES the settle: a ↓/Today step inside this window otherwise let a pending week-snap fire
