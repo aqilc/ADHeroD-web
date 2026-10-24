@@ -400,7 +400,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="composer-title">
         <div class="content" x-ref="content" contenteditable="true" role="textbox" aria-label="Task name" x-effect="mirrorPills()"
              @focus="focusTitle()" @input="pillInput($event)" @compositionend="pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="editorKeydown($event)" @paste="onPaste($event)"></div>
-        <div class="content-hint overlay flex items-center gap-4" x-show="titleEmpty" aria-hidden="true">Buy milk
+        <div class="content-hint overlay flex items-center gap-4" :class="{ jot: jotting() }" x-show="titleEmpty" aria-hidden="true"><span x-text="jotting() ? 'Jot or search' : 'Buy milk'"></span>
           <span class="nlp-pill inline-flex items-center" data-kind="date">tomorrow</span>
           <span class="nlp-pill inline-flex items-center" data-kind="date">5pm</span>
           <span class="nlp-pill inline-flex items-center" data-kind="proj">#errands</span>
@@ -1289,14 +1289,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
          <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Lists" @click="goSurface('lists')" aria-label="Lists" :inert="surface === 'lists'"><svg class="ico" aria-hidden="true"><use href="#i-all"/></svg></button>
          <div class="jb-field flex items-center" :inert="surface !== 'lists'">
            <button type="button" class="jb-dest inline-flex items-center min-w-0" data-sk="Overview" @click="openOverview()" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }" @contextmenu.prevent :aria-label="navHeading() + ', open menu'" aria-haspopup="dialog"><svg class="ico" aria-hidden="true"><use href="#i-all"/></svg><span class="truncate" x-text="navHeading()"></span></button>
-           <button type="button" class="jb-jot min-w-0" data-sk="New task" @click="quickAdd()">Jot something</button>
+           <button type="button" class="jb-jot min-w-0" data-sk="New task" @click="quickAdd()">Jot or search</button>
          </div>
        </div>
        <div class="jb-el" :class="{ on: surface === 'plan' }">
          <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Plan" @click="goSurface('plan')" aria-label="Plan" :inert="surface === 'plan'"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg></button>
          <div class="jb-field flex items-center" :inert="surface !== 'plan'">
            <button type="button" class="jb-dest jb-day inline-flex items-center min-w-0" @click="viewSheet = true" :aria-label="jbDay() + ', views'" aria-haspopup="menu"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg><span class="truncate" x-text="jbDay()"></span></button>
-           <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot something</button>
+           <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot or search</button>
          </div>
        </div>
        <template x-if="phoneThread() &amp;&amp; chat.draft.trim() &amp;&amp; !chat.editing &amp;&amp; !composer.open"><div class="pop jb-lists jb-sheet" @mousedown.prevent>   <!-- droid-12: a thread's words, as a task (a tap keeps the keyboard up) -->
@@ -1305,7 +1305,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        <div class="jb-el" :class="{ on: surface === 'social' }">
          <button type="button" class="jb-ico flex items-center justify-center" :class="{ 'cd-new': chatUnread() }" data-sk="Go to Social" @click="goSurface('social')" :aria-label="chatUnread() ? 'Social, new messages' : 'Social'" :inert="surface === 'social'"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></button>
          <template x-if="!phoneThread()"><div class="jb-field flex items-center" :inert="surface !== 'social'">
-           <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot something</button>
+           <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot or search</button>
          </div></template>
          <template x-if="phoneThread() &amp;&amp; openChatRow()"><div class="jb-field jb-chat flex items-end" x-init="watchField($el)">   <!-- a thread's composer (V-B): the chip leads back to the chats -->
            <button type="button" class="jb-dest inline-flex items-center min-w-0" @click="openChat(null)" :aria-label="chatPeer(openChatRow()) + ', chats'"><span class="av" x-text="chatPeer(openChatRow()).slice(0, 1).toUpperCase()"></span><span class="truncate" x-text="chatPeer(openChatRow())"></span></button>
@@ -1316,8 +1316,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        </div>
      </div></template>
      <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar(), editing, ka: kaEdit() }">   <!-- the composer over the bar, new or edit (relocateComposer) -->
-      <li class="jb-go" x-show="jotRows().length" @mousedown.prevent>   <!-- a tap keeps the keyboard up -->
-        <template x-for="r in jotRows()" :key="r.type + ':' + r.id">
+      <li class="jb-go" x-show="jotting()" :class="{ gone: !jotRows().length }" @mousedown.prevent>   <!-- a tap keeps the keyboard up -->
+        <template x-for="r in goRows()" :key="r.type + ':' + r.id">
           <button type="button" class="palette-row task-line" @click="pickJot(r)" x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r)) : searchJumpHTML(r)"></button>
         </template>
         <div class="palette-section" x-show="!draft.content">Go to</div>

@@ -30,7 +30,8 @@ button { font: inherit; cursor: pointer; border: none; background: none; }   /* 
 input, textarea, select { font: inherit; color: var(--ink); }
 h1, h2 { font-family: var(--font-display); }   /* topbar/auth/goal-empty headings; .cl-period overrides back to sans below */
 :focus-visible, .cl-wh-n:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }   /* keyboard focus ring, app-wide (one group, not per-element); .cl-wh-n's all:unset would clear it */
-kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); border: 1px solid var(--edge); border-radius: var(--r-6); padding: 1px var(--sp-6); margin: 0 1px; }
+kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: light-dark(color-mix(in srgb, var(--panel) 70%, transparent), color-mix(in srgb, var(--ink) 6%, transparent)); border: 1px solid var(--edge); border-radius: var(--r-6);
+  box-shadow: inset 0 -1px 0 var(--edge), 0 1px 1px light-dark(var(--hair), rgb(0 0 0 / .4)); padding: 1px var(--sp-6); margin: 0 1px; }   /* keycap: the lower lip and drop read as a key, not a box */
 
 /* Eyebrow — every section label's one type rule, first so site rules (layout; the tray's D3 thread line) override it.
    New labels use class="section-label". */
@@ -868,7 +869,7 @@ mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: in
      never cut mid-word (phone drops "every week") or spilling onto Description */
   .content-hint { left: 0; right: 0; top: 0; flex-wrap: wrap; height: 18px;
     font-size: var(--fs-15); line-height: 18px; white-space: nowrap; color: var(--muted); opacity: .55; user-select: none; overflow: hidden;
-    .nlp-pill { opacity: .85; flex: none; } }
+    .nlp-pill { opacity: .85; flex: none; } &.jot .nlp-pill { display: none; } }   /* the jot bar: KC's row under it shows the words */
   .desc { border: none; background: none; padding: 0; font-size: var(--fs-13); width: 100%; outline: none;
     font-family: inherit; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.4em;
     &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
@@ -2734,11 +2735,15 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
     .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
     :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
-  /* KA-edit: the title alone on its line; the list's path and what the notes hold on a subline under it */
+  /* KA-edit: the title alone on its line; one subline under it, from the ring's left edge: the list's path, what the notes hold, the relations */
   .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* KA-edit.png: the ring's centre at 26, the title at 46 */
     .type-tog { left: var(--sp-16); &:not(.note) > :last-child, &.note > :first-child { display: none; } }   /* the other type is in ··· */
-    .composer-titlerow, .composer-actions .field.loc { flex-basis: calc(100% - var(--chk-col)); margin-left: var(--chk-col); }
-    .composer-actions .field.loc { display: flex; order: -1; max-width: none; height: 30px; gap: var(--sp-6); }   /* after the title (DOM order), before the break */
+    .composer-titlerow { order: -3; flex-basis: calc(100% - var(--chk-col)); margin-left: var(--chk-col); }
+    .composer-body:has(> .composer-rels > :is(.rel-chip, .msg-file)) .field.loc { max-width: 60%; }   /* a long path leaves the relations room */
+    .composer-actions .field.loc { display: flex; order: -2; flex: 0 1 auto; max-width: none; height: 30px; gap: var(--sp-6); margin: 0 0 0 calc(var(--sp-16) - var(--sp-10)); }   /* user 10-22 K: "aligned to the left edge of the screen" */
+    .composer-card .composer-body > .composer-rels { order: -1; flex: 1 1 0; flex-wrap: nowrap; align-items: center; min-width: 0; height: 30px; margin-left: var(--sp-6); overflow-x: auto; scrollbar-width: none;   /* over .editing's indent */
+      mask-image: linear-gradient(to left, transparent, #000 var(--sp-8)); > * { flex: none; }
+      &::before { content: "·"; flex: none; color: var(--faint); font-size: var(--fs-13); } }
     :is(.proj-pick, .ka-notes) { height: 30px; min-width: 0; padding: 0; gap: var(--sp-5); background: none; font-size: var(--fs-13); font-weight: 400; color: var(--muted);
       :is(.hash, .ico) { width: auto; flex: none; color: var(--faint); } .ico { width: 15px; height: 15px; } }
     .proj-pick span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2762,7 +2767,9 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host .kc { display: none; flex: 1; min-width: 0; gap: var(--sp-6); overflow-x: auto; scrollbar-width: none;
     button { flex: none; height: 32px; padding: 0 var(--sp-10); border-radius: var(--r-8); background: var(--hover); font-size: var(--fs-14); color: var(--muted); white-space: nowrap; } }
   .bar-on .jb-host .composer-actions .primary { margin-left: var(--sp-4); border-radius: var(--r-12); }
-  .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4); }   /* the card keeps its height; Go to scrolls */
+  .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4);   /* the card keeps its height; Go to scrolls */
+    interpolate-size: allow-keywords; transition: height .15s var(--ease-out), opacity .15s var(--ease-out), visibility .15s var(--ease-out);
+    &.gone { height: 0; padding-bottom: 0; opacity: 0; visibility: hidden; } }   /* user 10-22 T: nothing matches, it folds into the composer */
   .jb-go .palette-row { min-height: 44px; }
 }
 .jb-host { display: none; }

@@ -181,6 +181,7 @@ let _addSlot = 0;   // the Add task row's height + margin, measured while shown:
 let _kb = 0;   // the soft keyboard's height (init's keyboard()): pops sit above it
 let _keys = 0, _when = 0, _keyboard = () => false;   // the keyboard alone, and init's keyboard(): a docked pop re-reads it as it opens, resizes and closes
 let _field;   // init's ResizeObserver for the jot bar's chat field (watchField)
+let _goRows = [];   // Go to's last rows, held while it folds away (goRows)
 let _editPin = null, _editEnd = null;   // mirror `editing` / the collapse's target height OUTSIDE Alpine (listHtml reads both; a reactive read there would make composer open/close rebuild the list)
 let _listW = -1, _fitV = 0;         // list width + the generation every row's fit is stamped with (see _fit)
 let _fitDone = -1;                  // the _fitV a _fit pass left every list row fitted at; a morph that adds rows resets it
@@ -784,7 +785,7 @@ document.addEventListener('alpine:init', () => {
       const vars = sheet.cssRules[0].style;
       _keyboard = () => {
         const keys = Math.max(0, Math.round(innerHeight - visualViewport.offsetTop - visualViewport.height));   // a tap on a docked pop's field raises the keyboard under it
-        const dock = this.pop && this.popDock && document.querySelector('body > .pop.dock'), when = dock && dock.matches('.ev-when') ? dock.offsetHeight : 0, h = keys + (when ? 0 : dock?.offsetHeight || 0);   // an editor's docked When lifts its card alone (--when on .dialog-backdrop), not the tray
+        const dock = this.pop && this.popDock && document.querySelector('body > .pop.dock:not(.overflow-pop)'), when = dock && dock.matches('.ev-when') ? dock.offsetHeight : 0, h = keys + (when ? 0 : dock?.offsetHeight || 0);   // an editor's docked When lifts its card alone (--when on .dialog-backdrop), not the tray; ··· covers the composer, never lifts it (user 10-22 N: "on top of the composer, not push the composer up")
         if (h === _kb && keys === _keys && when === _when) return false;
         _kb = h; _keys = keys; _when = when; vars.setProperty('--kb', h + 'px'); vars.setProperty('--keys', keys + 'px'); vars.setProperty('--when', when + 'px');
         root.classList.toggle('kb', h > 0);
@@ -3620,17 +3621,18 @@ document.addEventListener('alpine:init', () => {
       else if (r.type === 'project') this.setNav('project', r.id);
       else if (r.type === 'area') this.setNav('area', r.id);
     },
-    // 1A: over the bar's new task, where to go while nothing is typed, then what the words already match. Enter still adds.
+    // 1A: over the bar's new task, where to go while nothing is typed, then what the words already match. Enter adds.
     // Nearest the field first (they stack upward, in reach of the thumb; what doesn't fit scrolls).
+    jotting() { return this.composer.open && !this.editing && this._inBar() && !this.fromChat; },
     jotRows() {
-      if (!this.composer.open || this.editing || !this._inBar() || this.fromChat) return [];
+      if (!this.jotting()) return [];
       const q = this.draft.content, go = (id, title, icon, tag = '') => ({ kind: 'cmd', type: 'command', id, title, icon, tag });
-      if (q) return [go('add', `Add "${q}"`, 'i-plus'), ...this.searchResults(q).slice(0, 4)];
+      if (q) return this.searchResults(q).slice(0, 4);   // user 10-22 T: no "+ Add x" row (send adds); no match, the composer stands alone
       const lists = this.store.search('', 50).filter(r => r.type === 'project').slice(0, 2).map(r => ({ ...r, obj: this.byId.get(r.id) })).filter(r => r.obj);
       return [go('search', 'Search everything', 'i-search'), ...lists, { kind: 'nav', type: 'surface', id: 'social', title: SURF_META.social.label, icon: SURF_META.social.icon, tag: '' }, go('today', 'Today', 'i-cal', 'Plan')];
     },
+    goRows() { const rows = this.jotRows(); return rows.length ? (_goRows = rows) : _goRows; },
     pickJot(r) {
-      if (r.id === 'add') return this._pillThen(() => this.submitComposer());   // = Enter
       const query = this.draft.content;
       this.closeComposer(true);   // the words were the search, not a task
       r.id === 'search' ? this.openPalette() : this.pickSearchResult(r, query);
