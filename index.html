@@ -51,7 +51,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></symbol>
   <!-- ring = the task check's (18px at stroke 3 = its 2.25px border) -->
   <symbol id="i-steps" viewBox="0 0 24 24"><circle cx="5.5" cy="6.5" r="2.5"/><circle cx="5.5" cy="17.5" r="2.5"/><path d="M5.5 9v6M12 7h9M12 18h9"/></symbol>   <!-- the Steps rail: two nodes joined, i-list-check's lines -->
-  <symbol id="i-ring" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" stroke-width="3"/></symbol>
   <!-- size = how much of a drink it takes: a sip · a mug · a full cup · two cups. Tabler art; the mug is scaled to
        its width ceiling and multi is two session cups at .75 offset right+up, so the pair stands a full cup tall. -->
   <symbol id="i-size-tiny" viewBox="0 0 24 24"><g transform="translate(12,12) scale(1.1444) translate(-12,-12)" stroke-width="1.7476"><path d="M3 14c.83 .642 2.077 1.017 3.5 1c1.423 .017 2.67 -.358 3.5 -1c.83 -.642 2.077 -1.017 3.5 -1c1.423 -.017 2.67 .358 3.5 1 M3 10h14v5a6 6 0 0 1 -6 6h-2a6 6 0 0 1 -6 -6v-5 M16.746 16.726a3 3 0 1 0 .252 -5.555"/><path opacity=".5" d="M8 5a1.4 1.4 0 0 0 -.6 1.2a1.4 1.4 0 0 0 .6 1.2 M12 5a1.4 1.4 0 0 0 -.6 1.2a1.4 1.4 0 0 0 .6 1.2"/></g></symbol>
@@ -112,7 +111,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-check" viewBox="0 0 24 24"><polyline points="4 13 10 19 20 6"/></symbol>
   <symbol id="i-repeat-done" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><path d="M9 12.5l2.2 2.2 4-4.5"/></symbol>
   <!-- one path, four subpaths: the four bars CROSS, and as separate <line>s each crossing paints twice (see i-backlog) -->
-  <symbol id="i-hash" viewBox="0 0 24 24"><path d="M4 9h16 M4 15h16 M10 3 8 21 M16 3 14 21"/></symbol>
+  <symbol id="i-proj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" stroke-width="3"/><path d="M12 12V3a9 9 0 0 1 9 9Z" fill="currentColor" stroke="none"/></symbol>   <!-- a project with no progress to show: the .pring, a quarter done -->
   <symbol id="i-panel-r" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></symbol>
   <!-- ONE path, two subpaths — not two <path>s. The row's project chip strokes with a SEMI-TRANSPARENT color, and
        two separate paints double their alpha wherever they meet (the tray line hits the box walls at x=2/x=22),
@@ -164,8 +163,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
     <main class="app" :class="{ tinted: !!listTintCol() }" @dragenter="listDragLeft($event)" @dragover="listDragLeft($event)" @drop.self.prevent="listDrop($event)" :style="listTintStyle()">
     <div class="topbar flex justify-between">
-      <div class="topbar-title min-w-0">
+      <div class="topbar-title min-w-0" @click="openListTray()">   <!-- the phone's title opens the lists tray (droid-18 R) -->
         <h1 x-text="navHeading()"></h1>
+        <svg class="ico title-chev" aria-hidden="true"><use href="#i-chev-d"/></svg>
       </div>
       <template x-if="bar"><button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">   <!-- the jot bar's: the canvas gear's twin, in the header (styles.css › jot bar) -->
         <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
@@ -213,6 +213,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <button type="button" data-sk="Filter tasks" aria-haspopup="menu" :aria-expanded="listMenu === 'add'" :aria-label="f.aria + ': ' + f.label" :title="f.aria + ': ' + f.label" @click.stop="listMenu = listMenu === 'add' ? null : 'add'">
                 <template x-if="f.flag"><span class="ls-flag"></span></template>
                 <template x-if="f.dot"><span class="lc-dot rounded-full flex-none" :style="'background:' + f.col"></span></template>
+                <template x-for="i in f.icos || []" :key="i"><svg class="ico ls-ico"><use :href="'#' + i"/></svg></template>
                 <span class="ls-lbl" x-text="f.label"></span>
               </button>
               <button type="button" class="ls-x" :aria-label="'Clear ' + f.aria + ' filter'" @click.stop="clearQfFacet(f.k)">×</button>
@@ -227,16 +228,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
         <!-- unified filter menu: every fragment one click deep (replaces the 3 separate chip menus) -->
         <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'add' && outside($event, $el) && (listMenu = null)">
-          <!-- Include first: it answers "what is even in this list" before "which of them" (F12) -->
-          <div class="pop-sub-head">Include</div>
-          <button type="button" class="pop-item" @click="toggleShowCompleted()">
-            <svg class="ico"><use href="#i-check"/></svg><span>Done tasks</span>
-            <template x-if="showCompleted"><svg class="tick ico"><use href="#i-check"/></svg></template>
-          </button>
-          <button type="button" class="pop-item" @click="toggleQfArchived()">
-            <svg class="ico"><use href="#i-archive"/></svg><span>Archived</span>
-            <template x-if="qfArchived"><svg class="tick ico"><use href="#i-check"/></svg></template>
-          </button>
           <div class="pop-sub-head">Importance</div>
           <div class="ls-prow flex gap-6">
             <template x-for="v in availImp()" :key="v">
@@ -263,6 +254,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <template x-if="qfDue === o[0]"><svg class="tick ico"><use href="#i-check"/></svg></template>
             </button>
           </template>
+          <div class="pop-sub-head">Include</div>
+          <div class="ls-inc">
+            <template x-for="l in [['open', 'Open', 'i-circle', qfOpen, () => toggleQfOpen()], ['done', 'Done', 'i-check', showCompleted, () => toggleShowCompleted()], ['archived', 'Archived', 'i-archive', qfArchived, () => toggleQfArchived()]]" :key="l[0]">
+              <button type="button" class="pri-chip tog" :class="{ sel: l[3] }" :aria-pressed="l[3]" :disabled="lastLens(l[3])" @click="l[4]()"><svg class="ico"><use :href="'#' + l[2]"/></svg><span x-text="l[1]"></span></button>
+            </template>
+          </div>
           <button type="button" class="pop-item ls-save" x-show="qfActive()" @click="lsSaveFilter()">Save as filter…</button>
         </div>
 
@@ -283,7 +280,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </template>
             <!-- Grouping shares the sort menu: both answer "how is this list arranged?" (F12) -->
             <div class="pop-sub-head">Group into sections</div>
-            <template x-for="o in [['none','Nothing','i-all'],['project','Project','i-hash'],['area','Area','i-tag-tag'],['due','Due date','i-cal'],['importance','Importance','i-prio'],['place','Place','i-pin']]" :key="o[0]">
+            <template x-for="o in [['none','Nothing','i-all'],['project','Project','i-proj'],['area','Area','i-tag-tag'],['due','Due date','i-cal'],['importance','Importance','i-prio'],['place','Place','i-pin']]" :key="o[0]">
               <button type="button" class="pop-item" @click="setGroup(o[0])">
                 <svg class="ico"><use :href="'#' + o[2]"/></svg><span x-text="o[1]"></span>
                 <template x-if="groupBy === o[0]"><svg class="tick ico"><use href="#i-check"/></svg></template>
@@ -367,7 +364,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
     <div class="empty flex-col items-center gap-6" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)">
       <template x-if="!(navSel.type === 'filter' || filtering()) && completedRows().hidden"><svg class="empty-sun" viewBox="0 0 48 28" aria-hidden="true"><path class="arc" d="M8 26a16 16 0 0 1 32 0"/><path class="ray" d="M24 4V0"/><path class="ray" d="M10 10 7 7"/><path class="ray" d="M38 10l3-3"/><path class="ray" d="M4 22H0"/><path class="ray" d="M44 22h4"/></svg></template>
-      <span class="empty-t" x-text="navSel.type === 'filter' || filtering() ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></span>
+      <span class="empty-t" x-text="navSel.type === 'filter' || filtering() || !qfOpen ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></span>
     </div>
     <!-- rows: one innerHTML parse (not x-for) — ~1s→~50ms; events delegated to <ul>; hover/drag/kbfocus imperative -->
     <ul class="list flex-col" x-effect="paintSel()" x-init="initListSort($el)"
@@ -434,7 +431,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-for="(p, i) in projMatches()" :key="p.id">
             <button type="button" class="pop-item" :class="{ hot: i === projPicker.sel }"
                     @click="pickPill('proj', p.id)" @mousemove="projPicker.sel = i">
-              <svg class="ico" :style="p.color ? 'color:' + p.color : ''"><use :href="isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'"/></svg><span class="nm truncate" x-text="p.content"></span>
+              <svg class="ico" x-show="isDefaultProj(p.id)"><use href="#i-backlog"/></svg><span class="pring" x-show="!isDefaultProj(p.id)" :style="isDefaultProj(p.id) ? {} : ringVars(p)"></span><span class="nm truncate" x-text="p.content"></span>
             </button>
           </template>
           <template x-if="projPicker.frag.trim() && !projMatches().length">
@@ -677,7 +674,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </template>
               <template x-for="row in locRegionRows()" :key="row.region">
                 <div>
-                  <div class="lp-sec" x-text="row.region + (row.more || row.open ? ' · ' + (row.chips.length + row.more) : '')"></div>
+                  <div class="lp-sec flex gap-6"><span x-text="row.region"></span><span x-show="row.more || row.open" x-text="row.chips.length + row.more"></span></div>
                   <div class="lp-row">
                     <template x-for="ch in row.chips" :key="ch.id">
                       <button type="button" class="c inline-flex items-center" :class="locChipCls(ch.id)" @click="toggleLocId(ch.id)">
@@ -708,7 +705,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
                 <div class="rel-picker">
                   <template x-for="t in relationCandidates()" :key="t.id">
-                    <div class="pop-item rel-row flex items-center gap-4" draggable="true" @click="addRelation(t.id, 'relates')" @dragstart="relDragId = t.id; $event.dataTransfer.setData('text/plain', t.id)" @dragend="relDragId = null" title="Drag to a well · click to add as Relates">
+                    <div class="pop-item rel-row flex items-center gap-4" draggable="true" @click="addRelation(t.id, 'relates')" @dragstart="relDragId = t.id; $event.dataTransfer.setData('text/plain', t.id)" @dragend="relDragId = null" title="Drag to a well, or click to add as Relates">
                       <span class="task-line grow" x-html="taskLine(t)"></span>
                     </div>
                   </template>
@@ -805,7 +802,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <!-- left: project location picker (Todoist-style, bottom-left); actions stay right -->
           <div class="field loc" @click.document.capture="pop === 'proj' && outside($event, $el) && popAway('proj', $event)">
             <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && !popDock && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
-              <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="hash" x-show="!pickIsDefault()">#</span><span x-text="kaEdit() &amp;&amp; draft.project_id ? projectPath(byId.get(draft.project_id), ' · ') : draft.project || defaultProjName() || 'Project'"></span>
+              <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="pring" x-show="!pickIsDefault()" :style="pickIsDefault() ? {} : ringVars(pickProj() || {})"></span><span x-text="kaEdit() &amp;&amp; draft.project_id ? projectPath(byId.get(draft.project_id)) : draft.project || defaultProjName() || 'Project'"></span>
             </button>
             <button type="button" class="ka-notes inline-flex items-center" x-show="kaEdit() &amp;&amp; notesChip()[1] !== 'Steps and notes'" :aria-expanded="notesOpen" @click="toggleNotes()"><svg class="ico"><use :href="'#i-' + notesChip()[0]"/></svg><span x-text="notesChip()[1]"></span></button>
             <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :class="{ dock: popDock }" :style="popStyle()">
@@ -915,7 +912,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <template x-for="col in peekOn() ? [peekCol()] : []" :key="'peek' + col.iso">
         <div class="contents">
           <div class="peek-head flex items-center justify-between">
-            <span class="peek-date" x-text="(col.today ? 'Today · ' : '') + fmt(col.iso)"></span>
+            <span class="peek-date" x-text="(col.today ? 'Today, ' : '') + fmt(col.iso)"></span>
             <button type="button" class="peek-pin" :class="{ on: peekPin }" @click="peekPin = !peekPin" title="Keep the pane open"><svg class="ico"><use href="#i-pin"/></svg></button>
           </div>
           <div class="peek-allday" :class="{ hot: clDropHint === 'peek-ad' }" @dragenter.prevent @dragover.prevent="clDropHint = 'peek-ad'; clDropPreview = null" @dragleave="clDropHint = null" @drop.prevent="clDropOn($event, col.iso, true)">
@@ -969,7 +966,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- Plan surface: the calendar. Lazy-mounted (heavy subtree + effects) on first visit; x-init centers it on mount. -->
     <section class="surface surface-plan" data-surface="plan" :style="surfaceStyle('plan')" :inert="surface !== 'plan'">
     <template x-if="mounted('plan')">
-    <section class="calendar" :class="'view-' + clView + (clScrolling ? ' cl-scrolling' : '') + (clFast ? ' cl-fast' : '') + (clSettling ? ' cl-settle' : '') + (clSideVisible() && !clSideOver ? ' side' : '') + (clVT ? ' vt' : '')" x-init="clOpenCalendar()" x-effect="_clStale && !_clHidden() && queueMicrotask(() => _clResized())">
+    <section class="calendar" :class="'view-' + clView + (clScrolling ? ' cl-scrolling' : '') + (clFast ? ' cl-fast' : '') + (clSettling ? ' cl-settle' : '') + (clSideVisible() && !clSideOver ? ' side' : '') + (clSideSlide ? ' side-slide' : '') + (clVT ? ' vt' : '')" x-init="clOpenCalendar()" x-effect="_clStale && !_clHidden() && queueMicrotask(() => _clResized())">
       <!-- Overlaid top chrome: month/period label + controls, translucent over the scrolling calendar -->
       <div class="cl-bar flex items-center" @wheel.passive="onCalTitleWheel($event)">
         <!-- in day/week the title IS the date picker; a hover background is the whole affordance -->
@@ -1094,7 +1091,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-for="col in pg.cols" :key="'dr'+col.iso">
             <div class="cl-dlrail-c flex-col min-w-0">
               <template x-for="m in col.deadlines" :key="'dr'+m.id">
-                <button type="button" class="cl-dl-t flex items-center min-w-0" :class="(m.start.length > 10 ? 'at' : '') + clTaskState(m)" :style="'--cc:' + clItemColor(m)" :title="'Deadline: ' + m.title + ' · ' + clDlWhen(m)" @click.stop="clItemClick(m)"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span><span class="cl-dl-w" x-text="clDlLeft(m)"></span></button>
+                <button type="button" class="cl-dl-t flex items-center min-w-0" :class="(m.start.length > 10 ? 'at' : '') + clTaskState(m)" :style="'--cc:' + clItemColor(m)" :title="'Deadline: ' + m.title + ', ' + clDlWhen(m)" @click.stop="clItemClick(m)"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span><span class="cl-dl-w" x-text="clDlLeft(m)"></span></button>
               </template>
             </div>
           </template>
@@ -1125,7 +1122,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                     <!-- rows are html parts (clAgParts), their events delegated here: per-row bindings cost most of a page build -->
                     <!-- x-if flips a frame before clBlocks() recomputes on a view switch, so never assume agenda -->
                     <div class="cl-agenda" :class="'tier-' + (col.agenda?.h > _clDayH() - 20 ? 'compact' : 'full')" x-effect="renderRows($el, clAgParts(pg.key, col))"
-                         @click="clAgClick($event, col)" @dragstart="clAgDrag($event, col)" @dragend="$event.target.closest('.cl-ag-row') && clDragEndSchedule()" @keydown="clKeyActivate($event, $event.target.closest('.cl-ag-row'))"></div>
+                         @click="clAgClick($event, col)" @dragstart="clAgDrag($event, col)" @dragend="$event.target.closest('.cl-ag-row') && clDragEndSchedule()" @keydown="clKeyActivate($event, $event.target.closest('button') ? null : $event.target.closest('.cl-ag-row'))"></div>
                   </div>
                 </template>
               </div>
@@ -1170,7 +1167,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
                     <div class="cl-event" :class="clEvClass(p)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id, p.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it, true)" :style="clEvStyle(p, ix)">
                       <template x-if="p.it.kind === 'task-block'"><span x-html="clCheckHtml(p.it,'cl-evt-check')" @click.stop="clToggleTask(p.it.id)"></span></template>
-                      <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm"><span x-text="clTimeLabel(p.it)"></span><template x-if="clAsks(p.it)"><b class="cl-ask">· Going?</b></template></span></span>
+                      <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm"><span x-text="clTimeLabel(p.it)"></span><template x-if="clAsks(p.it)"><b class="cl-ask">Going?</b></template></span></span>
                     </div>
                   </template>
                 </div>
@@ -1185,7 +1182,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- staging tray: what still needs a slot (slipped + unscheduled). What IS scheduled is the timeline's job —
            listing it here twice was pure duplication. Composer relocates in here when editing. -->
       <aside class="cl-side" :class="{ open: clSideVisible() }" :inert="!clSideVisible()">   <!-- closed, it is only slid off: Tab reached it and slid the calendar sideways -->
-        <div class="cl-side-top" @pointerdown="clSheetDown($event)" @pointermove="clSheetMove($event)" @pointerup="clSheetUp($event)" @pointercancel="clSheetUp($event)"></div>
+        <div class="cl-side-top" @pointerdown="clSheetDown($event)" @pointermove="sheetMove($event)" @pointerup="sheetUp($event)" @pointercancel="sheetUp($event)"></div>
         <!-- the one real composer, for a task with no row shown here; a row's opens at its row (relocateComposer) -->
         <ul class="list cl-side-composer"></ul>
         <!-- the sections (_clSideSecs) of REAL task rows, draggable onto a day or time; the two folds open in place -->
@@ -1267,14 +1264,24 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span></template>
        <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
      </button>
-     <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists and Plan on a phone, behind the adherod.bar trial. No bar of its own: the page fades
+     <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists and Plan on a phone, unless adherod.bar is '0'. No bar of its own: the page fades
           under it and the field floats. Lists, Plan, Social keep their order; where you are widens into the field. Lists' chip names the list a task
           lands in and opens the overview, as the current dot does; Plan's opens its view sheet. -->
+     <!-- droid-18 R: the lists tray, pulled up from the title (app.js trayDown); rows as the held chip's, every list -->
+     <div class="lsw-scrim" :class="{ on: listTray }" @click="listTray = null"></div>
+     <div class="pop lsw" :class="listTray" role="menu" aria-label="Your lists" :inert="!listTray" @pointerdown="trayDown($event)" @pointermove="sheetMove($event)" @pointerup="sheetUp($event)" @pointercancel="sheetUp($event)">
+       <div class="lsw-top">Your lists</div>
+       <div class="lsw-rows" x-ref="trayRows">
+         <template x-for="r in trayRows" :key="r.type + ':' + r.id">
+           <button type="button" class="pop-item" role="menuitem" :class="{ on: r.type === navSel.type &amp;&amp; r.id === navSel.id, more: r.type === 'more' }" @click="listTray = null; holdPick(r)"><svg class="ico" aria-hidden="true" x-show="!r.p"><use :href="'#' + r.icon"/></svg><span class="pring" x-show="r.p" :style="r.p ? ringVars(r.p) : {}"></span><span class="truncate" x-text="r.label"></span></button>
+         </template>
+       </div>
+     </div>
      <template x-if="bar"><div class="jot-bar items-end" @pointermove="holdMove($event)" @pointerup="holdUp()" @pointercancel="listHold = null">
        <template x-if="listHold"><div class="pop jb-lists" role="menu">   <!-- P-A: held up from the chip -->
          <div class="pop-scrim" @click="listHold = null"></div>
          <template x-for="(r, i) in holdRows()" :key="r.type + ':' + r.id">
-           <button type="button" class="pop-item" role="menuitem" :data-hold="i" :class="{ hot: listHold.hot === i, on: r.type === navSel.type &amp;&amp; r.id === navSel.id, more: r.type === 'more' }" @click="holdPick(r)"><svg class="ico" aria-hidden="true"><use :href="'#' + r.icon"/></svg><span class="truncate" x-text="r.label"></span></button>
+           <button type="button" class="pop-item" role="menuitem" :data-hold="i" :class="{ hot: listHold.hot === i, on: r.type === navSel.type &amp;&amp; r.id === navSel.id, more: r.type === 'more' }" @click="holdPick(r)"><svg class="ico" aria-hidden="true" x-show="!r.p"><use :href="'#' + r.icon"/></svg><span class="pring" x-show="r.p" :style="r.p ? ringVars(r.p) : {}"></span><span class="truncate" x-text="r.label"></span></button>
          </template>
        </div></template>
        <template x-if="viewSheet"><div class="pop jb-lists jb-sheet" role="menu" @click="viewSheet = false">   <!-- droid-10: Plan's views and actions, risen from the day chip -->
@@ -1357,7 +1364,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </button>
     </div>
     </div>
-    <div class="ov-hint muted-12"><kbd>←</kbd><kbd>→</kbd> navigate · <kbd>↵</kbd> open · <kbd>esc</kbd> close</div>
+    <div class="ov-hint muted-12 flex gap-10"><span><kbd>←</kbd><kbd>→</kbd> navigate</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div>
     <!-- Nav settings popovers live OUTSIDE the roller so its overflow (and the overview's backdrop-filter containing block) can't clip them; positioned via navPopXY (viewport coords). -->
     <template x-if="overview && navPopProj()">
       <div class="nav-pop rl-pop" @click.stop :style="navPopXY ? 'left:' + navPopXY.x + 'px;top:' + navPopXY.y + 'px' : ''">
@@ -1367,6 +1374,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="swatch-row" @click="swatchPick($event, v => patchTask(navPopProj().id, { color: v }))" x-html="swatchRow(navPopProj().color)"></div>
         <div class="nav-pop-sep"></div>
         <button class="pop-item" @click="patchTask(navPopProj().id, { overview: false }, 'Hidden from Overview')"><svg class="ico"><use href="#i-overview"/></svg>Hide from Overview</button>
+        <template x-if="navPopProj().parent_id === store.defaultProject()"><button class="pop-item" @click="moveOutOfBacklog(navPopProj().id)"><svg class="ico"><use href="#i-backlog"/></svg>Move out of Backlog</button></template>
         <button class="pop-item" @click.stop="archive(navPopProj().id, !navPopProj().archived_at); navPop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="navPopProj().archived_at ? 'Unarchive' : 'Archive'"></span></button>
         <button class="pop-item" @click.stop="startDeleteProject(navPopProj().id, true)"><svg class="ico"><use href="#i-arrow"/></svg>Merge into&#x2026;</button>
         <button class="pop-item del" @click="startDeleteProject(navPopProj().id)"><svg class="ico"><use href="#i-trash"/></svg>Delete&#x2026;</button>
@@ -1414,7 +1422,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div>
           <div class="set-acct flex items-center">
             <span class="set-ember rounded-full flex-none" aria-hidden="true"></span>
-            <span class="set-who min-w-0"><b class="truncate" x-text="chatName() || (session.user.email || '').split('@')[0]"></b><span class="truncate" x-text="(session.user.email || '') + (!online ? ' &#183; offline' : synced ? ' &#183; synced' : ' &#183; not synced')"></span></span>
+            <span class="set-who min-w-0"><b class="truncate" x-text="chatName() || (session.user.email || '').split('@')[0]"></b><span class="truncate" x-text="(session.user.email || '') + (!online ? ', offline' : synced ? ', synced' : ', not synced')"></span></span>
             <button type="button" class="set-out flex-none muted-12" @click="signOut()">Sign out</button>
           </div>
           <div class="set-form">
@@ -1649,7 +1657,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <div class="flex-col">
                     <button type="button" class="trash-small flex items-center gap-8" :aria-expanded="!!trashSmallOpen[e.key]" @click="trashSmallOpen[e.key] = !trashSmallOpen[e.key]">
                       <svg class="ico trash-kico"><use href="#i-edit"/></svg>
-                      <span class="grow min-w-0 truncate"><span class="trash-small-n" x-text="e.items.length + (e.items.length > 1 ? ' small changes' : ' small change')"></span><span class="trash-small-what" x-text="' · ' + trashSmallSum(e.items)"></span></span>
+                      <span class="grow min-w-0 truncate"><span class="trash-small-n" x-text="e.items.length + (e.items.length > 1 ? ' small changes' : ' small change')"></span><span class="trash-small-what" x-text="', ' + trashSmallSum(e.items)"></span></span>
                       <span class="trash-toggle" x-text="trashSmallOpen[e.key] ? 'Hide' : 'Show'"></span>
                     </button>
                     <template x-if="trashSmallOpen[e.key]">
@@ -1758,7 +1766,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
       <div class="fe-body">
         <textarea class="fe-query" placeholder="importance:must due:overdue" :value="filterEdit?.query" @input="filterEdit.query = $event.target.value"></textarea>
-        <p class="fe-hint"><code>#project</code> <code>@area</code> <code>importance:must</code> <code>due:overdue</code> <code>deadline:eow</code> <code>is:recurring</code> <code>in:description</code> · combine with <code>AND</code> <code>OR</code> <code>NOT</code> <code>( )</code></p>
+        <p class="fe-hint"><code>#project</code> <code>@area</code> <code>importance:must</code> <code>due:overdue</code> <code>deadline:eow</code> <code>is:archived</code> <code>is:recurring</code> <code>in:description</code><br>Combine with <code>AND</code> <code>OR</code> <code>NOT</code> <code>( )</code></p>
         <div class="fe-preview" x-show="filterEdit?.query?.trim()" x-cloak>
           <div class="section-label">Matches</div>
           <template x-for="t in filterMatches().slice(0, 50)" :key="t.id">
@@ -1890,7 +1898,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </template>
           <template x-if="clBlockDay(blockEdit.id, blockEdit.viewIso)?.status === 'running'">
             <span class="blk-today-actions">
-              <span class="blk-today-state" x-text="'Started ' + fmtTime((clBlockDay(blockEdit.id, blockEdit.viewIso).actual_start || '').slice(11, 16)) + (clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso)) ? ' · didn\'t end' : '')"></span>
+              <span class="blk-today-state" x-text="'Started ' + fmtTime((clBlockDay(blockEdit.id, blockEdit.viewIso).actual_start || '').slice(11, 16)) + (clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso)) ? ', didn\'t end' : '')"></span>
               <span class="blk-today-lead" x-text="clBlockLead(blockEdit.id)?.content || ''"></span>
               <template x-if="!clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso))"><button type="button" class="ghost blk-stop" @click="clStopBlock(blockEdit.id, blockEdit.viewIso)">Stop now</button></template>
               <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>

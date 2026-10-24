@@ -5,7 +5,7 @@ export const esc = s => String(s ?? '').replace(/[&<>"]/g,
 
 // A ? sheet keycap row → the shortcut coach's plain tip text: its first alternative, adjacent keys joined the
 // platform's way (⌘Z on a Mac, Ctrl+Z elsewhere).
-export const keyTip = (keycaps, mod) => keycaps.split(' · ')[0].replaceAll('</kbd><kbd', mod === '⌘' ? '</kbd><kbd' : '</kbd>+<kbd')
+export const keyTip = (keycaps, mod) => keycaps.split(' or ')[0].replaceAll('</kbd><kbd', mod === '⌘' ? '</kbd><kbd' : '</kbd>+<kbd')
   .replace(/<[^>]+>/g, '').replaceAll('⌘', mod).replace(/(?<=[⌘+])[a-z]$/, c => c.toUpperCase());
 
 // Sanitize link: only http(s)/mailto allowed (bare email → mailto, www. → https); anything else (javascript: etc.) rejected.
@@ -38,8 +38,9 @@ const _fences = /```([\s\S]*?)(```|$)/g;
 const _hasFence = src => String(src ?? '').includes('```');
 // One left-to-right scan for a backslash escape of a mark or a code span: an escaped backtick opens no span, a backslash inside one is literal.
 const _escOrCode = /\\([\\`*_~[\]()#:-])|`([^`\n]+)`/g;
-const _chkMask = new RegExp(_fences.source + '|' + _escOrCode.source, 'g');   // blanks what can't hold a note's "::"
-const _chkSep = src => { const s = String(src ?? ''); return (/[`\\]/.test(s) ? s.replace(_chkMask, m => ' '.repeat(m.length)) : s).indexOf('::'); };   // the test first: replace() alone costs ~2x per row
+const _hl = /::(?!\s)([^\n]+?)(?<!\s)::/g;   // ::highlight::, touching both pairs, so a spaced "a :: b" stays a note's separator
+const _chkMask = new RegExp(_fences.source + '|' + _escOrCode.source + '|' + _hl.source, 'g');   // blanks what can't hold a note's "::"
+const _chkSep = src => { const s = String(src ?? ''); return (/[`\\]/.test(s) || s.indexOf('::') !== s.lastIndexOf('::') ? s.replace(_chkMask, m => ' '.repeat(m.length)) : s).indexOf('::'); };   // the test first: replace() alone costs ~2x per row
 export const chkParts = (c, ci) => { const sep = _chkSep(c.text); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; };
 const _sentinel = (src, mark) => { while (src.includes(mark)) mark += mark[0]; return mark; };
 // XSS-safe markdown for task descriptions (headings, bold, italic, code, links, bullets). Inline-styled spans, not a document renderer.
@@ -54,7 +55,7 @@ const _md = (src, opts = {}) => {
     t = t.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<)]+)/gi, (_, pre, url) => `${pre}${L}${links.push(_link(url, url)) - 1}${LE}`);
     t = esc(t);
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
-    t = t.replace(/~~([^~\n]+)~~/g, '<s>$1</s>');
+    t = t.replace(/~~([^~\n]+)~~/g, '<s>$1</s>').replace(_hl, '<mark class="hl">$1</mark>');
     t = t.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, '$1<em>$2</em>').replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_/g, '$1<em>$2</em>');
     return t.replace(new RegExp(L + '(\\d+)' + LE, 'g'), (_, i) => links[+i]);
   };
@@ -115,6 +116,7 @@ const _dLine = (line, literal) => {   // literal: a title's, where # and - stay 
   t = esc(t);
   t = t.replace(/\*\*([^*\n]+)\*\*/g, (_, x) => _tok('**', `<strong>${x}</strong>`, '**'));
   t = t.replace(/~~([^~\n]+)~~/g, (_, x) => _tok('~~', `<s>${x}</s>`, '~~'));
+  t = t.replace(_hl, (_, x) => _tok('::', `<mark class="hl">${x}</mark>`, '::'));
   t = t.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, (_, pre, x) => pre + _tok('*', `<em>${x}</em>`, '*'));
   t = t.replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_/g, (_, pre, x) => pre + _tok('_', `<em>${x}</em>`, '_'));
   const li = !literal && t.match(/^([-*] )|^(\d+\. )/), h = !literal && !li && t.match(/^(#{1,3})(\s[\s\S]*)?$/);
@@ -209,7 +211,8 @@ export const rowBodyHtml = (r, opts = {}) => {
     const titleHtml = r.titleHtml ?? mdTitle(t.content);
     return `${check}<span class="pick-name">${titleHtml}</span>${chips ? `<span class="areas inline-flex items-center gap-6 flex-none">${chips}</span>` : ''}${projChipHtml(r.projName, r.isDefaultProj)}`;
   }
-  const showProj = !!(r.projName || r.isDefaultProj) && (opts.proj === true || (opts.proj !== false && nav !== 'project' && nav !== 'backlog'));
+  // a nested row shares its parent's project, which the top-level row already names
+  const showProj = !!(r.projName || r.isDefaultProj) && (opts.proj === true || (opts.proj !== false && !r.depth && nav !== 'project' && nav !== 'backlog'));
   const badges = opts.badges !== false;
   // A checklist folds under the SAME chevron as subtasks — one gesture for "hide what's inside this row".
   const chkCount = (r.chk || t.checklist || []).length;
@@ -288,7 +291,7 @@ export const rollerBoxHtml = (it) => {
   const style = [ind ? `margin-left:${ind}px;width:calc(100% - ${ind}px)` : '', it.color && !String(it.color).startsWith('var(') ? `--rlc:${esc(it.color)}` : ''].filter(Boolean).join(';');
   const indent = style ? ` style="${style}"` : '';
   const icon = it.icon === 'prog'
-    ? `<span class="rl-ic rl-prog" style="--p:${esc(it.progress || 0)};--pc:${esc(it.color || 'var(--muted)')}"></span>`
+    ? `<span class="rl-ic pring" style="--p:${esc(it.progress || 0)};--pc:${esc(it.color || 'var(--muted)')}"></span>`
     : `<span class="rl-ic"${it.color ? ` style="color:${esc(it.color)}"` : ''}><svg class="ico"><use href="#${esc(it.icon || 'i-circle')}"/></svg></span>`;
   const cnt = (it.count ?? '') !== '' ? `<span class="rl-cnt">${esc(it.count)}</span>` : '';
   const more = it.kind === 'loc' ? '' : it.kind === 'arch' ? `<svg class="ico rl-chev${it.open ? ' open' : ''}"><use href="#i-chev-d"/></svg>`   // 'Manage locations' has no per-item menu; the Archived row folds

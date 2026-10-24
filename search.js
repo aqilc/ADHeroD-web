@@ -138,12 +138,14 @@ export function parseQuery(str) {
 // ceiling: the live view filters top-level tasks and shows their subtrees, a filter matches at any depth; project/Backlog
 // scope and search text aren't saved — revisit when a saved filter must reproduce those views.
 // scope: the area the view sits in, or null.
-export function qfQuery({ imp, areas, due, done, archived, scope }) {
+export function qfQuery({ imp, areas, due, open = true, done, archived, scope }) {
   const name = n => '@' + (/[\s()]/.test(n) ? `"${n}"` : n), parts = scope ? [name(scope)] : [], at = areas.map(name);
   if (imp.length) parts.push('importance:' + imp.join(','));
   if (at.length) parts.push(at.length > 1 ? `(${at.join(' OR ')})` : at[0]);
   if (due) parts.push(due === 'overdue' ? 'is:overdue' : 'due:' + (due === 'has' ? 'any' : due));
-  if (done || archived) parts.push(done && archived ? 'is:any' : done ? '(is:open OR is:done)' : 'is:any (is:open OR is:archived)');   // is:any lifts the done gate: a done+archived task is archived first, as in the live view
+  const lens = [open && 'is:open', done && 'is:done', archived && 'is:archived'].filter(Boolean);
+  if (lens.length === 3) parts.push('is:any');
+  else if (!(open && lens.length === 1)) parts.push((archived ? 'is:any ' : '') + (lens.length > 1 ? `(${lens.join(' OR ')})` : lens[0]));   // is:any lifts the done gate: a done+archived task is archived first, as in the live view
   return parts.join(' ');
 }
 
@@ -172,6 +174,8 @@ function cmpDate(iso, spec, now) {
 }
 
 function walk(n, fn) { if (!n) return; fn(n); if (n.kids) n.kids.forEach(k => walk(k, fn)); if (n.kid) walk(n.kid, fn); }
+const isVals = ast => { const s = new Set(); walk(ast, n => { if (n.q === 'is') s.add(n.val); }); return s; };
+export const queryStates = query => isVals(parseQuery(query));   // the is: values a query names
 
 export function matchQuery(query, tasks, ctx) {
   const ast = typeof query === 'string' ? parseQuery(query) : query;
@@ -215,8 +219,7 @@ export function matchQuery(query, tasks, ctx) {
     if (n.q === 'is') return flags[n.val] || (() => false);
     return () => true;
   };
-  let includeDone = false, includeArchived = false, wantProject = false;
-  walk(ast, n => { if (n.q === 'is' && (n.val === 'done' || n.val === 'any')) includeDone = true; if (n.q === 'is' && (n.val === 'archived' || n.val === 'any')) includeArchived = true; if (n.q === 'is' && n.val === 'project') wantProject = true; });
+  const is = isVals(ast), includeDone = is.has('done') || is.has('any'), includeArchived = is.has('archived') || is.has('any'), wantProject = is.has('project');
   const pred = compile(ast);
   // Archived excluded by default (like completed); surfaced only via is:archived / is:any.
   const res = tasks.filter(t => t.id !== ctx.defaultProjectId && (includeDone || !t.completed_at) && (includeArchived || !t.archived_at) && (wantProject || !t.overview) && pred(t));

@@ -35,7 +35,7 @@ import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, 
 import { inNotes, openBlockers } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, sevOf, userReminders, offsetLabel } from './reminders.js';
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
-import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, bodyText } from './search.js';
+import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, queryStates, bodyText } from './search.js';
 import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
@@ -78,8 +78,8 @@ const CL_BUFFER = 10;                     // weeks rendered beyond the viewport 
 const CL_HOLD_MS = 3000;                  // hold ↑/↓ this long and the step escalates from a nudge to a PERIOD
 const CL_HOLD_STEP = 220;                 // ...then one period per this, so a held key travels at a readable rate
 const PHONE_MQ = matchMedia('(max-width: 640px)');   // the 640px CSS block's twin; .matches reads live
-// The phone jot bar's trial (docs/ui/mobile-design-baseline.md §8): ?bar=1 turns it on in this browser, ?bar=0 off.
-const BAR = (() => { const q = new URLSearchParams(location.search).get('bar'); if (q) localStorage.setItem('adherod.bar', q); return localStorage.getItem('adherod.bar') === '1'; })();
+// The phone jot bar (docs/ui/mobile-design-baseline.md §8): on by default, ?bar=0 turns it off in this browser, ?bar=1 back on. Inert past phone width.
+const BAR = (() => { const q = new URLSearchParams(location.search).get('bar'); if (q) localStorage.setItem('adherod.bar', q); return localStorage.getItem('adherod.bar') !== '0'; })();
 const STACK_MQ = matchMedia('(max-width: 759px)');   // the stacked-dialogs CSS block's twin: two 380px dialog min-widths don't fit
 const SIDE_MQ = matchMedia('(max-width: 772px)');   // the task panel (--side 412) + the narrowest phone we lay out (360): under it the panel overlays
 const CL_FOOT = 56;                       // bottom nav strip the timeline stops short of (--foot in CSS, less the gesture bar's band)
@@ -120,7 +120,8 @@ const _clSideOut = Object.fromEntries(['res', 'old', 'week', 'due', 'more'].map(
 let _clSecs = { key: '' };   // _clSideSecs(): the panel's sections, built once per change
 let _clSideV = -1;   // the _rowV the tray's cached row html holds for: _patchTask keeps it current, any other bump leaves it behind
 let _clAdNxH = null;   // last written --adh (the incoming claims rail height)
-let _sheetDrag = null;   // clSheetDown(): the finger dragging the phone panel's head
+let _sheetDrag = null;   // sheetDown(): the finger dragging a phone sheet (the Plan panel, the lists tray)
+let _sideSlideT;   // clSideToggle(): ends the grid's slide
 const _clPgCache = new Map();   // day/week periods by index: scale-free days + bands, and their packed cols at one scale
 const _clWkCache = new Map();   // month week rows by index, off the Alpine proxy (a reactive Map deep-proxies every cell)
 const _nextMemo = new Map();   // repeat rule + anchor + day → the occurrence its row shows (whenShown): one step-walk per repeat per day
@@ -279,7 +280,7 @@ const PILL_SPEC = {
   dur:      { json: 0, num: 1, label: (s, v) => s.durFmt(v), read: (s, d) => d.durMin || null,
               commit: (s, d, v) => { d.durMin = v; }, clear: (s, d) => { d.durMin = 0; }, snapshot: (s, d) => d.durMin, restore: (s, d, x) => { d.durMin = x || 0; } },
   proj:     { json: 0, label: (s, v) => '#' + (s.byId.get(v)?.content ?? v), read: (s, d) => d.project ? d.project_id || d.project : null,   // a picked project's chip holds its id; a typed name takes an existing project's
-              commit: (s, d, v) => { const t = s.byId.get(v) ?? (v === d.project ? null : s.projNamed(v)); if (t || v !== d.project) d.project_id = t?.id ?? null; d.project = t ? t.content : v; s.projRequired = false; }, clear: (s, d) => { d.project = null; }, snapshot: (s, d) => ({ project: d.project, project_id: d.project_id }), restore: (s, d, x) => { d.project = x?.project ?? null; d.project_id = x?.project_id ?? null; } },   // a replayed chip keeps the picked (maybe nested) project's id
+              commit: (s, d, v) => { const t = s.byId.get(v) ?? (v === d.project ? null : s.projNamed(v)); if (t || v !== d.project) d.project_id = t?.id ?? null; d.project = t ? t.content : v; s.projRequired = false; }, clear: (s, d) => { d.project = null; d.project_id = null; }, snapshot: (s, d) => ({ project: d.project, project_id: d.project_id }), restore: (s, d, x) => { d.project = x?.project ?? null; d.project_id = x?.project_id ?? null; } },   // a replayed chip keeps the picked (maybe nested) project's id
   area:     { json: 0, multi: 'areas', label: (s, v) => '@' + (s.areaById(v)?.name ?? v),
               commit: (s, d, v) => { if (!d.areas.includes(v)) d.areas.push(v); }, clear: (s, d, r) => { const i = d.areas.indexOf(r); if (i >= 0) d.areas.splice(i, 1); }, snapshot: (s, d) => [...d.areas], restore: (s, d, x) => { d.areas = x || []; } },
   loc:      { json: 0, label: (s, v) => '📍 ' + v,
@@ -320,6 +321,7 @@ const OVERLAYS = [
   [c => c.clDraft(), c => c.eventEdit = c.blockEdit = null],   // a new block/event drawn on the grid: no backdrop, the grid stays live
   [c => c.settingsOpen, c => c.settingsOpen = false],   // corner settings popup — own light backdrop, below the dialogs
   [c => c.navPop, c => c.navPop = null], [c => c.listMenu, c => c.listMenu = null],   // Hearthsay sentence menus (add/sort)
+  [c => c.listTray, c => c.listTray = null],
   [c => c.navRename, c => c.navRename = null], [c => c.tpop, c => c.tpop = false],
   [c => c.endPicking, c => c.endPicking = false], [c => c.pop, c => c.pop = null],
   [c => c.selMenu, c => c.selMenu = null],   // an open edit-bar sub-menu closes before the selection itself
@@ -474,7 +476,7 @@ document.addEventListener('alpine:init', () => {
     blockDays: [],          // block_day answer rows (start/skip/undo written here and on Android)
     dayNotes: [],           // named days (B·V3): { date, label }
     clView: 'month',        // calendar view: day | week | month
-    clSideOpen: false, clSideOlder: false, clSideMore: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle; 'peek-ad' while a drag hovers the Peek all-day strip
+    clSideOpen: false, clSideSlide: false, clSideOlder: false, clSideMore: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle; 'peek-ad' while a drag hovers the Peek all-day strip
     peekPin: false, peekIso: '', peekEdgeHot: null, peekMonHot: '',   // Peek Pane (C2): drag-summoned docked day column on Lists; pin keeps it for batch planning; edge-dwell paging + month-dwell state
     clDropPreview: null,   // { iso, min, h, label } — live ghost of where a drag will land in a week/day column
     clAnchor: isoDate(new Date()),   // calendar anchor date (YYYY-MM-DD); drives the visible period
@@ -493,6 +495,8 @@ document.addEventListener('alpine:init', () => {
     fromChat: null,   // { id, text }: the thread whose words the open composer took (Add as a task)
     notesOpen: false,   // phone: the description and entries show, behind the Steps and notes chip (9A)
     listHold: null,   // { hot, x, y, moved }: the lists held up from the bar's chip (P-A)
+    listTray: null,   // 'half' | 'full': the phone title's lists tray (droid-18 R); trayRows stay drawn while it slides out
+    trayRows: [],
     viewSheet: false,   // Plan's views and actions, risen from the bar's day chip (droid-10)
     narrow: PHONE_MQ.matches,   // phone width — reactive twin of the 640px CSS block (a getter wouldn't re-render on resize)
     stacked: STACK_MQ.matches,  // dialogs share one cell, the covered one inert — reactive twin of the 759px CSS block
@@ -556,7 +560,8 @@ document.addEventListener('alpine:init', () => {
     qfImp: [],          // quick-filter: importance values to keep (must/focus/none/someday); empty = all
     qfAreas: [],        // quick-filter: area ids to keep; empty = all
     qfDue: null,        // quick-filter: 'today'|'overdue'|'has'|'none'|null
-    qfArchived: false,  // quick-filter: when on, show ONLY archived tasks (a flat "Archived" view)
+    qfOpen: true,       // state lenses: open tasks fill the list, done and archived add the section below; any mix, never none
+    qfArchived: false,
     editing: null,
     confirm: null,
     shortcutsOpen: false,
@@ -673,7 +678,7 @@ document.addEventListener('alpine:init', () => {
       try { this.collapsed = JSON.parse(localStorage.getItem('adherod.nav.collapsed') || '{}'); } catch { this.collapsed = {}; }
       this.showCompleted = localStorage.getItem('adherod.list.showCompleted') === '1';   // persists the view setting across sessions
       try { Object.assign(this, JSON.parse(localStorage.getItem('adherod.list.view') || '{}')); } catch {}   // restore sort + quick-filters
-      if (this.sticky) Object.assign(this, { sortBy: 'due', sortDir: 'asc', groupBy: 'none', qfImp: [], qfAreas: [], qfDue: null, qfArchived: false, showCompleted: false });   // its own view, never saved
+      if (this.sticky) Object.assign(this, { sortBy: 'due', sortDir: 'asc', groupBy: 'none', qfImp: [], qfAreas: [], qfDue: null, qfOpen: true, qfArchived: false, showCompleted: false });   // its own view, never saved
       try { _tipsSeen = new Set(JSON.parse(localStorage.getItem('adherod.tipsSeen') || '[]')); } catch {}
       // Shortcut coach: a MOUSE click on a control a key also does (data-sk = its ? sheet label). Capture, so a
       // @click.stop can't hide it; a keyboard-activated click has pointerType '' and a tap 'touch' — neither counts.
@@ -1011,7 +1016,7 @@ document.addEventListener('alpine:init', () => {
         n.classList.add('shed-hid');
         (el._moved || (el._moved = [])).push({ n, home: n.parentElement, i: [...n.parentElement.children].indexOf(n), sel });
         const more = el.querySelector('.hid-more') || el.querySelector('.r1l').appendChild(Object.assign(document.createElement('span'), { className: 'hid-more', textContent: '…' }));
-        more.title = el._moved.map(m => [...m.n.children].map(c => c.textContent.trim()).filter(Boolean).join(', ') || m.n.title).join(' · ');   // per chip: an icon-only one (est) names itself in its tooltip
+        more.title = el._moved.map(m => [...m.n.children].map(c => c.textContent.trim()).filter(Boolean).join(', ') || m.n.title).join('\n');   // per chip: an icon-only one (est) names itself in its tooltip
         return;
       }
       let l2 = line2s.get(el);
@@ -1618,7 +1623,7 @@ document.addEventListener('alpine:init', () => {
       :                     (() => { const col = new Intl.Collator(undefined, { sensitivity: 'base' }); return (a, b) => col.compare(a.content || '', b.content || ''); })();   // alpha: one Collator per sort, not per comparison
       return (a, b) => dir * base(a, b) || (a.position ?? 0) - (b.position ?? 0);
     },
-    _saveView() { localStorage.setItem('adherod.list.view', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir, groupBy: this.groupBy, qfImp: this.qfImp, qfAreas: this.qfAreas, qfDue: this.qfDue, qfArchived: this.qfArchived, secShut: this.secShut })); },
+    _saveView() { localStorage.setItem('adherod.list.view', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir, groupBy: this.groupBy, qfImp: this.qfImp, qfAreas: this.qfAreas, qfDue: this.qfDue, qfOpen: this.qfOpen, qfArchived: this.qfArchived, secShut: this.secShut })); },
     setSort(key) { if (this.sortBy === key && key !== 'manual') this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'; else { this.sortBy = key; this.sortDir = 'asc'; } this._saveView(); },
     // Grouping lives in the SORT menu because it answers the same question ("how is this list arranged?") and
     // the sentence only grows a clause once it has something to say — a permanent "sectioned by none" is a
@@ -1629,15 +1634,18 @@ document.addEventListener('alpine:init', () => {
     toggleQfImp(v) { this._toggleIn(this.qfImp, v); this.qfImp.sort((a, b) => impRank(a) - impRank(b)); this._saveView(); },   // importance order: the sentence and its saved query read it as is
     toggleQfArea(id) { this._toggleIn(this.qfAreas, id); if (!this.qfAreas.length) _qfGone = []; this._saveView(); },   // an emptied facet forgets deleted areas, like its ×
     setQfDue(v) { this.qfDue = this.qfDue === v ? null : v; this._saveView(); },
+    toggleQfOpen() { this.qfOpen = !this.qfOpen; this._saveView(); },
     toggleQfArchived() { this.qfArchived = !this.qfArchived; this._saveView(); },
-    clearQf() { this.qfImp = []; this.qfAreas = []; _qfGone = []; this.qfDue = null; this.qfArchived = false; this._saveView(); },
+    lastLens(on) { return on && this.qfOpen + this.showCompleted + this.qfArchived === 1; },   // the one lit lens can't go dark: a list showing nothing
+    clearQf() { this.qfImp = []; this.qfAreas = []; _qfGone = []; this.qfDue = null; this.qfOpen = true; this.qfArchived = false; this._saveView(); },
     // The sentence is one shape per facet — [connective] then a token that opens the menu and clears itself —
     // so this table IS the grammar: array order is reading order, and a new facet is one entry, not a 4th
     // copy of the markup. A facet WITHOUT a `verb` key renders no connective (importance leads the line);
     // due keeps one even when empty ('' for overdue), because the span is a flex item the spacing counts on.
     qfFragments() {
       const f = [], due = QF_DUE[this.qfDue];
-      if (this.qfImp.length) f.push({ k: 'imp', aria: 'importance', cls: 'ls-tok-pri', flag: true, col: this.pc(this.qfImp[0]), label: this.qfImp.map(v => this.impName(v)).join('·') });   // e.g. Must·Focus; the most important colors it
+      if (!this.qfOpen) f.push({ k: 'state', aria: 'showing', col: 'var(--muted)', icos: [this.showCompleted && 'i-check', this.qfArchived && 'i-archive'].filter(Boolean), label: [this.showCompleted && 'Done', this.qfArchived && 'Archived'].filter(Boolean).join(', ') });   // open off narrows the list, so it says so; done/archived beside open stay unsaid lenses
+      if (this.qfImp.length) f.push({ k: 'imp', aria: 'importance', cls: 'ls-tok-pri', flag: true, col: this.pc(this.qfImp[0]), label: this.qfImp.map(v => this.impName(v)).join(', ') });   // e.g. Must, Focus; the most important colors it
       if (this.qfAreas.length) {
         const area = this.areas.find(a => a.id === this.qfAreas[0]), more = this.qfAreas.length - 1;
         f.push({ k: 'area', aria: 'area', verb: 'in', dot: true, col: area?.color || this.areaDefault, label: (area?.name || '?') + (more ? ` +${more}` : '') });
@@ -1647,7 +1655,8 @@ document.addEventListener('alpine:init', () => {
     },
     // The filter line's shed ladder (task-list.md §Filter line shed order). Where the line can't wrap, the search
     // field yields first (CSS); then ONE rung at a time while a piece still runs past the sentence: `showing`, the
-    // sort word → ⇅, token labels → 6ch, then the labels of tokens whose colour mark can stand in for them.
+    // sort word → ⇅, token labels → 6ch, then the labels of tokens whose colour mark can stand in for them,
+    // then the tokens' × (a token still opens the menu, which clears it).
     // Measured, so a long area name sheds at 414 and a short one never does.
     _fitControls() {
       const lc = this.$refs.lc, sent = lc?.querySelector('.ls-sent');
@@ -1655,10 +1664,10 @@ document.addEventListener('alpine:init', () => {
       // this x-effect can run before lc's x-show in the same flush: fit next frame, never measured hidden
       if (lc.style.display === 'none') return requestAnimationFrame(() => lc.style.display !== 'none' && this._fitControls());
       const over = () => { const r = sent.getBoundingClientRect().right; return [...sent.querySelectorAll('.ls-word, .ls-tok, .ls-clear')].some(e => e.getBoundingClientRect().right > r + 1); };
-      lc.classList.remove('shed-1', 'shed-2', 'shed-3', 'shed-4');
-      for (let i = 1; i <= 4 && over(); i++) lc.classList.add('shed-' + i);
+      lc.classList.remove('shed-1', 'shed-2', 'shed-3', 'shed-4', 'shed-5');
+      for (let i = 1; i <= 5 && over(); i++) lc.classList.add('shed-' + i);
     },
-    clearQfFacet(k) { if (k === 'imp') this.qfImp = []; else if (k === 'area') { this.qfAreas = []; _qfGone = []; } else this.qfDue = null; this._saveView(); },
+    clearQfFacet(k) { if (k === 'imp') this.qfImp = []; else if (k === 'area') { this.qfAreas = []; _qfGone = []; } else if (k === 'state') this.qfOpen = true; else this.qfDue = null; this._saveView(); },
     qfFacets() { return this.qfFragments().length; },
     sortWord() { return ({ manual: 'hand', due: 'due date', importance: 'importance', deadline: 'deadline', alpha: this.sortDir === 'desc' ? 'z-a' : 'a-z', created: 'date added' })[this.sortBy]; },   // follows the "· sorted by" verb
     // Escalate the ad-hoc sentence into a saved filter; pre-populates the AQL textarea from the live filter state.
@@ -1666,7 +1675,7 @@ document.addEventListener('alpine:init', () => {
       this.listMenu = null;
       const areas = this.qfAreas.map(id => this.areaById(id)?.name || '');
       const scope = this.navSel.type === 'area' ? this.areaById(this.navSel.id)?.name : null;
-      this.openFilterEditor({ name: '', query: qfQuery({ imp: this.qfImp, areas, due: this.qfDue, done: this.showCompleted, archived: this.qfArchived, scope }) });
+      this.openFilterEditor({ name: '', query: qfQuery({ imp: this.qfImp, areas, due: this.qfDue, open: this.qfOpen, done: this.showCompleted, archived: this.qfArchived, scope }) });
     },
     // All values, always — a filter you can't reach reads as missing, not tidy (user 2026-07-23). Importance order.
     availImp() { return IMPORTANCE; },
@@ -1681,7 +1690,7 @@ document.addEventListener('alpine:init', () => {
       if (this.composerWin) { _secMemo = []; return this._linkRows([], []); }   // no list to show: new list features can't leak into the card's window
       // The key's reads are the only Alpine deps registered: the list re-runs on them. Completed rows split into _doneMemo (rendered below the add button).
       let key = this._rowV + '|' + this.navSel.type + '|' + this.navSel.id + '|' + this.listQ + '|' + this.showCompleted
-        + '|' + this.sortBy + this.sortDir + '|' + this.qfImp + '|' + this.qfAreas + '|' + this.qfDue + '|' + this.qfArchived
+        + '|' + this.sortBy + this.sortDir + '|' + this.qfImp + '|' + this.qfAreas + '|' + this.qfDue + '|' + this.qfOpen + this.qfArchived
         + '|' + this.groupBy + '|' + this.secShut + '|' + this._nowDay + '|' + this._foldV, focus = this.sticky && this._stickyFocus();
       if (focus) key += '|' + focus.ids + '|' + focus.areas;   // an attachment bumps no _rowV
       void this._celeV;   // _celeExit patches the memo or clears _visKey: either way a pending change
@@ -1733,7 +1742,7 @@ document.addEventListener('alpine:init', () => {
       // Subproject sections: only INSIDE a container view. All/area scope by something other than containment,
       // where a project is a legitimate row rather than the thing the list is about. Inside a project, grouping by
       // project IS its subproject sections — the same view as grouping off.
-      const inProj = this.navSel.type === 'project', group = inProj && this.groupBy === 'project' ? 'none' : this.groupBy, subSec = inProj && group === 'none';
+      const inProj = this.navSel.type === 'project', group = inProj && this.groupBy === 'project' ? 'none' : this.groupBy, subSec = (inProj || this.navSel.type === 'backlog') && group === 'none';
       const { mkRow: build, byParent, byId } = this._mkRowFn(true, cmp); _visBP = byParent;
       // t (a re-read hands in new objects), depth, ctx, fold and collapsed are this pass's (sections shift depth, a filter marks ctx); no other row field reads them
       const mkRow = (t, depth) => { let r = _rowCache.get(t.id); if (!r) _rowCache.set(t.id, r = build(t, depth)); r.t = t; r.depth = depth; r.ctx = false; r.fold = fold; r.collapsed = !!this.collapsed[t.id]; return r; };
@@ -1746,12 +1755,12 @@ document.addEventListener('alpine:init', () => {
       if (this.navSel.type === 'filter') {
         let rows = filtering ? this.filterTasks().filter(t => this.rowPass(t)) : this.filterTasks();
         if (cmp) rows = rows.slice().sort(cmp);
-        const hits = [];
+        const hits = [], named = queryStates(this.activeFilter()?.query);   // a query that names is:archived / is:done lists those rows itself, lens or not
         for (const t of rows) {
           // below-the-line stays flat: it's a review list, not a tree. Uncached: the row may also be an open match's context row up top
-          if (t.archived_at) { if (this.qfArchived) done.push(Object.assign(build(t, 0), { fold })); }
-          else if (t.completed_at && !_cele.has(t.id)) { if (this.showCompleted) done.push(Object.assign(build(t, 0), { fold })); }
-          else hits.push(t);
+          if (t.archived_at && !named.has('archived')) { if (this.qfArchived) done.push(Object.assign(build(t, 0), { fold })); }
+          else if (t.completed_at && !t.archived_at && !named.has('done') && !_cele.has(t.id)) { if (this.showCompleted) done.push(Object.assign(build(t, 0), { fold })); }
+          else if (this.qfOpen) hits.push(t);
         }
         const keep = new Map(), def = this.store.defaultProject();   // id → true = matched, false = pulled in only as an ancestor
         for (const t of hits) {
@@ -1804,11 +1813,13 @@ document.addEventListener('alpine:init', () => {
           const top = !depth || this.isOverviewProject(byId.get(t.parent_id));
           if (t.archived_at && top && !shelvedView) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
           if (t.completed_at && top && !_cele.has(t.id)) { if (this.showCompleted) visitDone(t, 0); else done.hidden = true; return; }   // a celebrating root holds its slot; .hidden: done tasks the lens hides (the empty copy reads "All clear")
+          if (top && !this.qfOpen) { if (!depth && this.isOverviewProject(t)) for (const c of (byParent.get(t.id) || [])) walk(c, 1); return; }   // open lens off: a root project still yields its done/archived children
           if (seen.has(t.id)) return; seen.add(t.id);
           out.push(mkRow(t, depth));
-          if (this.isOverviewProject(t) && depth > 0) return;
+          if (this.isOverviewProject(t) && depth > 0 && !subSec) return;   // with sections, a nested subproject is one more head
           if (fold && this.collapsed[t.id]) return;
-          for (const c of (byParent.get(t.id) || [])) walk(c, depth + 1);
+          const kids = byParent.get(t.id) || [];
+          for (const c of subSec ? kids.toSorted(subLast) : kids) walk(c, depth + 1);
         };
         if (cmp) roots = roots.slice().sort(cmp);
         else if (!inProj) {   // by hand, a view spanning parents reads the tree (Inbox first, like the sidebar), each project in its view's order: a position ranks siblings only
@@ -1854,7 +1865,7 @@ document.addEventListener('alpine:init', () => {
         _secMemo = []; _visKey = key; return this._linkRows(out, done);
       }
       if (group !== 'none') { const [secs, kept] = this._sectionize(out); _secMemo = secs; out = kept; }
-      else if (this.navSel.type === 'filter') { const [secs, kept] = this._promoteSections(out, r => !!r.ctx); _secMemo = secs; out = kept; }
+      else if (this.navSel.type === 'filter') { const [secs, kept] = this._promoteSections(out, r => !r.depth && r.ctx); _secMemo = secs; out = kept; }
       // Inside a project, its overview subprojects become section heads even with grouping OFF — a subproject is
       // a container, and drawn as one more row it read as a sibling of the tasks it actually holds.
       else if (subSec) { const [secs, kept] = this._promoteSections(out, r => this.isOverviewProject(r.t)); _secMemo = secs; out = kept; }
@@ -1929,17 +1940,25 @@ document.addEventListener('alpine:init', () => {
     // along is this" belongs where the project is being worked, not only where it's chosen. Keyed off byId, so
     // it fires for project grouping and subproject sections alike and stays inert for date/area/importance keys.
     _secPie(k) { const p = this.byId.get(k); return p?.overview ? { pct: this.projectProgress(k, _secKids ??= childIndex(this.tasks)) / 100, pieColor: p.color || '' } : {}; },
-    // A depth-0 row that `isHead` claims becomes a section HEAD instead of a row, and its subtree shifts up a
-    // level so the indent still reads as the tree. Two callers, one idiom: a filter view promotes the ancestors
-    // that only provide context (a root that MATCHED stays a row), a project view promotes its overview subprojects.
+    // A row that `isHead` claims, sitting directly in the heads above it, becomes a section HEAD instead of a row,
+    // and its subtree shifts up a level per head so the indent still reads as the tree. Two callers, one idiom: a
+    // filter view promotes the root ancestors that only provide context (a root that MATCHED stays a row), a project
+    // view promotes its overview subprojects at every depth, a nested one labelled by its path ("Sub › Deep", as _sectionize).
     _promoteSections(rows, isHead) {
-      const secs = [], kept = []; let head = null;
+      const secs = [], kept = [], open = [];   // open: the heads the row sits in, outermost first
       for (const r of rows) {
-        if (r.depth === 0) {
-          if (!isHead(r)) head = null;
-          else { head = this._secHead(r.t.id, r.t.content || (this.isOverviewProject(r.t) ? 'Project' : ''), kept.length); secs.push(head); continue; }
-        } else if (head) { r.depth--; if (!r.ctx) head.count++; }
-        if (!head?.shut) kept.push(r);
+        open.length = Math.min(open.length, r.depth);
+        const shut = open.some(s => s.shut);
+        if (r.depth === open.length && isHead(r)) {
+          const head = this._secHead(r.t.id, r.t.content || (this.isOverviewProject(r.t) ? 'Project' : ''), kept.length);
+          if (open.length) head.up = open.map(s => s.label).join(' › ') + ' › ';
+          open.push(head);
+          if (!shut) secs.push(head);   // inside a shut head, none: it's folded away
+          continue;
+        }
+        r.depth -= open.length;
+        if (!r.ctx) for (const s of open) s.count++;
+        if (!shut) kept.push(r);
       }
       return [secs, kept];
     },
@@ -1950,7 +1969,7 @@ document.addEventListener('alpine:init', () => {
       const up = g.up ? html`<span class="sec-up"><span>${g.up}</span></span>` : '';
       // the pie sits AFTER the count, never before the label: the chevron/label column is aligned to the row chevron and the
       // Done head by deliberate convention (layout-lists asserts it), and a leading pie shifts the label 18px.
-      const pie = g.pct == null ? '' : html`<span class="rl-prog sec-pie" style="--p:${g.pct};--pc:${g.pieColor || 'var(--muted)'}"></span>`;
+      const pie = g.pct == null ? '' : html`<span class="pring sec-pie" style="--p:${g.pct};--pc:${g.pieColor || 'var(--muted)'}"></span>`;
       return html`<li class="sec-row flex items-center" data-id="${this._secKey(g)}" data-sec="${g.key}" style="order:${g.at * 2 - 1}">`
         + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg>`
         + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>${raw(pie)}<span class="head-rule"></span></li>`;
@@ -1960,9 +1979,9 @@ document.addEventListener('alpine:init', () => {
     // composer can relocate into the Done list and open inline on a completed task. Edit styling via applyEditDom().
     // Shared <li> builder — _entries (list/done: order + drag) and _clRowsHtml (tray, draggable always). Its 18px gutter
     // holds the chevron left of the check on EVERY row, so checks line up with or without one.
-    _itemLi(r, { order = null, drag = '', ...body } = {}) {
+    _itemLi(r, { order = null, drag = '', after = false, ...body } = {}) {
       const t = r.t, style = (order == null ? '' : 'order:' + order + ';') + 'padding-left:calc(var(--gut) + ' + (r.depth * 22) + 'px);--d:' + r.depth;
-      return html`<li class="item${t.completed_at ? ' done' : t.archived_at ? ' archived' : r.blocked ? ' waiting' : ''}${r.ctx ? ' ctx' : ''} flex gap-10" data-id="${t.id}" style="${style}"${raw(drag)}>${raw(this.rowBody(r, body))}</li>`;
+      return html`<li class="item${t.completed_at ? ' done' : t.archived_at ? ' archived' : r.blocked ? ' waiting' : ''}${r.ctx ? ' ctx' : ''}${after ? ' after' : ''} flex gap-10" data-id="${t.id}" style="${style}"${raw(drag)}>${raw(this.rowBody(r, body))}</li>`;
     },
     // Height estimate for a row that has NEVER been rendered (once one has, _hCache holds its real height).
     // One flat 38px guess against real 34/46/54+ rows made the scrollbar lurch on the way down (#307), so this
@@ -1971,13 +1990,15 @@ document.addEventListener('alpine:init', () => {
       // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
       const step = r.step && !r.t.completed_at ? 14 + (r.step.desc ? 15 : 0) + (r.next ? 20 : 0) : 0;
       if (this.sticky) return 24 + step;   // the note draws one line a task, padded 3px not 8 (sticky.js): no checklist, notes or meta line
-      const chk = r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []);   // folded or Steps → the checklist contributes no height
+      const chk = this._rowChk(r);
       const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id), _chkHeld?.key === r.t.id ? _chkHeld.done : null) : null;
+      const touch = document.documentElement.classList.contains('touch');   // styles.css :where(.touch): 44px rows, 28px checklist pitch
       // Relations ride line 1 until the ladder sheds them onto the shared meta line. A DESCRIPTION always owns its
       // (prose never joins the meta line), so they add their own 17.
       const ml = this._metaLines(r);
-      return 34 + step + (ml ? L2_PAD + ml * L2_ROW_H : 0) + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * 19 : 0);
+      return (touch ? 44 : 34) + step + (ml ? L2_PAD + ml * L2_ROW_H : 0) + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
     },
+    _rowChk(r) { return r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []); },   // folded or Steps → no checklist drawn
     // How many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
     // but a row that has never rendered has no measurement — and guessing one line for a taller row is
     // exactly the lurch #307 fixed. Approximate from the same inputs the row builder has: title length
@@ -1986,7 +2007,7 @@ document.addEventListener('alpine:init', () => {
     // so this only has to keep the scrollbar honest while the reader scrolls past.
     _metaLines(r) {
       if (_listW < 0 || (r.step && !r.t.completed_at)) return 0;   // an open Steps row hides, never sheds
-      const meta = (r.areas?.length ? 8 + r.areas.length * 46 : 0) + (r.projName ? 92 : 0) + (r.estSize ? 20 : 0)
+      const meta = (r.areas?.length ? 8 + r.areas.length * 46 : 0) + (r.projName && !r.depth ? 92 : 0) + (r.estSize ? 20 : 0)
         + (r.dl ? 42 : 0) + (r.loc ? 62 : 0) + (r.due ? 56 : 0)
         + (r.rels?.length ? r.rels.length * 72 : 0);
       const avail = _listW - 46 - r.depth * 22;                              // 46 = gutter + check + gaps
@@ -2002,8 +2023,10 @@ document.addEventListener('alpine:init', () => {
       const head = () => { const g = secs[si++], id = this._secKey(g); ent.push({ id, order: g.at * 2 - 1, h: _hCache.get(id) ?? SEC_H, html: '', mk: () => this._secLi(g) }); };
       for (let i = 0; i < rows.length; i++) {
         while (secs && si < secs.length && secs[si].at === i) head();
-        const r = rows[i];
-        ent.push({ id: r.t.id, order: i * 2, d: r.depth, r, h: _hCache.get(r.t.id) ?? this._rowEst(r), html: '', mk: () => this._itemLi(r, { order: i * 2, drag }) });
+        const r = rows[i], prev = rows[i - 1];
+        // a top-level row after a subtree or a checklist opens a new group: a phone spaces it (styles.css .item.after); a section head already does
+        const after = !r.depth && !!prev && ent.at(-1).r === prev && (prev.depth > 0 || this._rowChk(prev).length > 0);
+        ent.push({ id: r.t.id, order: i * 2, d: r.depth, r, h: _hCache.get(r.t.id) ?? this._rowEst(r) + (after && this.narrow && document.documentElement.classList.contains('touch') ? 12 : 0), html: '', mk: () => this._itemLi(r, { order: i * 2, drag, after }) });
       }
       while (secs && si < secs.length) head();
       return ent;
@@ -2427,7 +2450,7 @@ document.addEventListener('alpine:init', () => {
       await this._bulk(`Deleted ${this._nTasks(this.sel.length)}`, this._selRoots().map(id => ({ kind: 'delete', target: 'task', id })));
     },
     async selSetPrio(v) {
-      await this._bulk(`Set priority · ${this._nTasks(this.sel.length)}`, Array.from(this.sel, id => ({ kind: 'update', target: 'task', id, after: { importance: v } })));
+      await this._bulk(`Set priority on ${this._nTasks(this.sel.length)}`, Array.from(this.sel, id => ({ kind: 'update', target: 'task', id, after: { importance: v } })));
     },
     async selMoveToProject(p) {
       const kids = childIndex(this.tasks);   // once per batch, not per selected row
@@ -2439,7 +2462,7 @@ document.addEventListener('alpine:init', () => {
     },
     async selAddArea(a, keep) {
       const ops = this.selTasks().filter(t => !(t.area_ids || []).includes(a.id)).map(t => ({ kind: 'update', target: 'task', id: t.id, after: { area_ids: [...(t.area_ids || []), a.id] } }));
-      await this._bulk(`Tagged ${this._nTasks(ops.length)} · ${a.name}`, ops, keep);
+      await this._bulk(`Tagged ${this._nTasks(ops.length)} with ${a.name}`, ops, keep);
     },
     // shift each selected task's PLACEMENT by the SAME delta (relative spacing preserved); only placed tasks
     // move — a repeat's recur_from is its rule anchor, not a date to drag, so it stays put.
@@ -2594,6 +2617,8 @@ document.addEventListener('alpine:init', () => {
       if (!ids.length) return 0;
       return Math.round(ids.filter(x => this.byId.get(x)?.completed_at).length / ids.length * 100);
     },
+    ringVars(p) { return { '--p': this.projectProgress(p.id, this._kidsOf(p.id)) / 100, '--pc': p.color || 'var(--muted)' }; },   // an object: a :style string would wipe x-show's display:none
+    projRing(p) { const v = this.ringVars(p); return html`<span class="pring" style="--p:${v['--p']};--pc:${v['--pc']}"></span>`; },
     startRename(id) { this.navRename = id; this.navPop = null; },   // the field focuses itself as it renders (index.html)
     async saveRename(p, name) {
       name = name.trim(); this.navRename = null;
@@ -2902,12 +2927,12 @@ document.addEventListener('alpine:init', () => {
     projNamed(name) { const n = name.toLowerCase(), all = this.tasks.filter(t => t.overview && !t.archived_at && t.content.toLowerCase() === n); return all.find(t => !t.parent_id) ?? all[0]; },   // a typed #name files under the project it names, top level first, never a twin of a nested one
     isDefaultProj(id) { return !!id && id === this._defId; },
     pickIsDefault() { return this.draft.project_id ? this.draft.project_id === this.store.defaultProject() : !this.draft.project; },
-    projPickColor() {
-      const p = this.draft.project, c = this.draft.project_id || !p   // no name → the default project, by its cached id (O(1))
-        ? this.byId.get(this.draft.project_id || this._defId)?.color
-        : this.tasks.find(x => x.content === p && x.parent_id === null)?.color;
-      return c ? 'color:' + c : '';
+    pickProj() {
+      const p = this.draft.project;
+      return this.draft.project_id || !p ? this.byId.get(this.draft.project_id || this._defId)   // no name → the default project, by its cached id (O(1))
+        : this.tasks.find(x => x.content === p && x.parent_id === null);
     },
+    projPickColor() { const c = this.pickProj()?.color; return c ? 'color:' + c : ''; },
     listTintCol() {
       if (this.navSel.type === 'project') return this.byId.get(this.navSel.id)?.color || null;
       if (this.navSel.type === 'area') return this.areas.find(x => x.id === this.navSel.id)?.color || null;
@@ -2933,9 +2958,9 @@ document.addEventListener('alpine:init', () => {
     },
     // static body — shell <li> keeps reactive bindings
     // Grouping by project already names it in the section head — repeating it on every row is noise.
-    // A Done root from a subproject names it inside the project view (even grouped); a row of the viewed project itself doesn't.
+    // A Done root from a subproject names it inside the project or Backlog view (even grouped); a row of the viewed project itself doesn't.
     rowBody(r, opts) {
-      const subDone = this.navSel.type === 'project' && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== this.navSel.id;
+      const box = this.navSel.type === 'backlog' ? this._defId : this.navSel.type === 'project' && this.navSel.id, subDone = box && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== box;
       return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...(this.sticky && { proj: false, checklist: false, desc: false }), ...opts });   // the note draws one line a task (user: "constrain tasks to single lines"); a Steps row keeps its step
     },
     // body is inert x-html — delegate here; editTask measures .item
@@ -3125,6 +3150,8 @@ document.addEventListener('alpine:init', () => {
       this._pushEntry(label, entry, { bin: bin || landed.length > 1, ...!ok && { msg: `“${label}” didn’t fully save. The list shows what’s saved` } });   // several rows: a bulk change, in Recent changes as the edit bar's Move
       return ok;
     },
+    // A project sits in Backlog only until moved out (user: "a way to make these projects top level inside the app too"): it goes last at the top.
+    moveOutOfBacklog(id) { this.navPop = null; return this._moveTask([id], null, [...this.childTasks(null).flatMap(x => x.id === id ? [] : [x.id]), id], { label: () => 'Moved out of Backlog' }); },
     dragEnd() {
       this._clearDrag(); this.dragId = null; this.taskDropHint = null; this.railHot = null; this.clDragEndSchedule(); this._peekCancelEdge();
     },
@@ -3191,7 +3218,7 @@ document.addEventListener('alpine:init', () => {
     // --- Drag-to-move edge rail: Backlog + every project + every area as compact drop targets. ---
     railItems() {
       const items = [{ kind: 'backlog', id: null, label: 'Backlog', icon: 'i-backlog', color: '' }];
-      for (const { p } of this.overviewProjectRows()) items.push({ kind: 'proj', id: p.id, label: p.content, icon: 'i-hash', color: p.color || '' });
+      for (const { p } of this.overviewProjectRows()) items.push({ kind: 'proj', id: p.id, label: p.content, icon: 'i-proj', color: p.color || '' });
       for (const l of this.areas) items.push({ kind: 'area', id: l.id, label: l.name, icon: l.icon || 'i-tag-tag', color: l.color || this.areaDefault });
       return items;
     },
@@ -3600,7 +3627,7 @@ document.addEventListener('alpine:init', () => {
         return html`${raw(lead)}<span class="pick-name">${r.title || ''}</span><span class="pick-tag">${r.tag ?? (r.type === 'command' ? 'Action' : r.type)}</span>`;
       }
       const marked = raw(this.searchTitleHTML(r));
-      if (r.type === 'project') return html`<span class="hash">#</span><span class="pick-name">${marked}</span>`;
+      if (r.type === 'project') return html`${raw(this.projRing(r.obj))}<span class="pick-name">${marked}</span>`;
       return html`<svg class="ico area-ico" style="color:${r.obj.color || this.areaDefault}"><use href="#${r.obj.icon || 'i-tag-tag'}"/></svg><span class="pick-name">${marked}</span>`;
     },
     openPalette(q = '') { this.palette.open = true; this.palette.q = q; this.palette.sel = 0; this.$nextTick(() => this.palette.open && this.$refs.paletteInput?.focus()); },   // held by a leave transition, a focus tick can run after a close, ahead of the held hide: every deferred focus checks its open flag
@@ -3638,9 +3665,9 @@ document.addEventListener('alpine:init', () => {
       r.id === 'search' ? this.openPalette() : this.pickSearchResult(r, query);
     },
     // P-A: hold the bar's list name, slide to a list, let go. Let go on the chip and the menu stays up for a tap.
-    // ceiling: top-level lists, the first 7 (as drawn); the last row opens the overview for the rest
-    holdRows() {
-      const lists = this.overviewProjectRows().filter(r => !r.depth).slice(0, 7).map(({ p }) => ({ type: 'project', id: p.id, label: p.content, icon: 'i-ring' }));
+    // ceiling: top-level lists, the first 7 (as drawn; the title's tray has them all); the last row opens the overview for the rest
+    holdRows(cap = 7) {
+      const lists = this.overviewProjectRows().filter(r => !r.depth).slice(0, cap).map(({ p }) => ({ type: 'project', id: p.id, label: p.content, icon: 'i-proj', p }));
       return [{ type: 'all', id: null, label: 'All', icon: 'i-all' }, { type: 'backlog', id: null, label: 'Backlog', icon: 'i-backlog' }, ...lists, { type: 'more', id: null, label: 'All lists and filters', icon: 'i-search' }];
     },
     holdPick(r) {
@@ -3848,7 +3875,7 @@ document.addEventListener('alpine:init', () => {
     projRowsHtml(list, sel) {
       return list.map(p => { const tick = raw(p.id === sel ? html`<svg class="tick ico"><use href="#i-check"/></svg>` : ''), tint = p.color ? `color:${p.color}` : '';
         return this.taskProj(p) ? html`<button type="button" class="pop-item task-line" data-pid="${p.id}">${raw(this.taskLine(p))}${tick}</button>`
-          : html`<button type="button" class="pop-item proj-row" data-pid="${p.id}"><svg class="hash-ico ico" style="${tint}"><use href="${this.isDefaultProj(p.id) ? '#i-backlog' : '#i-hash'}"/></svg>`
+          : html`<button type="button" class="pop-item proj-row" data-pid="${p.id}">${raw(this.isDefaultProj(p.id) ? html`<svg class="hash-ico ico" style="${tint}"><use href="#i-backlog"/></svg>` : this.projRing(p))}`
             + html`<span style="${tint && tint + ';opacity:.75'}">${this.projectPath(p)}</span>${tick}</button>`; }).join('');
     },
     pidOf(e) { return this.byId.get(e.target.closest('[data-pid]')?.dataset.pid); },
@@ -4296,7 +4323,7 @@ document.addEventListener('alpine:init', () => {
       // button without opening the picker; every rule in a multi-repeat carries its own end.
       const rs = this.repRules();
       if (rs.length) {
-        const lbl = r => this.recurrenceLabel(r) + (r.at ? ' · ' + this.fmtTime(r.at) : '') + (r.ends?.date ? ' · until ' + this.fmt(r.ends.date) : r.ends?.count ? ' · ' + r.ends.count + '×' : '');
+        const lbl = r => this.recurrenceLabel(r) + (r.at ? ', ' + this.fmtTime(r.at) : '') + (r.ends?.date ? ', until ' + this.fmt(r.ends.date) : r.ends?.count ? ', ' + r.ends.count + '×' : '');
         return rs.map(lbl).join(' + ');
       }
       // Both registers read on the one chip, each in its own voice: a placement is a plain date ("Fri 12"),
@@ -4307,7 +4334,7 @@ document.addEventListener('alpine:init', () => {
       if (f && dl && f.slice(0, 10) === dl.slice(0, 10)) parts.push('only ' + this.fmt(dl.slice(0, 10)));   // one-day world-window — walled on both sides
       else if (f && dl) parts.push(this.fmt(f.slice(0, 10)) + ' – ' + this.fmt(dl.slice(0, 10)));   // the window; its end IS the deadline
       else if (dl) parts.push('by ' + this.fmt(dl.slice(0, 10)) + (timeOf(dl) ? ' ' + this.fmtTime(timeOf(dl)) : ''));
-      return parts.join(' · ') || 'When';
+      return parts.join(', ') || 'When';
     },
     recurrenceLabel(rec) { return recurrenceLabel(rec); },
     // from→due range: drag directly on the due calendar (tap = due, unchanged); the fchip is a readout + hint
@@ -4538,11 +4565,13 @@ document.addEventListener('alpine:init', () => {
     },
     _liveToks(el, node, off) {
       if (!el.contains(node)) return [];
-      if (node.nodeType === 3 && (!off || off === node.length)) {   // at a text's edge: the point between it and its neighbours
+      const toks = [];
+      for (let n = node; n !== el; n = n.parentNode) if (n.classList?.contains('dm-tok')) toks.push(n);
+      // At a node's edge: the point between it and its neighbours, out to the widest node it ends ("- |**a**" touches both)
+      while (node !== el && (!off || off === (node.nodeType === 3 ? node.length : node.childNodes.length))) {
         off = [].indexOf.call(node.parentNode.childNodes, node) + (off && 1); node = node.parentNode;
       }
-      const toks = [], prev = node.childNodes?.[off - 1], next = node.childNodes?.[off];
-      for (let n = node; n !== el; n = n.parentNode) if (n.classList?.contains('dm-tok')) toks.push(n);
+      const prev = node.childNodes?.[off - 1], next = node.childNodes?.[off];
       if (prev?.classList?.contains('dm-tok') && !prev.textContent.endsWith('\n')) toks.push(prev);   // a fence's last line break: the caret starts the next line
       if (next?.classList?.contains('dm-tok')) toks.push(next);
       return toks;
@@ -5289,42 +5318,42 @@ document.addEventListener('alpine:init', () => {
     // The ? sheet's rows — also the coach's key lookup (_coach), so a tip can't drift from the sheet.
     shortcutGroups() {
       return [
-        {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],...this.surfaceOrder.map((s, i) => ['<kbd>' + (i + 1) + '</kbd>', 'Go to ' + SURF_META[s].label]),['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> · <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
-        {l:'Overview',r:[['<kbd class=sk-letter>h</kbd>/<kbd class=sk-letter>l</kbd> · <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Move across surfaces'],['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move through Lists destinations'],['<kbd>↵</kbd>','Open overview selection'],['<kbd>1</kbd>–<kbd>' + this.surfaceOrder.length + '</kbd>','Open surface directly'],['<kbd class=sk-letter>o</kbd>','Close overview']]},
+        {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],...this.surfaceOrder.map((s, i) => ['<kbd>' + (i + 1) + '</kbd>', 'Go to ' + SURF_META[s].label]),['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> or <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
+        {l:'Overview',r:[['<kbd class=sk-letter>h</kbd>/<kbd class=sk-letter>l</kbd> or <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Move across surfaces'],['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> or <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move through Lists destinations'],['<kbd>↵</kbd>','Open overview selection'],['<kbd>1</kbd>–<kbd>' + this.surfaceOrder.length + '</kbd>','Open surface directly'],['<kbd class=sk-letter>o</kbd>','Close overview']]},
         {l:'Finder',r:[['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move finder selection'],['<kbd>↵</kbd>','Open finder selection'],['<kbd>⌘</kbd><kbd class=sk-letter>s</kbd>','Save query as filter']]},
-        {l:'Task list',r:[['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> · <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd class=sk-letter>e</kbd>','Open focused'],['<kbd class=sk-letter>x</kbd>','Complete focused or selected'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Extend selection'],['<kbd>/</kbd> · <kbd>⌘</kbd><kbd class=sk-letter>f</kbd>','Search tasks'],['<kbd class=sk-letter>f</kbd>','Filter tasks']]},
-        {l:'Plan',r:[['<kbd class=sk-letter>d</kbd>/<kbd class=sk-letter>w</kbd>/<kbd class=sk-letter>m</kbd>','Day / week / month'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Scroll an hour · hold 3s to travel'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⌘</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Travel a day / week / month'],['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','On a month day: the next day / week']]},
+        {l:'Task list',r:[['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> or <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd class=sk-letter>e</kbd>','Open focused'],['<kbd class=sk-letter>x</kbd>','Complete focused or selected'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Extend selection'],['<kbd>/</kbd> or <kbd>⌘</kbd><kbd class=sk-letter>f</kbd>','Search tasks'],['<kbd class=sk-letter>f</kbd>','Filter tasks']]},
+        {l:'Plan',r:[['<kbd class=sk-letter>d</kbd>/<kbd class=sk-letter>w</kbd>/<kbd class=sk-letter>m</kbd>','Day / week / month'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Scroll an hour, hold 3s to travel'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⌘</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Travel a day / week / month'],['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','On a month day: the next day / week']]},
         {l:'Composer',r:[['<kbd>↵</kbd>','Save / add another'],['<kbd>⌘</kbd><kbd>↵</kbd>','Save & close'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd>⇥</kbd>','Move between fields'],['<kbd class=sk-arrow>↑</kbd> in an empty title','Edit the task just added'],['<kbd>esc</kbd>','Close']]},
         {l:'Composer entries',r:[['<kbd>↵</kbd>','Add next entry'],['<kbd class=sk-mod>⇧</kbd><kbd>↵</kbd>','New line in entry'],['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>/<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Navigate open picker'],['<kbd>↵</kbd>','Choose picker option'],['<kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>v</kbd>','Paste lines as one entry'],['<kbd>⌫</kbd> on rows dragged across','Delete selected entries']]},
         {l:'Syntaxes'},
         {l:'Composer syntax',r:[
-          ['<b>!</b> · <b>!!</b> · <b>~</b>','Importance symbols'],['<b>focus on</b> · <b>must</b> · <b>someday</b>','Importance words'],
-          ['<b>tomorrow</b> · <b>fri</b> · <b>next week</b>','Schedule a day or window'],['<b>in 3 days</b> · <b>aug 10</b> · <b>2026-12-25</b>','Schedule relative to now'],
-          ['<b>5pm</b> · <b>noon</b>','Set a time'],['<b>30m</b> · <b>1h30m</b>','Set duration'],
-          ['<b>by fri</b> · <b>due tomorrow</b> · <b>^ aug 10</b>','Set deadline'],['<b>only tue</b>','Restrict to one day'],
+          ['<b>!</b> or <b>!!</b> or <b>~</b>','Importance symbols'],['<b>focus on</b> or <b>must</b> or <b>someday</b>','Importance words'],
+          ['<b>tomorrow</b> or <b>fri</b> or <b>next week</b>','Schedule a day or window'],['<b>in 3 days</b> or <b>aug 10</b> or <b>2026-12-25</b>','Schedule relative to now'],
+          ['<b>5pm</b> or <b>noon</b>','Set a time'],['<b>30m</b> or <b>1h30m</b>','Set duration'],
+          ['<b>by fri</b> or <b>due tomorrow</b> or <b>^ aug 10</b>','Set deadline'],['<b>only tue</b>','Restrict to one day'],
           ['<b>#project</b>','Choose project'],['<b>@area</b>','Add area'],['<b>at Office</b>','Require a location'],['<b>away from Home</b>','Exclude a location'],
-          ['<b>needs Report</b> · <b>needed by Launch</b>','Add dependency'],['<b>Item :: detail</b>','Checklist description only']]},
+          ['<b>needs Report</b> or <b>needed by Launch</b>','Add dependency'],['<b>Item :: detail</b>','Checklist description only']]},
         {l:'Filter syntax',r:[
-          ['<b>#work</b> · <b>##work</b>','Project / descendants'],['<b>@errands</b>','Area'],['<b>importance:must,focus</b>','Importance'],
-          ['<b>due:overdue</b> · <b>due:today..eow</b>','Due date'],['<b>deadline:any</b> · <b>deadline:eow</b>','Deadline'],
-          ['<b>is:open</b> · <b>is:recurring</b> · <b>is:blocked</b> · <b>is:note</b>','State'],['<b>in:title</b> · <b>in:description</b>','Search field'],
-          ['<b>AND</b> · <b>OR</b> · <b>NOT</b> · <b>( )</b> · <b>-@home</b>','Combine / negate'],
+          ['<b>#work</b> or <b>##work</b>','Project / descendants'],['<b>@errands</b>','Area'],['<b>importance:must,focus</b>','Importance'],
+          ['<b>due:overdue</b> or <b>due:today..eow</b>','Due date'],['<b>deadline:any</b> or <b>deadline:eow</b>','Deadline'],
+          ['<b>is:open</b> or <b>is:done</b> or <b>is:archived</b>','Open / done / archived'],['<b>is:recurring</b> or <b>is:blocked</b> or <b>is:note</b>','Repeats / blocked / note'],['<b>in:title</b> or <b>in:description</b>','Search field'],
+          ['<b>AND</b> or <b>OR</b> or <b>NOT</b> or <b>( )</b> or <b>-@home</b>','Combine / negate'],
           ['<b>#work importance:must due:overdue</b>','Example: urgent overdue work'],
           ['<b>(is:blocked OR deadline:today) is:open</b>','Example: blocked or due today'],
           ['<b>report in:description -@home</b>','Example: description away from home']]},
         {l:'Recurrence syntax',r:[
-          ['<b>every day</b> · <b>every 2 weeks</b>','Repeat on an interval'],['<b>every! week</b>','Repeat from completion'],
+          ['<b>every day</b> or <b>every 2 weeks</b>','Repeat on an interval'],['<b>every! week</b>','Repeat from completion'],
           ['<b>every 2 weeks on mon wed at 9am</b>','Choose repeat days and time'],['<b>every day, 3 times</b>','End after a count'],
           ['<b>every week ending sep 1</b>','End on a date']]},
         {l:'Description Markdown',r:[
-          ['<b>**bold**</b> · <b>*italic*</b> · <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],
-          ['<b>```code```</b>','Code block'],['<b>\\*</b>','Show a mark as typed'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> · <b>- Item</b>','Heading / bullet']]}
+          ['<b>**bold**</b> or <b>*italic*</b> or <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],['<b>::highlight::</b>','Highlight'],
+          ['<b>```code```</b>','Code block'],['<b>\\*</b>','Show a mark as typed'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> or <b>- Item</b>','Heading / bullet']]}
       ];
     },
     // The sheet's reference as one string: static text needs no ~180 bindings.
     shortcutsHtml() {
       return this.shortcutGroups().map(g => html`<div class="${g.r ? 'sheet-grp' : 'sk-section'}"><div class="section-label">${g.l}</div>${raw((g.r || []).map(([k, d]) =>
-        html`<div class="sk flex items-center gap-6 muted-12"><span>${raw(k.replaceAll('⌘', this.mod).replaceAll(' · ', ' or '))}</span><span>${d}</span></div>`).join(''))}</div>`).join('');
+        html`<div class="sk flex items-center gap-6 muted-12"><span>${raw(k.replaceAll('⌘', this.mod))}</span><span>${d}</span></div>`).join(''))}</div>`).join('');
     },
     // The 2nd mouse use of one action in a session shows its key — once ever per action, never blocking.
     _coach(data) {   // the control's dataset: sk = its sheet label, skKey = its own key where the row lists several (d/w/m)
@@ -5512,7 +5541,7 @@ document.addEventListener('alpine:init', () => {
     },
     trashIcon(e) {   // the pencil means "changed"; a draft is a clipboard
       if (this.trashIsChange(e)) return 'i-edit';
-      return { task: 'i-circle', 'checklist-item': 'i-check', project: 'i-hash', area: 'i-tag-tag', event: 'i-cal', block: 'i-cal', filter: 'i-search', location: 'i-pin', draft: 'i-clipboard' }[e.target] || 'i-trash';
+      return { task: 'i-circle', 'checklist-item': 'i-check', project: 'i-proj', area: 'i-tag-tag', event: 'i-cal', block: 'i-cal', filter: 'i-search', location: 'i-pin', draft: 'i-clipboard' }[e.target] || 'i-trash';
     },
     // ONE chronological list: the row says which kind it is (icon, red text vs muted, and this verb) — sections by kind
     // would throw away the only order the bin exists to show, "what did I just do?".
@@ -5546,18 +5575,18 @@ document.addEventListener('alpine:init', () => {
       if (e.kind === 'draft') {
         const d = e.payload?.draft || {}, ghost = (e.payload?.chkGhost || e.payload?.subGhost || '').trim(), title = clip(d.content) || ghost || 'Untitled draft';
         const items = (d.checklist || []).map(i => i.text).filter(t => (t || '').trim());
-        return out(title, ['Unsaved draft', ...n(items.length, 'item')].join(' · '), peek([...items, ghost !== title ? ghost : '', d.notes], 'trash-add'));
+        return out(title, ['Unsaved draft', ...n(items.length, 'item')].join(', '), peek([...items, ghost !== title ? ghost : '', d.notes], 'trash-add'));
       }
       if (e.kind === 'checklist-item' || e.kind === 'held-sub') {
         const task = this.byId.get(e.payload?.taskId)?.content;
-        return out(clip(e.payload?.item?.text), [e.kind === 'held-sub' ? 'Unsaved subtask' : 'Checklist item', this.trashBlocked(e) || clip(task, 40)].filter(Boolean).join(' · '));
+        return out(clip(e.payload?.item?.text), [e.kind === 'held-sub' ? 'Unsaved subtask' : 'Checklist item', this.trashBlocked(e) || clip(task, 40)].filter(Boolean).join(', '));
       }
       const opRow = op => (op.rows && op.rows[0]) || this._rowById(op.target || 'task', op.id ?? op.fwd?.id) || {}, name = r => r.content ?? r.name ?? r.title ?? r.body;
       // a change (move / priority / completion): the rows still exist — the label's own sentence and the muted names it touched, never red
       if (this.trashIsChange(e)) return out(e.label, 'Changed', peek(this._entryOps(e).map(op => name(opRow(op)) || '(untitled)'), ''));
       if (e.target === 'reminder') {   // a save's removed reminders: one task's, named by it and each one's time
         const rows = this._entryOps(e).flatMap(o => o.rows || []);
-        return out(clip(this.byId.get(rows[0]?.ref_id)?.content), [rows.length > 1 ? rows.length + ' reminders' : 'Reminder', this.trashBlocked(e)].filter(Boolean).join(' · '), peek(rows.map(r => this.remWhen(r, this.byId.get(r.ref_id) || {})), 'trash-del'));
+        return out(clip(this.byId.get(rows[0]?.ref_id)?.content), [rows.length > 1 ? rows.length + ' reminders' : 'Reminder', this.trashBlocked(e)].filter(Boolean).join(', '), peek(rows.map(r => this.remWhen(r, this.byId.get(r.ref_id) || {})), 'trash-del'));
       }
       // Bulk multi-select delete (≥2 ops): the COUNT + every affected item. Single-entity deletes model children re-parenting as
       // mixed-kind ops, so they fall through to the row preview below.
@@ -5567,7 +5596,7 @@ document.addEventListener('alpine:init', () => {
       const rows = e.op?.rows || e.op?.ops?.find(o => o.rows)?.rows || [], root = rows[0] || {}, desc = (root.notes || '').trim(), items = (root.checklist || []).map(i => i.text).filter(t => (t || '').trim());
       if (e.target !== 'task') return out(clip(name(root)), { project: 'Project', area: 'Area', event: 'Event', block: 'Time block', filter: 'Filter', location: 'Location' }[e.target] || 'Item', peek([desc], 'trash-del'));
       const detail = ['Task', ...n(rows.length - 1, 'subtask'), ...n(items.length, 'checklist item'), ...desc ? ['description'] : [], ...root.recurrence && root.recur_from ? ['repeats from ' + this.fmt(root.recur_from)] : []];
-      return out(clip(name(root)), detail.join(' · '), peek([...rows.slice(1).map(name), ...items, desc], 'trash-del'));
+      return out(clip(name(root)), detail.join(', '), peek([...rows.slice(1).map(name), ...items, desc], 'trash-del'));
     },
     // The small-changes row's summary, each kind once, newest first: "dates, priority, a rename".
     trashSmallSum(items) {
@@ -5692,7 +5721,7 @@ document.addEventListener('alpine:init', () => {
         n.scheduleItem && `${n.scheduleItem} ${s(n.scheduleItem, 'attachment', 'attachments')} couldn’t come back (${s(n.scheduleItem, 'its block was', 'their blocks were')} deleted)`,
         n.noTask && `${n.noTask} ${s(n.noTask, 'attachment', 'attachments')} couldn’t come back (${s(n.noTask, 'its task was', 'their tasks were')} deleted)`,
         link && `${link} ${s(link, 'link', 'links')} couldn’t come back (the other ${s(link, 'task was', 'tasks were')} deleted)`,
-        n.reminder && `${n.reminder} ${s(n.reminder, 'reminder', 'reminders')} couldn’t come back (${s(n.reminder, 'its time', 'their times')} passed)`].filter(Boolean).map(t => ' · ' + t).join('');
+        n.reminder && `${n.reminder} ${s(n.reminder, 'reminder', 'reminders')} couldn’t come back (${s(n.reminder, 'its time', 'their times')} passed)`].filter(Boolean).map(t => '. ' + t).join('');
     },
     // A deleted checklist item goes back onto its (still-existing) task's stored checklist at its old index.
     async _restoreChecklistItem(payload) {
@@ -6167,7 +6196,7 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
     // A shown root leaving for a hidden Done list, in a flat list: the patch drops it with its subtree.
-    _dropsRoot(id, arch, done) { return (arch ? !this.qfArchived : !!done && !this.showCompleted) && !_secMemo.length && this.navSel.type !== 'area' && _rowMap.get(id)?.depth === 0; },
+    _dropsRoot(id, arch, done) { return (arch ? !this.qfArchived : done ? !this.showCompleted : !this.qfOpen) && !_secMemo.length && this.navSel.type !== 'area' && _rowMap.get(id)?.depth === 0; },
     // A search or quick filter reads anything, so an edit never patches under one; an exit edits nothing, so it still drops its rows.
     // A saved filter never patches: its exits from under a section head drop nothing anyway. Nor while a _rowV bump the memo hasn't rendered
     // stands (a patch must never hide it).
@@ -6270,7 +6299,7 @@ document.addEventListener('alpine:init', () => {
         if (partial) return this.toast(`Failed fully ${verb}ing “${e.label}”. What went is in the Bin`);
         if (e.target === 'task') this._landOn(e.op?.id ?? e.op?.fwd?.id ?? e.op?.ops?.map(o => o.target === 'task' ? o.id : o.rows?.[0]?.task_id).find(Boolean));   // a save's date-items name its task
         if (inverse.newer === 'all') return this.notify(`“${e.label}” not ${verb}ne, it changed since`, { actions: [this._cardStep(-dir, e.id)] });
-        note = kept ? ' · already back, this copy stays in the Bin' : [inverse, ...inverse.ops || []].some(o => o.newer) ? ' · what changed since stays' : this._skipNote(applied);
+        note = kept ? '. Already back, this copy stays in the Bin' : [inverse, ...inverse.ops || []].some(o => o.newer) ? '. What changed since stays' : this._skipNote(applied);
       }
       this.notify(e.label + (dir < 0 ? ' undone' : '') + note, { actions: [this._cardStep(-dir, e.id)] });
     },
@@ -7546,12 +7575,12 @@ document.addEventListener('alpine:init', () => {
     // Only what the row itself does NOT already say: the check carries importance, the chip carries the
     // list, the area chips carry areas. Repeating them here was noise.
     importRowMeta(it) {
-      if (it.kind === 'event') return [it.starts_at.replace('T', ' '), it.recurrence ? 'repeats' : '', it.detached_from ? 'moved occurrence' : ''].filter(Boolean).join(' · ');
+      if (it.kind === 'event') return [it.starts_at.replace('T', ' '), it.recurrence ? 'repeats' : '', it.detached_from ? 'moved occurrence' : ''].filter(Boolean).join(', ');
       const f = it.fields || {};
       return [it.on ? 'on ' + it.on.date + (it.on.time ? ' ' + it.on.time : '') : '',
         f.deadline_at ? 'by ' + f.deadline_at : '', f.recurrence ? 'repeats' : '',
         f.est_minutes ? f.est_minutes + 'm' : '',
-        it.needs?.length ? 'needs ' + it.needs.length : '', it.reminders?.length ? 'reminder' : ''].filter(Boolean).join(' · ');
+        it.needs?.length ? 'needs ' + it.needs.length : '', it.reminders?.length ? 'reminder' : ''].filter(Boolean).join(', ');
     },
     guideExample() { return JSON.stringify(PROMPT_EXAMPLE, null, 2); },
     copyPrompt() { return this._copyText(importPrompt(this._importCtx()), 'Prompt copied. Paste it to your assistant'); },
@@ -7710,18 +7739,19 @@ document.addEventListener('alpine:init', () => {
     askShowInOverview() {
       // The flag rides the composer's normal save: pending edits land with it (nothing typed is lost), a failed save keeps
       // the composer + draft and flags nothing, and ⌘Z reverts the whole write (edits, flag, a deleted checklist).
-      const d = this.draft, id = this.editing, n = d.checklist.filter(c => (c.text || '').trim()).length, flag = (f = {}, lead) => this.submitComposer({ ...f, overview: true }, undefined, lead);
+      const d = this.draft, id = this.editing, n = d.checklist.filter(c => (c.text || '').trim()).length, out = this.byId.get(id)?.parent_id === this.store.defaultProject(),
+        show = { overview: true, ...out && { parent_id: null } }, flag = (f = {}, lead) => this.submitComposer({ ...f, ...show }, undefined, lead);   // a Backlog task leaves Backlog for the top
       this.askConfirm(n ? { message: `Overview projects don't keep a checklist. Turn its ${n} item${n > 1 ? 's' : ''} into subtasks, or delete ${n > 1 ? 'them' : 'it'}?`,
         // flags only once every subtask exists; a composer closed or moved on meanwhile isn't this draft: flag the task by id.
         // The convert and the flag are one card and one ⌘Z: a step the save didn't take (it never got that far) is journaled here
         confirmLabel: 'Convert to subtasks', onConfirm: async () => { const lead = [];
-          const ok = await this.convertToSubtasks(true, lead) && (this._live(d) ? await flag({}, lead) : await this.perform('Showed in Overview', { target: 'task', kind: 'update', id, after: { overview: true } }, { ops: lead }));
+          const ok = await this.convertToSubtasks(true, lead) && (this._live(d) ? await flag({}, lead) : await this.perform('Showed in Overview', { target: 'task', kind: 'update', id, after: show }, { ops: lead }));
           this._pushOps('Converted to subtasks', 'task', lead);
           return ok; },
         // its [] also drops an item another tab or device added since open: the Bin gets those too (as a save keeps them, submitComposer)
         altLabel: 'Delete checklist', onAlt: async () => { const own = this.draft.checklist, seen = new Set([..._saveBase.checklist, ...own].map(c => c.id)), cl = [...own, ...(this.byId.get(id)?.checklist || []).filter(c => !seen.has(c.id))];
           if (await flag({ checklist: [] }) === true) this._binChkItems(id, cl, cl.filter(c => (c.text || '').trim())); } }
-        : { message: "Show this task in Overview? It'll stay in its current project.", confirmLabel: 'Show in Overview', onConfirm: () => flag() });
+        : { message: `Show this task in Overview? ${out ? "It'll move out of Backlog." : "It'll stay in its current project."}`, confirmLabel: 'Show in Overview', onConfirm: () => flag() });
     },
     // Shared sweep-check: if completing `id` would also complete open dependents (children/blockers),
     // show the confirm dialog and return true — the caller must stop and let the dialog finish the job.
@@ -8131,7 +8161,8 @@ document.addEventListener('alpine:init', () => {
       this._clWeekDropped = null;   // the week hour a phone width dropped; any switch, the user's or the width's, settles the view: widening restores nothing
       if (v === 'week' && this.narrow) v = 'day';
       // reset zoom to fit, never to 0 — a zero hour height makes clPeriodH 0, and a divide by it has no position
-      this._withTransition(() => { this._clHalt(); this.clZoom = 1; this.clHourH = this._clFitHour(); this.clView = v; },
+      const side = this.clSideVisible();
+      this._withTransition(() => { this._clHalt(); this.clZoom = 1; this.clHourH = this._clFitHour(); this.clView = v; if (this.clSideVisible() !== side) this._clSideSlide(); },
         () => { if (v === 'month') this.clScrollToAnchor(); else if (v === 'week' || v === 'day') { this.clRecalcPages(); this._clScrollToPeriod(8, frac); } this._clSettle(); }, instant);
     },
     _withTransition(setFn, afterFn, instant, every) {
@@ -8938,7 +8969,7 @@ document.addEventListener('alpine:init', () => {
       // a mark has no length to report, so it says what KIND of moment it is; an all-day item has no length
       // either, and the time column already said "All day" — so it carries only its area, or nothing.
       const lead = r.mark ? (r.it.kind === 'task-deadline' ? 'Deadline' : 'Due') : r.allday ? (r.it.spanStart === false ? 'Continues' : '') : this._clCross(r.it) ? this.clTimeLabel(r.it) : this.durFmt(r.mins);
-      return lead + (a ? (lead ? ' · ' : '') + a.name : '');
+      return lead + (a ? (lead ? ', ' : '') + a.name : '');
     },
     _clDataSig(shelf = this._clShelf()) { return this.clView + '|' + this._periodSpan() + '|' + this._nowDay + '|' + _calDataV + '|' + shelf; },
     // An x-effect runs once per flush: one woken by byId runs before the x-for hands it the new col, so take the col from the cache.
@@ -8952,13 +8983,13 @@ document.addEventListener('alpine:init', () => {
       col = this._clColNow(key, col);
       const rows = col.agenda?.rows || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0, dot = raw(html`<span class="cl-ag-dot"></span>`);
       const parts = rows.map((r, ix) => {
-        const it = r.it, mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
+        const it = r.it, ask = !r.free && this.clAsks(it), mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
           : it.kind === 'task-deadline' ? raw(html`<svg class="ico cl-dl-ico"><use href="#i-flag"/></svg>`) : dot;
         return { id: r.key, html: html`<div class="cl-ag-row ${r.free ? 'free' : it.kind + (r.mark ? ' mark' : '') + this.clTaskState(it)}${!r.allday && r.min + r.mins <= cut ? ' past' : ''}"`
           + html` data-id="${r.key}" tabindex="${r.free ? -1 : 0}"${raw(!r.free && this._dndKind(it.kind) ? ' draggable="true"' : '')}`
           + html` style="--i:${ix};--cc:${r.free ? 'var(--muted)' : this.clItemColor(it)}"><span class="cl-ag-t">${r.allday ? 'All day' : this.clAgTime(r.min)}`
-          + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n">${r.free ? this.durFmt(r.mins) + ' free' : it.title}`
-          + html`</span><span class="cl-ag-d">${r.free ? '' : this.clAgSub(r)}${!r.free && this.clAsks(it) ? raw(html`<b class="cl-ask">· Going?</b>`) : ''}</span></span></div>` };
+          + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n"${raw(ask ? ' tabindex="-1"' : '')}>${r.free ? this.durFmt(r.mins) + ' free' : it.title}`
+          + html`</span><span class="cl-ag-d">${r.free ? '' : !ask ? this.clAgSub(r) : raw(html`<span class="cl-ag-s">${this.clAgSub(r)}</span><span class="cl-ag-ask"><button type="button" class="pri-chip tog" data-go="1">Going</button><button type="button" class="pri-chip tog" data-go="0">Not going</button></span>`)}</span></span></div>` };
       });
       if (!rows.length) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });
       if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });
@@ -8974,6 +9005,8 @@ document.addEventListener('alpine:init', () => {
       const r = this._clAgRow(e, col);
       if (!r || r.free) return;
       if (e.target.closest('.cl-ag-chk')) { e.stopPropagation(); return this.clToggleTask(r.it.id); }
+      const go = e.target.closest('[data-go]');
+      if (go) { e.stopPropagation(); return this.clSetGoing(go.dataset.go === '1', { id: r.it.id, day: this._nowDay }); }   // the row's ask answers today in one tap
       r.it.kind === 'task-block' ? this.clOpenTaskSide(r.it.id) : this.clItemClick(r.it);
     },
     clAgDrag(e, col) {
@@ -9240,8 +9273,8 @@ document.addEventListener('alpine:init', () => {
       this._loadFiles(this.eventEdit.attachments);
     },
     // applies on press, as a block's Skip today does: an editor closed unsaved keeps it
-    async clSetGoing(v) {
-      const e = this.eventEdit, was = this.events.find(x => x.id === e.id); if (!was || e.going === v) return;
+    async clSetGoing(v, e = this.eventEdit) {
+      const was = this.events.find(x => x.id === e.id); if (!was || e.going === v) return;
       const going = was.recurrence?.freq ? { ...was.going, [e.day]: v } : { [was.starts_at.slice(0, 10)]: v };
       if (await this._journalRowChange(v ? 'Going' : 'Not going', 'event', e.id, () => this.store.events.update(e.id, { going }))) e.going = v;
     },
@@ -9522,7 +9555,7 @@ document.addEventListener('alpine:init', () => {
       this.clDropHint = null; this._clDropCell(this._clDnd.allDay && min != null ? e.target.closest('.cl-pcol') : null);   // timed preview and the all-day/month highlight are mutually exclusive
       if (min == null || this._clDnd.allDay) { this.clDropPreview = null; return v; }   // an all-day item lands date-only: its day lights, no time
       const clock = inBlk && !inBlk.timed ? null : this._clHMA((min % 1440 + 1440) % 1440), name = inBlk?.blk.title || 'block';   // the bin sets no time
-      const label = !inBlk ? clock : clock ? clock + ' · ' + name : 'Attach to ' + name;
+      const label = !inBlk ? clock : clock ? clock + ', ' + name : 'Attach to ' + name;
       const top = Math.max(0, min);   // a tail (its start days above, on a later day's slice) draws from this day's 00:00, not up under the pinned header; the label keeps the real start
       if (p?.iso !== iso || p.min !== top || p.label !== label) { const g = this._dragGhost(); this.clDropPreview = { iso, min: top, clock, label, ...g, h: Math.min(1440, g.h + min) - top }; }   // the slice it lands as, ending at this day's foot   // same slot: no write (dragover fires per frame)
       return v;
@@ -9667,28 +9700,52 @@ document.addEventListener('alpine:init', () => {
       return this.tasks.filter(t => this._openLeaf(t, true) && this._overdue(t, b, pm))
         .sort((x, y) => this.whenOf(x, pm).localeCompare(this.whenOf(y, pm)));   // the moment it slipped past
     },
-    // The phone panel is a sheet whose head drags it down (emil §10): it follows the finger and stops at its top; let go past
-    // a third of its height, or on a downward flick (> .4px/ms over the last move, Vaul's drawer), and it closes, else it settles back.
-    clSheetDown(e) {
-      if (!PHONE_MQ.matches || _sheetDrag || e.target.closest('button')) return;
-      _sheetDrag = { id: e.pointerId, y0: e.clientY, y: e.clientY, t: e.timeStamp, v: 0, side: e.currentTarget.parentElement };
+    // A phone sheet follows the finger (emil §10); past its top it rubber-bands up to `over` px, and on release
+    // done(dy, v, base) settles it, v in px/ms over the last move.
+    sheetDown(e, side, done, over = 0) {
+      if (!PHONE_MQ.matches || _sheetDrag || e.button > 0) return;
+      _sheetDrag = { id: e.pointerId, y0: e.clientY, y: e.clientY, t: e.timeStamp, v: 0, side, done, over, base: new DOMMatrix(getComputedStyle(side).transform).m42 };   // grabbed mid-slide, it stops where it is
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    clSheetMove(e) {
+    sheetMove(e) {
       const drag = _sheetDrag; if (!drag || e.pointerId !== drag.id) return;
       drag.v = (e.clientY - drag.y) / Math.max(1, e.timeStamp - drag.t); drag.y = e.clientY; drag.t = e.timeStamp;
-      drag.side.style.transition = 'none'; drag.side.style.transform = `translateY(${Math.max(0, e.clientY - drag.y0)}px)`;   // imperative: no Alpine pass per move
+      const y = drag.base + e.clientY - drag.y0;
+      drag.side.style.transition = 'none'; drag.side.style.transform = `translateY(${y >= 0 ? y : drag.over * y / (drag.over - y)}px)`;   // imperative: no Alpine pass per move
     },
-    clSheetUp(e) {
+    sheetUp(e) {
       const drag = _sheetDrag; if (!drag || e.pointerId !== drag.id) return;
       _sheetDrag = null; drag.side.style.transition = drag.side.style.transform = '';   // the class transition runs on from where the finger left it
-      const dy = e.clientY - drag.y0;
-      if (e.type === 'pointerup' && (dy > drag.side.offsetHeight / 3 || drag.v > 0.4 && dy > 8)) this.clSideToggle(false);
+      if (e.type === 'pointerup') drag.done(e.clientY - drag.y0, drag.v, drag.base);
+    },
+    // The phone panel's head drags it down and stops at its top; let go past a third of its height, or on a downward
+    // flick (> .4px/ms, Vaul's drawer), and it closes, else it settles back.
+    clSheetDown(e) {
+      const side = e.currentTarget.parentElement;
+      if (!e.target.closest('button')) this.sheetDown(e, side, (dy, v) => (dy > side.offsetHeight / 3 || v > 0.4 && dy > 8) && this.clSideToggle(false));
+    },
+    // droid-18 R: the lists tray rises half up from the title tap; drag it up for every list, down to close. Release
+    // projects the flick 200ms on (Apple's momentum) and rests at the nearest of full, half and closed. At half the rows
+    // drag it too; at full they scroll and the head drags.
+    openListTray() {
+      if (!PHONE_MQ.matches) return;
+      this.trayRows = this.holdRows(Infinity); this.listTray = 'half';
+      this.$refs.trayRows.scrollTop = 0;   // it opens at the top of the lists, wherever the last visit scrolled
+    },
+    trayDown(e) {
+      if (this.listTray !== 'half' && !e.target.closest('.lsw-top')) return;
+      const tray = e.currentTarget;
+      this.sheetDown(e, tray, (dy, v, base) => {
+        const h = tray.offsetHeight, half = Math.max(0, h - innerHeight / 2), at = base + dy + v * 200;   // half: the CSS's 50dvh
+        this.listTray = [['full', 0], ['half', half], [null, h]].reduce((a, b) => Math.abs(b[1] - at) < Math.abs(a[1] - at) ? b : a)[0];
+      }, 24);
     },
     clSideToggle(open = !this.clSideOpen) {   // every way to shut the panel closes the composer it hosted, else the edit stays open off-screen
       const hosted = this.composer.open && this._inPanel(); this.clSideOpen = open;
+      this._clSideSlide();
       if (hosted && !this._inPanel()) this.closeComposer();
     },
+    _clSideSlide() { this.clSideSlide = true; clearTimeout(_sideSlideT); _sideSlideT = setTimeout(() => { this.clSideSlide = false; }, motion.t(400)); },   // the grid rides the panel's slide (a toggle, a block's click, a view that shows or hides it); a resize reflows it at once
     clSideVisible() { return this.clSideOpen || (this.clView === 'day' && !this.clSideOver); },   // the panel is up in day view (auto) or when toggled — but where it OVERLAYS, auto-opening would bury the day you just opened
     _clRowsHtml(tasks, cache) {
       const now = new Date(), byId = this.byId, def = this.store.defaultProject(), pm = this._placedMap(); let byParent;
@@ -9739,7 +9796,7 @@ document.addEventListener('alpine:init', () => {
       this.onRowClick(el.querySelector('.step-block') ? { ...this.mkRow(t, 0, buildByParent(this.tasks), this.byId, this.store.defaultProject(), new Date(), undefined, this._placedMap()), tray: true } : { t }, e);
     },
     clSideDragStart(e) { const el = e.target.closest?.('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
-    clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideOpen = true; this.$nextTick(() => this.editTask(t)); },
+    clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideToggle(true); this.$nextTick(() => this.editTask(t)); },
     clBlockWeekdays: [{ d: 0, l: 'S' }, { d: 1, l: 'M' }, { d: 2, l: 'T' }, { d: 3, l: 'W' }, { d: 4, l: 'T' }, { d: 5, l: 'F' }, { d: 6, l: 'S' }],
     clNewBlock(date, start, end, draft = false) { this.blockEdit = { date: date || isoDate(this._clAt()), start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], color: null, title: '', est_minutes: null, draft }; },
     clEditBlock(id, viewIso, tile = false) {
