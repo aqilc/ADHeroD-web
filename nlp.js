@@ -292,13 +292,19 @@ const Q_THIS_WEEK = new RegExp('\\s(?:' + V.thisWeek.map(w => w.replace(' ', '\\
 const Q_NEXT_WEEK = new RegExp('\\s(?:' + V.nextWeek.map(w => w.replace(' ', '\\s+')).join('|') + ')\\b', 'gi');
 const Q_WD = new RegExp('\\s((?:on|this)\\s+(?:coming\\s+)?|coming\\s+)?(next\\s+)?(' + WD_ALT + ')(?:,(?=\\s)|\\b)', 'gi');
 const Q_NOON = re(TPRE + '(noon|midnight)'), Q_MERIDIEM = new RegExp('\\s' + TPRE + '(\\d{1,2})(?::(\\d{2}))?\\s*' + MERIDIEM, 'gi'), Q_CLOCK = re(TPRE + '([01]?\\d|2[0-3]):([0-5]\\d)');
+// A day-part right after a date ("nov 5 afternoon", "fri night") or on its own as "this morning" / "tonight": a rough window, never a clock time.
+export const DAY_PARTS = V.dayParts;
+const Q_PART = /\s(?:(this)\s+|in\s+the\s+)?(morning|afternoon|evening|night|tonight)\b/i;
+const DATE_END = new RegExp('(?:^|\\s)(?:\\d{4}-\\d{2}-\\d{2}|' + MON_DAY + '|' + DAY_MON + '|' + ORD + '|\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?|'
+  + [...V.dueToday, ...V.dueTomorrow, ...V.dueYesterday].join('|') + '|' + WD_ALT + ')[.,]?$', 'i');
+export const partOf = bands => Object.keys(DAY_PARTS).find(k => bands?.length === 1 && DAY_PARTS[k].join() === bands[0].join()) ?? '';
 let locKey, locNot, locAt;   // the places' regexes, rebuilt only when the list changes
 
 // hybrid tokenizer: classifyToken asks it whether a span is exactly one token. `locations` (the places already in use) guards
 // "at <name>" — only a known place pills, so "Meet Sam at 5pm" never invents one.
 export function parseQuick(raw, now = new Date(), locations = []) {
   let s = ' ' + (raw || '') + ' ';
-  const o = { importance: null, dueIso: null, dueFromIso: null, deadlineIso: null, dueTime: '', durMin: null, project: null, areas: [], recurrence: null, location: null, locationExcept: false };
+  const o = { importance: null, dueIso: null, dueFromIso: null, deadlineIso: null, dueTime: '', part: null, durMin: null, project: null, areas: [], recurrence: null, location: null, locationExcept: false };
   const setTime = (h, m) => o.dueTime = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
 
   // importance flag (app-behavior, not a rank): ! = focus, !! = must, ~ = someday
@@ -331,10 +337,18 @@ export function parseQuick(raw, now = new Date(), locations = []) {
     return rest ? rest + ' ' : ' ';   // `rest` keeps its own leading separator, so the prose reads back verbatim
   });
 
+  // \u0001 holds the day-part's place: it reads as a time beside sat/sun/wed and goes back to prose if no date takes it
+  let today = false, partText = '';   // "this afternoon" / "tonight" with no date of their own are today's
+  s = s.replace(Q_PART, (m, self, w, at, str) => {
+    const dated = DATE_END.test(str.slice(0, at));
+    if (!dated && !self && w.toLowerCase() !== 'tonight') return m;
+    today = !dated; partText = m; o.part = /night/i.test(w) ? 'evening' : w.toLowerCase(); return ' \u0001 ';
+  });
+
   // 'only <date>' walls BOTH sides — a one-day world-window ("vote only tue"). Leading form only:
   // a trailing "<date> only" stays literal ("aug 10 only tue" ambiguity). Consumed before by/due below.
   s = s.replace(/\sonly\s+(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
-    const { iso, time } = parseDateText(dateStr.trim(), now, true);
+    const { iso, time } = parseDateText(dateStr.replace('\u0001', '').trim(), now, true);
     if (!iso) return m;
     o.onlyIso = iso; o.deadlineIso = iso + (time ? 'T' + time : '');
     return ' ';
@@ -354,6 +368,7 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   // Marked dates wall (§11): by/due/^ join the deadline keyword; until/till/before read as by. Consumed before due-date matchers so
   // the keyword's date isn't also taken as a due date; a non-date tail leaves the text untouched.
   s = s.replace(/\s(?:(?:deadline|ddl|dl|by|due|until|till|before)\s+|\^\s*)(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
+    dateStr = dateStr.replace(/\s*\u0001/, '');
     const at = dateStr.match(AT_HOUR_END);   // "by fri at 5"
     const parsed = parseDateText(at ? dateStr.slice(0, at.index) : dateStr.trim(), now, true);   // "deadline fri 5pm" keeps the hour (F16)
     const iso = parsed.iso, time = at ? atHour(at[1], iso > isoDate(now), now) : parsed.time;
@@ -392,7 +407,7 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   const dated = !!o.dueIso;
   s = s.replace(Q_WD, (m, pre, nx, w, at, str) => {
     if (dated) return !pre && !nx && WD_PROSE.test(w) ? m : ' ';   // an explicit date already won: the weekday word is absorbed, never overwrites it
-    if (!pre && !nx && WD_PROSE.test(w) && !TIME_AFTER.test(str.slice(at + m.length)) && !TIME_BEFORE.test(str.slice(0, at))) return m;
+    if (!pre && !nx && WD_PROSE.test(w) && !/^\s*\u0001/.test(str.slice(at + m.length)) && !TIME_AFTER.test(str.slice(at + m.length)) && !TIME_BEFORE.test(str.slice(0, at))) return m;
     const t = DAYS.indexOf(w.slice(0, 3).toLowerCase());
     if (nx) { o.dueIso = o.dueFromIso = isoDate(nextWeekDate(t, now)); return ' '; }   // "next <wd>" → that day next week
     const d = midnight(now); d.setDate(d.getDate() + ((t - d.getDay() + 7) % 7 || 7));
@@ -410,6 +425,12 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   s = s.replace(AT_HOUR_ANY, (_, h) => (o.dueTime = atHour(h, o.dueIso > isoDate(now), now), ' '));
   // the popover shows `at <time>` INSIDE the repeat sentence — so a time with a rule and no one-off date
   // rides the RULE (matches applyDateText). A one-off date present ("friday at 5pm every week") keeps its time.
+  if (o.part) {
+    if (today && !o.dueIso) { const r = quickRange('today', now); o.dueFromIso = r.from; o.dueIso = r.to; }
+    if (!o.dueIso && /^.{10}$/.test(o.deadlineIso ?? '')) o.deadlineIso += 'T' + DAY_PARTS[o.part][1];   // "by fri afternoon": by its end
+    s = s.replace('\u0001', o.dueIso || o.deadlineIso ? ' ' : partText);
+    if (o.dueTime || !o.dueIso) o.part = null;   // a clock time is the firmer word
+  }
   if (o.recurrence && o.dueTime && !o.dueIso) { [].concat(o.recurrence).forEach(r => { r.at = o.dueTime; }); o.dueTime = ''; }
 
   if (locations && locations.length) {
@@ -437,7 +458,7 @@ export function classifyToken(text, now = new Date(), locations = []) {
   if (p.areas.length > 1) return null;                               // multiple areas ≠ one token
   const hits = [];
   if (p.importance != null) hits.push({ kind: 'imp', value: p.importance });
-  if (p.dueIso || p.dueTime) hits.push({ kind: 'date', value: { iso: p.dueIso, from: p.dueFromIso, time: p.dueTime } });
+  if (p.dueIso || p.dueTime) hits.push({ kind: 'date', value: { iso: p.dueIso, from: p.dueFromIso, time: p.dueTime, ...p.part && { part: p.part } } });
   if (p.deadlineIso) hits.push({ kind: 'deadline', value: p.onlyIso ? { iso: p.onlyIso, only: true } : p.deadlineFromIso ? { iso: p.deadlineIso, from: p.deadlineFromIso } : { iso: p.deadlineIso } });
   if (p.durMin != null) hits.push({ kind: 'dur', value: p.durMin });
   if (p.project) hits.push({ kind: 'proj', value: p.project });

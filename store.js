@@ -291,6 +291,16 @@ export const captureTz = f => { if ((f.starts_at || f.ends_at) && !f.tz) f.tz = 
 // An archive takes the open tasks under its root; an Unarchive brings back only those at the root's instant, never one archived on its own
 export const cascades = (root, t, val) => val ? !t.completed_at && !t.archived_at : Date.parse(t.archived_at) === Date.parse(root.archived_at);
 export const pauseRecurrence = rec => Array.isArray(rec) ? rec.map(x => ({ ...x, paused: true })) : { ...rec, paused: true };
+// A pause with a resume day ends on it (things-4): the rule runs again, and a due left behind restarts at its next date from today.
+export function resumedRecurrence(t, ts) {
+  const today = isoDate(new Date(ts)), ends = r => r.paused && r.resume && r.resume <= today;
+  if (t.completed_at || !recRules(t.recurrence).some(ends)) return null;
+  const rules = recRules(t.recurrence).map(r => { const x = { ...r }; if (ends(r)) { x.paused = false; delete x.resume; } return x; });
+  const recurrence = Array.isArray(t.recurrence) ? rules : rules[0];
+  if ((t.recur_from || '').slice(0, 10) >= today) return { recurrence };
+  rules.forEach(r => delete r.gen_due);
+  return { recurrence, recur_from: seedRecurrenceDue(recurrence, ts) };
+}
 // Seed initial recur_from for a new recurring task (mutates rec's rule to mark gen_due). Returns recur_from string or null.
 export function seedRecurrenceDue(rec, ts) {
   const b = nextAcrossRules(rec, isoDate(new Date(ts)), ts, { inclusive: true });

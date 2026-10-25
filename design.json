@@ -393,6 +393,11 @@
       "thisWeek": [
         "this week"
       ],
+      "dayParts": {
+        "morning": ["08:00", "12:00"],
+        "afternoon": ["12:00", "17:00"],
+        "evening": ["17:00", "21:00"]
+      },
       "nextWeek": [
         "next week"
       ],

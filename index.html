@@ -227,7 +227,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </template>
 
         <!-- unified filter menu: every fragment one click deep (replaces the 3 separate chip menus) -->
-        <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'add' && outside($event, $el) && (listMenu = null)">
+        <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'add' && outside($event, $el) && (listMenu = null)">
           <div class="pop-sub-head">Importance</div>
           <div class="ls-prow flex gap-6">
             <template x-for="v in availImp()" :key="v">
@@ -270,7 +270,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="ls-word ls-sortw" :class="{ on: sortBy !== 'manual' }" title="Sort order"
                   @click.stop="listMenu = listMenu === 'sort' ? null : 'sort'" aria-label="Sort order" aria-haspopup="menu" :aria-expanded="listMenu === 'sort'"
                   x-text="(qfFacets() >= 2 || (narrow && listSearchOpen)) ? (sortBy === 'manual' ? '⇅' : 'by ' + sortWord()) : sortWord()"></button>
-          <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'sort' && outside($event, $el) && (listMenu = null)">
+          <div class="pop lc-pop" x-show="listMenu === 'sort'" x-cloak x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'sort' && outside($event, $el) && (listMenu = null)">
             <div class="pop-sub-head">Sort by</div>
             <template x-for="o in [['manual','Manual','i-grip'],['due','Due date','i-cal'],['importance','Importance','i-prio'],['deadline','Deadline','i-clock'],['alpha','Alphabetical','i-list-check'],['created','Date added','i-cal']]" :key="o[0]">
               <button type="button" class="pop-item" @click="setSort(o[0])">
@@ -322,7 +322,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <!-- Set priority — reuses the composer's importance chips -->
         <div class="sel-field" @click.document="selMenu === 'prio' && outside($event, $el) && (selMenu = null)">
           <button type="button" class="sel-act sel-prio-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'prio'" @click.stop="selMenu = selMenu === 'prio' ? null : 'prio'"><svg class="ico"><use href="#i-prio"/></svg><span>Priority</span></button>
-          <div class="pop lc-pop sel-prio-pop" x-show="selMenu === 'prio'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
+          <div class="pop lc-pop sel-prio-pop" x-show="selMenu === 'prio'" x-cloak x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
             <template x-for="o in [['must','Must'],['focus','Focus'],['someday','Someday'],['none','None']]" :key="o[0]">
               <button type="button" class="pri-chip" :style="'--pc:' + pc(o[0])" @click="selSetPrio(o[0])"><svg class="ico"><use href="#i-prio"/></svg><span x-text="o[1]"></span></button>
             </template>
@@ -332,7 +332,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <!-- Shift relative due dates — the headline: moves every dated task together, keeping their spacing -->
         <div class="sel-field" @click.document="selMenu === 'due' && outside($event, $el) && (selMenu = null)">
           <button type="button" class="sel-act sel-due-btn inline-flex items-center gap-6" aria-haspopup="menu" :aria-expanded="selMenu === 'due'" @click.stop="selMenu = selMenu === 'due' ? null : 'due'"><svg class="ico"><use href="#i-cal"/></svg><span>Shift date</span></button>
-          <div class="pop lc-pop sel-due-pop" x-show="selMenu === 'due'" x-cloak x-transition:enter="lc-anim" x-transition:enter-start="lc-hide" x-transition:enter-end="lc-show" x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
+          <div class="pop lc-pop sel-due-pop" x-show="selMenu === 'due'" x-cloak x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide">
             <div class="pop-sub-head">Shift due dates by</div>
             <template x-for="o in [[-7,'− 1 week'],[-1,'− 1 day'],[1,'+ 1 day'],[7,'+ 1 week']]" :key="o[0]">
               <button type="button" class="pop-item" @click="selShiftDue(o[0])"><span x-text="o[1]"></span></button>
@@ -385,11 +385,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           @keydown.capture="if ($event.key === 'Enter' && ($event.ctrlKey || $event.metaKey)) { $event.preventDefault(); $event.stopPropagation(); _pillThen(() => submitAndClose()); }">
         <div class="composer-grow" x-ref="grow" x-effect="persistDraft(true)" :class="{ grown, clip }" :style="growH === null ? '' : 'height:' + growH + 'px'">
         <form class="composer-card" @submit.prevent="_pillThen(() => submitComposer())">
-        <!-- type toggle (#104): the draft's type in the check slot, the other under it; click that one to swap -->
-        <span class="type-tog" :class="{ note: typeFront(true), solo: editing &amp;&amp; !phoneDock() }">   <!-- solo: the other type is the tack beside the bin -->
-          <button type="button" x-html="compCheckHtml(false)" @click="typeTap(false)" :aria-label="typeLabel(false)" :disabled="typeFront(false) && !editing"
-            :role="typeFront(false) && editing ? 'checkbox' : null" x-effect="typeFront(false) && editing ? $el.setAttribute('aria-checked', !!editingTask()?.completed_at) : $el.removeAttribute('aria-checked')"></button>
-          <button type="button" x-html="compCheckHtml(true)" @click="typeTap(true)" :aria-label="typeLabel(true)" :disabled="typeFront(true)"></button>
+        <!-- the draft's type: an edited task's done check, else its mark; the Note toggle is the tack in the bar -->
+        <span class="type-tog" :class="{ note: typeFront(true) }">
+          <button type="button" x-html="compCheckHtml(typeFront(true))" @click="typeTap(false)" :aria-label="typeLabel(typeFront(true))" :disabled="typeFront(true) || !editing"
+            :role="!typeFront(true) && editing ? 'checkbox' : null" x-effect="!typeFront(true) && editing ? $el.setAttribute('aria-checked', !!editingTask()?.completed_at) : $el.removeAttribute('aria-checked')"></button>
         </span>
         <div class="composer-body grow min-w-0 flex-col gap-8">
         <!-- title + a compact recovered-draft badge sharing the same line (never a full-width banner) -->
@@ -568,6 +567,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <!-- unified calendar pop lives below (one instance, mode driven via `pop`) -->
           </div>
           <!-- the time popover, opened by a repeat statement's [at …] chip — fixed to the viewport so it can sit over the teleported .pop -->
+          <template x-if="pzpop"><template x-teleport="body"><div class="pop pz-pop" x-cloak :style="pzpop.style" @click.stop @click.outside="pzpop = null">
+            <template x-for="o in pausePicks()" :key="o.label"><button type="button" class="pop-item" @click="pauseUntil(o.iso)"><span x-text="o.label"></span><span class="rt" x-text="fmt(o.iso)"></span></button></template>
+            <button type="button" class="pop-item" @click="pzpop = null; pausePicking = true">Pick a day</button>
+            <button type="button" class="pop-item" @click="pauseUntil('')">Until I resume</button>
+          </div></template></template>
           <template x-if="tpop"><template x-teleport="body"><div class="pop tpop" x-cloak :style="tpopStyle" @click.stop @click.outside="tpop = false">
             <div class="tin"><input type="text" :placeholder="timeGet() ? fmtTime(timeGet()) : '4:07pm'" x-ref="tpopIn" @keydown.enter.prevent="applyTimeText($event)" @keydown.stop="$event.key === 'Escape' && escape()"></div>
             <div class="thg">
@@ -598,7 +602,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <!-- Exact minutes: one field, no wheels. Type a number → Enter commits and closes; empty commits
                    nothing (the ladder pick stands). The ladder writes it too, so the two never disagree. -->
               <label class="hmrow"><svg class="ico"><use href="#i-clock"/></svg>Exactly
-                <input type="number" class="durx" min="0" step="5" inputmode="numeric" placeholder="–" :value="draft.durMin || ''"
+                <input class="inp durx" inputmode="numeric" placeholder="–" :value="draft.durMin || ''" @beforeinput="/\D/.test($event.data ?? '') && $event.preventDefault()"
                        @keydown.stop @keydown.enter.prevent.stop="setDur(Math.max(0, +$el.value || 0)); pop = null" @change="setDur(Math.max(0, +$el.value || 0))">min</label>
               <button type="button" class="pop-item clear dur-clr" x-show="durMinNow()" @click="draft.durMin = null; pop = null"><svg class="ico"><use href="#i-x"/></svg>No size</button>
             </div></template></template>
@@ -659,14 +663,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <p class="lp-line">do this <button type="button" class="c inline-flex items-center" :class="locPolarity() === 'any' ? 'g' : (locPolarity() === 'except' ? 'x' : '')" @click="toggleLocPolarity()" x-text="locPolarity() === 'any' ? 'anywhere' : (locPolarity() === 'except' ? 'away from' : 'at')"></button><span class="lp-colon" x-show="locPolarity() !== 'any'">:</span>
               <!-- teach by doing: the sentence's verb IS the phrase you can type into the title -->
               <template x-if="locPolarity() !== 'any'"><span class="lp-kbd" x-text="'or type “' + (locPolarity() === 'except' ? 'away from' : 'at') + ' …”'"></span></template></p>
-              <template x-if="hereLocationId()">
+              <template x-if="locName(hereLocationId())">
                 <button type="button" class="pop-item lp-here" @click="toggleLocId(hereLocationId())">
                   <span class="heredot"></span><span x-text="locName(hereLocationId())"></span><span class="sub">here now</span>
                   <svg class="ico tick" x-show="draft.location?.ids?.includes(hereLocationId())"><use href="#i-check"/></svg>
                 </button>
               </template>
               <!-- designated home always surfaces here (unless it's already the "here" row) so "at home" is one tap -->
-              <template x-if="homeLocationId && homeLocationId !== hereLocationId()">
+              <template x-if="locName(homeLocationId) && homeLocationId !== hereLocationId()">
                 <button type="button" class="pop-item lp-here lp-home-row" @click="toggleLocId(homeLocationId)">
                   <svg class="ico hm-ico"><use href="#i-tag-home"/></svg><span x-text="locName(homeLocationId)"></span><span class="sub">home</span>
                   <svg class="ico tick" x-show="draft.location?.ids?.includes(homeLocationId)"><use href="#i-check"/></svg>
@@ -743,25 +747,26 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-for="(s, si) in calSuggestions()" :key="s.iso">
               <button type="button" class="pop-item sug" :tabindex="si ? -1 : 0" :style="`--sug: var(--q-${s.key})`" @click="calSugApply(s.iso)" @keydown.down.prevent="$el.nextElementSibling?.closest('.sug')?.focus()" @keydown.up.prevent="$el.previousElementSibling?.closest('.sug')?.focus()"><svg class="ico"><use :href="'#i-' + s.icon"/></svg><span x-text="s.label"></span><span class="rt" x-text="s.hint"></span></button>
             </template>
-            <button type="button" class="pop-item clear" x-show="draft.on || draft.recurrence || draft.deadline_at || draft.available_from" @click="draft.on = ''; draft.dueTime = ''; draft.recurrence = null; draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
+            <button type="button" class="pop-item clear" x-show="draft.on || draft.recurrence || draft.deadline_at || draft.available_from" @click="draft.on = ''; draft.dueTime = ''; draft.part = ''; draft.recurrence = null; draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
           </div>
           <!-- shared: calendar head + grid (in due mode the head carries the On|By register toggle) -->
-          <div class="cal-head flex items-center justify-between"><span class="flex items-center gap-8"><span x-text="calLabel()"></span><span class="dreg swt" :class="{ by: dreg === 'by' }" x-show="pop === 'due' && !repRules().length"><button type="button" data-reg="on" :class="{ on: dreg === 'on' }" :aria-pressed="dreg === 'on'" title="Tap a day to schedule it there (never red)" @click="setDreg('on')">On</button><button type="button" data-reg="by" :class="{ on: dreg === 'by' }" :aria-pressed="dreg === 'by'" title="Tap a day = the deadline; right-click does this from either mode" @click="setDreg('by')">By</button></span></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
+          <div class="dreg seg" :class="{ by: dreg === 'by' }" x-show="pop === 'due' && !repRules().length"><button type="button" data-reg="on" :class="{ on: dreg === 'on' }" :aria-pressed="dreg === 'on'" title="Tap a day to schedule it there (never red)" @click="setDreg('on')">Do on</button><button type="button" data-reg="by" :class="{ on: dreg === 'by' }" :aria-pressed="dreg === 'by'" title="Tap a day = the deadline; right-click does this from either mode" @click="setDreg('by')">Due by</button></div>
+          <div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
           <!-- the days are html (calPaint), their events delegated here: per-day bindings were half of the pop's open -->
           <div class="cal-grid" :class="{ hint: calPulse }" x-effect="calPaint($el)" @mouseleave="pop === 'clnav' && (clPopHoverWk = '')" @pointerdown="calDown($event)" @pointermove="calMove($event)" @pointerup="calUp($event)" @pointercancel="_calDn = null; calH = null" @click.capture="_calDragged && ($event.stopPropagation(), _calDragged = false)"
             @focusin="calAt($event) && (calFocus = calAt($event).iso)" @keydown="calAt($event) && calKey($event, calAt($event))" @mouseover="calAt($event) && calDayMouseenterFor(calAt($event))" @click="calAt($event) && calDayClickFor(calAt($event))" @contextmenu="calAt($event) && ($event.preventDefault(), pop === 'due' && !repRules().length && calDayBy(calAt($event)))">
             <!-- due: interactive weekday-toggle buttons; clnav: plain non-functional buttons -->
-            <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" tabindex="-1" :class="pop === 'due' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused, pulse: hdrPulse }" @click="pop === 'due' && toggleRepeatWeekday(i)" x-text="w"></button></template>
+            <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" tabindex="-1" :class="pop === 'due' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused || pausePicking, pulse: hdrPulse }" @click="pop === 'due' && toggleRepeatWeekday(i)" x-text="w"></button></template>
           </div>
           <!-- due: V3 phrase-builder repeat zones -->
           <template x-for="(r, ri) in repRules()" :key="ri">
-            <div class="zone flex gap-6" x-show="pop === 'due'" :class="{ paused: r.paused, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
+            <div class="zone flex gap-6" x-show="pop === 'due'" :class="{ paused: r.paused || pausePicking && repIdx === ri, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
               <div class="zrail flex-col flex-none">
                 <button type="button" class="icon-btn sm zbtn" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion - tap for fixed schedule' : 'Fixed schedule - tap to repeat after completion'" @click="repIdx = ri; toggleFromCompletion()">
                   <svg class="ico"><use :href="r.from_completion ? '#i-repeat-done' : '#i-repeat'"/></svg>
                 </button>
-                <button type="button" class="icon-btn sm zbtn" :class="{ on: r.paused }" :title="r.paused ? 'Resume' : 'Pause'" @click="repPause(r)">
-                  <svg class="ico"><use :href="r.paused ? '#i-play' : '#i-pause'"/></svg>
+                <button type="button" class="icon-btn sm zbtn" :class="{ on: r.paused || (pzpop || pausePicking) && repIdx === ri, ring: pausePicking && repIdx === ri }" :title="r.paused ? 'Resume' : 'Pause'" @click.stop="repPause(r, $event)">
+                  <svg class="ico"><use :href="r.paused || pausePicking && repIdx === ri ? '#i-play' : '#i-pause'"/></svg>
                 </button>
               </div>
               <p>
@@ -773,6 +778,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <span class="nowrap"><button type="button" class="c inline-flex items-center" :class="{ g: !r.at }" @click.stop="repIdx = ri; toggleTimePop($event)" x-text="r.at ? 'at ' + fmtTime(r.at) : 'at –'"></button><span>,</span></span>
                 <span class="st inline-flex items-center" :class="{ g: !r.ends?.count }"><button type="button" @click="repIdx = ri; setRepeatCount(-1)">−</button><b x-text="r.ends?.count || '∞'"></b><button type="button" @click="repIdx = ri; setRepeatCount(1)">+</button></span> times, ending
                 <button type="button" class="c inline-flex items-center" :class="{ g: !r.ends?.date, ring: endPicking && repIdx === ri }" @click="repIdx = ri; toggleEndPicking()" x-text="r.ends?.date ? fmt(r.ends.date) : 'never'"></button>
+                <template x-if="r.paused"><span class="nowrap pzl">paused until <button type="button" class="c pz inline-flex items-center" @click.stop="togglePausePop($event, r)" x-text="pauseLabel(r)"></button></span></template>
               </p>
             </div>
           </template>
@@ -819,7 +825,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
                 <!-- phone: the dock's hidden chips and buttons (9A), anchored on the ··· they came from -->
                 <template x-if="phoneDock()"><div class="contents">
-                  <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; (!editing || kaEdit())" @click="pop = null; typeTap(!typeFront(true))"><span x-html="compCheckHtml(!typeFront(true))"></span><span x-text="typeLabel(!typeFront(true))"></span></button>
+                  <button type="button" class="pop-item" x-show="editing" @click="pop = null; typeTap(!typeFront(true))"><span x-html="compCheckHtml(!typeFront(true))"></span><span x-text="typeLabel(!typeFront(true))"></span></button>
                   <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; filesUrl &amp;&amp; session" @click="pop = null; document.querySelector('.jb-host .attach input')?.click()"><svg class="ico"><use href="#i-clip"/></svg>Attach file</button>
                   <button type="button" class="pop-item" x-show="!durMinNow()" @click="togglePop('dur', document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-clock"/></svg>Size</button>
                   <button type="button" class="pop-item" x-show="locations.length && locPolarity() === 'any'" @click="openLoc(document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-pin"/></svg>Place</button>
@@ -827,22 +833,23 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <button type="button" class="pop-item" x-show="editing && !editingTask()?.overview" @click="pop = null; askShowInOverview()"><svg class="ico"><use href="#i-overview"/></svg>Show in Overview</button>
                   <button type="button" class="pop-item" x-show="editing" @click="pop = null; deleteEditing()"><svg class="ico"><use href="#i-trash"/></svg>Delete task</button>
                 </div></template>
-                <template x-if="editing"><div class="contents">
+                <template x-if="editing"><div class="contents" x-data="{ conv: false }">
                 <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
                 <button type="button" class="pop-item" x-show="phoneDock()" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
                 <button type="button" class="pop-item" @click="copyEditingLink(); pop = null"><svg class="ico"><use href="#i-link"/></svg>Copy link</button>
-                <button type="button" class="pop-item" x-show="shownSubs().length > 0 || chkSteps() && draft.checklist.length > 0" @click="convertTo('checklist'); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
-                <button type="button" class="pop-item" x-show="!chkSteps() && !typeFront(true) && (shownSubs().length > 0 || draft.checklist.length > 0)" @click="convertTo('steps'); pop = null"><svg class="ico"><use href="#i-steps"/></svg>Convert to steps</button>
-                <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="convertToSubtasks(); pop = null"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
+                <button type="button" class="pop-item" x-show="shownSubs().length > 0 || draft.checklist.length > 0" :aria-expanded="conv" @click="conv = !conv; requestAnimationFrame(() => conv && [...$el.parentElement.querySelectorAll('.sub')].filter(e => e.offsetParent).pop()?.scrollIntoView({ block: 'nearest' }))"><svg class="ico"><use href="#i-arrow"/></svg>Convert to<svg class="ico rt"><use :href="conv ? '#i-chev-d' : '#i-chev-r'"/></svg></button>
+                <button type="button" class="pop-item sub" x-show="conv && (shownSubs().length > 0 || chkSteps() && draft.checklist.length > 0)" @click="convertTo('checklist'); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Checklist</button>
+                <button type="button" class="pop-item sub" x-show="conv && !chkSteps() && !typeFront(true) && (shownSubs().length > 0 || draft.checklist.length > 0)" @click="convertTo('steps'); pop = null"><svg class="ico"><use href="#i-steps"/></svg>Steps</button>
+                <button type="button" class="pop-item sub" x-show="conv && draft.checklist.length > 0" @click="convertToSubtasks(); pop = null"><svg class="ico"><use href="#i-indent"/></svg>Subtasks</button>
                 <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="toggleChecklistPlain(); pop = null"><svg class="ico"><use :href="chkPlain() ? '#i-list-check' : '#i-all'"/></svg><span x-text="chkPlain() ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
                 <button type="button" class="pop-item" x-show="phoneDock()" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
                 </div></template>
               </div></template></template>
             </div>
             <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
-            <!-- web-27A: beside the bin; a phone keeps them in ··· -->
+            <!-- web-27A: beside the bin; a new task's beside the go (user 10-24 "near the send button"); a phone's edit keeps them in ··· -->
+            <button type="button" class="act-btn inline-flex items-center" :class="{ on: typeFront(true), 'by-go': !editing }" :aria-pressed="typeFront(true)" @click="typeTap(!typeFront(true))" title="Note"><svg class="ico"><use href="#i-tack"/></svg></button>
             <template x-if="editing"><div class="contents">
-              <button type="button" class="act-btn inline-flex items-center" :class="{ on: typeFront(true) }" :aria-pressed="typeFront(true)" @click="typeTap(!typeFront(true))" title="Note"><svg class="ico"><use href="#i-tack"/></svg></button>
               <button type="button" class="act-btn inline-flex items-center" @click="toggleArchive()" :title="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"><svg class="ico"><use href="#i-archive"/></svg></button>
               <button type="button" class="act-btn inline-flex items-center" @click="copyEditingMd()" title="Copy as markdown"><svg class="ico"><use href="#i-clipboard"/></svg></button>
             </div></template>
@@ -874,11 +881,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
     <!-- Right-click a row (rowMenuOpen): the composer's own actions, in its order; a selection gets the ones that act on many -->
     <template x-if="pop === 'row'"><template x-teleport="body"><div class="pop row-pop" role="menu" x-effect="rowMenuPlace($el, rowAt)" @click="pop = null"
-         @pointerdown.window.capture="$el.contains($event.target) || (pop = null)" @scroll.window.capture="pop = null"><template x-if="rowTask()"><div class="contents">
+         @pointerdown.window.capture="$el.contains($event.target) || (pop = null)" @scroll.window.capture="pop = null"><template x-if="rowTask()"><div class="contents" x-data="{ conv: false }">
       <button type="button" class="pop-item" role="menuitem" @click="duplicate(rowTask().id)"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
-      <button type="button" class="pop-item" role="menuitem" x-show="hasChildren(rowTask().id) || rowTask().task_type === 'steps' &amp;&amp; rowTask().checklist?.length" @click="rowEdit(() => convertTo('checklist'))"><svg class="ico"><use href="#i-list-check"/></svg>Convert to checklist</button>
-      <button type="button" class="pop-item" role="menuitem" x-show="rowTask().task_type !== 'steps' &amp;&amp; rowTask().task_type !== 'note' &amp;&amp; (hasChildren(rowTask().id) || rowTask().checklist?.length)" @click="rowEdit(() => convertTo('steps'))"><svg class="ico"><use href="#i-steps"/></svg>Convert to steps</button>
-      <button type="button" class="pop-item" role="menuitem" x-show="rowTask().checklist?.length" @click="rowEdit(() => convertToSubtasks())"><svg class="ico"><use href="#i-indent"/></svg>Convert to subtasks</button>
+      <button type="button" class="pop-item" role="menuitem" x-show="hasChildren(rowTask().id) || rowTask().checklist?.length" :aria-expanded="conv" @click.stop="conv = !conv; requestAnimationFrame(() => rowMenuPlace($el.closest('.row-pop'), rowAt))"><svg class="ico"><use href="#i-arrow"/></svg>Convert to<svg class="ico rt"><use :href="conv ? '#i-chev-d' : '#i-chev-r'"/></svg></button>
+      <button type="button" class="pop-item sub" role="menuitem" x-show="conv &amp;&amp; (hasChildren(rowTask().id) || rowTask().task_type === 'steps' &amp;&amp; rowTask().checklist?.length)" @click="rowEdit(() => convertTo('checklist'))"><svg class="ico"><use href="#i-list-check"/></svg>Checklist</button>
+      <button type="button" class="pop-item sub" role="menuitem" x-show="conv &amp;&amp; rowTask().task_type !== 'steps' &amp;&amp; rowTask().task_type !== 'note' &amp;&amp; (hasChildren(rowTask().id) || rowTask().checklist?.length)" @click="rowEdit(() => convertTo('steps'))"><svg class="ico"><use href="#i-steps"/></svg>Steps</button>
+      <button type="button" class="pop-item sub" role="menuitem" x-show="conv &amp;&amp; rowTask().checklist?.length" @click="rowEdit(() => convertToSubtasks())"><svg class="ico"><use href="#i-indent"/></svg>Subtasks</button>
       <button type="button" class="pop-item" role="menuitem" x-show="rowTask().checklist?.length" @click="rowEdit(() => toggleChecklistPlain())"><svg class="ico"><use :href="rowTask().checklist_plain ? '#i-list-check' : '#i-all'"/></svg><span x-text="rowTask().checklist_plain ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
       <button type="button" class="pop-item" role="menuitem" x-show="!rowTask().overview" @click="rowEdit(() => askShowInOverview())"><svg class="ico"><use href="#i-overview"/></svg>Show in Overview</button>
       <button type="button" class="pop-item" role="menuitem" @click="rowNote(rowTask())"><svg class="ico"><use href="#i-tack"/></svg><span x-text="rowTask().task_type === 'note' ? 'Make it a task' : 'Make it a note'"></span></button>
@@ -1389,7 +1397,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="swatch-row" @click="swatchPick($event, v => patchArea(navPopArea().id, { color: v }))" x-html="swatchRow(navPopArea().color, areaDefault)"></div>
         <div class="nav-pop-label">Icon</div>
         <div class="icon-pick-row">
-          <button class="icon-pick-btn" :class="{ sel: !navPopArea().icon }" @click="patchArea(navPopArea().id, { icon: null })" title="None"><span class="rl-icon-none">&#x2014;</span></button>
+          <button class="icon-pick-btn" :class="{ sel: !navPopArea().icon }" @click="patchArea(navPopArea().id, { icon: null })" title="None"><span class="rl-icon-none"></span></button>
           <template x-for="ic in areaIcons" :key="ic">
             <button class="icon-pick-btn" :class="{ sel: navPopArea().icon === ic }" @click="patchArea(navPopArea().id, { icon: ic })" :title="ic"><svg class="ico"><use :href="'#' + ic"/></svg></button>
           </template>
@@ -1529,6 +1537,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
       <div class="set-sec"><span class="section-label">Safety</span>
         <button type="button" class="set-row set-rowbtn set-trash flex items-center gap-10" @click="settingsOpen = false; trashOpen = true"><svg class="ico set-ico"><use href="#i-trash"/></svg>Bin<span class="set-sub muted-12"><kbd>b</kbd></span></button>
+        <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="exportAll()"><svg class="ico set-ico"><use href="#i-archive"/></svg>Export everything<span class="set-sub muted-12">one file, opens back in the app</span></button>
         <button type="button" class="set-row set-rowbtn set-danger flex items-center gap-10" @click="resetLocalData()"><svg class="ico set-ico"><use href="#i-alert"/></svg>Delete local data<span class="set-sub muted-12">wipe this device &amp; start fresh</span></button>
       </div>
       <template x-if="desk">   <!-- the Windows app's desktop surfaces (desktop/main.cpp); labels as the Mac app's -->
@@ -1570,12 +1579,21 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="imp-list flex-col">
           <div class="section-label" x-text="importPreview.problems.length + (importPreview.problems.length === 1 ? ' problem' : ' problems') + ' (nothing will be added)'"></div>
           <template x-for="(p, i) in importPreview.problems" :key="i">
-            <div class="imp-problem flex gap-8 muted-12"><code x-text="p.path"></code><span x-text="p.message"></span></div>
+            <div class="imp-problem flex gap-8 muted-12"><code x-show="!p.unreadable" x-text="p.path"></code><span x-text="!p.unreadable ? p.message : importPreview.file ? 'This file isn’t a backup or task list ADHeroD can read.' : 'This text isn’t a task list ADHeroD can read.'"></span></div>
           </template>
         </div>
       </template>
 
-      <template x-if="importPreview && !importPreview.problems.length">
+      <template x-if="importPreview?.kind === 'backup'">
+        <div class="imp-list flex-col">
+          <div class="section-label">Added beside what you have</div>
+          <template x-for="[label, icon, n] in importPreview.items" :key="label">
+            <div class="imp-row flex items-center gap-8"><svg class="ico set-ico"><use :href="'#' + icon"/></svg><span class="imp-title grow" x-text="label"></span><span class="imp-meta muted-12" x-text="n"></span></div>
+          </template>
+          <div class="imp-row muted-12" x-show="importPreview.files" x-text="importPreview.files === 1 ? '1 file is not in the export (it stays in your account).' : importPreview.files + ' files are not in the export (they stay in your account).'"></div>
+        </div>
+      </template>
+      <template x-if="importPreview && importPreview.kind !== 'backup' && !importPreview.problems.length">
         <div class="imp-list flex-col">
           <div class="section-label" x-text="(importPreview.kind === 'ics' ? _nEvents(importPreview.items.length) : _nTasks(importPreview.items.length)) + ' to add'"></div>
           <template x-for="(it, i) in importPreview.items" :key="i">
@@ -1589,12 +1607,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </template>
 
       <div class="dialog-actions flex items-center gap-8">
-        <button class="ghost" x-show="importPreview?.kind !== 'ics'" @click="guideOpen = true">Format &amp; prompt</button>
+        <button class="ghost" x-show="importPreview?.kind === 'tasks'" @click="guideOpen = true">Format &amp; prompt</button>
         <button class="ghost" x-show="importPreview?.problems.length" @click="copyProblems()">Copy problems</button>
         <button class="ghost" @click="importPreview = null">Cancel</button>
-        <button class="primary" :disabled="!!importPreview?.problems.length || !!importPreview?.busy"
+        <button class="primary" x-show="!importPreview?.problems.length" :disabled="!!importPreview?.busy"
                 @click="applyImport()"
-                x-text="'Add ' + (importPreview?.kind === 'ics' ? _nEvents(importPreview?.items.length || 0) : _nTasks(importPreview?.items.length || 0))"></button>
+                x-text="importPreview?.kind === 'backup' ? 'Restore' : 'Add ' + (importPreview?.kind === 'ics' ? _nEvents(importPreview?.items.length || 0) : _nTasks(importPreview?.items.length || 0))"></button>
       </div>
     </div>
 
@@ -1807,10 +1825,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" x-cloak :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('eventEdit')"></div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
-          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: eventEdit.location_id }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="eventEdit.location_id ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="eventEdit.location_id ? locName(eventEdit.location_id) : 'Place'"></span></button>
+          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(eventEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(eventEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(eventEdit.location_id) || 'Place'"></span></button>
           <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" x-cloak :style="popStyle()">
             <button type="button" class="pop-item" :class="{ on: !eventEdit.location_id }" @click="eventEdit.location_id = null; pop = null">Anywhere</button>
-            <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: eventEdit.location_id === l.id }" @click="eventEdit.location_id = l.id; pop = null" x-text="l.name"></button></template>
+            <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: eventEdit.location_id === l.id }" @click="eventEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clRepeat', $event, $el)">
@@ -1843,7 +1861,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <button type="button" class="blk-preset" @click="clBlockPreset('lunch')">Lunch 12–1 M–F</button>
         <button type="button" class="blk-preset" @click="clBlockPreset('evening')">Evening 6–10</button>
       </div>
-      <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="At the office" x-init="clTitleInit($el, 'blockEdit')" x-effect="blockEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
+      <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="Work" x-init="clTitleInit($el, 'blockEdit')" x-effect="blockEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(blockEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(blockEdit.date)[0]"/></svg><span x-text="clWhenLabel(blockEdit)"></span></button>
@@ -1871,10 +1889,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
-          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: blockEdit.location_id }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="blockEdit.location_id ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="blockEdit.location_id ? locName(blockEdit.location_id) : 'Place'"></span></button>
+          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(blockEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(blockEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(blockEdit.location_id) || 'Place'"></span></button>
           <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" x-cloak :style="popStyle()">
             <button type="button" class="pop-item" :class="{ on: !blockEdit.location_id }" @click="blockEdit.location_id = null; pop = null">Anywhere</button>
-            <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: blockEdit.location_id === l.id }" @click="blockEdit.location_id = l.id; pop = null" x-text="l.name"></button></template>
+            <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: blockEdit.location_id === l.id }" @click="blockEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clUsable', $event, $el)">
@@ -1932,7 +1950,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <div class="blk-attached-row flex items-center gap-8">
             <span class="blk-attached-t grow min-w-0 truncate" x-text="byId.get(si.task_id)?.content || '(deleted)'"></span>
             <button type="button" class="blk-role-chip flex-none" @click="clCycleRole(si.id)" x-text="si.role"></button>
-            <button type="button" class="sel-x" @click="clRemoveAttached(si.id)" aria-label="Remove">×</button>
+            <button type="button" class="sel-x inline-flex items-center justify-center flex-none" @click="clRemoveAttached(si.id)" aria-label="Remove"><svg class="ico"><use href="#i-x"/></svg></button>
           </div>
         </template>
       </div>

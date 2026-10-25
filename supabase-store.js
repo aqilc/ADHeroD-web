@@ -236,6 +236,8 @@ export function createSupabaseStore(client) {
     schedule_items: collection('schedule_items', { order: 'position' }),
     block_days: collection('block_days'),
     day_notes: collection('day_notes'),
+    goals: collection('goals', { order: 'position' }),   // read and restored only by the backup: the web has no goals screen
+    identities: collection('identities', { order: 'position' }),
   };
 
   // table → the app-side list a change to it invalidates. tasks/areas are handled apart (they own caches).
@@ -480,7 +482,7 @@ export function createSupabaseStore(client) {
         for (const t of rows) if (landed.has(t.id) && !back.has(t.parent_id) && !t.completed_at && !t.archived_at) await reopenAncestors(t.id, uid).catch(() => {});
         return true;
       }
-      const table = { area: 'areas', event: 'events', block: 'blocks', filter: 'filters', location: 'locations', scheduleItem: 'schedule_items', blockDay: 'block_days', dayNote: 'day_notes', reminder: 'reminders' }[kind];
+      const table = { area: 'areas', event: 'events', block: 'blocks', filter: 'filters', location: 'locations', scheduleItem: 'schedule_items', blockDay: 'block_days', dayNote: 'day_notes', reminder: 'reminders', goal: 'goals', identity: 'identities' }[kind];
       if (!table) return false;
       // reject_past_reminder refuses an unpaused user reminder over 26h past, reading its floating `at` as UTC: that one can't come back
       if (table === 'reminders' && !(rows = rows.filter(r => !(r.kind === 'user' && !r.paused && Date.parse(r.at + 'Z') < Date.now() - 936e5))).length) return true;
@@ -559,6 +561,8 @@ export function createSupabaseStore(client) {
       update: (id, fields) => COLL.day_notes.patch(id, pick(fields, ['label'])),
       remove: id => COLL.day_notes.del(id),
     },
+    goals: { list: () => COLL.goals.list(), remove: id => COLL.goals.del(id) },
+    identities: { list: () => COLL.identities.list(), remove: id => COLL.identities.del(id) },
 
     // Per-block-per-day actuals: upsert on (user_id, block_id, date) — answering twice must not 409.
     blockDays: {

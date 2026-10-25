@@ -196,7 +196,7 @@ export function looksLikePayload(text) {
 export function parsePayload(text, { lists = [], areas = [], places = [], today } = {}) {
   const problems = [], t = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
   let doc;
-  try { doc = JSON.parse(t); } catch (e) { return { items: [], problems: [problem('(document)', `not valid JSON: ${e.message}`)] }; }
+  try { doc = JSON.parse(t); } catch (e) { return { items: [], problems: [{ ...problem('(document)', `not valid JSON: ${e.message}`), unreadable: true }] }; }   // the UI says it plainly; Copy problems keeps the parser's words
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return { items: [], problems: [problem('(document)', 'the top level must be a JSON object.')] };
   if (doc.adherod !== undefined && doc.adherod !== 1) return { items: [], problems: [problem('adherod', `expected "adherod": 1, got ${JSON.stringify(doc.adherod)}.`)] };
   unknown(doc, TOP_KEYS, '(document)', problems);
@@ -411,4 +411,36 @@ function cycles(items, ids) {
   };
   for (const it of items) visit(it, []);
   return found;
+}
+
+// ─── backup (Settings › Export everything) ─────────────────────────────────────────────────────────
+// The store's own rows by kind, in the order a restore writes them: each after what it points at.
+export const BACKUP_KINDS = ['identity', 'goal', 'area', 'location', 'block', 'task', 'event', 'scheduleItem', 'blockDay', 'dayNote', 'reminder', 'filter'];
+export const isBackup = doc => doc?.adherod_backup === 1 && !!doc.rows && typeof doc.rows === 'object';
+// A restore adds copies beside what's there and never touches a live row: every row gets a new id and its references
+// follow. What can't be doubled maps onto the live one: an area or identity of that name (unique per user), the
+// default project, a day already named. A reference to a row not in the file is dropped; a task under one goes to the default project.
+export function restorePlan(doc, { defaultProject = null, areas = [], identities = [], locations = [], filters = [], dayNotes = [] } = {}) {
+  const ids = new Map(), minted = new Set(), same = { area: [areas, 'name'], identity: [identities, 'statement'], location: [locations, 'name'], filter: [filters, 'query'] }, named = new Set(dayNotes.map(d => d.date));
+  if (doc.default_project_id && defaultProject) ids.set(doc.default_project_id, defaultProject);
+  for (const kind of BACKUP_KINDS) for (const r of doc.rows[kind] || []) {
+    if (ids.has(r.id) || kind === 'dayNote' && named.has(r.date)) continue;
+    const [live, key] = same[kind] || [], hit = live?.find(x => x[key] === r[key]);
+    ids.set(r.id, hit ? hit.id : crypto.randomUUID());
+    if (!hit) minted.add(ids.get(r.id));
+  }
+  const m = id => id == null ? null : ids.get(id) ?? null, ms = list => (list || []).map(m).filter(Boolean), place = l => l?.ids ? { ...l, ids: ms(l.ids) } : l ?? null;
+  const remap = {
+    goal: r => ({ identity_id: m(r.identity_id) }),
+    block: r => ({ location_id: m(r.location_id), areas: ms(r.areas) }),
+    task: r => ({ parent_id: r.parent_id == null ? null : m(r.parent_id) ?? defaultProject, area_ids: ms(r.area_ids), goal_ids: ms(r.goal_ids), blocked_by: ms(r.blocked_by), relates: ms(r.relates), location: place(r.location) }),
+    event: r => ({ location: place(r.location) }),
+    scheduleItem: r => ({ task_id: m(r.task_id), block_id: m(r.block_id) }),
+    blockDay: r => ({ block_id: m(r.block_id) }),
+    reminder: r => ({ ref_id: m(r.ref_id), block_id: m(r.block_id) }),
+  };
+  // an auto-derived reminder is the store's to make; one whose task or block didn't come stays out
+  const keep = { scheduleItem: r => r.task_id, blockDay: r => r.block_id, reminder: r => r.kind === 'user' && r.ref_id };
+  return Object.fromEntries(BACKUP_KINDS.map(kind => [kind, (doc.rows[kind] || []).filter(r => minted.has(ids.get(r.id)))
+    .map(r => ({ ...r, ...remap[kind]?.(r), id: ids.get(r.id) })).filter(keep[kind] || Boolean)]));
 }

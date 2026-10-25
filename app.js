@@ -30,14 +30,14 @@ function applyTheme(mode, family) {
 }
 applyTheme(savedAppearance(), savedColorTheme()); // Before Alpine boots: no flash of the previous palette.
 
-import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, cascades, MAX_DEPTH, pendingSweep, placedMap, overviewFields, liveRefs } from './store.js';
+import { createLocalStore, childIndex, descendantIds, orderSlots, projectDepth, subtreeDepth, nextOccurrence, nextAcrossRules, recRules, recActive, resumedRecurrence, cascades, MAX_DEPTH, pendingSweep, placedMap, overviewFields, liveRefs } from './store.js';
 import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, jMigrate } from './recovery.js';
 import { inNotes, openBlockers } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, sevOf, userReminders, offsetLabel } from './reminders.js';
-import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS } from './nlp.js';
+import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS, DAY_PARTS, partOf } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, queryStates, bodyText } from './search.js';
 import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
-import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE } from './import.js';
+import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE, BACKUP_KINDS, isBackup, restorePlan } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
 import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
@@ -299,9 +299,9 @@ const PILL_SPEC = {
               commit: (s, d, v) => { if (!d.needs.includes(v)) d.needs.push(v); }, clear: (s, d, r) => { const i = d.needs.indexOf(r); if (i >= 0) d.needs.splice(i, 1); }, snapshot: (s, d) => [...d.needs], restore: (s, d, x) => { d.needs = x || []; } },
   neededBy: { json: 0, multi: 'neededBy', label: (s, v) => 'needed by ' + (s.byId.get(v)?.content || ''),
               commit: (s, d, v) => { if (!d.neededBy.includes(v)) d.neededBy.push(v); }, clear: (s, d, r) => { const i = d.neededBy.indexOf(r); if (i >= 0) d.neededBy.splice(i, 1); }, snapshot: (s, d) => [...d.neededBy], restore: (s, d, x) => { d.neededBy = x || []; } },
-  date:     { json: 1, label: (s, v) => { if (v.iso) { const b = dueBadge(v.iso); return b.label + (v.time ? ' ' + s.fmtTime(v.time) : ''); } return s.fmtTime(v.time); },
-              read: (s, d) => d.on || d.dueTime ? { iso: d.on, time: d.dueTime, from: d.available_from || null } : null,
-              commit: (s, d, v) => { d.on = v.iso || d.on || nextTimeAt(v.time).slice(0, 10); if (v.iso) d.available_from = v.from ?? null; if (v.time) d.dueTime = v.time; }, clear: (s, d) => { d.on = ''; d.available_from = ''; d.dueTime = ''; }, snapshot: (s, d) => ({ on: d.on, available_from: d.available_from, dueTime: d.dueTime }), restore: (s, d, x) => { d.on = x?.on || ''; d.available_from = x?.available_from || ''; d.dueTime = x?.dueTime || ''; } },
+  date:     { json: 1, label: (s, v) => { if (v.iso) { const b = dueBadge(v.iso); return v.part ? s.partLabel(v.iso, v.part) : b.label + (v.time ? ' ' + s.fmtTime(v.time) : ''); } return s.fmtTime(v.time); },
+              read: (s, d) => d.on || d.dueTime ? { iso: d.on, time: d.dueTime, from: d.available_from || null, ...d.part && { part: d.part } } : null,
+              commit: (s, d, v) => { d.on = v.iso || d.on || nextTimeAt(v.time).slice(0, 10); if (v.iso) d.available_from = v.from ?? null; if (v.time) d.dueTime = v.time; d.part = v.part || ''; }, clear: (s, d) => { d.on = ''; d.available_from = ''; d.dueTime = ''; d.part = ''; }, snapshot: (s, d) => ({ on: d.on, available_from: d.available_from, dueTime: d.dueTime, part: d.part }), restore: (s, d, x) => { d.on = x?.on || ''; d.available_from = x?.available_from || ''; d.dueTime = x?.dueTime || ''; d.part = x?.part || ''; } },
 };
 // Decode a pill's dataset.value back to its typed JS value (JSON-encoded kinds vs string vs number).
 function pillValue(kind, raw) { const sp = PILL_SPEC[kind]; return sp.json ? JSON.parse(raw) : sp.num ? +raw : raw; }
@@ -322,7 +322,7 @@ const OVERLAYS = [
   [c => c.settingsOpen, c => c.settingsOpen = false],   // corner settings popup — own light backdrop, below the dialogs
   [c => c.navPop, c => c.navPop = null], [c => c.listMenu, c => c.listMenu = null],   // Hearthsay sentence menus (add/sort)
   [c => c.listTray, c => c.listTray = null],
-  [c => c.navRename, c => c.navRename = null], [c => c.tpop, c => c.tpop = false],
+  [c => c.navRename, c => c.navRename = null], [c => c.tpop, c => c.tpop = false], [c => c.pzpop, c => c.pzpop = null], [c => c.pausePicking, c => c.pausePicking = false],
   [c => c.endPicking, c => c.endPicking = false], [c => c.pop, c => c.pop = null],
   [c => c.selMenu, c => c.selMenu = null],   // an open edit-bar sub-menu closes before the selection itself
   [c => c.sel.length, c => c.clearSel()],    // active multi-select clears (before the lower list states)
@@ -367,7 +367,7 @@ for (const k in PICKERS) if (PICKERS[k].word) {
   PICKERS[k].find = txt => { let i = -1, m; re.lastIndex = 0; while ((m = re.exec(txt))) i = m.index + m[0].length - n; return i; };
 }
 // The composer draft's empty shape — one source of truth for the title draft, resetDraft, and subtask sub-drafts.
-const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', importance: 'none', on: '', available_from: '', deadline_at: '', durMin: 0, dateText: '', dueTime: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], checklist_plain: false, task_type: null, recurrence: null, location: { mode: 'any', ids: [] }, needs: [], neededBy: [], reminders: [] });
+const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', importance: 'none', on: '', available_from: '', deadline_at: '', durMin: 0, dateText: '', dueTime: '', part: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], checklist_plain: false, task_type: null, recurrence: null, location: { mode: 'any', ids: [] }, needs: [], neededBy: [], reminders: [] });
 // Deep-read a reactive value WITHOUT serializing it — subscribes an effect to every nested field (what JSON.stringify
 // subscribed to, minus the string it built each run). `skip` prunes one subtree that another effect owns.
 const _touch = (v, skip) => { if (v && typeof v === 'object' && v !== skip) for (const k in v) _touch(v[k], skip); };
@@ -715,9 +715,11 @@ document.addEventListener('alpine:init', () => {
       // ceiling: another tab's in-flight add is binned too (a duplicate if it lands); slot by tab if two tabs add at once
       for (const [k, p] of Object.entries(this._pendingMap())) if (k.startsWith('save:')) await this._binSave(k, p); else if (dead.includes(k)) await this._binSave(k, { ...p, acct: acctOf(k) }, true);
       await this.reloadAll();
+      await this._resumeDue();
+      this.booted = true;   // the Windows app opens a launch's task link only now: byId is empty until here
       if (this.sticky) { this.startAdd(); this.$watch('draft.content', q => this.listQ = q || ''); }   // the title adds AND filters: its text, never its pills
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
-      setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) this._nowDay = d; if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
+      setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) { this._nowDay = d; this._resumeDue(); } if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
       if (window.desktopWindow) addEventListener('storage', e => {   // the sticky and composer windows follow the app window's theme live: its write reaches them as this event
         if (e.key === 'adherod.theme' || e.key === 'adherod.colorTheme') { this.colorTheme = savedColorTheme(this.store.theme()); this.setTheme(savedAppearance()); }
       });
@@ -2742,7 +2744,7 @@ document.addEventListener('alpine:init', () => {
     resetDraft() {
       this.draft = emptyDraft(); this.subDraft = emptyDraft(); _nlpFocus = null; _dlAuto = ''; _chkSeed = '';
       this.draftRestored = false;   // a blank draft restored nothing (the note's Esc clears its always-open line in place)
-      this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.entryKind = ''; this.endPicking = false; this.tpop = false; this._calDn = null; this.calH = null;
+      this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.entryKind = ''; this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._calDn = null; this.calH = null;
       for (const t in PICKERS) this[PICKERS[t].key] = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
       this._noPillOnce = false;   // the un-chip→no-re-pill guard is per-session; never leak it across composer opens
       this._draftSid = crypto.randomUUID();   // ditto the draft identity — a rapid-add save resets the draft without reopening
@@ -2899,9 +2901,9 @@ document.addEventListener('alpine:init', () => {
         : document.querySelector('.surface-lists .list');
       if (dest && el.parentElement !== dest) dest.appendChild(el);
     },
-    quickAdd() {   // `q` and the phone's ＋: opens inline on Lists, in the list left open there
+    quickAdd(note) {   // `q` and the phone's ＋ (`n`: a note): opens inline on Lists, in the list left open there
       if (this.surface !== 'lists' && this.navSel.type === 'filter') this.setNav('all');   // unseen, the filter can't promise the new task shows
-      this.goSurface('lists'); this.startAdd();
+      this.goSurface('lists'); this.startAdd(note);
     },
     // droid-12: a thread's words open the bar's composer over its field, chipped as if typed there. Enter files them where a jot lands.
     addAsTask() {
@@ -2917,9 +2919,10 @@ document.addEventListener('alpine:init', () => {
       this.insertSegments(segs);   // no area chip: it lands now, in this task
       this._draftBase = this._draftSig();   // untouched, a cancel keeps nothing: the words are still the chat's
     },
-    startAdd() {
+    startAdd(note) {
       this._endDraft(); this.editing = null; _editPin = null; this.resetDraft();
       if (this.navSel.type === 'area') this.draft.areas = [this.navSel.id];   // lands in the area view it's added from, on its visible chip
+      if (note) this.draft.task_type = 'note';
       this._initDraftSafety(); this.openComposer();
     },
     durFmt(min) {
@@ -3476,7 +3479,7 @@ document.addEventListener('alpine:init', () => {
         // ON register hydration: the date-item IS the placement, so it wins over the legacy recur_from column
         on: si?.date || (t.recur_from || '').slice(0, 10),
         available_from: t.available_from || '',
-        dueTime: si?.start || timeOf(t.recur_from || ''),
+        dueTime: si?.start || timeOf(t.recur_from || ''), part: partOf(t.possible?.bands),
         deadline_at: (t.deadline_at || '').slice(0, 16),   // 16, not 10: a timed deadline must survive an edit round-trip (F16)
         durMin: min,
         project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: [...(t.area_ids || [])], goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })), checklist_plain: !!t.checklist_plain, task_type: t.task_type ?? null, recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
@@ -3721,6 +3724,7 @@ document.addEventListener('alpine:init', () => {
         recurrence: d.recurrence,
         location: d.location || { mode: 'any', ids: [] },
         checklist_plain: !!d.checklist_plain, task_type: d.task_type ?? null,
+        possible: d.part && d.on && !d.dueTime ? { bands: [DAY_PARTS[d.part]] } : null,   // the haze's window
       };
       if (d.project_id) fields.parent_id = d.project_id;
       else if (!fields.project && !editing) {
@@ -3738,6 +3742,7 @@ document.addEventListener('alpine:init', () => {
     popAway(name, e) {
       if (this.pop !== name || e.target.closest('.pop')) return;
       this.pop = null;
+      this.pzpop = null; this.pausePicking = false;
       this.tpop = false;   // the date pop's time pop goes with it: its own .outside skips the same detached targets
     },
     // Unified calendar pop (due / plan-nav) — mode driven by `pop`
@@ -3776,6 +3781,11 @@ document.addEventListener('alpine:init', () => {
       if (!this.pop || !anchor) return _keyboard();
       const r = anchor.getBoundingClientRect(), m = 8, card = anchor.closest('.event-editor, .block-editor');   // an editor's pop hangs under its card, clear of Delete and Save
       this.popXY = { left: r.left, top: (card ?? anchor).getBoundingClientRect().bottom + 5 };
+      // A chip's pop holds the chip's opening place in its row: chips reflow under an open pop (unsetting the date sends When to
+      // the row's end), and following the chip made the pop jump. The row still carries it through scroll and the composer's growth.
+      // ceiling: the held place ignores the phone editors' sideways-scrolling chip row and a resize that re-wraps the row; follow the chip there once either shows up
+      const row = anchor.closest('.composer-opts'), r0 = row?.getBoundingClientRect();
+      const held = () => { const b = row.getBoundingClientRect(); return new DOMRect(r.left - r0.left + b.left, r.top - r0.top + b.top, r.width, r.height); };
       // The handle is published SYNCHRONOUSLY even though the loop below only starts a tick later —
       // otherwise two togglePops in one task both read _popTrack as null and leave TWO loops running,
       // the stale one still writing popXY from its own anchor.
@@ -3796,14 +3806,14 @@ document.addEventListener('alpine:init', () => {
           return { left: popLeft(ar.left, el.offsetWidth + m, m), top };
         };
         // Follow the anchor every frame: scroll, resize AND any layout move (the composer growing under its chips).
-        // Recompute only when the anchor rect actually changed, so an at-rest pop costs one cached rect read per frame.
+        // Recompute only when the placed rect changed: an at-rest pop costs one rect read per frame, a chip row's pop two and a DOMRect.
         let prev = '', zeroRects = 0;
         const follow = () => {
           rafId = requestAnimationFrame(follow);
           if (!this.pop || !el.isConnected) { _keyboard(); return cleanup(); }
           // The pop's own size is part of the key: a filtered list that shrinks under a STATIONARY anchor otherwise leaves the
           // pop hanging where the taller version ended (6px → 38px gap), and content that widens it after placement runs it flush to the edge.
-          const a = anchor.getBoundingClientRect(), k = `${a.top},${a.left},${a.bottom},${el.offsetHeight},${el.offsetWidth},${_kb}`;
+          const a = anchor.getBoundingClientRect(), h = row ? held() : a, k = `${h.top},${h.left},${a.width},${el.offsetHeight},${el.offsetWidth},${_kb}`;
           if (k === prev) return;
           const vh = window.innerHeight, vw = document.documentElement.clientWidth;
           if (!a.width && !a.height) {
@@ -3814,9 +3824,9 @@ document.addEventListener('alpine:init', () => {
             return;
           }
           zeroRects = 0;
-          if (a.bottom < 0 || a.top > vh || a.right < 0 || a.left > vw) { this.pop = null; return cleanup(); }
+          if (h.bottom < 0 || h.top > vh || h.right < 0 || h.left > vw) { this.pop = null; return cleanup(); }
           prev = k;
-          if (!this.popDock) this.popXY = _pos(a);
+          if (!this.popDock) this.popXY = _pos(h);
           else if (_keyboard() && anchor.closest('.composer')) {   // lift the card over the panel, as the caret reveal does over the keyboard; never its top off screen. An editor's card rides --kb (styles.css)
             const card = anchor.closest('.composer'), r = card.getBoundingClientRect(), over = Math.min(r.bottom - (vh - _kb), r.top);   // not $refs: a pop's own item (···'s Size) has none
             if (over > 0) card.closest('.app').scrollTop += over;
@@ -3940,7 +3950,7 @@ document.addEventListener('alpine:init', () => {
       if (this.draft.areas.includes(id) && !this.reduceMotion())
         el.animate({ transform: ['scale(1)', 'scale(1.06)', 'scale(1)'] }, { duration: 180, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() || 'ease-out' });
     },
-    endPicking: false, tpop: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
+    endPicking: false, tpop: false, pzpop: null, pausePicking: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
     // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (placement, amber,
     // saved as a schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). Derived from
     // the draft on every open, so the pop always reads back what the task already holds.
@@ -3956,19 +3966,60 @@ document.addEventListener('alpine:init', () => {
     openDate(name, anchor) {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
-      this.dreg = !this.repRules().length && this.draft.on ? 'on' : 'by';   // hydrate: a placed task opens in On
-      this.endPicking = false; this.tpop = false; this._typedN = 1;
+      const phone = this.narrow && document.documentElement.classList.contains('touch'), d = this.draft;
+      this.dreg = !this.repRules().length && (d.on || phone && !d.deadline_at && !d.available_from) ? 'on' : 'by';   // hydrate: a placed task opens in On, and a dateless one on a phone (droid-27, as Android)
+      this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._typedN = 1;
       this._calTo(this.draft[this._dateKey()] || this.draft.on || isoDate(new Date()));
       this.$nextTick(() => this.pop === name && !this.popDock && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it
     },
+    // Pause asks when it comes back first (things-4, user 10-24: "pop-up on press, then add the line in after").
     // A repeat resumed after falling behind starts again at its next date from today, not the pile it missed
     // (user, tweak-9: "let's not unload onto the user when they restart a project"); one still ahead keeps its date.
-    repPause(r) {
-      r.paused = !r.paused;
-      if (r.paused || !this.draft.on || this.draft.on >= isoDate(new Date())) return;
+    repPause(r, ev) {
+      if (!r.paused) return this.togglePausePop(ev, r);
+      r.paused = false;
+      delete r.resume;
+      if (!this.draft.on || this.draft.on >= isoDate(new Date())) return;
       this.draft.on = '';
       this.refreshRecurrenceDue();
     },
+    // A comeback day that came (boot, then each midnight): the rule runs again. One reload, only if a write landed.
+    async _resumeDue() {
+      const ts = Date.now(), due = this.tasks.map(t => [t.id, resumedRecurrence(t, ts)]).filter(([, patch]) => patch);
+      if (!due.length) return;
+      const ok = await Promise.all(due.map(([id, patch]) => this.store.tasks.update(id, patch)));
+      if (ok.some(Boolean)) await this.loadTasks();
+    },
+    togglePausePop(ev, r) {
+      const was = this.pzpop || this.pausePicking;
+      this.pzpop = null; this.pausePicking = false;
+      if (was) return;
+      this.repIdx = this.repRules().indexOf(r);
+      const b = ev.currentTarget.getBoundingClientRect(), x = ev.detail ? ev.clientX : b.left;   // at the pointer (user 10-25)
+      const y = b.bottom + 184 <= innerHeight ? `top:${Math.round(b.bottom + 4)}px` : `top:auto; bottom:${Math.round(innerHeight - b.top + 4)}px`;   // under the control, above it near the window's foot: never over the value clicked
+      this.pzpop = { style: `left:${Math.round(popLeft(x, 200))}px; ${y};` };
+    },
+    // For a week / two weeks / a month: back on its first date on or after that day
+    pausePicks() {
+      const r = this.curRule(), at = n => { const d = new Date(); d.setHours(0, 0, 0, 0); if (n) d.setDate(d.getDate() + n); else d.setMonth(d.getMonth() + 1); return this._pausedTo(r, isoDate(d)); };
+      return [['For a week', at(7)], ['For two weeks', at(14)], ['For a month', at(0)]].map(([label, iso]) => ({ label, iso }));
+    },
+    _pausedTo(r, iso) {
+      const eve = new Date(iso + 'T00:00'), anchor = this.draft.on?.slice(0, 10) || iso; eve.setDate(eve.getDate() - 1);
+      return r.from_completion ? iso : nextOccurrence({ ...r, paused: false }, anchor, eve, { inclusive: anchor >= iso });   // an anchor on the eve is before the comeback
+    },
+    // '' = until the user resumes. The due moves to the comeback date only when no other statement still runs.
+    pauseUntil(iso) {
+      const r = this.curRule();
+      this.pzpop = null; this.pausePicking = false;
+      r.paused = true;
+      if (!iso) { delete r.resume; return; }
+      r.resume = iso;
+      if (recActive(this.draft.recurrence)) return;
+      this.draft.on = this._pausedTo(r, iso);
+      this._calTo(this.draft.on);
+    },
+    pauseLabel(r) { return r.resume ? new Date(r.resume + 'T00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : 'you resume'; },
     // Recompute the next-occurrence due whenever the recurrence rule changes (anchored at the current due, else today).
     refreshRecurrenceDue() {
       if (!this.repRules().length) return;
@@ -4036,6 +4087,7 @@ document.addEventListener('alpine:init', () => {
     // Tap-and-hold a day (~450ms) = "every month on the Nth", anchored there. The trailing click is swallowed.
     calDayTap(c) {
       const r = this.curRule();
+      if (this.pausePicking) { if (c.iso > isoDate(new Date())) this.pauseUntil(c.iso); return; }   // a comeback is a day still ahead
       if (this.endPicking && r) {   // quiet end-pick: tapped day = last occurrence of the active statement; boundary re-tap clears
         this.setRepeatUntil(c.iso === r.ends?.date ? '' : c.iso);
         this.endPicking = false; return;
@@ -4104,7 +4156,7 @@ document.addEventListener('alpine:init', () => {
       // "by" IS the deadline: until a date is chosen, every pick re-derives its next occurrence and "no time" drops the unchosen date
       else if (by && (!dl || dl === _dlAuto)) this.draft.deadline_at = _dlAuto = v ? nextTimeAt(v) : '';
       else if (dl) this.draft.deadline_at = dl.slice(0, 10) + (v ? 'T' + v : '');
-      else if (!by) this.draft.dueTime = v;
+      else if (!by) { this.draft.dueTime = v; if (v) this.draft.part = ''; }   // a clock time replaces the day-part, as typed
     },
     tpopHours(t = this.timeGet()) {
       const cur = t ? +t.slice(0, 2) : -1;
@@ -4126,7 +4178,7 @@ document.addEventListener('alpine:init', () => {
     clearRepeat(i = 0) {   // trash one statement; a single leftover collapses back to the legacy object shape
       const arr = this.repRules().filter((_, j) => j !== i);
       this.draft.recurrence = arr.length === 0 ? null : arr.length === 1 ? arr[0] : arr;
-      this.repIdx = 0; this.endPicking = false; this.tpop = false;
+      this.repIdx = 0; this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false;
     },
     repeatUnitLabel(r) {
       if (!r) return '';
@@ -4242,9 +4294,8 @@ document.addEventListener('alpine:init', () => {
         const anchor = this.draft.on ? this.draft.on.slice(0, 10) : todayIso;
         const rank = { occ: 3, occh: 2, occg: 1 };
         for (const r of rules) {
-          const kind = r.paused ? 'occg' : r.from_completion ? 'occh' : 'occ';
           for (const s of occurrencesInRange(r, anchor, first, last)) {
-            const iso = s.slice(0, 10);
+            const iso = s.slice(0, 10), kind = (r.paused || this.pausePicking && r === this.curRule()) && !(r.resume <= iso) ? 'occg' : r.from_completion ? 'occh' : 'occ';   // grey until the comeback day
             if (!marks.has(iso) || rank[kind] > rank[marks.get(iso)]) marks.set(iso, kind);
           }
         }
@@ -4334,7 +4385,7 @@ document.addEventListener('alpine:init', () => {
       // a wall keeps "by"/the window. Never "by" for an intention.
       const dl = this.draft.deadline_at, f = this.draft.available_from, parts = [];
       const on = this.draft.on?.slice(0, 10);   // KA: the jot bar names the day as its title's pill does, tomorrow in full
-      if (on) parts.push((!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : ''));
+      if (on) parts.push(this.draft.part && !this.draft.dueTime ? this.partLabel(on, this.draft.part) : (!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : ''));
       if (f && dl && f.slice(0, 10) === dl.slice(0, 10)) parts.push('only ' + this.fmt(dl.slice(0, 10)));   // one-day world-window — walled on both sides
       else if (f && dl) parts.push(this.fmt(f.slice(0, 10)) + ' – ' + this.fmt(dl.slice(0, 10)));   // the window; its end IS the deadline
       else if (dl) parts.push('by ' + this.fmt(dl.slice(0, 10)) + (timeOf(dl) ? ' ' + this.fmtTime(timeOf(dl)) : ''));
@@ -4722,6 +4773,7 @@ document.addEventListener('alpine:init', () => {
       if (node.parentNode !== this._nlpEl()) { if (node.parentNode !== this.$refs.content) return false; this.focusTitle(); }
       const pending = node.textContent.slice(0, off);
       const tok = matchTrailingToken(pending, new Date(), this.locNames());
+      if (this.absorbIntoRule(node, off, pending.slice(0, tok ? tok.start : off))) return true;   // "first and third [Tmr] of every month"
       const start = tok ? tok.start : pending.search(/\S+$/);   // a non-token word may still fold: [Fri 4:00] + "PM"
       if ((!tok || tok.kind === 'date') && start >= 0 && this.swallowIntoPrevDate(node, start, pending.slice(start), off)) return true;   // [next week] + "sun" → [next week sunday]
       if (!tok || !this._nlpTakes(tok)) return false;
@@ -4738,6 +4790,26 @@ document.addEventListener('alpine:init', () => {
       // the node/caret may have shifted while awaiting the store — only pill if the token text is still there
       if (node.parentNode !== this._nlpEl() || node.textContent.slice(tok.start, end) !== token) return;
       this.insertPill(node, tok.start, 'area', id, token, end);
+    },
+    // Space mints per word, so a rule's head pills before the rest arrives: "sunday" as a date, "every month" as a bare rule.
+    // When the chip just before the caret, its words and the prose around it read as ONE rule, that rule takes them all.
+    // `prose` is the text typed past the chip that no token claims: with none ("every weekday [2pm]"), the chips stay apart.
+    absorbIntoRule(node, off, prose) {
+      let pill = node.previousSibling, gap = '';
+      while (pill?.nodeType === 3 && !pill.textContent.trim()) { gap = pill.textContent + gap; pill = pill.previousSibling; }
+      if (!['date', 'rec'].includes(pill?.dataset?.kind)) return false;
+      const pre = pill.previousSibling?.nodeType === 3 ? pill.previousSibling : null, head = (pre?.textContent ?? '').replace(/(\S)$/, '$1 ');
+      const lead = head + pill.dataset.token + (gap || (/^\S/.test(node.textContent) ? ' ' : ''));   // a chip owns no space: "[Sun]of" reads "sunday of"
+      const text = lead + node.textContent.slice(0, off), tok = matchTrailingToken(text, new Date(), this.locNames());
+      if (tok?.kind !== 'rec' || tok.start > head.length || !(head.slice(tok.start) + prose).trim() || !this._nlpTakes(tok)) return false;
+      const stop = (pre ?? pill).previousSibling;
+      while (node.previousSibling !== stop) node.previousSibling.remove();
+      node.textContent = lead + node.textContent;
+      this._settlePills([pill]);
+      const draft = this._nlpDraft(), seed = pill.dataset.kind === 'rec' && nextAcrossRules(JSON.parse(pill.dataset.value), isoDate(new Date()), new Date(), { inclusive: true });
+      if (seed && draft.on === seed.iso) draft.on = '';   // the bare rule seeded that due: the fuller rule seeds its own
+      this.insertPill(node, tok.start, 'rec', tok.value, text.slice(tok.start), text.length);
+      return true;
     },
     // A word right after a date pill MERGES into it when foldIntoDate reads "<pill token> <word>" as one date:
     // swap the pill for the combined one and drop the word. [next week] + "sun" → next week's Sunday.
@@ -5156,13 +5228,14 @@ document.addEventListener('alpine:init', () => {
         else if (e.key === 'Enter') { e.preventDefault(); this.ovSel === 0 ? this.rollerOpen() : this.diveTo(this.surfaceOrder[this.ovSel]); }
         else if (this.surfaceOrder[e.key - 1]) { e.preventDefault(); this.diveTo(this.surfaceOrder[e.key - 1]); }   // 1..n: the shipped surfaces (SURFACES)
         else if (e.key === 'o') { e.preventDefault(); this.closeOverview(); }
-        if (!['?', ' ', 'q', 'b', 'g', 'a'].includes(e.key)) {   // the sheet's Global keys still run: the help opens over the deck, the rest leave it
+        if (!['?', ' ', 'q', 'n', 'b', 'g', 'a'].includes(e.key)) {   // the sheet's Global keys still run: the help opens over the deck, the rest leave it
           if (sheetOnly && e.defaultPrevented) this.shortcutsOpen = false;   // a deck key the sheet lists closes it, as below
           return;
         }
         if (e.key !== '?') this.closeOverview();
       }
       if (e.key === 'q') { e.preventDefault(); this.quickAdd(); }
+      else if (e.key === 'n') { e.preventDefault(); this.quickAdd(true); }
       else if (e.key === 'b') { e.preventDefault(); this.trashOpen = true; }   // Bin (Recently Deleted) — recover anything
       else if (e.key === 'g') { e.preventDefault(); this.setNav('backlog'); }
       else if (e.key === 'a') { e.preventDefault(); this.setNav('all'); }
@@ -5238,6 +5311,7 @@ document.addEventListener('alpine:init', () => {
       const day = d.toLocaleDateString([], { month: 'short', day: 'numeric' });   // no year, timed or not — these are near-term dates
       return dateOnly ? day : day + ', ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     },
+    partLabel(iso, part) { return iso === isoDate(new Date()) ? (part === 'evening' ? 'Tonight' : 'This ' + part) : dueBadge(iso).label + ' ' + part; },
     fmtTime(hhmm) {
       if (!hhmm) return hhmm;
       const [h, m] = hhmm.split(':').map(Number);
@@ -5328,7 +5402,7 @@ document.addEventListener('alpine:init', () => {
     // The ? sheet's rows — also the coach's key lookup (_coach), so a tip can't drift from the sheet.
     shortcutGroups() {
       return [
-        {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],...this.surfaceOrder.map((s, i) => ['<kbd>' + (i + 1) + '</kbd>', 'Go to ' + SURF_META[s].label]),['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> or <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
+        {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],...this.surfaceOrder.map((s, i) => ['<kbd>' + (i + 1) + '</kbd>', 'Go to ' + SURF_META[s].label]),['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>n</kbd>','New note'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> or <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
         {l:'Overview',r:[['<kbd class=sk-letter>h</kbd>/<kbd class=sk-letter>l</kbd> or <kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Move across surfaces'],['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> or <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move through Lists destinations'],['<kbd>↵</kbd>','Open overview selection'],['<kbd>1</kbd>–<kbd>' + this.surfaceOrder.length + '</kbd>','Open surface directly'],['<kbd class=sk-letter>o</kbd>','Close overview']]},
         {l:'Finder',r:[['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move finder selection'],['<kbd>↵</kbd>','Open finder selection'],['<kbd>⌘</kbd><kbd class=sk-letter>s</kbd>','Save query as filter']]},
         {l:'Task list',r:[['<kbd class=sk-letter>j</kbd><kbd class=sk-letter>k</kbd> or <kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Move focus'],['<kbd>↵</kbd>/<kbd class=sk-letter>e</kbd>','Open focused'],['<kbd class=sk-letter>x</kbd>','Complete focused or selected'],['<kbd class=sk-mod>⇧</kbd><kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd>','Extend selection'],['<kbd>/</kbd> or <kbd>⌘</kbd><kbd class=sk-letter>f</kbd>','Search tasks'],['<kbd class=sk-letter>f</kbd>','Filter tasks']]},
@@ -5760,7 +5834,7 @@ document.addEventListener('alpine:init', () => {
       return !!t;
     },
     // --- Inverse-op journal (recovery engine; ⌘Z/⌘⇧Z drive undo()/redo() below). ---
-    _res(t) { return t === 'message' ? messageStore(sbClient()) : this.store[t + 's']; },                 // task→tasks, area→areas, event→events, block→blocks, filter→filters, location→locations
+    _res(t) { return t === 'message' ? messageStore(sbClient()) : this.store[t === 'identity' ? 'identities' : t + 's']; },                 // task→tasks, area→areas, event→events, block→blocks, filter→filters, location→locations
     _rowById(t, id) { return t === 'task' ? this.byId.get(id) : (t === 'message' ? this.chat.msgs : this[t + 's'] ?? []).find(r => r.id === id); },   // a message: the open thread's
     // What a task delete takes beyond its rows (the DB cascades, LocalStore prunes): links in from outside, schedule items, reminders.
     // ix: the refs keyed by the id they point at — one pass per action (a bulk delete shares it), not a scan per removed task.
@@ -6346,14 +6420,14 @@ document.addEventListener('alpine:init', () => {
     },
     patchLocation(id, fields) { return this._journalRowChange('Edited location', 'location', id, () => this.store.locations.update(id, fields)); },
     async deleteLocation(id) { if (this.locations.some(l => l.id === id)) return this.perform('Deleted location', { kind: 'delete', target: 'location', id }); },
-    locName(id) { const l = this.locations.find(x => x.id === id); return l ? l.name : id; },
+    placeLabel(l) { return this.locations.some(x => x !== l && x.name === l.name) ? `${l.name}, ${l.region || 'Home'}` : l.name; },   // a name repeated across regions carries its region
+    locName(id) { return this.locations.find(x => x.id === id)?.name ?? ''; },   // a place not loaded yet (a synced task ahead of its place) reads as no place, as rowLoc: never its id
     // Row badge: first pinned location's name (+N when several), '' when the task isn't location-scoped or names aren't loaded.
     rowLoc(t) {
       // The PICKED SET is what makes a task location-scoped — an empty set is "anywhere", whatever `mode` says
       // (the same rule as locPolarity). Trusting mode hid the badge on every task saved with the default 'any'.
-      const L = t.location; if (!L || !(L.ids || []).length) return '';
-      const l = byIdIn(this.locations).get(L.ids[0]); if (!l) return '';
-      return L.ids.length > 1 ? `${l.name} +${L.ids.length - 1}` : l.name;
+      const byId = byIdIn(this.locations), names = (t.location?.ids || []).map(id => byId.get(id)?.name).filter(Boolean);   // a place not loaded yet isn't counted, as locChipLabel
+      return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0] ?? '';
     },
     // --- location hybrid picker (sentence polarity + here-row + region chip rows) ---
     locNew: null, locExpanded: [], locOrder: {},
@@ -6371,7 +6445,7 @@ document.addEventListener('alpine:init', () => {
       }
     },
     // 'any' (no places picked) | 'only' | 'except' — empty set IS anywhere; "any" is not a mode you pick
-    locPolarity() { const L = this.draft.location; return !L || !(L.ids || []).length ? 'any' : (L.mode === 'except' ? 'except' : 'only'); },
+    locPolarity() { const L = this.draft.location; return !L?.ids?.some(id => this.locName(id)) ? 'any' : (L.mode === 'except' ? 'except' : 'only'); },   // only loaded places count: the chip reads unset until they load
     toggleLocPolarity() {
       const L = this.draft.location; if (this.locPolarity() === 'any') return;
       this.draft.location = { mode: L.mode === 'except' ? 'only' : 'except', ids: [...L.ids] };
@@ -6412,9 +6486,8 @@ document.addEventListener('alpine:init', () => {
       if (l) this.toggleLocId(l.id);   // created from the picker = you meant it → selected
     },
     locChipLabel() {
-      const L = this.draft.location;
-      if (!L || !(L.ids || []).length) return 'Location';
-      const names = L.ids.map(id => this.locName(id));
+      const L = this.draft.location, names = (L?.ids || []).map(id => this.locName(id)).filter(Boolean);
+      if (!names.length) return 'Location';
       const list = names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) : names.join(' or ');
       return (L.mode === 'except' ? 'away from ' : 'at ') + list;
     },
@@ -6683,7 +6756,7 @@ document.addEventListener('alpine:init', () => {
     // Uncheckable: the checklist renders as a plain notes list (no boxes, no done styling) everywhere
     chkPlain() { return this.draft.checklist_plain; },
     chkSteps() { return !this.draft.checklist_plain && this.draft.task_type === 'steps'; },
-    phoneDock() { return this.narrow && document.documentElement.classList.contains('touch'); },   // the composer's one-row dock (9A): the 640 block's .touch rules
+    phoneDock() { return this.narrow && (document.documentElement.classList.contains('touch') || this._inBar()); },   // the composer's one-row dock (9A): the 640 block's .touch and jot-bar rules
     notesHidden() { return this.phoneDock() && !this.notesOpen; },
     // KC: a strip word types itself where the caret is and chips as a typed space would; # and @ open their picker
     kcType(word) {
@@ -6916,7 +6989,7 @@ document.addEventListener('alpine:init', () => {
       const min = c.est_minutes || 0;
       if (c.importance && c.importance !== 'none') add('imp', c.importance);
       const si = c.recurrence ? null : this._siOf(c.id);   // the placement is the date fact; recur_from is only a rule anchor now
-      if (si || c.recur_from) add('date', { iso: si?.date || c.recur_from.slice(0, 10), time: si ? si.start || '' : timeOf(c.recur_from), from: c.available_from || null });
+      if (si || c.recur_from) add('date', { iso: si?.date || c.recur_from.slice(0, 10), time: si ? si.start || '' : timeOf(c.recur_from), from: c.available_from || null, ...partOf(c.possible?.bands) && { part: partOf(c.possible.bands) } });
       if (c.deadline_at) add('deadline', { iso: (c.deadline_at || '').slice(0, 16) });
       if (c.recurrence) add('rec', c.recurrence);
       if (min) add('dur', min);
@@ -7564,10 +7637,10 @@ document.addEventListener('alpine:init', () => {
       return { lists: this.tasks.filter(t => t.overview).map(t => t.content), areas: this.areas.map(a => a.name),
                places: this.locNames(), today: isoDate(new Date()) };
     },
-    openImport(kind, text, name = '') {
+    openImport(kind, text, name = '', file = false) {
       const r = kind === 'ics' ? parseICS(text) : parsePayload(text, this._importCtx());
       if (kind === 'ics' && !r.items.length && !r.problems.length) return this.toast('No events in that file');
-      this.importPreview = { kind, name, items: r.items, problems: r.problems, busy: false };
+      this.importPreview = { kind, name, items: r.items, problems: r.problems, busy: false, file };
     },
     // Preview rows draw with the SAME component as the palette, the sweep dialog and the relation wells —
     // rowBodyHtml in minimal mode. This is taskLine's sibling: taskLine adapts a SAVED row (byId lookups for
@@ -7598,7 +7671,7 @@ document.addEventListener('alpine:init', () => {
     copyPrompt() { return this._copyText(importPrompt(this._importCtx()), 'Prompt copied. Paste it to your assistant'); },
     importTitle() {
       const p = this.importPreview; if (!p) return '';
-      return p.kind === 'ics' ? (p.name || 'Calendar') : 'Add tasks';
+      return p.kind === 'ics' ? (p.name || 'Calendar') : p.kind === 'backup' ? 'Restore from ' + p.name : 'Add tasks';
     },
     async _copyText(text, msg) {
       try { await navigator.clipboard.writeText(text); }
@@ -7637,6 +7710,7 @@ document.addEventListener('alpine:init', () => {
       e.preventDefault(); this.fileDrag = false;
       if (this.chatDrop()) return this.addFiles(e.dataTransfer.files);   // an open chat takes any file
       const dropped = [...(e.dataTransfer.files || [])], files = dropped.filter(f => f.name.toLowerCase().endsWith('.ics'));
+      if (dropped.length === 1 && dropped[0].name.toLowerCase().endsWith('.json') && !this.composerDrop() && !this.eventDrop()) return this.openBackup(await dropped[0].text().catch(() => ''));   // an export, opened back
       if (this.composerDrop() && files.length < dropped.length) return this.attachFiles(dropped);   // so does an open composer, but calendar files still import
       if (this.eventDrop() && files.length < dropped.length) return this.session ? this.addFiles(dropped, this.eventEdit.files) : this.toast('Sign in to attach files');   // and an open event, as its ticket
       if (!files.length) return;   // not ours — stay silent, same as a non-.ics drop on macOS
@@ -7648,10 +7722,56 @@ document.addEventListener('alpine:init', () => {
       const p = this.importPreview;
       if (!p || p.problems.length || p.busy || !p.items.length) return;
       p.busy = true;
-      try { await (p.kind === 'ics' ? this._importEvents(p.items) : this._importTasks(p.items)); this.importPreview = null; }
+      try { await (p.kind === 'ics' ? this._importEvents(p.items) : p.kind === 'backup' ? this._restoreBackup(p.plan, p.name) : this._importTasks(p.items)); this.importPreview = null; }
       finally { if (this.importPreview) this.importPreview.busy = false; }
     },
     _nEvents(n) { return n + (n === 1 ? ' event' : ' events'); },
+    // ─── Export everything (Settings › Safety): the store's rows by kind, one file. Signed in, the account's, not this device's
+    async exportAll() {
+      try {
+        const rows = {};
+        for (const k of BACKUP_KINDS) rows[k] = await this._res(k)?.list() ?? [];   // the device has no goals: only the account's
+        const doc = { adherod_backup: 1, at: new Date().toISOString(), default_project_id: this.store.defaultProject(), rows };
+        const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([JSON.stringify(doc)], { type: 'application/json' })), download: `ADHeroD ${isoDate(new Date())}.json` });
+        a.click(); setTimeout(() => URL.revokeObjectURL(a.href));
+      } catch { this.toast('Failed exporting. Try again?'); }
+    },
+    async openBackup(text) {
+      let doc = null; try { doc = JSON.parse(text); } catch {}
+      if (!isBackup(doc)) return looksLikePayload(text) ? this.openImport('tasks', text, '', true) : this.toast('Can’t open that file');
+      const plan = restorePlan(doc, { defaultProject: this.store.defaultProject(), areas: this.areas, locations: this.locations, filters: this.filters, dayNotes: this.dayNotes, identities: await this.store.identities?.list().catch(() => []) });
+      const n = k => plan[k].length, projects = plan.task.filter(t => t.overview).length;
+      const items = [['Tasks', 'i-check', n('task') - projects], ['Projects', 'i-proj', projects], ['Areas', 'i-tag-tag', n('area')], ['Places', 'i-pin', n('location')], ['Goals', 'i-flag', this.store.goals ? n('goal') : 0],
+        ['Events', 'i-cal', n('event')], ['Blocks', 'i-clock', n('block')], ['Reminders', 'i-bell', n('reminder')], ['Day notes', 'i-file', n('dayNote')], ['Filters', 'i-search', n('filter')]].filter(i => i[2]);
+      if (!items.length) return this.toast('Nothing in that file to add');
+      const files = [...plan.task, ...plan.event].reduce((sum, r) => sum + (r.attachments?.length || 0) + (r.ticket ? 1 : 0), 0);
+      const at = new Date(doc.at), name = at.toLocaleDateString([], { month: 'short', day: 'numeric', ...at.getFullYear() !== new Date().getFullYear() && { year: 'numeric' } });
+      this.importPreview = { kind: 'backup', name, items, problems: [], busy: false, plan, files };
+    },
+    // Create-first, as _importTasks: each kind lands in one store write, and ANY failure takes back every row this restore
+    // minted (its plan is the ledger: no other writer holds those ids). Worst case is a duplicate, never a loss.
+    async _restoreBackup(plan, name) {
+      const kinds = BACKUP_KINDS.filter(k => plan[k].length && this._res(k)), mine = new Set(plan.task.map(t => t.id)), roots = plan.task.filter(t => !mine.has(t.parent_id));
+      const rows = k => k !== 'reminder' ? plan[k] : plan[k].map(r => isPassed(r) ? { ...r, paused: true } : { ...r, at: nextAt(r) });   // as a Bin restore: a passed reminder never fires late
+      let done = 0;
+      try { while (done < kinds.length && await this.store.reinsert(kinds[done], rows(kinds[done]))) done++; } catch {}   // LocalStore's is sync
+      if (done < kinds.length) {
+        let left = false;
+        for (const k of kinds.slice(0, done + 1).reverse()) {   // the failed kind too: part of its write may have landed
+          const ids = new Set(plan[k].map(r => r.id));
+          if (k === 'task') await this.store.tasks.remove(roots.map(t => [t.id, ...ids])).catch(() => {});
+          else for (const id of ids) await this._res(k).remove(id).catch(() => {});
+          left ||= await this._res(k).list().then(l => l.some(r => ids.has(r.id)), () => true);
+        }
+        await this.reloadAll(true);
+        return this.toast(left ? 'Restore failed. Some copies stayed in your lists' : 'Restore failed. Nothing was added');
+      }
+      await this.reloadAll(true);
+      // its ⌘Z puts it in the Bin: the task roots (a subtree goes with its root), then each other row; dates, block days and reminders go with theirs
+      const ops = [...roots.map(t => ({ kind: 'remove', target: 'task', id: t.id, rows: this._rowsForDelete('task', t.id) })),
+        ...kinds.filter(k => !['task', 'scheduleItem', 'blockDay', 'reminder'].includes(k)).reverse().flatMap(k => plan[k].map(r => ({ kind: 'remove', target: k, id: r.id, rows: [r] })))];
+      this._pushEntry(`Restored from ${name}`, { kind: 'composite', target: 'task', ops }, { bin: true, restored: true });
+    },
     // New UIDs are created; an existing UID refreshes ONLY on a higher SEQUENCE, so re-dropping an older
     // export can't roll data back and re-dropping the same file can't clobber edits made since.
     async _importEvents(items) {
@@ -8386,11 +8506,7 @@ document.addEventListener('alpine:init', () => {
       if (moved) queueMicrotask(() => {
         this._clPositionZone(zt);   // a title the move lists is created in Alpine's flush after this handler: place it before the paint
         if (!walking || document.activeElement !== document.body) return;
-        // the flush recycled the focused day: a day in view takes focus now, or the next key lands on body (→ turns the surface).
-        // A walk glides to the stop and keeps it; a step glides away from it, so the stop becomes the first day where it lands.
-        const [at, rows] = this._clRowsInView(), stop = this._weekIdx(new Date(this._clStop() + 'T00:00'));
-        if (stop < at || stop >= at + rows) this.clDayInView = isoDate(this._weekDate(at));
-        this._clLandDay();
+        this._clLandInView();   // the flush recycled the focused day: a day in view takes focus now, or the next key lands on body (→ turns the surface)
       });
       const t = performance.now();
       // our OWN settle glide: it still virtualizes, but it is not a gesture — re-lighting the chrome here is a flicker.
@@ -8485,6 +8601,12 @@ document.addEventListener('alpine:init', () => {
       if (top !== at) el.scrollTo({ top: this._clMTo = top * h, behavior: this.reduceMotion() ? 'auto' : 'smooth' });
       this._clLandDay();
     },
+    // A walk glides to the stop and keeps it; a step or wheel takes the view away from it, so the stop becomes the first day in view.
+    _clLandInView() {
+      const [at, rows] = this._clRowsInView(), stop = this._weekIdx(new Date(this._clStop() + 'T00:00'));
+      if (stop < at || stop >= at + rows) this.clDayInView = isoDate(this._weekDate(at));
+      this._clLandDay();
+    },
     _clStop() { return this.clDayInView || this.clDayFocus || this._nowDay; },   // the month's one Tab stop, and where a walk starts
     // Focus follows the stop. A held arrow outruns the glide that draws the rows ahead, so its day lands once its row is drawn.
     _clLandDay() {
@@ -8502,8 +8624,9 @@ document.addEventListener('alpine:init', () => {
     // Set only where a scroll lands (settle, jump), never per frame: every day cell's tabindex reads it.
     _clTabInView() {
       if (!this.$refs.clMonth || !this.clRowH) return;
-      // a focused day keeps the stop, so arrows walk from it — unless the stop moved off it (a walk outran its row, Today): focus follows
-      if (this.$refs.clMonth.querySelector('.cl-date:focus')) return this._clLandDay();
+      // a focused day keeps the stop, so arrows walk from it — unless the stop moved off it (a walk outran its row, Today): focus follows.
+      // A walked day keeps it off screen too (Shift+Tab scrolls back to it); a day handed it mid-scroll hands it on if the rest of the scroll left it off screen
+      if (this.$refs.clMonth.querySelector('.cl-date:focus')) return this.clDayInView ? this._clLandInView() : this._clLandDay();
       const idx = this._weekIdx(new Date((this.clDayFocus || this._nowDay) + 'T00:00'));   // a rendered stop is reachable: Tab scrolls it into view
       this.clDayInView = idx >= this.clVisStart && idx < this.clVisStart + this.clVisCount ? null : isoDate(this._weekDate(this._clRowsInView()[0]));   // first day in view: where reading, and Tab, enter a grid
     },
@@ -9308,7 +9431,7 @@ document.addEventListener('alpine:init', () => {
     compCheckHtml(tack) { const t = this.editingTask(), imp = this.draft.importance; return checkHtml({ ...(t ? this._chkArgs(t, imp) : { t: {}, pc: this.pc(imp) }), note: tack }, 'span'); },
     typeFront(tack) { return tack === inNotes(this.draft); },
     typeLabel(tack) { return !this.typeFront(tack) ? (tack ? 'Make it a note' : 'Make it a task') : tack ? 'Note' : !this.editing ? 'Task' : this.editingTask()?.content; },   // editing: a checkbox named by its task, as the row's
-    // Front check = complete (toggleEditing saves the draft first); the peek swaps the draft's type. Note → Task restores the
+    // The check = complete (toggleEditing saves the draft first); the tack swaps the draft's type. Note → Task restores the
     // type it had (steps), and deleting the memo keeps a round trip's draft equal to its base (no phantom unsaved edit).
     typeTap(tack) {
       const d = this.draft;

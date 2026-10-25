@@ -275,7 +275,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .rl-mvb:first-child .ico { transform: rotate(180deg); margin: -1px 0 0; }
 .nav-pop.rl-pop { position: fixed; }                      /* two classes → beats the later `.nav-pop{position:absolute}`; fixed = escapes the roller's overflow clip via navPopXY */
 .nav-pop-sep { border-top: 1px solid var(--hair); margin: var(--sp-2) 0; }
-.rl-icon-none { font-size: var(--fs-11); color: var(--muted); }
+.rl-icon-none { width: 13px; height: 13px; flex: none; border: 1.5px solid var(--edge); border-radius: var(--r-4); }   /* no icon: an empty square, as the color row's None is an outlined swatch */
 /* Color swatch row — 7-column grid (no-color/default + 13 colors = two even rows) */
 .swatch-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--sp-6); padding: var(--sp-4) var(--sp-8) var(--sp-6); place-items: center; }
 .swatch {
@@ -592,17 +592,11 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
    keeps the mark unchanged (no amber fill, no tick). */
 .check.note { border: 0; background: none; cursor: default; pointer-events: none; }
 .check.note .ico { width: 120%; height: 120%; flex: none; color: var(--muted); }   /* 1.2x the slot; never bigger than the checkbox */
-/* Composer type toggle (#104): the draft's type in front, the other mark small under it, behind its panel disc; a click
-   on it swaps them at once. At rest the peek's ink stays 1px clear of that disc: a merely touching disc edge eats a ring's stroke. */
+/* Composer type mark (#104): the draft's type; an edited task's check completes it. Never a Note/Task switch (the tack is). */
 .type-tog { position: relative; flex: none; width: 18px; height: 18px;
-  > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; z-index: 1; }   /* 24px hit box (G5) */
+  > button { position: absolute; inset: -3px; display: flex; padding: 0; border: 3px solid transparent; border-radius: 50%; background: none; z-index: 1; }   /* 24px hit box (G5); over the bar sheet's body, which spans the check's column */
   > button:disabled { cursor: default; }
-  &:not(.note) > :last-child, &.note > :first-child { translate: 4px 15px; z-index: 0; .check { scale: .55; } }
-  &.solo:not(.note) > :last-child, &.solo.note > :first-child { display: none; }
-  /* touch: each mark gets the row check's 40px column, split where the two meet. Only the ::after takes a finger: the
-     buttons' boxes and the row check's own slop overlap the peek's mark, and a disabled front has none */
-  :where(.touch) & { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -11px -11px -1px; pointer-events: auto; }
-    &:not(.note) > :last-child::after, &.note > :first-child::after { inset: 1px -7px -23px -15px; } }
+  :where(.touch) & { > button { pointer-events: none; } > :enabled::after { content: ''; position: absolute; inset: -11px; pointer-events: auto; } }   /* the row check's 40px column */
 }
 .chk-rect.done:not(:where(.steps *)) { border-color: transparent; background: none; transition: none; --ck: var(--sp-16); --ck-y: 0;
   &::after { inset: calc(-1 * var(--sp-2)); background: var(--accent); } }
@@ -889,6 +883,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
 .composer-opts {
   flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-8) 0 0;
   :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-10)) 0 calc(-1 * var(--sp-6)); padding-right: calc(var(--sp-24) + var(--sp-10));   /* touch keeps its order: the phone wasn't part of the pick. The right room is the go's 28px and a 6px gap */
+    &:where(.composer-card:has(.by-go) *) { padding-right: calc(var(--sp-24) * 2 + var(--sp-10) + var(--sp-6)); }   /* and a new task's tack, 28px and a 2px gap */
     &::after { content: ""; flex: 1; order: -1; }
     .field:has(> .chip.set) { order: -1; } }
   /* the unset chips never wrap off alone (evd-4; a tablet too, not the phone's one scrolling line): lines fill from the bottom
@@ -1067,6 +1062,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.del, &.del .ico { color: var(--p1); }
   .tick { margin-left: auto; color: var(--accent); }
   .rt { margin-left: auto; flex: none; max-width: 45%; color: var(--muted); font-variant-numeric: tabular-nums; } }   /* trailing hint */
+.pop-item.sub { padding-left: calc(var(--sp-8) + var(--sp-24)); }   /* a disclosed choice: its icon under its parent's label */
 :is(.pop, .pick-list) .pop-input { padding: var(--sp-8) var(--sp-8); margin: 0 0 var(--sp-4); border: 1px solid var(--edge);
   border-radius: var(--r-6); background: var(--panel); color: var(--ink); font-size: var(--fs-13); width: 100%;
   &::placeholder { color: var(--muted); } }
@@ -1103,6 +1099,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .sug .ico { color: var(--sug); }
 }
 
+.dreg { margin: var(--sp-4) var(--sp-4) var(--sp-6); button { padding: var(--sp-2) 0; } &.by button.on { color: color-mix(in srgb, var(--deadline) 68%, var(--ink)); } }   /* the active Due by reads in the deadline red */
 .cal-head {
   padding: 1px var(--sp-4) var(--sp-6);
   font-size: var(--fs-15); font-weight: 700;   /* the month reads at its 15px nav glyphs' size */
@@ -1180,7 +1177,9 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .zone.paused .c, .zone.paused .st, .zone.paused .st button { background: var(--hover); color: var(--muted); }
 .zone.act { border-color: var(--edge-hi); }   /* the active statement (spatial controls act on it) */
 .addrep { margin-top: var(--sp-2); }
-.zbtn.on, .zbtn.on:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); }
+.zbtn.on, .zbtn.on:hover, .zone .c.pz { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); }
+.zbtn.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }   /* Pick a day: the next calendar tap is the comeback */
+.pz-pop { position: fixed; width: 200px; z-index: 40; }
 /* sentence chips (.c) + always-visible steppers (.st): own line-height — they must NOT inherit the sentence's tall wrap rhythm */
 .c {
   background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); font-weight: 500;
@@ -1239,12 +1238,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 }
 .pop.dur .hmrow { display: flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-8); font-size: var(--fs-12); color: var(--muted); border-top: 1px solid var(--hair); margin-top: var(--sp-6);
   .ico { width: 13px; height: 13px; flex: none; }
-  /* inline field, .tin idiom: hairline UNDER the number only — a boxed control would out-weigh the ladder above it */
-  .durx { width: 4ch; margin: 0 2px 0 auto; padding: 1px 2px; border: none; border-bottom: 1px solid var(--hair); background: none;
-    color: var(--ink); font-size: var(--fs-13); font-family: inherit; font-variant-numeric: tabular-nums; text-align: right;
-    appearance: textfield; &::-webkit-inner-spin-button { appearance: none; }
-    &::placeholder { color: var(--faint); }
-    &:focus { border-bottom-color: var(--accent); outline: none; } } }
+  .durx { width: calc(4ch + 2 * var(--sp-8) + 2px); margin-left: auto; font-variant-numeric: tabular-nums; text-align: right; } }   /* the app's text field, digits only */
 .pop.dur .dur-clr { margin-top: var(--sp-4); }
 /* Project/area/relations popovers: wider, scrollable; right-sized icons (not the default huge SVG) */
 /* Reminders popover — the sentence rows. Severity reads twice: the lead icon's shape, and the
@@ -1268,8 +1262,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .pop.row-pop { position: fixed; }   /* rowMenuPlace: at the pointer */
 .pop.proj-pop, .pop.area-pop { min-width: 230px; max-height: 280px; overflow-y: auto; }
 /* light shell: soft shadow, 28px rows */
-.pop:is(.proj-pop, .row-pop, .rem-pop, .cal, .tpop, .area-autocomplete), .nav-pop.rl-pop { box-shadow: var(--shadow-sm); }
-:is(.proj-pop, .row-pop, .rem-pop, .cal, .tpop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); }
+.pop:is(.proj-pop, .row-pop, .rem-pop, .cal, .tpop, .pz-pop, .area-autocomplete), .nav-pop.rl-pop { box-shadow: var(--shadow-sm); }
+:is(.proj-pop, .row-pop, .rem-pop, .cal, .tpop, .pz-pop, .area-autocomplete, .pick-list, .rl-pop) .pop-item { min-height: 28px; padding-block: var(--sp-4); }
 .pick-list .pop-item { border-radius: var(--r-4); }   /* concentric: its r8 − 4 inset */
 .pop.rel-pop { min-width: 346px; padding: var(--sp-8) var(--sp-10); }   /* mac's 324 content: each well label holds one line */
 .rel-well.drag-over { background: color-mix(in srgb, var(--accent) 8%, var(--hover)); }
@@ -1346,6 +1340,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }
   :is(.del-btn, .overview-btn, .more-btn, .act-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--hover); } .ico { width: 16px; height: 16px; } }
   .act-btn.on { color: var(--accent); }   /* the tack: a note */
+  .act-btn.by-go { position: absolute; right: calc(28px - var(--sp-4) + var(--sp-2)); bottom: calc(100% + var(--sp-8) * 2); }   /* a new task's, left of the go */
   :is(.proj-pick-ico, .proj-pick .pring) { width: 16px; height: 16px; }   /* the checkbox's size, on its x */
   .composer-btns { gap: var(--sp-2); } }
 /* Composer parent (project) chip caps long names. The areas chip shares the truncation (but no cap — it
@@ -1593,10 +1588,10 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   transition: width .18s var(--ease-out), opacity .15s var(--ease-out); }
 .list-search input::placeholder { color: var(--muted); }
 .list-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
-.list-search.open { background: var(--hover); }
+.list-search.open { background: var(--panel); box-shadow: inset 0 0 0 1px var(--edge); }   /* a field, as .inp and .pop-input: the hover fill vanished on light themes' bg */
 .list-search.open .ls-searchbtn:hover { background: none; }
 .list-search.open input { width: 170px; opacity: 1; padding-right: var(--sp-10); }
-.app.tinted .list-search.open { background: color-mix(in srgb, var(--list-tint) 14%, var(--hover)); }
+.app.tinted .list-search.open { background: color-mix(in srgb, var(--list-tint) 14%, var(--panel)); }
 /* Hearthsay sentence — the controls row reads as prose. Words are dotted-underline buttons; active filters grow into colored tokens with their own ×. */
 .lc-field { position: relative; }
 .ls-sent { flex-wrap: wrap; gap: var(--sp-4) 0; font-size: var(--fs-13); color: var(--muted); }
@@ -1607,7 +1602,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .ls-word.on { color: var(--list-tint, var(--accent)); }
 .ls-frag { display: contents; }   /* verb + token pair under one x-if root */
 .ls-tok, .ls-frag > .ls-verb:not(:empty, .ls-comma) { margin-left: var(--sp-4); }   /* the sentence has no column gap: a word space before each token and connective */
-.ls-comma { margin-left: calc(-1 * var(--sp-2) - var(--sp-2) + 2px); }   /* leading comma hugs the previous word (cancels flex gap + the word's own padding) */
+.ls-comma { margin-left: calc(-1 * var(--sp-4)); }   /* a leading comma hugs the previous word: cancels its padding */
 .ls-tok { font-weight: 600;
   background: color-mix(in srgb, var(--tc, var(--accent)) 13%, transparent); color: color-mix(in srgb, var(--tc, var(--accent)) 60%, var(--ink));
   animation: ls-tok-in .2s var(--ease-out); }   /* unfurl: clip reveal + slide; neighbors flow over */
@@ -1698,7 +1693,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
    so sharing those classes would let this hidden popover shadow the composer's pickers for querySelector-based tests) */
 .sel-prio-pop { flex-direction: row; gap: var(--sp-6); width: max-content; }
 .sel-due-pop { min-width: 168px; }
-.sel-move-pop { min-width: 230px; max-height: 300px; overflow-y: auto; @starting-style { opacity: 0; transform: scale(.96); } }   /* x-if, not x-show: hidden, its project list re-rendered on every task reload. So it enters here and closes instantly */
+.sel-move-pop { min-width: 230px; max-height: 300px; overflow-y: auto; }   /* x-if, not x-show: hidden, its project list re-rendered on every task reload. So it closes instantly */
 .sel-anim { transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); }
 .sel-hide { opacity: 0; transform: translateY(-6px); }
 .sel-show { opacity: 1; transform: translateY(0); }
@@ -2649,25 +2644,26 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   /* 9A: one row from the card's left edge: the project, the set values then bare icons (sideways when crowded, under a
      fade), ··· and the go button. Cancel goes (a tap outside closes); the unset Size, Place and Relations, Show in
      Overview and Delete move into ···; the description and entries sit behind the Steps and notes chip (app.js notesHidden). */
-  .touch .composer-dock { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-8) 0 0 calc(-18px - var(--sp-12)); }   /* back over the 18px check and its gap: the card's left edge */
-  .touch :is(.composer-actions, .composer-btns) { display: contents; }
-  .touch .composer-actions :is(.ghost, .overview-btn, .del-btn, .act-btn) { display: none; }
-  .touch .composer-actions .field.loc { order: -1; flex: 0 1 auto; max-width: 50%; margin: 0; }
-  .touch .proj-pick { height: 40px; align-items: center; padding: 0 var(--sp-12) 0 var(--sp-8); border-radius: var(--r); background: color-mix(in srgb, var(--ink) 8%, transparent);
+  :is(.touch, .bar-on .jb-host) .composer-dock { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-8) 0 0 calc(-18px - var(--sp-12)); }   /* back over the 18px check and its gap: the card's left edge */
+  :is(.touch, .bar-on .jb-host) :is(.composer-actions, .composer-btns) { display: contents; }
+  :is(.touch, .bar-on .jb-host) .composer-actions :is(.ghost, .overview-btn, .del-btn, .act-btn:not(.by-go)) { display: none; }
+  :is(.touch, .bar-on .jb-host) .composer-actions .by-go { flex: none; width: 40px; height: 40px; justify-content: center; padding: 0; .ico { width: 20px; height: 20px; } }   /* a new task's tack beside the go; an edit's in ··· */
+  :is(.touch, .bar-on .jb-host) .composer-actions .field.loc { order: -1; flex: 0 1 auto; max-width: 50%; margin: 0; }
+  :is(.touch, .bar-on .jb-host) .proj-pick { height: 40px; align-items: center; padding: 0 var(--sp-12) 0 var(--sp-8); border-radius: var(--r); background: color-mix(in srgb, var(--ink) 8%, transparent);
     font-size: var(--fs-13); .proj-pick-ico { color: var(--muted); } :is(.proj-pick-ico, .pring) { width: 16px; height: 16px; } }   /* the name starts on the title's column */
-  .touch .composer-opts { flex: 1; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0; margin: 0; padding-right: var(--sp-12);
+  :is(.touch, .bar-on .jb-host) .composer-opts { flex: 1; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0; margin: 0; padding-right: var(--sp-12);
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-12));
+    &::after { content: none; }   /* the desktop row's spacer: a mouse window's bar takes this dock */
     > .field { flex: none; } .field:has(> .chip.set) { order: -1; } .field:has(> .chip-notes.chip) { order: -2; }   /* the notes lead, never scrolled away: the only way to the steps */
     &:not(.cl-opts) .field:has(> :is(.chip-dur, .chip-loc, .chip-rel):not(.set)) { display: none; }   /* the editors have no ··· to hold them */
     .chip:is(:not(.set), .chip-imp, .chip-dur, .chip-rel) > span { display: none; } }   /* set, the link's chips already name its blockers over the bar */
-  .touch .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
-  .touch .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
+  :is(.touch, .bar-on .jb-host) .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
+  :is(.touch, .bar-on .jb-host) .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
     .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
   /* 9B: a pop from the dock opens in the keyboard's place (app.js popDock), so the dock rides it as it rides the keyboard */
   .dialog-backdrop.docked { padding-bottom: calc(var(--keys) + var(--when)); place-items: end center; }   /* the editor's card rests on its docked When (a class: an <html>:has() re-matched on every DOM write) */
   .touch .pop.dock { position: fixed; inset: auto 0 var(--keys); width: auto; min-width: 0; max-width: none; max-height: min(45vh, 70vh - var(--keys)); overflow-y: auto;   /* a keyboard's height */
-    border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + var(--safe-b));
-    transition: transform .2s var(--ease-drawer); @starting-style { transform: translateY(100%); } }
+    border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + var(--safe-b)); }
   /* The browser's caret reveal knows neither the keyboard nor the dock: pad them out, and give the list room to lift its end. */
   .touch.kb .app { scroll-padding-bottom: calc(var(--kb) + var(--dock)); &::after { content: ''; display: block; height: var(--kb); } }
 }
@@ -2707,16 +2703,14 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); font: inherit; font-size: var(--fs-13); font-weight: 600; cursor: pointer;
   touch-action: none; user-select: none; -webkit-touch-callout: none;   /* held (P-A): the finger slides the menu, not the page */
   .ico { width: 15px; height: 15px; flex: none; color: var(--muted); } }
-.jb-lists { top: auto; bottom: calc(100% + var(--sp-8)); left: var(--sp-12); width: 270px; border-radius: var(--r-lg); box-shadow: var(--shadow-pop); transform-origin: var(--sp-24) 100%;
-  transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); @starting-style { opacity: 0; transform: scale(.95); }
+.jb-lists { top: auto; bottom: calc(100% + var(--sp-8)); left: var(--sp-12); width: 270px; border-radius: var(--r-lg); box-shadow: var(--shadow-pop);
   .pop-item { min-height: 44px; gap: var(--sp-12); padding: 0 var(--sp-10); font-size: var(--fs-15); &.on { color: var(--accent); } }
   .pop-item .ico { width: 18px; height: 18px; } .pop-item .pring { width: 16px; height: 16px; margin: 0 1px; }   /* the 18px glyph box, ring at their ink */
   .more { margin-top: var(--sp-6); border-top: 1px solid var(--hair); border-radius: 0; color: var(--muted); } }
 .jot-bar:has(> .jb-lists) { z-index: 61; }   /* held lists sit over the toasts standing on the bar */
-.jb-sheet { right: var(--sp-12); width: auto; background: none; transform-origin: 25% 100%;   /* droid-10: the field's width, risen from the day chip */
+.jb-sheet { right: var(--sp-12); width: auto; background: none;   /* droid-10: the field's width, over the day chip */
   &::before { content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;   /* glass on a pseudo: on the sheet, backdrop-filter would trap its fixed scrim */
     background: color-mix(in srgb, var(--panel) 60%, transparent); backdrop-filter: blur(20px); } }
-@media (prefers-reduced-motion: reduce) { .jb-lists, .touch .pop.dock { transition: opacity .18s var(--ease-out); @starting-style { transform: none; opacity: 0; } } }   /* fades, doesn't grow or rise */
 /* droid-18 R: the title's lists tray (app.js trayDown). It rests half up (50dvh) or full (every list, the rows scroll); the
    head drags it, and at half so do the rows. Hidden off-screen: visibility waits out the slide so nothing under it is tabbable. */
 .lsw-scrim { position: fixed; inset: 0; z-index: 62; background: rgba(0,0,0,.35); opacity: 0; transition: opacity .28s var(--ease-drawer), visibility 0s .28s;
@@ -2782,7 +2776,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     overflow-y: auto; margin: 0; padding: var(--sp-8) var(--sp-8) 0; background: var(--panel); }
   .touch.kb .jb-host .composer-dock { bottom: 0; }
   /* KA (droid-9): the bar's new task is one sheet, [project][title] on one line, then the set
-     values, the bare icons, ··· and a square go; the task/note toggle and Attach are in ··· */
+     values, the bare icons, ··· and a square go; the note tack beside the go; Attach in ··· */
   .bar-on .canvas > .jb-host.open { padding: var(--sp-8) 0 max(0px, var(--safe-b) - var(--kb)); border: 0; border-radius: var(--r-18) var(--r-18) 0 0; box-shadow: var(--shadow-pop); }
   .bar-on .jb-host .composer-card { padding: 0 var(--sp-8) var(--sp-6) var(--sp-10); margin: 0; border-radius: 0; background: none; box-shadow: none; }
   .bar-on .jb-host:not(.editing) .type-tog, .bar-on .jb-host .attach { display: none; }   /* a jotted task, on for its steps, keeps its done check */
@@ -2796,7 +2790,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
   /* KA-edit: the title alone on its line; one subline under it, from the ring's left edge: the list's path, what the notes hold, the relations */
   .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* KA-edit.png: the ring's centre at 26, the title at 46 */
-    .type-tog { left: var(--sp-16); &:not(.note) > :last-child, &.note > :first-child { display: none; } }   /* the other type is in ··· */
+    .type-tog { left: var(--sp-16); }
     .composer-titlerow { order: -3; flex-basis: calc(100% - var(--chk-col)); margin-left: var(--chk-col); }
     .composer-body:has(> .composer-rels > :is(.rel-chip, .msg-file)) .field.loc { max-width: 60%; }   /* a long path leaves the relations room */
     .composer-actions .field.loc { display: flex; order: -2; flex: 0 1 auto; max-width: none; height: 30px; gap: var(--sp-6); margin: 0 0 0 calc(var(--sp-16) - var(--sp-10)); }   /* user 10-22 K: "aligned to the left edge of the screen" */
@@ -2819,12 +2813,13 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go under a fade to their icons, never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; } } }   /* the last first */
   .bar-on .jb-host .composer-actions .more-btn { width: 38px; .ico { rotate: 90deg; } }   /* KA: ··· */
+  .bar-on .jb-host .composer-actions .by-go { position: static; flex: none; width: 38px; height: 40px; justify-content: center; padding: 0; .ico { width: 19px; height: 19px; } }   /* static: the desktop rule pins it absolute; a mouse window's bar takes this dock */
   /* KC: typing with nothing set, the row is words the parser knows; off the title (··· or a pick), the icons */
   .bar-on .jb-host .composer:has(.content:focus):not(:has(.composer-opts .chip.set:not(.chip-notes))) .composer-opts {
     &::before, > .field { display: none; } > .kc { display: flex; } }
   .bar-on .jb-host .kc { display: none; flex: 1; min-width: 0; gap: var(--sp-6); overflow-x: auto; scrollbar-width: none;
     button { flex: none; height: 32px; padding: 0 var(--sp-10); border-radius: var(--r-8); background: var(--hover); font-size: var(--fs-14); color: var(--muted); white-space: nowrap; } }
-  .bar-on .jb-host .composer-actions .primary { margin-left: var(--sp-4); border-radius: var(--r-12); }
+  .bar-on .jb-host .composer-actions .primary { position: static; margin-left: var(--sp-4); border-radius: var(--r-12); }
   .jb-go { display: flex; flex-direction: column-reverse; flex: 0 1 auto; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-4);   /* the card keeps its height; Go to scrolls */
     interpolate-size: allow-keywords; transition: height .15s var(--ease-out), opacity .15s var(--ease-out), visibility .15s var(--ease-out);
     &.gone { height: 0; padding-bottom: 0; opacity: 0; visibility: hidden; } }   /* user 10-22 T: nothing matches, it folds into the composer */
@@ -2916,14 +2911,6 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .theme-preview small { display: flex; justify-content: center; gap: var(--sp-4); margin-top: var(--sp-4); }
 .theme-preview small i { width: var(--sp-8); height: 2px; border: none; background: var(--preview-muted); }
 .theme-preview small i:first-child { background: var(--preview-accent); }
-/* Switch primitive (.swt) — a compact two-mode pill, text INSIDE a recessed track; the active segment
-   rides raised on the panel. Both segments are DIRECT click targets. Wrapper variant tints the active
-   side's text: .by = wall red (When pop's On|By register). */
-.swt { display: inline-flex; align-items: center; padding: 2px; gap: 1px; border-radius: var(--r-pill); background: var(--hover); }
-.swt button { border: none; background: none; height: 18px; min-width: 26px; padding: 0 var(--sp-6); border-radius: var(--r-pill); color: var(--muted); font-size: var(--fs-11); font-weight: 600; cursor: pointer; transition: background 150ms var(--ease-out), color 150ms var(--ease-out);
-  &:hover { color: var(--ink); }
-  &.on { background: var(--panel); color: var(--ink); } }
-.swt.by button.on { color: color-mix(in srgb, var(--deadline) 68%, var(--ink)); }
 /* starter shortcuts: two quiet columns of label + kbd */
 .set-keys { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2) var(--sp-16); padding: 0 var(--sp-10) var(--sp-4) 0; }   /* text flush with the section label; right inset matches .set-row so kbds align */
 .set-key { padding: var(--sp-2) 0; }

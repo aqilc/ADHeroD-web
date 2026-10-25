@@ -22,7 +22,11 @@ const _tlink = (url, id, live) => {
   const el = t == null ? `<span class="tlink gone" data-title="${label}">${mark || label}</span>` : `<a class="tlink${live ? ' dm-link' : ''}" href="${esc(url)}" data-title="${label}">${mark || label}</a>`;
   return live ? `<span class="dm-tok">${el}</span>` : el;
 };
-const _link = (url, text) => { const u = _mdUrl(url); return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text); };
+const _link = (url, text) => {
+  const u = _mdUrl(url), id = u.startsWith('adherod://task/') && u.slice(15);   // a labelled task link keeps its label and opens in the app
+  if (id) return _taskTitle(id) == null ? `<span class="tlink gone">${esc(text)}</span>` : `<a class="tlink" href="${esc(u)}">${esc(text)}</a>`;
+  return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text);
+};
 const _langs = { bash: 'bash', sh: 'bash', cmd: 'cmd', bat: 'cmd', js: 'js', javascript: 'js', ts: 'ts', typescript: 'ts', rust: 'rust', rs: 'rust', c: 'c' };
 const _keys = {
   bash: 'if|then|else|elif|fi|for|while|until|do|done|case|esac|function|in',
