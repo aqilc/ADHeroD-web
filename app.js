@@ -433,8 +433,10 @@ document.addEventListener('alpine:init', () => {
   // once every toggle of the flush has registered: one inside a hiding parent, or holding hiding children, keeps Alpine's cascade.
   // Cost: Alpine deferred show for click-away (`clickAwayCompatibleShow`) — an x-show + @click.outside pop whose trigger
   // sits outside it now closes on its opening click; none today (our pops contain their trigger or use x-transition/x-if).
+  // A show cancels a running leave: a leave-only pop's show doesn't, so the leave's end hid a pop reopened during it (open, invisible).
   const toggle = Element.prototype._x_toggleAndCascadeWithTransitions;
   Element.prototype._x_toggleAndCascadeWithTransitions = function (el, value, show, hide) {
+    if (value) el._x_transitioning?.cancel();
     if (el._x_transition) return toggle.call(this, el, value, show, hide);
     if (!value) {
       toggle.call(this, el, value, show, hide);
@@ -847,6 +849,10 @@ document.addEventListener('alpine:init', () => {
           if (app._growGlide?.sizing) app._growGlide.scrollAt = e.timeStamp;
           else this._scrollWindow(app, e.timeStamp);
         }, { passive: true });
+        // A height change at rest (a window resize, a boot layout that grew) fires no scroll event: re-grow the window to a whole
+        // margin here, or the new height past the kept rows is blank. Mid-scroll the rest timer does it.
+        let appH = -1;
+        if (app) new ResizeObserver(([e]) => { const h = Math.round(e.contentRect.height); if (!h || h === appH) return; appH = h; if (!_restT) { _win = new WeakMap(); this._reflow(); } }).observe(app);
         document.fonts.ready.then(() => { _fitV++; _fitMemo.clear(); this._fitControls(); this._reflow(); });   // font-display: swap — a boot pass may have measured (and cached) fallback widths
       });
     },
@@ -2672,7 +2678,7 @@ document.addEventListener('alpine:init', () => {
     startDeleteProject(id, merge = false) {
       this.navPop = null; this.pickerQ = '';
       this.delAsk = { kind: 'project', id, merge, mode: 'move', target: this._delDefault(id), name: this.projName(id), count: this.descendantCount(id) };
-      this.$nextTick(() => document.querySelector('.dialog .pick-list .pop-input')?.focus());
+      this.$nextTick(() => this.delAsk && document.querySelector('.dialog .pick-list .pop-input')?.focus());
     },
     // Merge, and a delete's "Move them": every child moves in after the target's own, THEN the emptied row goes to the Bin.
     // One composite: a failed part takes back what landed, and one ⌘Z brings the whole thing back.
@@ -5358,6 +5364,8 @@ document.addEventListener('alpine:init', () => {
     },
     // Never a blank button: an id whose area is gone (deleted elsewhere, not yet loaded) resolves to nothing,
     // and keying the label off draft.areas.length alone left the chip showing its icon and no word at all.
+    // A set chip's lead: each area's glyph on a disc of its color, the first on top.
+    areaDiscsHtml() { return this.areaObjs(this.draft.areas).map((a, i, all) => `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}"><svg class="ico"><use href="#${a.icon || 'i-tag-fill'}"/></svg></i>`).join(''); },
     areaLabel() { return this.areaObjs(this.draft.areas).map(a => a.name).filter(Boolean).join(', ') || 'Areas'; },
     // The ONE map from a data kind to the narrowest re-read that covers it — shared by our own writes
     // (_reloadFor) and by realtime (_subscribeStore), so the two paths can never disagree about what's current.
@@ -6489,7 +6497,13 @@ document.addEventListener('alpine:init', () => {
       const L = this.draft.location, names = (L?.ids || []).map(id => this.locName(id)).filter(Boolean);
       if (!names.length) return 'Location';
       const list = names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) : names.join(' or ');
-      return (L.mode === 'except' ? 'away from ' : 'at ') + list;
+      return (L.mode === 'except' ? 'away from ' : '') + list;   // the map says "at"
+    },
+    // A set place's lead: a small map, a pin per place (two at most).
+    locMapHtml() {
+      const n = Math.min(this.draft.location.ids.filter(id => this.locName(id)).length, 2), pin = this.locPolarity() === 'except' ? 'i-pin-off' : 'i-pin-fill';
+      const pins = Array.from({ length: n }, (_, i) => `<use href="#${pin}" x="${(n === 1 ? 20 : 10 + i * 20) - 5.5}" y="${3.5 + (i % 2 ? -1 : 1)}" width="11" height="11"/>`);
+      return '<rect width="40" height="18" rx="4" opacity=".22" fill="currentColor"/><path d="M0 13 40 5M11 18 7 0M29 18 33 0" stroke="currentColor" stroke-width="2" opacity=".55"/>' + pins.join('');
     },
     openLocManager() { this.pop = null; this.locMgr = true; this.loadLocations(); },
     toggleLocId(id) { const ids = new Set(this.draft.location?.ids || []); ids.has(id) ? ids.delete(id) : ids.add(id); this.draft.location = { mode: this.draft.location?.mode === 'except' ? 'except' : 'only', ids: [...ids] }; },   // 'any' is truthy — `|| 'only'` left picked places stored as unscoped
@@ -9933,7 +9947,12 @@ document.addEventListener('alpine:init', () => {
     clSideDragStart(e) { const el = e.target.closest?.('.item'); if (el) this.clDragStart(e, 'task', el.dataset.id); },
     clOpenTaskSide(id) { const t = this.byId.get(id); if (!t) return; this.clSideToggle(true); this.$nextTick(() => this.editTask(t)); },
     clBlockWeekdays: [{ d: 0, l: 'S' }, { d: 1, l: 'M' }, { d: 2, l: 'T' }, { d: 3, l: 'W' }, { d: 4, l: 'T' }, { d: 5, l: 'F' }, { d: 6, l: 'S' }],
-    clNewBlock(date, start, end, draft = false) { this.blockEdit = { date: date || isoDate(this._clAt()), start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], color: null, title: '', est_minutes: null, draft }; },
+    clNewBlock(date, start, end, draft = false) {
+      const uses = {};   // a new block takes the palette's least-used color, once: saved on the row, never reassigned
+      for (const b of this.blocks) uses[b.color] = (uses[b.color] || 0) + 1;
+      const color = DESIGN.palette.reduce((pick, c) => (uses[c] || 0) < (uses[pick] || 0) ? c : pick);
+      this.blockEdit = { date: date || isoDate(this._clAt()), start: start || '09:00', end: end || '10:00', all_day: false, weekdays: [], location_id: null, areas: [], color, title: '', est_minutes: null, draft };
+    },
     clEditBlock(id, viewIso, tile = false) {
       const b = this.blocks.find(x => x.id === id); if (!b) return;
       const start = timeOf(b.starts_at, '09:00'), end = timeOf(b.ends_at, '10:00'), bd = this.clBlockDay(b.id, viewIso), p = plannedOf(bd);

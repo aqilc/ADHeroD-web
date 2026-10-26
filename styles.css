@@ -753,7 +753,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
 .peek-mday { height: 26px; border-radius: var(--r-6); font-size: var(--fs-11); color: var(--ink); cursor: pointer;
   &:hover { background: var(--hover); }
   &.dim { color: var(--faint); }
-  &.today { background: var(--today-fill); color: var(--today-ink); font-weight: 700; }
+  &.today { background: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 1.5px), transparent calc(100% - 1px)); color: var(--today-ink); font-weight: 700; }   /* today = a circle in every day grid */
   &.sel { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); font-weight: 700; }
   &.today.sel:not(.hot) { box-shadow: inset 0 0 0 1.5px var(--today-ink); color: var(--today-ink); }   /* the pane opens on today: on its fill the amber ring vanishes; a drag's heat replaces the fill */
   &.off { color: var(--faint); opacity: .4; cursor: default; }
@@ -901,12 +901,17 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
     &:hover { background: var(--hover); color: var(--ink); }
     &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* owns the open pop */
     &.set { color: var(--ink); .ico { color: var(--cc); } }
-    :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; }   /* touch keeps words: its row scrolls */
+    :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span { display: none; }   /* touch keeps words: its row scrolls; areas read by their discs */
     &.down .ico { rotate: 180deg; } }   /* Someday: the chevrons point down */
   .chip-rem { --cc: var(--accent); }   /* the light accent on a dark card reads at 2.4:1 */
   .chip-loc { --cc: var(--hue-location); }
   .chip-dur { --cc: var(--hue-duration); }
-  .chip-rel { --cc: var(--p1); }   /* blocked-by red */
+  .discs { flex: none; }
+  .disc { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--dc); color: var(--on-accent);
+    box-shadow: 0 0 0 1.5px var(--panel);   /* cut out of the disc behind */
+    & + .disc { margin-left: -3px; } }
+  .chip.set .disc .ico { width: 10px; height: 10px; color: inherit; --panel: var(--dc); }   /* a glyph's cut-outs show the disc */
+  .loc-map { width: 40px; height: 18px; flex: none; color: var(--cc); }
   .ico { width: 16px; height: 16px; flex: none; }   /* 16 + the 8 gap: a value starts where the entries' text does */
 }
 .knock { fill: var(--panel); } path.knock { stroke: var(--panel); }   /* the -fill glyphs' cut-outs take the card colour; top level: a <use> clone matches against the sprite, not its host */
@@ -1118,11 +1123,17 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   font-size: var(--fs-13); font-weight: 600; display: flex; align-items: center; justify-content: center; line-height: 1; padding-top: 1px;   /* optical center: digits carry no descender, so ink rides ~1px high of the metric center — nudge down or the today ring reads low */
   &:hover { background: var(--hover); }
   &.out { color: var(--muted); font-weight: 500; }
-  &.today { background: var(--today-fill); color: var(--today-ink); }   /* fill, not ring — unifies with .peek-mday/.cl-cell today */
+  /* today = Plan's circle, one size in every state; layers stack on it and stay inside the brackets (08-08 ban) */
+  &.today { --disc: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 7px), transparent calc(100% - 6.5px));
+    background: var(--disc); color: var(--today-ink); font-weight: 700; }
+  &.today:is(:hover, .hot) { background: var(--disc), var(--hover); }
   /* recurrence preview vocabulary: solid = fixed occurrence · hollow = completion-dependent · grey = paused · tinted day + edge wall = end */
   &.occ::after { content: ""; position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--accent); opacity: .55; }
   &.occ-h::after { content: ""; position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.2px var(--accent); opacity: .75; }
   &.occ-g::after { content: ""; position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--faint); opacity: .65; }
+  &.today:is(.occ, .occ-g)::after { background: var(--today-ink); opacity: .8; }
+  &.today.occ-h::after { box-shadow: inset 0 0 0 1.2px var(--today-ink); }
+  &.sel:is(.occ, .occ-h, .occ-g)::after { display: none; }   /* the ring says it */
   &.end { background: color-mix(in srgb, var(--accent) 13%, transparent);
     &::before { content: ""; position: absolute; right: 1px; top: 20%; bottom: 20%; width: 2.5px; border-radius: 2px; background: var(--accent); }
     &::after { content: ""; position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--accent); opacity: .7; } }
@@ -1131,8 +1142,12 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     &::after { background: transparent; box-shadow: inset 0 0 0 1.2px var(--accent); width: 4px; height: 4px; bottom: 6px; } }
   &.wnd { background: color-mix(in srgb, var(--accent) 13%, transparent); }   /* available window from→due: tinted run shown in BOTH pickers */
   &.sel { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }   /* placement = ring (day-marks pick; same idiom as .peek-mday.sel) */
-  &.today.sel { box-shadow: inset 0 0 0 1.5px var(--today-ink); color: var(--today-ink); }   /* on the fill the amber ring vanishes — flip to the fill's ink */
   &.sel.gz { box-shadow: inset 0 0 0 1.5px var(--faint); color: var(--muted); }   /* paused + rule-generated due */
+  &.today:is(.wnd, .end) { background: var(--disc), color-mix(in srgb, var(--accent) 13%, transparent); }
+  /* scheduled on today = a circle ring around the disc with a gap, so today keeps its shape */
+  &.today.sel { box-shadow: none; color: var(--today-ink);
+    --disc: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 7px), transparent calc(100% - 6.5px) calc(100% - 5.5px), var(--accent) calc(100% - 5px) calc(100% - 4px), transparent calc(100% - 3.5px)); }
+  &.today.sel.gz { --disc: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 7px), transparent calc(100% - 6.5px) calc(100% - 5.5px), var(--faint) calc(100% - 5px) calc(100% - 4px), transparent calc(100% - 3.5px)); }
   /* constraint walls = full-height bracket OVERLAYS (day beneath stays full size): ⌈ start (amber) · ⌉
      deadline (red) · both red = only-day. ONE bordered glyph per side — bar+stub pieces seam under the halo. */
   .bar { display: none; position: absolute; z-index: 3; top: 2px; bottom: 2px; width: 6px; pointer-events: none;
@@ -1142,8 +1157,11 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.fsel .bar.l { display: block; animation: cap-in-l 180ms var(--ease-out); }   /* fsel, not "st" — .st is the stepper primitive */
   &.dsel .bar.r { display: block; animation: cap-in 180ms var(--ease-out); }   /* the wall LANDS (display flip restarts it when the class hops cells) */
   &.only .bar { border-color: var(--deadline); }   /* an only-day has no soft side — both walls red */
-  &.today .bar, &.sel .bar { filter: drop-shadow(1px 0 0 var(--panel)) drop-shadow(-1px 0 0 var(--panel)) drop-shadow(0 1px 0 var(--panel)) drop-shadow(0 -1px 0 var(--panel)); }   /* glyph-shaped 1px halo keeps red legible over the deep fill */
-  .ordn { position: absolute; left: 50%; bottom: -2px; transform: translateX(-50%); font-size: var(--fs-10); font-weight: 800; line-height: 12px; min-width: 13px; height: 12px; padding: 0 2px; text-align: center; color: var(--warm-ink); background: color-mix(in srgb, var(--accent) 13%, var(--panel)); border-radius: var(--r-pill); box-shadow: 0 0 0 1.5px var(--panel); }   /* bottom badge; the panel halo lets the marks pass visually behind it */
+  &.sel:not(.today, .wnd, .end) .bar { filter: drop-shadow(1px 0 0 var(--panel)) drop-shadow(-1px 0 0 var(--panel)) drop-shadow(0 1px 0 var(--panel)) drop-shadow(0 -1px 0 var(--panel)); }   /* glyph-shaped 1px halo keeps red legible over the deep fill */
+  .ordn { position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%); font-size: var(--fs-10); font-weight: 700; line-height: 10px; min-width: 13px; height: 10px; padding: 0 2px; text-align: center; color: var(--accent); }   /* which repetition: a bare numeral in the dot's slot */
+  &:has(.ordn)::after { display: none; }
+  &.today .ordn { left: auto; right: -1px; bottom: -1px; transform: none; }   /* the disc holds the numeral: the ordinal steps to the free corner */
+  &.today.end .ordn { right: auto; left: -1px; }   /* the end wall holds the right edge */
 }
 @keyframes cap-in { from { transform: scaleX(.2) translateX(4px); opacity: 0; } }
 @keyframes cap-in-l { from { transform: scaleX(.2) translateX(-4px); opacity: 0; } }
@@ -1588,10 +1606,10 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   transition: width .18s var(--ease-out), opacity .15s var(--ease-out); }
 .list-search input::placeholder { color: var(--muted); }
 .list-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
-.list-search.open { background: var(--panel); box-shadow: inset 0 0 0 1px var(--edge); }   /* a field, as .inp and .pop-input: the hover fill vanished on light themes' bg */
+.list-search.open { background: light-dark(var(--panel), var(--hover)); }   /* light: --hover vanished on the page (1.07:1); dark: --panel does */
 .list-search.open .ls-searchbtn:hover { background: none; }
 .list-search.open input { width: 170px; opacity: 1; padding-right: var(--sp-10); }
-.app.tinted .list-search.open { background: color-mix(in srgb, var(--list-tint) 14%, var(--panel)); }
+.app.tinted .list-search.open { background: color-mix(in srgb, var(--list-tint) 14%, light-dark(var(--panel), var(--hover))); }
 /* Hearthsay sentence — the controls row reads as prose. Words are dotted-underline buttons; active filters grow into colored tokens with their own ×. */
 .lc-field { position: relative; }
 .ls-sent { flex-wrap: wrap; gap: var(--sp-4) 0; font-size: var(--fs-13); color: var(--muted); }
@@ -1803,7 +1821,9 @@ textarea.inp { resize: vertical; }
 @media (any-hover: hover) and (any-pointer: fine) { .cl-period-btn.pick:hover:where(:not(.touch *)) { background: var(--hover); } }
 /* week mode: the row is the target, so the whole week lights on hover and the anchor week stays selected */
 .cal-day.hot { background: var(--hover); }
-.cal.cal-wk .cal-day.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); box-shadow: none; }   /* while scrolling, the flying .at-bar overlay title is the heading (instant swap; same month, same slot) */
+.cal.cal-wk .cal-day.sel { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); box-shadow: none; }
+.cal.cal-wk .cal-day.today.sel { --disc: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 7px), transparent calc(100% - 6.5px));
+  background: var(--disc), color-mix(in srgb, var(--accent) 22%, transparent); color: var(--today-ink); }   /* the band says picked: today keeps its plain disc */   /* while scrolling, the flying .at-bar overlay title is the heading (instant swap; same month, same slot) */
 .cl-yr { font-weight: 300; }   /* the year renders light next to the bold month (macOS) */
 /* ONE row of chips on the TITLE's baseline (same 14px bottom padding), so the bar reads as a single line
    instead of a pile of objects. The container spans the bar but is click-through — only the buttons take
@@ -2655,8 +2675,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-12));
     &::after { content: none; }   /* the desktop row's spacer: a mouse window's bar takes this dock */
     > .field { flex: none; } .field:has(> .chip.set) { order: -1; } .field:has(> .chip-notes.chip) { order: -2; }   /* the notes lead, never scrolled away: the only way to the steps */
-    &:not(.cl-opts) .field:has(> :is(.chip-dur, .chip-loc, .chip-rel):not(.set)) { display: none; }   /* the editors have no ··· to hold them */
-    .chip:is(:not(.set), .chip-imp, .chip-dur, .chip-rel) > span { display: none; } }   /* set, the link's chips already name its blockers over the bar */
+    &:not(.cl-opts) .field:has(> :is(.chip-dur, .chip-loc):not(.set)) { display: none; }   /* the editors have no ··· to hold them */
+    .chip:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; } }
   :is(.touch, .bar-on .jb-host) .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
   :is(.touch, .bar-on .jb-host) .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
     .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
@@ -2808,7 +2828,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* clear of a glyph at rest */
     &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
     .chip { height: 40px; width: 38px; padding: 0; justify-content: center; .ico { width: 19px; height: 19px; } }
-    .chip.set:not(.chip-imp, .chip-dur, .chip-rel) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
+    .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* KA: the steps icon last */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go under a fade to their icons, never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; } } }   /* the last first */

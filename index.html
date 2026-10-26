@@ -467,7 +467,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="desc" x-ref="desc" x-show="!notesHidden()" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Description"
              data-placeholder="Description" @beforeinput="liveBeforeInput($event)" @input="onDescInput($event)" @compositionend="onDescInput()"
              @keydown="descKeydown($event)" @paste="descPaste($event)" @copy="descCopy($event)" @cut="descCopy($event)"></div>
-        <!-- Relation and file chips, shown under the description so they're easy to see (add more via the Relations chip, a drop or a paste) -->
+        <!-- Relation and file chips, shown under the description so they're easy to see (add more via ⋯ Relations, a drop or a paste) -->
         <div class="composer-rels" x-show="relChips().length || editingTask()?.attachments?.length || composerFiles().length">
           <template x-for="r in relChips()" :key="r.type + r.id">
             <span class="rel-chip" :class="[r.type, r.done && 'done']">
@@ -639,8 +639,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- Area multi-select -->
           <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
-            <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :style="'--cc:' + (areaObjs(draft.areas)[0]?.color || 'var(--ink)')" title="Areas" @click="togglePop('area', $el)">
-              <svg class="ico"><use :href="draft.areas.length ? '#i-tag-fill' : '#i-tag-tag'"/></svg>
+            <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :title="areaLabel()" @click="togglePop('area', $el)">
+              <svg class="ico" x-show="!areaObjs(draft.areas).length"><use href="#i-tag-tag"/></svg>
+              <i class="discs inline-flex" x-show="areaObjs(draft.areas).length" x-html="areaDiscsHtml()"></i>
               <span x-text="areaLabel()"></span>
             </button>
             <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
@@ -655,7 +656,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <!-- Location constraint -->
           <div class="field" x-show="locations.length" @click.document.capture="pop === 'loc' && outside($event, $el) && popAway('loc', $event)">
             <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locPolarity() !== 'any' }" title="Place" @click="openLoc($el)">
-              <svg class="ico"><use :href="{ except: '#i-pin-off', any: '#i-pin' }[locPolarity()] || '#i-pin-fill'"/></svg>
+              <svg class="ico" x-show="locPolarity() === 'any'"><use href="#i-pin"/></svg>
+              <svg class="loc-map" viewBox="0 0 40 18" x-show="locPolarity() !== 'any'" x-html="locMapHtml()"></svg>
               <span x-text="locChipLabel()"></span>
             </button>
             <!-- Hybrid picker: sentence polarity ("do this [at]:") + block-driven here-row + region chip rows -->
@@ -695,36 +697,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 </div>
               </template>
               <button type="button" class="pop-item clear lp-mgr" @click="openLocManager()"><svg class="ico"><use href="#i-pin"/></svg>Manage places…</button>
-            </div></template></template>
-          </div>
-          <!-- Relations (edit only) -->
-          <div class="field" x-show="editing" @click.document.capture="pop === 'rel' && outside($event, $el) && popAway('rel', $event)">
-            <button type="button" class="chip chip-rel inline-flex items-center" :class="{ set: editingTask()?.blocked_by?.length }" title="Relations" @click="togglePop('rel', $el); pickerQ = ''" :disabled="!editing">
-              <svg class="ico"><use href="#i-link"/></svg>
-              <span>Relations</span>
-            </button>
-            <!-- Picker rows: a click adds as Relates; a drag onto a well picks the kind -->
-            <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
-              <div class="relations-section">
-                <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
-                <div class="rel-picker">
-                  <template x-for="t in relationCandidates()" :key="t.id">
-                    <div class="pop-item rel-row flex items-center gap-4" draggable="true" @click="addRelation(t.id, 'relates')" @dragstart="relDragId = t.id; $event.dataTransfer.setData('text/plain', t.id)" @dragend="relDragId = null" title="Drag to a well, or click to add as Relates">
-                      <span class="task-line grow" x-html="taskLine(t)"></span>
-                    </div>
-                  </template>
-                </div>
-                <div class="rel-wells">
-                  <template x-for="[well, head] in [['blocked_by', '← Waiting on'], ['relates', '↔ Relates'], ['blocks', 'Holding up →']]" :key="well">
-                    <div class="rel-well" :data-well="well" @dragover="(relDragId || dragId) && $event.preventDefault()" @dragenter="if(relDragId || dragId) $el.classList.add('drag-over')" @dragleave="$el.classList.remove('drag-over')" @drop.prevent="dropRel($event, well)">
-                      <span class="rel-well-h" x-text="head"></span>
-                      <template x-for="r in relChips().filter(r => r.type === well)" :key="r.id">
-                        <span class="rel-card"><span class="task-line" x-html="relLine(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
-                      </template>
-                    </div>
-                  </template>
-                </div>
-              </div>
             </div></template></template>
           </div>
           <!-- Phone: the description and entries sit behind this chip (9A) -->
@@ -807,7 +779,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="composer-actions flex gap-6">
           <!-- left: project location picker (Todoist-style, bottom-left); actions stay right -->
           <div class="field loc" @click.document.capture="pop === 'proj' && outside($event, $el) && popAway('proj', $event)">
-            <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; pop === 'proj' && !popDock && $nextTick(() => document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
+            <button type="button" class="proj-pick chip-proj" :class="{ required: projRequired, open: pop === 'proj' }" @click="togglePop('proj', $el); pickerQ = ''; $nextTick(() => pop === 'proj' && !popDock && document.querySelector('.proj-pop .pop-input')?.focus())" :style="projPickColor()">
               <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="pring" x-show="!pickIsDefault()" :style="pickIsDefault() ? {} : ringVars(pickProj() || {})"></span><span x-text="kaEdit() &amp;&amp; draft.project_id ? projectPath(byId.get(draft.project_id)) : draft.project || defaultProjName() || 'Project'"></span>
             </button>
             <button type="button" class="ka-notes inline-flex items-center" x-show="kaEdit() &amp;&amp; notesChip()[1] !== 'Steps and notes'" :aria-expanded="notesOpen" @click="toggleNotes()"><svg class="ico"><use :href="'#i-' + notesChip()[0]"/></svg><span x-text="notesChip()[1]"></span></button>
@@ -820,7 +792,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-if="narrow &amp;&amp; filesUrl &amp;&amp; session"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="attachFiles($event.target.files); $event.target.value = ''"></label></template>
           <div class="composer-btns flex gap-6">   <!-- one unit: crowded, it wraps under the project picker whole -->
             <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
-            <div class="more-wrap inline-flex items-center" x-show="editing || phoneDock()" @click.document.capture="pop === 'overflow' && outside($event, $el) && popAway('overflow', $event)">
+            <div class="more-wrap inline-flex items-center" x-show="editing || phoneDock()" @click.document.capture="['overflow', 'rel'].includes(pop) && outside($event, $el) && popAway(pop, $event)">
               <button type="button" class="more-btn inline-flex items-center" @click="togglePop('overflow', $el)" title="More actions" aria-haspopup="menu" :aria-expanded="pop === 'overflow'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
               <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
                 <!-- phone: the dock's hidden chips and buttons (9A), anchored on the ··· they came from -->
@@ -829,7 +801,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; filesUrl &amp;&amp; session" @click="pop = null; document.querySelector('.jb-host .attach input')?.click()"><svg class="ico"><use href="#i-clip"/></svg>Attach file</button>
                   <button type="button" class="pop-item" x-show="!durMinNow()" @click="togglePop('dur', document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-clock"/></svg>Size</button>
                   <button type="button" class="pop-item" x-show="locations.length && locPolarity() === 'any'" @click="openLoc(document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-pin"/></svg>Place</button>
-                  <button type="button" class="pop-item" x-show="editing && !editingTask()?.blocked_by?.length" @click="togglePop('rel', document.querySelector('.composer .more-btn')); pickerQ = ''"><svg class="ico"><use href="#i-link"/></svg>Relations</button>
                   <button type="button" class="pop-item" x-show="editing && !editingTask()?.overview" @click="pop = null; askShowInOverview()"><svg class="ico"><use href="#i-overview"/></svg>Show in Overview</button>
                   <button type="button" class="pop-item" x-show="editing" @click="pop = null; deleteEditing()"><svg class="ico"><use href="#i-trash"/></svg>Delete task</button>
                 </div></template>
@@ -837,6 +808,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>
                 <button type="button" class="pop-item" x-show="phoneDock()" @click="copyEditingMd(); pop = null"><svg class="ico"><use href="#i-clipboard"/></svg>Copy as markdown</button>
                 <button type="button" class="pop-item" @click="copyEditingLink(); pop = null"><svg class="ico"><use href="#i-link"/></svg>Copy link</button>
+                <button type="button" class="pop-item" @click="togglePop('rel', document.querySelector('.composer .more-btn')); pickerQ = ''"><svg class="ico"><use href="#i-link"/></svg>Relations</button>
                 <button type="button" class="pop-item" x-show="shownSubs().length > 0 || draft.checklist.length > 0" :aria-expanded="conv" @click="conv = !conv; requestAnimationFrame(() => conv && [...$el.parentElement.querySelectorAll('.sub')].filter(e => e.offsetParent).pop()?.scrollIntoView({ block: 'nearest' }))"><svg class="ico"><use href="#i-arrow"/></svg>Convert to<svg class="ico rt"><use :href="conv ? '#i-chev-d' : '#i-chev-r'"/></svg></button>
                 <button type="button" class="pop-item sub" x-show="conv && (shownSubs().length > 0 || chkSteps() && draft.checklist.length > 0)" @click="convertTo('checklist'); pop = null"><svg class="ico"><use href="#i-list-check"/></svg>Checklist</button>
                 <button type="button" class="pop-item sub" x-show="conv && !chkSteps() && !typeFront(true) && (shownSubs().length > 0 || draft.checklist.length > 0)" @click="convertTo('steps'); pop = null"><svg class="ico"><use href="#i-steps"/></svg>Steps</button>
@@ -844,6 +816,29 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="pop-item" x-show="draft.checklist.length > 0" @click="toggleChecklistPlain(); pop = null"><svg class="ico"><use :href="chkPlain() ? '#i-list-check' : '#i-all'"/></svg><span x-text="chkPlain() ? 'Make list checkable' : 'Make list uncheckable'"></span></button>
                 <button type="button" class="pop-item" x-show="phoneDock()" @click="toggleArchive(); pop = null"><svg class="ico"><use href="#i-archive"/></svg><span x-text="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"></span></button>
                 </div></template>
+              </div></template></template>
+              <!-- Picker rows: a click adds as Relates; a drag onto a well picks the kind -->
+              <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+                <div class="relations-section">
+                  <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
+                  <div class="rel-picker">
+                    <template x-for="t in relationCandidates()" :key="t.id">
+                      <div class="pop-item rel-row flex items-center gap-4" draggable="true" @click="addRelation(t.id, 'relates')" @dragstart="relDragId = t.id; $event.dataTransfer.setData('text/plain', t.id)" @dragend="relDragId = null" title="Drag to a well, or click to add as Relates">
+                        <span class="task-line grow" x-html="taskLine(t)"></span>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="rel-wells">
+                    <template x-for="[well, head] in [['blocked_by', '← Waiting on'], ['relates', '↔ Relates'], ['blocks', 'Holding up →']]" :key="well">
+                      <div class="rel-well" :data-well="well" @dragover="(relDragId || dragId) && $event.preventDefault()" @dragenter="if(relDragId || dragId) $el.classList.add('drag-over')" @dragleave="$el.classList.remove('drag-over')" @drop.prevent="dropRel($event, well)">
+                        <span class="rel-well-h" x-text="head"></span>
+                        <template x-for="r in relChips().filter(r => r.type === well)" :key="r.id">
+                          <span class="rel-card"><span class="task-line" x-html="relLine(r.id)"></span><button type="button" class="rel-chip-remove" @click.stop="removeRelation(r.id, r.type)" title="Remove">×</button></span>
+                        </template>
+                      </div>
+                    </template>
+                  </div>
+                </div>
               </div></template></template>
             </div>
             <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
