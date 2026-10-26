@@ -748,8 +748,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="c inline-flex items-center" @click="repIdx = ri; cycleRepeatFreq()" x-text="repeatUnitLabel(r)"></button>
                 <template x-if="repDaysLabel(r)"><span>on <button type="button" class="c inline-flex items-center" @click="repIdx = ri; pulseWeekdays()" x-text="repDaysLabel(r)"></button></span></template>
                 <span class="nowrap"><button type="button" class="c inline-flex items-center" :class="{ g: !r.at }" @click.stop="repIdx = ri; toggleTimePop($event)" x-text="r.at ? 'at ' + fmtTime(r.at) : 'at –'"></button><span>,</span></span>
-                <span class="st inline-flex items-center" :class="{ g: !r.ends?.count }"><button type="button" @click="repIdx = ri; setRepeatCount(-1)">−</button><b x-text="r.ends?.count || '∞'"></b><button type="button" @click="repIdx = ri; setRepeatCount(1)">+</button></span> times, ending
-                <button type="button" class="c inline-flex items-center" :class="{ g: !r.ends?.date, ring: endPicking && repIdx === ri }" @click="repIdx = ri; toggleEndPicking()" x-text="r.ends?.date ? fmt(r.ends.date) : 'never'"></button>
+                <span class="st inline-flex items-center" :class="{ g: !r.ends?.count }"><button type="button" @click="repIdx = ri; setRepeatCount(-1)">−</button><b x-text="r.ends?.count || '∞'"></b><button type="button" @click="repIdx = ri; setRepeatCount(1)">+</button></span>
+                <span class="nowrap">times, ending <button type="button" class="c inline-flex items-center" :class="{ g: !r.ends?.date, ring: endPicking && repIdx === ri }" @click="repIdx = ri; toggleEndPicking()" x-text="r.ends?.date ? fmt(r.ends.date) : 'never'"></button></span>
                 <template x-if="r.paused"><span class="nowrap pzl">paused until <button type="button" class="c pz inline-flex items-center" @click.stop="togglePausePop($event, r)" x-text="pauseLabel(r)"></button></span></template>
               </p>
             </div>

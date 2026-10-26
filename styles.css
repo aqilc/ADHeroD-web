@@ -1092,7 +1092,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* min-width == max-width: the pop is FIXED at the width it has always rendered at. The one-off sentence used
    to push it there; once R2 cut that sentence to two clauses, width fell to the content (the month header),
    so paging months twitched the pop and the type-ahead placeholder truncated mid-word. */
-.pop.cal { min-width: 288px; max-width: 288px; gap: 1px; max-height: min(840px, calc(100vh - var(--kb) - var(--sp-16))); overflow-y: auto; > * { flex: none; } }   /* 272 inside the sp-8 inset: a weekly repeat's sentence keeps two lines */
+.pop.cal { min-width: 288px; max-width: 288px; gap: 1px; max-height: min(840px, calc(100vh - var(--kb) - var(--sp-16))); overflow-y: auto; > * { flex: none; } }
 .cal-type {
   width: 100%; padding: var(--sp-6) var(--sp-8) var(--sp-8); border: none; border-bottom: 1px solid var(--edge);
   background: none; color: var(--ink); font-size: var(--fs-14); margin-bottom: var(--sp-4);
