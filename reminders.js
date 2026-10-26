@@ -29,7 +29,7 @@ export const isSimilar = (a, b) => {
 // When an anchored reminder fires — the server's rule (reminders_for.sql, fire_instant.sql): a timed anchor at its
 // hour, a bare date at 09:00, and a window that already opened opens again today.
 const ANCHOR_FACT = { deadline: 'deadline_at', start: 'available_from', due: 'recur_from' };
-const fireAt = (r, t, nowAt) => {
+export const fireAt = (r, t, nowAt) => {
   if (!r.anchor || r.anchor === 'absolute') return r.at || null;
   let base = t[ANCHOR_FACT[r.anchor]];
   if (!base) return null;
