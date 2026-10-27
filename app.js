@@ -2102,17 +2102,17 @@ document.addEventListener('alpine:init', () => {
     // Height estimate for a row that has NEVER been rendered (once one has, _hCache holds its real height).
     // One flat 38px guess against real 34/46/54+ rows made the scrollbar lurch on the way down (#307), so this
     // tracks the same content the row builder renders.
-    _rowEst(r) {
+    _rowEst(r, after) {   // after: a phone's group gap opens this row (styles.css .item.after)
       // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
       const step = r.step && !r.t.completed_at ? 14 + (r.step.desc ? 15 : 0) + (r.next ? 20 : 0) : 0;
       if (this.sticky) return 24 + step;   // the note draws one line a task, padded 3px not 8 (sticky.js): no checklist, notes or meta line
       const chk = this._rowChk(r);
       const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id), _chkHeld?.key === r.t.id ? _chkHeld.done : null) : null;
-      const touch = document.documentElement.classList.contains('touch');   // styles.css :where(.touch): 44px rows, 28px checklist pitch
+      const touch = document.documentElement.classList.contains('touch');   // styles.css :where(.touch): 44px rows (a phone's 50), 28px checklist pitch
       // Relations ride line 1 until the ladder sheds them onto the shared meta line. A DESCRIPTION always owns its
       // (prose never joins the meta line), so they add their own 17.
       const ml = this._metaLines(r);
-      return (touch ? 44 : 34) + step + (ml ? L2_PAD + ml * L2_ROW_H : 0) + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
+      return (touch ? (this.narrow ? 50 + (after ? 28 : 0) : 44) : 34) + step + (ml ? L2_PAD + ml * L2_ROW_H : 0) + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
     },
     _rowChk(r) { return r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []); },   // folded or Steps → no checklist drawn
     // How many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
@@ -2142,7 +2142,7 @@ document.addEventListener('alpine:init', () => {
         const r = rows[i], prev = rows[i - 1];
         // a top-level row after a subtree or a checklist opens a new group: a phone spaces it (styles.css .item.after); a section head already does
         const after = !r.depth && !!prev && ent.at(-1).r === prev && (prev.depth > 0 || this._rowChk(prev).length > 0);
-        ent.push({ id: r.t.id, order: i * 2, d: r.depth, r, h: _hCache.get(r.t.id) ?? this._rowEst(r) + (after && this.narrow && document.documentElement.classList.contains('touch') ? 12 : 0), html: '', mk: () => this._itemLi(r, { order: i * 2, drag, after }) });
+        ent.push({ id: r.t.id, order: i * 2, d: r.depth, r, after, h: _hCache.get(r.t.id) ?? this._rowEst(r, after), html: '', mk: () => this._itemLi(r, { order: i * 2, drag, after }) });
       }
       while (secs && si < secs.length) head();
       return ent;
@@ -2178,7 +2178,7 @@ document.addEventListener('alpine:init', () => {
     // A width reading moves only the estimates: a row's html is width-free, so every built row keeps it.
     // ceiling: O(active + Done) per width change, i.e. every frame of a window-resize drag — 20k Done: 11.7 vs 7.8 est-ms a frame
     // with Done hidden. Re-estimate only the rows a window reaches if a resize drag stutters.
-    _reEstimate() { for (const m of [_model, _doneModel]) if (m) { m.total = 0; for (const e of m.ent) m.total += e.h = _hCache.get(e.id) ?? (e.r ? this._rowEst(e.r) : SEC_H); } },
+    _reEstimate() { for (const m of [_model, _doneModel]) if (m) { m.total = 0; for (const e of m.ent) m.total += e.h = _hCache.get(e.id) ?? (e.r ? this._rowEst(e.r, e.after) : SEC_H); } },
     // The list's first-entry position in scroll coordinates, READ off the DOM (the top spacer's own top)
     // rather than computed: everything above the window that can change height — the controls, an open
     // composer pulled up over its row, the whole active list above the Done one — is absorbed instead of guessed at.
@@ -2968,7 +2968,9 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       const dur = 260;   // styles.css .closing's --md
-      this.growH = g.offsetHeight; this.clip = true; g.classList.add('morph');   // pins the live height; the card's box follows it again
+      // pins the live height, inline at once: .morph's size containment sizes an unpinned grow to 0 until the binding lands,
+      // and a layout in that gap re-windowed the list and scrolled it by the composer's height
+      g.style.height = (this.growH = g.offsetHeight) + 'px'; this.clip = true; g.classList.add('morph');   // the card's box follows it again
       motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
       const anims = [], fly = _morphMoved.length > 0;
       const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); g.classList.remove('morph', 'closing'); };
