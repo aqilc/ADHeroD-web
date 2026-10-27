@@ -480,6 +480,7 @@ document.addEventListener('alpine:init', () => {
     dragLocId: null,        // location being dragged between region headers
     dragOverRegion: null,   // region currently hovered as a drop target
     events: [],             // calendar events, loaded from store
+    pcEvents: [],           // the work PC's Outlook calendar (Windows app only), drawn beside events, never stored or edited
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
     scheduleItems: [],
     reminders: [],           // user-authored reminder rows; [] before db:apply carries the user columns      // task↔block attachments; [] before migration is applied
@@ -577,6 +578,8 @@ document.addEventListener('alpine:init', () => {
     mailError: '',     // why the last read failed, shown atop the panel
     mailQ: '',
     mailShut: false,
+    mailOpened: null,  // the mail opened in its row: {id, from, to, cc, files, body, high, flagged, at}, or {id, error} when Outlook refused
+    mailDraft: null,   // his answer to it: {id, kind: reply | all | forward, text, to}
     editing: null,
     confirm: null,
     shortcutsOpen: false,
@@ -744,14 +747,59 @@ document.addEventListener('alpine:init', () => {
         checkUpdate();
         setInterval(checkUpdate, 6 * 3600e3);
         // Work mail: the classic Outlook open on this PC (desktop/main.cpp § Outlook); null = none installed. A failed read keeps the last list.
-        this.mailbox = { setRead: (id, read) => desktopWindow('mail', 'read', id, read), archive: id => desktopWindow('mail', 'archive', id), remove: id => desktopWindow('mail', 'delete', id) };
+        this.mailbox = { setRead: (id, read) => desktopWindow('mail', 'read', id, read), archive: id => desktopWindow('mail', 'archive', id), remove: id => desktopWindow('mail', 'delete', id),
+          open: id => desktopWindow('mail', 'open', id), show: id => desktopWindow('mail', 'display', id), reply: (id, kind, text, to) => desktopWindow('mail', 'reply', id, kind, text, to) };
         const loadMail = async () => {
           const got = await desktopWindow('mail', 'list');
           this.mailError = got?.error ? (got.error === 'closed' ? 'Open classic Outlook to see new mail.' : `Can't read Outlook (${got.error}).`) : '';
           if (Array.isArray(got)) this.mail = got;
         };
-        loadMail();
-        addEventListener('focus', loadMail);
+        // Outlook's own all-day end is the next midnight; ours is the last day. going: set, so the day never asks.
+        const pcDay = (iso, back = 0) => { const d = new Date(iso.slice(0, 10) + 'T00:00'); d.setDate(d.getDate() - back); return isoDate(d); };
+        const loadCalendar = async () => {
+          const got = await desktopWindow('mail', 'calendar');
+          if (!Array.isArray(got)) return;
+          _calDataV++;
+          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, remind: e.remind, going: { pc: true }, recurrence: null, color: null, all_day: e.allDay,
+            starts_at: e.allDay ? pcDay(e.start) : e.start.slice(0, 16), ends_at: e.allDay ? pcDay(e.end, 1) : e.end.slice(0, 16) }));
+          outlook = got;
+          ring();
+        };
+        // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one as an Alarm, late if the app was
+        // closed, until its meeting ends; ours as its severity says, Pings newest first in one notification of those since the app was last looked at.
+        // ceiling: ours more than 10 minutes late (app closed, PC asleep) are skipped, not rung, as a restore never fires late; revisit with a missed list.
+        let outlook = [], ringTimer = 0, pinged = [];
+        const ring = () => {   // synchronous, so a reload mid-ring can't ring twice
+          clearTimeout(ringTimer);
+          const rung = new Set(JSON.parse(localStorage.getItem('adherod.rung') || '[]')), now = Date.now(), late = now - 10 * 60e3, nowAt = localStamp(new Date());
+          const due = outlook.filter(e => e.remind != null).map(e => ({ id: e.id, at: new Date(e.start) - e.remind * 60e3, until: +new Date(e.end), sev: 'alarm', title: e.title,
+            body: [e.allDay ? 'All day' : this.fmtTime(e.start.slice(11, 16)), e.location].filter(Boolean).join(', ') }));
+          for (const r of this.reminders) {
+            const task = r.kind === 'user' && !r.paused && this.byId.get(r.ref_id), when = task && (isRepeating(r) ? nextAt(r, late) : fireAt(r, task, nowAt));
+            if (when) due.push({ id: r.id + '@' + when, at: +new Date(when), until: +new Date(when) + 10 * 60e3, sev: sevOf(r), title: task.content, body: '' });   // the id carries the time: a repeat rings again
+          }
+          let next = Infinity;
+          for (const item of due) {
+            if (rung.has(item.id) || item.until <= now) continue;
+            if (item.at > now) next = Math.min(next, item.at);
+            else {
+              rung.add(item.id);
+              if (item.sev === 'alarm') desktopWindow('alarm', item.title, item.body);
+              else {
+                pinged.unshift(item.title);
+                desktopWindow('ping', pinged[0], pinged.slice(1).join('\n'));
+              }
+            }
+          }
+          localStorage.setItem('adherod.rung', JSON.stringify(due.map(item => item.id).filter(id => rung.has(id))));   // past ones drop out
+          if (next < Infinity) ringTimer = setTimeout(ring, Math.min(next - now, 2 ** 31 - 1));
+        };
+        Alpine.effect(ring);   // reads this.reminders and this.byId: an edit reschedules
+        addEventListener('focus', () => { pinged = []; });   // seen: the next Ping starts a new notification
+        const loadOutlook = () => { loadMail(); loadCalendar(); };
+        loadOutlook();
+        addEventListener('focus', loadOutlook);
+        setInterval(loadCalendar, 5 * 60e3);   // a meeting booked while the app sits in the tray
       }
       document.addEventListener('selectionchange', () => this._chkSelTint());   // checklist cross-row selection tint
       // An IME owns its keys mid-composition (its Enter converts): no handler may act on them — a title Enter saved the unconverted word.
@@ -2013,8 +2061,27 @@ document.addEventListener('alpine:init', () => {
     async mailDrop(m, act) {
       if (!await this.mailbox[act](m.id)) return this.toast(act === 'archive' ? "Couldn't archive" : "Couldn't delete");
       this.mail = this.mail.filter(x => x !== m);
+      if (this.mailOpened?.id === m.id) this.mailOpened = null;
       this.toast(act === 'archive' ? 'Archived' : 'Deleted');
     },
+    // Opening reads it, as Outlook's reading pane does; the row opens once the mail is in, so it never fills in after.
+    async mailToggle(m) {
+      if (this.mailOpened?.id === m.id) return void (this.mailOpened = null);   // an unsent draft stays for when it reopens
+      const got = await this.mailbox.open(m.id);
+      if (!got) return this.toast("Couldn't open");
+      this.mailOpened = { id: m.id, ...got };
+      if (!m.read && !got.error) this.mailRead(m);
+    },
+    mailWrite(kind) { this.mailDraft = { id: this.mailOpened.id, kind, text: this.mailDraft?.id === this.mailOpened.id ? this.mailDraft.text : '', to: '' }; },
+    async mailSend() {
+      const draft = this.mailDraft, got = await this.mailbox.reply(draft.id, draft.kind, draft.text, draft.to.trim());
+      if (!got) return this.toast("Couldn't send");   // the draft stays, text and all
+      this.mailDraft = null;
+      this.toast(got === 'sent' ? 'Sent' : 'Opened in Outlook');
+    },
+    mailWho(people) { return people.filter(Boolean).map(p => p.name && p.name !== p.address ? html`<b>${p.name}</b> <i>&lt;${p.address}&gt;</i>` : html`<b>${p.address || p.name}</b>`).join(', '); },
+    mailWhen(iso) { return new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + this.fmtTime(iso.slice(11, 16)); },
+    mailSize(bytes) { return bytes < 1048576 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB'; },
     mailDay(iso) { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); },
     completedRows() { this.visibleRows(); return _doneMemo; },   // computed alongside visibleRows; the Done list below the add button
     // Same pure row markup as listHtml (order + depth padding so it aligns with the active list), so the single
@@ -8483,11 +8550,11 @@ document.addEventListener('alpine:init', () => {
       // Register the reactive deps BEFORE the memo can short-circuit: on a hit we would otherwise return
       // without ever reading events/tasks, the render effect would record no dependency on them, and adding or
       // completing something would not repaint until an unrelated change happened to force it.
-      void this.events; void this.tasks; void this.scheduleItems; void this._rowV;   // _rowV: a patched task changes in place
+      void this.events; void this.pcEvents; void this.tasks; void this.scheduleItems; void this._rowV;   // _rowV: a patched task changes in place
       // clPages re-derives every tick — cache to avoid full-set scans
       return _memo(_groupMemo, fromIso + '|' + toIso + '|' + _calDataV, () => {
         const map = {}, add = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
-        for (const it of calendarItems(this.events, this.tasks, fromIso, toIso, this._placedMap())) {
+        for (const it of calendarItems(this.events.concat(this.pcEvents), this.tasks, fromIso, toIso, this._placedMap())) {
           const s = it.start.slice(0, 10), end = it.end || it.start, e = !it.allDay && end.endsWith('T00:00') ? add(end.slice(0, 10), -1) : end.slice(0, 10);
           if (e <= s) (map[s] ||= []).push(it);
           // a multi-day all-day item (event or task band) explodes into connected segments; a timed one is filed on each day, _clPack slices it
@@ -9786,6 +9853,7 @@ document.addEventListener('alpine:init', () => {
     _fmtMin: m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'),
     clDragStart(e, kind, id, srcIso, start = srcIso, end) {   // start/end: the occurrence's drawn slot (an event's srcIso is its start)
       if (!kind) return;
+      if (String(id).startsWith('pc:')) return e.preventDefault();   // Outlook's events move in Outlook
       // dim the SOURCE element (the hole it left behind) while its copy rides the pointer
       const el = this._clLifted = e.target?.closest?.('.cl-event, .cl-chip, .cl-block, .item, .cl-ch, .cl-ag-row'), col = el?.closest('.cl-pcol'), img = el?.cloneNode(true);
       el?.classList.add('cl-lift'); document.body.classList.toggle('calendar-lift', !!el);

@@ -120,6 +120,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        which read as dark blobs on the glyph. A single stroke op composites the union once, at one alpha. -->
   <symbol id="i-backlog" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
   <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+  <symbol id="i-reply" viewBox="0 0 24 24"><path d="M20 18v-2a4 4 0 0 0-4-4H4"/><path d="m9 17-5-5 5-5"/></symbol>
+  <symbol id="i-reply-all" viewBox="0 0 24 24"><path d="m12 17-5-5 5-5"/><path d="M22 18v-2a4 4 0 0 0-4-4H7"/><path d="m7 17-5-5 5-5"/></symbol>
+  <symbol id="i-forward" viewBox="0 0 24 24"><path d="m15 17 5-5-5-5"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></symbol>
   <symbol id="i-mail-open" viewBox="0 0 24 24"><path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z"/><path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10"/></symbol>
   <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol>
 <symbol id="i-all" viewBox="0 0 24 24"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></symbol>
@@ -384,15 +387,43 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <label class="mail-find" x-show="mail.length"><svg class="ico"><use href="#i-search"/></svg><input type="search" x-model="mailQ" placeholder="Search mail" aria-label="Search mail"></label>
         <ul class="mail-list flex-col" x-init="new ResizeObserver(() => $el.classList.toggle('more', $el.scrollHeight > $el.clientHeight + $el.scrollTop + 1)).observe($el)" @scroll="$el.classList.toggle('more', $el.scrollHeight > $el.clientHeight + $el.scrollTop + 1)">
           <template x-for="m in mailRows()" :key="m.id">
-            <li class="item mail-row flex gap-10">
+            <li class="item mail-row flex gap-10" :class="mailOpened?.id === m.id && 'mail-open'">
               <button type="button" class="mail-env" :class="m.read && 'read'" @click="mailRead(m)" :title="m.read ? 'Mark unread' : 'Mark read'" :aria-label="m.read ? 'Read. Mark unread' : 'Unread. Mark read'"><svg class="ico"><use :href="m.read ? '#i-mail-open' : '#i-mail'"/></svg></button>
-              <div class="body grow min-w-0">
-                <div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title" :class="!m.read && 'mail-bold'" x-text="m.subject"></span>
+              <div class="body grow min-w-0" @click="$event.target.closest('button, .mail-read') || mailToggle(m)">
+                <div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title" :class="!m.read && 'mail-bold'" x-text="m.subject" role="button" tabindex="0" @keydown.enter.prevent="mailToggle(m)" @keydown.space.prevent="mailToggle(m)" :aria-expanded="mailOpened?.id === m.id"></span>
                   <div class="row-rels flex items-center gap-8 min-w-0"><template x-for="f in m.files"><span class="row-rel file inline-flex items-center gap-4 muted-11"><svg class="ico"><use href="#i-file"/></svg><span class="row-rel-name" x-text="f"></span></span></template></div></div>
                   </div>
-                <div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate" x-text="(m.from && 'From ' + m.from + ', ') + mailDay(m.at) + '.' + (m.preview && ' ' + m.preview)"></span><template x-if="narrow"><span class="mail-acts flex"><button type="button" class="mail-btn" title="Archive" aria-label="Archive" @click="mailDrop(m, 'archive')"><svg class="ico"><use href="#i-archive"/></svg></button><button type="button" class="mail-btn" title="Delete" aria-label="Delete" @click="mailDrop(m, 'remove')"><svg class="ico"><use href="#i-trash"/></svg></button></span></template></div>
+                <div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate" x-text="(m.from && 'From ' + m.from + ', ') + mailDay(m.at) + '.' + (m.preview && ' ' + m.preview)"></span><template x-if="narrow && mailOpened?.id !== m.id"><span class="mail-acts flex"><button type="button" class="mail-btn" title="Archive" aria-label="Archive" @click="mailDrop(m, 'archive')"><svg class="ico"><use href="#i-archive"/></svg></button><button type="button" class="mail-btn" title="Delete" aria-label="Delete" @click="mailDrop(m, 'remove')"><svg class="ico"><use href="#i-trash"/></svg></button></span></template></div>
+                <!-- B: the mail opens in its row, everything Outlook's reading pane shows; answers go out from here (mailSend) -->
+                <template x-if="mailOpened?.id === m.id"><div class="mail-read flex-col">
+                  <template x-if="mailOpened.error"><div class="flex items-center gap-10"><span class="muted" x-text="`Can't read this mail (${mailOpened.error}).`"></span><button type="button" class="ghost" @click="mailbox.show(m.id)">Open in Outlook</button></div></template>
+                  <template x-if="!mailOpened.error"><div class="mail-read-in flex-col">
+                    <div class="mail-bar flex items-center gap-4">
+                      <button type="button" class="ghost" @click="mailWrite('reply')"><svg class="ico"><use href="#i-reply"/></svg>Reply</button>
+                      <button type="button" class="ghost" @click="mailWrite('all')"><svg class="ico"><use href="#i-reply-all"/></svg>Reply all</button>
+                      <button type="button" class="ghost" @click="mailWrite('forward')"><svg class="ico"><use href="#i-forward"/></svg>Forward</button>
+                      <span class="grow"></span>
+                      <b class="mail-high" x-show="mailOpened.high">High importance</b>
+                      <svg class="ico mail-flag" x-show="mailOpened.flagged" aria-label="Flagged"><title>Flagged</title><use href="#i-flag-fill"/></svg>
+                      <button type="button" class="mail-btn" title="Archive" aria-label="Archive" @click="mailDrop(m, 'archive')"><svg class="ico"><use href="#i-archive"/></svg></button><button type="button" class="mail-btn" title="Delete" aria-label="Delete" @click="mailDrop(m, 'remove')"><svg class="ico"><use href="#i-trash"/></svg></button>
+                    </div>
+                    <dl class="mail-head">
+                      <dt>From</dt><dd x-html="mailWho([mailOpened.from])"></dd><span class="mail-when" x-text="mailWhen(mailOpened.at)"></span>
+                      <dt>To</dt><dd x-html="mailWho(mailOpened.to)"></dd><span></span>
+                      <dt x-show="mailOpened.cc.length">Cc</dt><dd x-show="mailOpened.cc.length" x-html="mailWho(mailOpened.cc)"></dd><span x-show="mailOpened.cc.length"></span>
+                    </dl>
+                    <div class="mail-files flex" x-show="mailOpened.files.length"><template x-for="f in mailOpened.files"><span class="mail-file inline-flex items-center"><svg class="ico"><use href="#i-file"/></svg><span x-text="f.name"></span><i x-text="mailSize(f.size)"></i></span></template></div>
+                    <div class="mail-text"><template x-for="para in mailOpened.body.split(/\r?\n\s*\r?\n/).filter(t => t.trim())"><p x-text="para"></p></template></div>
+                    <template x-if="mailDraft?.id === m.id"><div class="mail-reply flex-col">
+                      <div class="mail-to" x-show="mailDraft.kind !== 'forward'" x-html="(mailDraft.kind === 'all' ? 'Reply all to ' : 'Reply to ') + mailWho(mailDraft.kind === 'all' ? [mailOpened.from, ...mailOpened.to, ...mailOpened.cc] : [mailOpened.from])"></div>
+                      <label class="mail-to flex items-center gap-8" x-show="mailDraft.kind === 'forward'">Forward to<input type="email" class="inp grow" x-model="mailDraft.to" placeholder="Email address"></label>
+                      <textarea class="inp" x-model="mailDraft.text" :placeholder="mailDraft.kind === 'forward' ? 'Add a note' : 'Write a reply'" x-init="$el.focus()"></textarea>
+                      <div class="mail-send flex gap-8"><button type="button" class="ghost" @click="mailDraft = null">Discard</button><button type="button" class="primary inline-flex items-center gap-6" :disabled="mailDraft.kind === 'forward' ? !mailDraft.to.trim() : !mailDraft.text.trim()" @click="mailSend()"><svg class="ico"><use href="#i-send"/></svg>Send</button></div>
+                    </div></template>
+                  </div></template>
+                </div></template>
               </div>
-              <template x-if="!narrow"><span class="mail-acts flex"><button type="button" class="mail-btn" title="Archive" aria-label="Archive" @click="mailDrop(m, 'archive')"><svg class="ico"><use href="#i-archive"/></svg></button><button type="button" class="mail-btn" title="Delete" aria-label="Delete" @click="mailDrop(m, 'remove')"><svg class="ico"><use href="#i-trash"/></svg></button></span></template>
+              <template x-if="!narrow && mailOpened?.id !== m.id"><span class="mail-acts flex"><button type="button" class="mail-btn" title="Archive" aria-label="Archive" @click="mailDrop(m, 'archive')"><svg class="ico"><use href="#i-archive"/></svg></button><button type="button" class="mail-btn" title="Delete" aria-label="Delete" @click="mailDrop(m, 'remove')"><svg class="ico"><use href="#i-trash"/></svg></button></span></template>
             </li>
           </template>
           <li class="mail-none" x-show="mail.length && !mailRows().length">No mail matches</li>
