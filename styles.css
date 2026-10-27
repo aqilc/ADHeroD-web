@@ -848,16 +848,34 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
 }
 .composer { display: block; position: relative; z-index: 7; }   /* above canvas-dots(z5) so its pops aren't trapped below the nav strip; also above the edited row's .check */
 .composer-grow { opacity: 0; overflow: visible; display: flow-root;   /* BFC: keep card margins inside measured height (else height drops at settle) */
-  transition: height .22s var(--ease-drawer), opacity .2s ease; }
+  transition: opacity .2s ease; }   /* reduced motion's fade; the grow itself is .morph's */
 .composer-grow.grown { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .composer-grow.grown { @starting-style { opacity: 0; } } }   /* no height grow (_growOpen): it mounts grown and fades in */
 /* height:0 floors before JS sets inline height; without it the grow renders full for one frame (stutter) */
 .composer-grow.clip { overflow: hidden; height: 0; }
-/* padding+margin animate concurrently with height (not gated on settle); target measured as-if-grown so it doesn't jump */
+/* padding+margin animate with the height (.morph); target measured as-if-grown so it doesn't jump */
 .composer-grow.grown .composer-card { padding-top: 14px; padding-bottom: var(--sp-12); margin: var(--sp-8) 0 var(--sp-12); }
 :where(html:not(.touch)) .composer-grow.grown .composer-card { padding-bottom: var(--sp-8); margin-bottom: calc(var(--sp-24) * 2); }   /* the bar's icons sit as far from the foot as the checkbox from the top; room for the action row under the card (8 gap + 28 row + 12) */
 /* the page dims a little while the composer is open; it fades with the grow's opacity */
 .composer-grow::before { content: ""; position: fixed; inset: -100vmax; z-index: -1; pointer-events: none; background: light-dark(rgb(0 0 0 / .03), rgb(0 0 0 / .16)); }
+/* the grow (_growOpen/_growClose): the row's own box becomes the card. Opaque from the first frame, its fill
+   going from the row's to the panel's; the card's box (not the whole grow) is what's revealed, and on a desktop the
+   bar rides the grow's bottom edge, under the card until there's room for it. */
+.composer-grow.morph { position: relative; opacity: 1; overflow: visible; container-type: size;   /* its height is pinned (growH) while .morph is on; cqh = the grow's live height */
+  --md: 300ms; --me: var(--ease-grow-open); &.closing { --md: 260ms; --me: var(--ease-grow-close); }   /* app.js _growOpen/_growClose's dur */
+  transition: height var(--md) var(--me); --room: calc(var(--sp-8) + var(--sp-12));
+  &::before { opacity: 0; transition: opacity var(--md) ease; }
+  &.grown::before { opacity: 1; }
+  .composer-card, .composer-body { position: static; }
+  .composer-card { overflow: hidden; height: max(var(--from), calc(100% - var(--room)));
+    transition: padding var(--md) var(--me), margin var(--md) var(--me), gap var(--md) var(--me), background-color var(--md) var(--me), box-shadow var(--md) var(--me); }
+  &.closing .composer-card { overflow: visible; }   /* see-through by now: the rows going home aren't cut by its shrinking box */
+  &:not(.grown) .composer-card { gap: var(--sp-10); padding-left: calc(var(--gut) + var(--indent, 0px)); padding-top: calc(var(--sp-8) + var(--lift, 0px)); background-color: var(--from-bg); box-shadow: none; }
+}
+:where(html:not(.touch)) .composer-grow.morph { --room: calc(var(--sp-8) + var(--sp-24) * 2);
+  .composer-actions { top: auto; bottom: var(--sp-12); left: calc(var(--gut) - var(--sp-2)); right: calc(14px - var(--sp-6)); z-index: -1;
+    clip-path: inset(max(0px, calc(var(--from) + var(--sp-12) + 28px - 100cqh)) -100vmax -100vmax); } }   /* shown only below the card's first box: early on it would sit over the row above (28 = the row) */
+.item.morph-hide:not(.morph-solo) .chk-list, .item.morph-hide :is(.check, .title) { visibility: hidden; }
 .composer-card {
   /* left pad = the row's --gut check rail (app.js sets `padding-left:calc(var(--gut) + depth*22px)` per row), so the
      composer's checkbox lands exactly on the list's — the edit flow crossfades the two and any offset jumps */

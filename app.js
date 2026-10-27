@@ -19,11 +19,14 @@ const THEME_COLORS = Object.entries(DESIGN.themes).filter(([, t]) => t.family).m
 });
 const savedColorTheme = account => [localStorage.getItem('adherod.colorTheme'), account, 'graphite'].find(id => THEME_COLORS.some(t => t.id === id));
 const savedAppearance = () => ['light', 'dark'].includes(localStorage.getItem('adherod.theme')) ? localStorage.getItem('adherod.theme') : 'system';
+// a critically damped spring (no overshoot) as a CSS linear(): ω 26.2 puts 50% at 64 ms and 90% at 148 ms (his Things recording)
+const _spring = (w, ms) => `linear(${Array.from({ length: 31 }, (_, i) => { const u = w * ms / 1000 * i / 30; return i === 30 ? 1 : +(1 - (1 + u) * Math.exp(-u)).toFixed(4); }).join(', ')})`;
+const _openEase = _spring(26.2, 300), _closeEase = _spring(30, 260);
 function applyTheme(mode, family) {
   const vars = scheme => _vars(themeVars(family, scheme));
   let el = document.getElementById('design-tokens');
   if (!el) { el = document.createElement('style'); el.id = 'design-tokens'; document.head.appendChild(el); }
-  el.textContent = `:root{${_scale(DESIGN)};${vars(mode === 'dark' ? 'dark' : 'light')}}` +
+  el.textContent = `:root{${_scale(DESIGN)};--ease-grow-open:${_openEase};--ease-grow-close:${_closeEase};${vars(mode === 'dark' ? 'dark' : 'light')}}` +
     (mode === 'system' ? `@media (prefers-color-scheme: dark){:root{${vars('dark')}}}` : '');
   if (mode === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = mode;
@@ -379,6 +382,10 @@ const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', impo
 // Deep-read a reactive value WITHOUT serializing it — subscribes an effect to every nested field (what JSON.stringify
 // subscribed to, minus the string it built each run). `skip` prunes one subtree that another effect owns.
 const _touch = (v, skip) => { if (v && typeof v === 'object' && v !== skip) for (const k in v) _touch(v[k], skip); };
+// the composer's grow: the list's entry texts (text → rect) at the tap, the card rows flown from them, the edited block's list rows, the running grow's undo
+let _morphFrom = new Map(), _morphMoved = [], _morphRows = [], _morphStop = null;
+// a list row folded shut: its padding too, or a phone's 44px row floors at 24 and the list below jumps when it hides
+const _fold = r => { const s = getComputedStyle(r); return [{ height: r.offsetHeight + 'px', paddingTop: s.paddingTop, paddingBottom: s.paddingBottom, overflow: 'hidden' }, { height: '0px', paddingTop: '0px', paddingBottom: '0px', overflow: 'hidden' }]; };
 let _growGen = 0;   // _growOpen's generation ids: negative (a reactive {} would read back as a proxy), so never a live timer id
 let _dlAuto = '';   // the deadline a By time pick derived: while the draft's still equals it, the date isn't the user's. Off the draft, so it never dirties one.
 let _draftT = 0;   // persistDraft's debounce — module-level: a reactive handle, written by one persistDraft effect, woke the other
@@ -2870,43 +2877,131 @@ document.addEventListener('alpine:init', () => {
     // read with transitions held (no frame ever sees it); a probe clone laid out a second copy of every row.
     fullGrow(g) {
       const card = g.firstElementChild; if (!card) return g.scrollHeight;
-      g.style.transition = card.style.transition = 'none'; g.classList.add('grown');
+      g.style.transition = card.style.transition = 'none'; card.style.height = 'auto'; g.classList.add('grown');
       const cs = getComputedStyle(card), h = card.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
-      g.classList.remove('grown'); cs.paddingTop;   // restyle un-grown while transitions are still held
+      g.classList.remove('grown'); card.style.height = ''; cs.paddingTop;   // restyle un-grown while transitions are still held
       g.style.transition = card.style.transition = '';
       return h;
     },
-    // `grow` is a getter: the composer element is read at rAF time
+    // The row becomes the card: opaque from the tap (no crossfade, so no double title); the card's fill goes from the
+    // row's to the panel's, its indent and gap from the row's to its own; subtask and checklist rows fly from where the
+    // list drew them; the bar rides the grow's bottom edge (CSS). `grow` is a getter: the element is read at rAF time.
     _growOpen(grow, start) {
-      clearTimeout(this._t);
+      clearTimeout(this._t); _morphStop?.();
       if (this.reduceMotion()) { this.grown = true; this.clip = false; this.growH = null; return; }
+      const dur = 300, row = this.editing && (this._inPanel() ? this._trayEl(this.editing) : this._rowEl(this.editing));
       // synchronous so first frame isn't at full height (stutter)
       this.grown = false; this.clip = true; this.growH = start;
       motion.run('grow', () => this.growH !== null);   // idle() spans the measuring frames + settle timer, which no CSS event reports
-      const settle = () => { this.growH = null; this.clip = false; this._reflow(); };   // to auto; the list re-windows once, here
-      let t = this._t = --_growGen;   // this open's generation; becomes the settle timer once the grow starts
-      // Measured the frame AFTER the grow mounts: x-show's deferred hides (a rAF) have landed by then.
-      // Not past $nextTick — Alpine holds it while the entry ghosts' x-transition starts (entry-less opens grew 2 frames late).
+      const anims = [], sub = [];
+      const stop = _morphStop = () => {   // also what a close or re-open run on an open still under way
+        _morphStop = null;
+        for (const r of sub) r.classList.add('edit-hidden');
+        for (const a of anims) a.cancel();
+        const g = grow(); g?.classList.remove('morph'); if (g?.firstElementChild) g.firstElementChild.style.clipPath = '';
+      };
+      const settle = () => { stop(); this.growH = null; this.clip = false; this._reflow(); };   // to auto; the list re-windows once, here
       // Each step bails once a re-open/close supersedes THIS open (`_t`): a stale measure stripped the live
       // `grown` class for good (opacity 0), a stale growH pinned the height.
-      requestAnimationFrame(() => {
+      let t = this._t = --_growGen;   // this open's generation; becomes the settle timer once the grow starts
+      requestAnimationFrame(() => {   // before the first paint of the grow: it already wears the row's box
         if (this._t !== t) return;
-        const g = grow();
-        // settle times from the grow's start, not the tap: a slow first paint outlasted a tap-timed one and the late grow pinned growH
-        requestAnimationFrame(() => { if (this._t === t) { this.growH = this.fullGrow(g); this.grown = true; this._t = t = setTimeout(settle, 280); } });
+        // every read before any write: one forced layout, not one per read (each a whole-list restyle on a phone at 4x)
+        const g = grow(), card = g.firstElementChild, rcs = row && getComputedStyle(row);
+        const [r, gr, b, a = 1] = (rcs?.backgroundColor ?? 'rgba(0,0,0,0)').match(/[\d.]+/g).map(Number);
+        const indent = rcs ? parseFloat(rcs.paddingLeft) - parseFloat(getComputedStyle(card).paddingLeft) : 0;
+        // a phone's row centers its title in a taller box: the un-grown card's title sits on it
+        const rt = row?.querySelector('.title'), ct = card.querySelector('.composer-title');
+        const lift = rt && ct ? rt.getBoundingClientRect().top - ct.getBoundingClientRect().top : 0;
+        card.style.setProperty('--from', start + 'px');   // on the card, not :root (restyles the whole page) nor the grow or its li (their :style bindings rewrite the attribute)
+        // opaque from the first frame, or the bar rising under it shows through: the row's fill over the page's --bg
+        // ceiling: ignores the page's top wash (a few levels off near the top), revisit if a top row's first frame shows a box
+        card.style.setProperty('--from-bg', `color-mix(in srgb, rgb(${r} ${gr} ${b}) ${a * 100}%, var(--bg))`);
+        card.style.setProperty('--indent', indent + 'px');
+        card.style.setProperty('--lift', lift + 'px');
+        card.style.transition = 'none'; g.classList.add('morph'); card.offsetHeight; card.style.transition = '';   // the row's box at once, not a glide to it
+        row?.classList.add('morph-hide');
+        _morphMoved = [];
+        for (const e of card.querySelectorAll('.composer-entries .entry:not(.ghost)')) {
+          const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = [..._morphFrom].find(([k]) => s.startsWith(k))?.[1]; if (!f) continue;   // a subtask's text runs on into its chips
+          const r = txt.getBoundingClientRect(), d = `${f.left - r.left}px ${f.top - r.top}px`, k = f.fs / parseFloat(getComputedStyle(txt).fontSize);   // the list draws checklist text smaller
+          e.style.translate = d; txt.style.transformOrigin = '0 0'; txt.style.scale = k; _morphMoved.push([e, d, txt, k]);
+        }
+        const fade = _morphMoved.length ? [...card.querySelectorAll('.desc, .entry.ghost, .entry-or')] : [];   // they sit where the flying rows start
+        for (const el of fade) el.style.opacity = 0;
+        // nothing flying (a phone's card has no rows): the card grows from the title's row alone and its subtree folds away under the edge
+        if (!_morphMoved.length) sub.push(..._morphRows.slice(1).filter(r => r.isConnected));
+        if (sub.length) {   // at once: a glide down from the block's height showed the rows and the whole block for a frame
+          this.growH = this.startH; g.style.transition = 'none'; g.style.height = this.startH + 'px';
+          card.style.setProperty('--from', this.startH + 'px');
+          for (const r of sub) r.classList.remove('edit-hidden');
+          g.offsetHeight; g.style.transition = '';
+        }
+        // nor a checklist: the row's items stay put and the card's box unmasks down over them from the title's line
+        const chk = !_morphMoved.length && row?.querySelector('.chk-list'), rad = chk && getComputedStyle(card).borderRadius;
+        const cut = chk ? card.getBoundingClientRect().bottom - chk.getBoundingClientRect().top : 0;
+        if (cut > 0) { row.classList.add('morph-solo'); card.style.clipPath = `inset(0 0 ${cut}px 0 round ${rad})`; }
+        // measured the frame AFTER the grow mounts: x-show's deferred hides (a rAF) have landed by then
+        requestAnimationFrame(() => {
+          if (this._t !== t) return;
+          this.growH = this.fullGrow(g); this.grown = true;
+          const o = { duration: dur, easing: _openEase };
+          for (const r of sub) anims.push(r.animate(_fold(r).map((k, i) => ({ ...k, opacity: 1 - i })), { ...o, fill: 'forwards' }));
+          if (cut > 0) { card.style.clipPath = ''; anims.push(card.animate({ clipPath: [`inset(0 0 ${cut}px 0 round ${rad})`, `inset(0 0 0 0 round ${rad})`] }, o)); }
+          for (const [e, d, txt, k] of _morphMoved) {
+            e.style.translate = txt.style.scale = '';
+            anims.push(e.animate({ translate: [d, '0px 0px'] }, o), txt.animate({ scale: [k, 1] }, o),
+              e.animate([{ backgroundColor: 'transparent', offset: 0 }], o));   // the zebra band: the list has none
+          }
+          for (const el of fade) { el.style.opacity = ''; anims.push(el.animate({ opacity: [0, 1] }, { duration: dur * .5, delay: dur * .35, easing: 'ease-out', fill: 'backwards' })); }
+          // settle times from the grow's start, not the tap: a slow first paint outlasted a tap-timed one and the late grow pinned growH
+          this._t = t = setTimeout(settle, dur + 20);
+        });
       });
     },
     _growClose(grow, end, done) {
-      clearTimeout(this._t);   // closeComposer's _closingComposer guards the rAF/timeout: a quick re-open clears it
-      const g = grow(), anim = g && !this.reduceMotion();
-      if (anim) {
-        this.growH = g.offsetHeight; this.clip = true;   // pin the live height (already rendered, no probe needed)
-        motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
+      clearTimeout(this._t); _morphStop?.();   // closeComposer's _closingComposer guards the rAF/timeout: a quick re-open clears it
+      const g = grow();
+      if (!g || this.reduceMotion()) {   // reduced motion: no collapse, but the opacity fade (≤150ms) still runs; zero motion: nothing to wait out
+        this.grown = false;
+        this._t = setTimeout(() => { if (this._closingComposer) { this.clip = false; this.growH = null; done && done(); } }, motion.gentle ? 150 : 0);
+        return;
+      }
+      const dur = 260;   // styles.css .closing's --md
+      this.growH = g.offsetHeight; this.clip = true; g.classList.add('morph');   // pins the live height; the card's box follows it again
+      motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
+      const anims = [], fly = _morphMoved.length > 0;
+      const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); g.classList.remove('morph', 'closing'); };
+      // as in Things: the fill and everything but the title and the rows going home drop at once, the row's pills fade in
+      // a subtask's chips are the card's; its list row has its own, fading in
+      const fade = g.querySelectorAll('.composer-dock, .composer-opts, .composer-actions, .entry:not(.ghost) .entry-txt > *');
+      // what sits in the flying rows' path goes at once: a 60 ms fade still crossed the rows going home
+      for (const el of g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or')) anims.push(el.animate({ opacity: 0 }, { duration: 0, fill: 'forwards' }));
+      // the subtree rows unhide now, under a card that turns see-through
+      // nothing flying (a phone's card has no rows): only the title's row waits under the card, its subtree rides the shrinking edge up
+      const rows = _morphRows.filter(r => r.isConnected), sub = fly ? [] : rows.slice(1);
+      for (const r of fly ? rows : rows.slice(0, 1)) r.classList.add('morph-hide', ...fly ? [] : ['morph-solo']);
+      requestAnimationFrame(() => {
         // growH null: a starved frame landed past the settle below, and collapsing now re-pinned the closed grow
-        this.$nextTick(() => requestAnimationFrame(() => { if (!this._closingComposer || this.growH === null) return; this.growH = end; this.grown = false; }));
-      } else { this.grown = false; }
-      // reduced motion: no collapse, but the opacity fade (≤150ms) still runs; zero motion: nothing to wait out
-      this._t = setTimeout(() => { if (!this._closingComposer) return; this.clip = false; this.growH = null; done && done(); }, anim ? 240 : motion.gentle ? 150 : 0);
+        if (!this._closingComposer || this.growH === null) return;
+        const o = { duration: dur, easing: _closeEase };
+        if (sub.length) end = this.startH;
+        for (const r of sub) { r.classList.remove('edit-hidden'); anims.push(r.animate(_fold(r).reverse(), o)); }
+        this.growH = end; this.grown = false;
+        g.classList.add('closing');
+        anims.push(g.firstElementChild.animate({ backgroundColor: 'transparent', boxShadow: 'none' }, { duration: 90, easing: 'ease-out', fill: 'forwards' }));
+        for (const r of rows) anims.push(r.animate({ opacity: [0, 1] }, { duration: 120, delay: 50, easing: 'ease-out', fill: 'backwards' }));
+        // back to the list's places: the un-grown layout is where the offsets were measured
+        for (const [e, d, txt, k] of _morphMoved) if (e.isConnected) anims.push(
+          e.animate({ translate: ['0px 0px', d], backgroundColor: 'transparent' }, { ...o, fill: 'forwards' }),
+          txt.animate({ scale: [1, k] }, { ...o, fill: 'forwards' }));
+        for (const el of fade) anims.push(el.animate({ opacity: [1, 0] }, { duration: 60, easing: 'ease-out', fill: 'forwards' }));
+      });
+      this._t = setTimeout(() => {
+        if (!this._closingComposer) return;
+        this.clip = false; this.growH = null; stop(); done && done();   // done's applyEditDom drops the rows' morph-hide
+        _morphMoved = []; _morphRows = []; _morphFrom = new Map();
+      }, dur + 20);
     },
     openComposer() {
       this._releaseCloseRange(true);
@@ -2934,7 +3029,7 @@ document.addEventListener('alpine:init', () => {
       if (add?.offsetHeight) _addSlot = add.offsetHeight + parseFloat(getComputedStyle(add).marginTop);   // hidden while a new task is open: keep the last
       const start = this.editing ? this.blockH : add ? _addSlot : 0;
       this.composer.open = true;
-      if (wasOpen) { clearTimeout(this._t); this._t = 0; this.grown = true; this.clip = false; this.growH = null; }
+      if (wasOpen) { clearTimeout(this._t); this._t = 0; _morphStop?.(); this.grown = true; this.clip = false; this.growH = null; }
       else this._growOpen(() => this.$refs.grow, start);
       this.setEditorText(this.draft.content);
       this.setDescText(this.draft.notes);
@@ -2976,6 +3071,7 @@ document.addEventListener('alpine:init', () => {
     // open/close; rows a morph creates later are stamped by _stampRow.
     applyEditDom() {
       for (const el of document.querySelectorAll('.item.editing-row')) { el.classList.remove('editing-row'); el.style.height = ''; }
+      for (const el of document.querySelectorAll('.item.morph-hide')) el.classList.remove('morph-hide', 'morph-solo');   // the grow's: the card covered the row
       const before = !this.editing && _arrive.size && this._rowTops();
       for (const el of document.querySelectorAll('.surface-lists .item.edit-hidden')) {
         el.classList.remove('edit-hidden');
@@ -3626,6 +3722,11 @@ document.addEventListener('alpine:init', () => {
         h += el.offsetHeight; el = el.nextElementSibling;
       }
       this.blockH = h;
+      _morphFrom = new Map(); _morphRows = [];   // where the list draws each subtask and checklist item: the card's rows fly from there
+      for (let r = row; r && r !== el; r = r.nextElementSibling) {
+        _morphRows.push(r);
+        for (const x of r.querySelectorAll(r === row ? '.chk-txt' : '.title')) _morphFrom.set(x.textContent.trim(), { ...x.getBoundingClientRect().toJSON(), fs: parseFloat(getComputedStyle(x).fontSize) });
+      }
       this._endDraft();   // a composer already open (another row, a subtask's chevron) keeps its draft under its own key
       // the ghost rows are shared DOM, and focusing one mirrors its text back into subGhost before subGhostSync runs
       this.draft = this.taskToDraft(t); _dlAuto = ''; this.subGhost = this.chkGhost = ''; this.entryKind = ''; this._clearEditor(this._ghostEl('sub'));
