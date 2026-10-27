@@ -141,16 +141,18 @@ const _dLine = (line, literal) => {   // literal: a title's, where # and - stay 
   return unstash(t);
 };
 
-// Which checklist items a list row actually shows: 3+ done collapse behind "…N more" (open items unaffected;
+// Which checklist items a list row actually shows: 3+ done fold behind "N done" (open items unaffected;
 // plain = no collapse); `open` reveals them. `more` = the toggle exists at all. Shared with app.js's row-height
 // estimate for contain-intrinsic-size, so the rendered count and the estimated count can't drift. Open first, done last (stable),
 // the composer's and the row's alike. held: item key (id, or a row's ci) → the done it showed before a tick still in place (app.js _holdChk).
 export function chkVisible(cl, plain, open, held) {
   if (plain) return { rows: cl, hidden: 0, more: 0 };
   const isDone = x => !!(held?.has(x.id ?? x.ci) ? held.get(x.id ?? x.ci) : x.done);
-  const view = cl.slice().sort((a, b) => isDone(a) - isDone(b)), done = view.filter(isDone), more = Math.max(done.length - 2, 0);
-  return { rows: !more || open ? view : view.filter(x => !isDone(x)).concat(done.slice(0, 2)), hidden: open ? 0 : more, more };
+  const view = cl.slice().sort((a, b) => isDone(a) - isDone(b)), done = view.filter(isDone).length, more = done > 2 ? done : 0;   // 1-2 done show: a fold row would take their room
+  return { rows: !more || open ? view : view.slice(0, -done), hidden: open ? 0 : more, more };
 }
+// The fold row sits between the open and done items; its count is the done items', open or shut (46A).
+export const chkFoldHtml = (more, open, act = '') => `<button type="button" class="chk-row flex gap-8 chk-more"${act}><svg class="ico chk-more-ico"><use href="#i-chev-${open ? 'd' : 'r'}"/></svg><span class="chk-more-txt">${more} done</span></button>`;
 
 // Live editor for a composer checklist item: everything after the first "::" is its note, led by the "::" as a marker
 // (the caret at the note's start touches it). textContent(chkLive(t)) === t so the caret math holds (same contract as mdLive).
@@ -292,10 +294,10 @@ export const rowBodyHtml = (r, opts = {}) => {
   // Display-only sort: done below open (stable); data-ci = original index so toggling never reorders the stored array.
   const plain = !!t.checklist_plain;   // uncheckable: plain notes list — bullets instead of boxes, no done styling
   const { rows: clRows, hidden, more } = chkVisible(cl, plain, opts.chkOpen, opts.chkHeld);
-  const morePlaceholder = more ? `<button type="button" class="chk-row flex gap-8 chk-more" data-act="chk-more"><span class="chk-more-txt">${hidden ? '…' + hidden + ' more' : 'Show less'}</span></button>` : '';
+  const fold = more ? chkFoldHtml(more, !hidden, ' data-act="chk-more"') : '', openN = clRows.length - (more - hidden);
   const renderRow = ({ ci, done, txt, desc }) =>
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
-  const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.map(renderRow).join('')}${morePlaceholder}</div>` : '';
+  const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.slice(0, openN).map(renderRow).join('')}${fold}${clRows.slice(openN).map(renderRow).join('')}</div>` : '';
   return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;
 };
 

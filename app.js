@@ -44,7 +44,7 @@ import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurr
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE, BACKUP_KINDS, isBackup, restorePlan } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
-import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
+import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, chkFoldHtml, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
 import { makeSortable, edgeScrollStep, edgeSpeed, sorting, DWELL } from './sortable.js';
 import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
@@ -479,7 +479,7 @@ document.addEventListener('alpine:init', () => {
     _draftBase: '',         // pristine draft serialization at open — dirty = current !== this; drives persist/keep-on-close
     trashOpen: false,   // "Recently deleted" popup (keybound like ?) — trashItems() reads the journal, reactive on _jV
     trashSmallOpen: {},   // day key → its small-changes row is shown open
-    chkOpen: new Set(),     // task ids whose collapsed "…N more" done checklist items are expanded in the list
+    chkOpen: new Set(),     // task ids (and 'draft') whose folded done checklist items are open, in the list row and the composer alike
     filters: [],            // saved filters (sidebar), loaded from store
     filterEdit: null,       // filter being edited in the modal: {id?, name, query, color}; null = closed
     locations: [],          // all locations, loaded from store
@@ -2854,6 +2854,7 @@ document.addEventListener('alpine:init', () => {
 
     resetDraft() {
       this.draft = emptyDraft(); this.subDraft = emptyDraft(); _nlpFocus = null; _dlAuto = ''; _chkSeed = '';
+      this.chkOpen.delete('draft');   // a new task's fold starts shut
       this.draftRestored = false;   // a blank draft restored nothing (the note's Esc clears its always-open line in place)
       this.pickerQ = ''; this.newAreaName = ''; this.projRequired = false; this.subGhost = ''; this.chkGhost = ''; this.entryKind = ''; this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._calDn = null; this.calH = null;
       for (const t in PICKERS) this[PICKERS[t].key] = { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 };
@@ -3181,7 +3182,7 @@ document.addEventListener('alpine:init', () => {
       if (act === 'collapse') return this.toggleTaskCollapse(r.t.id);
       if (act === 'rel') return this.rowRelOpen(r.t, e.target.closest('.row-rel'));
       if (act === 'check') return r.t.archived_at ? undefined : r.step ? (e.detail ? this._stepTick(r.t.id, false, r) : this.toggleChk(r.t.id, r.step.ci)) : this.toggle(r.t, e.detail ? r : null);   // a pointer tick celebrates; a key's (detail 0) stays instant
-      if (act === 'chk-more') { this.chkOpen.has(r.t.id) ? this.chkOpen.delete(r.t.id) : this.chkOpen.add(r.t.id); this._dropRowHtml(r.t.id); this._paintRows(); return; }   // reveal/re-hide the collapsed done items; repaint here — no effect may have read chkOpen for this row
+      if (act === 'chk-more') return this.chkFold(r.t.id);
       // the checkbox OR its text toggles a checklist item; plain (uncheckable) items fall through to editTask
       const chk = e.target.closest('.chk-rect, .chk-txt')?.closest('.chk-row, .step-next');   // a Steps row's preview ticks by its node
       if (chk && !r.t.checklist_plain) return chk.matches('.step-next') && e.detail ? this._stepTick(r.t.id, true, r) : this.toggleChk(r.t.id, +chk.dataset.ci, e.detail ? r : null);
@@ -6971,7 +6972,10 @@ document.addEventListener('alpine:init', () => {
       cl.splice(at, 0, it); this._pushChkItem(it, at, null, it.text);
     },
     // Bucket only the display: unchecking restores the item's saved position. Steps keep stored order.
-    checklistRows() { return this.chkSteps() ? this.draft.checklist : chkVisible(this.draft.checklist, this.chkPlain(), true, _chkHeld?.key === 'draft' ? _chkHeld.done : null).rows; },
+    // find (a ghost query) opens the fold: a done item it matches floats up like any other
+    checklistView() { return this.chkSteps() ? { rows: this.draft.checklist, hidden: 0, more: 0 } : chkVisible(this.draft.checklist, this.chkPlain(), this.chkOpen.has(this.editing ?? 'draft') || !!this.chkFind(), _chkHeld?.key === 'draft' ? _chkHeld.done : null); },
+    // reveal/re-hide the folded done items; the row repaints here: no effect may have read chkOpen for it
+    chkFold(id) { this.chkOpen.has(id) ? this.chkOpen.delete(id) : this.chkOpen.add(id); this._dropRowHtml(id); this._paintRows(); },
     // The composer's entry rows are plain DOM, not x-fors: mounting ~12 Alpine directives per row made a long list the
     // open's longest frame. One effect per list paints them keyed by id, after the list's ghost; a row keeps its element
     // and rewrites only what changed. Every row renders: drag, ↓/Tab, the grow's measure, zebra, copy and find read them all.
@@ -7020,7 +7024,8 @@ document.addEventListener('alpine:init', () => {
       const rowEls = () => [...list.querySelectorAll(':scope > .entry:not(.chk-out)')], before = exit && this._entryTops(rowEls());
       const plain = this.chkPlain(), find = this.chkFind(), grip = this.editing && !this.chkGhost.trim(), ae = document.activeElement;   // ae: the row being typed in
       const cur = this.chkSteps() ? this.draft.checklist.find(x => !x.done) : null;
-      this._paintKeyed(list, this.checklistRows(), () => { const el = CHK_ROW.cloneNode(true); el._r = el.firstChild; el._t = el._r.nextSibling; return el; }, (el, item) => {
+      const view = this.checklistView(), done = view.more - view.hidden;
+      this._paintKeyed(list, view.rows, () => { const el = CHK_ROW.cloneNode(true); el._r = el.firstChild; el._t = el._r.nextSibling; return el; }, (el, item) => {
         el._item = item;   // the row's events read it back: no per-event scan of the checklist
         const done = !!item.done && !plain, g = grip && (!item.done || plain);   // !!: an item stored without done would make toggle() flip, not set
         el.classList.toggle('done', done); el.classList.toggle('chk-hit', !!find?.has(item.id)); el.classList.toggle('cur', item === cur);
@@ -7030,6 +7035,12 @@ document.addEventListener('alpine:init', () => {
         // Text written outside the row's own editor (undo) repaints via syncChkRows.
         if (!el._t.contains(ae)) { const h = this.chkHl(window.Alpine.raw(item)); if (force || el._t._h !== h) el._t.innerHTML = el._t._h = h; }
       }, exit);
+      if (!view.more) list._fold?.remove();
+      else {   // between the open and done items, outside the keyed rows; one element, so a keyboard toggle keeps its focus
+        const fold = list._fold ??= _tpl(chkFoldHtml(0, false)), h = chkFoldHtml(view.more, !view.hidden), at = done ? list.querySelector(`:scope > [data-id="${view.rows.at(-done).id}"]`) : null;
+        if (fold._h !== h) { fold.innerHTML = _tpl(h).innerHTML; fold._h = h; }
+        if (!fold.isConnected || fold.nextElementSibling !== at) list.insertBefore(fold, at);
+      }
       if (before) this._slideEntries(rowEls(), before);
     },
     // The draft's subtask rows: stored ones still stored (another device may delete one), and new ones.
@@ -7066,6 +7077,7 @@ document.addEventListener('alpine:init', () => {
     _chkItem(el) { return el.closest?.('.entry.chk')?._item ?? null; },
     // The painted rows' events, delegated from the list (the ghost row has no data-id and keeps its own handlers).
     chkRowEv(e) {
+      if (e.type === 'click' && e.target.closest('.chk-more')) return this.chkFold(this.editing ?? 'draft');
       const item = this._chkItem(e.target); if (!item) return;
       if (e.type === 'click') return e.target.closest('.chk-rect') ? this.chkPlain() || this.toggleChecklistItem(item) : e.target.closest('.entry-del') && (_chkExit = e.detail && (motion.scale || motion.gentle) ? new Set([item.id]) : null, this.removeChecklistItem(item));   // detail 0: a key pressed the ×
       const txt = e.target.closest('.entry-txt'); if (!txt) return;

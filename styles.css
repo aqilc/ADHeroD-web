@@ -651,10 +651,12 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
 /* archived Steps: the Steps ring in the archived ink, no pie, the archived dash */
 .check.steps.archived { &, &:hover { background: transparent; } > .ring { --pc: color-mix(in srgb, var(--muted) 45%, transparent); } }
 /* clickable: reveals/re-hides the collapsed done items (B7). Button reset — it inherits the row's box, not the UA's. */
-.chk-more { padding: 1px 0 1px 24px; border: 0; background: none; cursor: pointer; text-align: left; }
-.chk-list .chk-more { align-items: center; min-height: calc(20.85px + 2 * var(--chk-e)); }   /* an item's height: the same pitch as the items above it */
+.chk-more { padding: 1px 0; border: 0; background: none; cursor: pointer; text-align: left; align-items: center; }
+.chk-list .chk-more { min-height: calc(20.85px + 2 * var(--chk-e)); }   /* an item's height: the same pitch as the items above it */
+.entry-list > .chk-more { gap: var(--sp-8); padding-block: var(--sp-4); min-height: calc(var(--fs-14) * 1.45 + 2 * var(--sp-4)); }   /* a composer item's pitch (.entry) */
+.chk-more-ico { width: 16px; height: 16px; flex: none; color: var(--faint); }   /* in the box column */
 .chk-more-txt { font-size: var(--fs-11); color: var(--muted); }
-.chk-more:hover .chk-more-txt { color: var(--muted); }
+.chk-more:hover:where(:not(.touch *)) :is(.chk-more-txt, .chk-more-ico) { color: var(--ink); }
 /* block hover: flat rect reads as the composer's source area */
 .item.inblock:where(:not(.touch *)) { background-color: var(--hover); border-radius: 0; }   /* a finger's compat mouseover would leave it lit */
 .item.inblock.rb-top { border-top-left-radius: var(--r-8); border-top-right-radius: var(--r-8); }
@@ -884,10 +886,10 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
   box-shadow: var(--shadow);   /* no border, a soft shadow */
   .composer-body { position: relative; }
   .content { border: none; background: none; padding: 0; font-size: var(--fs-15); line-height: 18px;
-    min-height: 18px; outline: none; white-space: pre-wrap; word-break: break-word; cursor: text; }
+    min-height: 1lh; outline: none; white-space: pre-wrap; word-break: break-word; cursor: text; }
   /* ghost hint is absolute over a 1-line field, clipped to that line: a pill that doesn't fit wraps out of view whole,
      never cut mid-word (phone drops "every week") or spilling onto Description */
-  .content-hint { left: 0; right: 0; top: 0; flex-wrap: wrap; height: 18px;
+  .content-hint { left: 0; right: 0; top: 0; flex-wrap: wrap; height: 1lh;
     font-size: var(--fs-15); line-height: 18px; white-space: nowrap; color: var(--muted); opacity: .55; user-select: none; overflow: hidden;
     .nlp-pill { opacity: .85; flex: none; } &.jot .nlp-pill { display: none; } }   /* the jot bar: KC's row under it shows the words */
   .desc { border: none; background: none; padding: 0; font-size: var(--fs-13); width: 100%; outline: none;
@@ -2767,8 +2769,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .touch .app { --pad-x: var(--sp-20); }
   .touch .surface-lists { --gut: var(--sp-8); }
   .touch .surface-lists .item { --row-pt: calc(var(--sp-12) + var(--sp-2)); }
-  .touch .surface-lists .item .title { font-size: var(--fs-17); line-height: calc(var(--sp-20) + var(--sp-2)); }
-  .touch .surface-lists .item > :is(.check, .row-chev) { margin-top: var(--sp-2); }   /* centered on the 22px line */
+  .touch .surface-lists :is(.item .title, .composer-card :is(.content, .content-hint)) { font-size: var(--fs-17); line-height: calc(var(--sp-20) + var(--sp-2)); }   /* list-5: the card a tap opens keeps the row's title */
+  .touch .surface-lists :is(.item > :is(.check, .row-chev), .composer-card .type-tog) { margin-top: var(--sp-2); }   /* centered on the 22px line */
   .touch .surface-lists .item > .check::before { inset: -18px -10px -18px -15px; }   /* the row's full 50px height, 2px short of the title, 7px off the screen edge */
   .touch .surface-lists .item:has(.chk-list) > .check::before { bottom: -9px; }   /* 41px tall, ending where the first checklist item's hit starts */
   .touch .surface-lists .row-chev { display: none; }
