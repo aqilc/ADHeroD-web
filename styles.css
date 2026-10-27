@@ -1112,7 +1112,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; touch-action: none;   /* drag on the due grid picks a from→due range */
   &.hint .cal-day { animation: req-pulse .35s ease 2; } }   /* fchip tap: "drag here" */
-.cal-dow { text-align: center; font-size: var(--fs-10); color: var(--muted); padding: 2px 0 3px; margin-bottom: 1px; border: none; background: none; cursor: pointer; border-radius: var(--r-pill); transition: background .15s var(--ease-out), box-shadow .3s var(--ease-out);
+.cal-dow { text-align: center; font-size: var(--fs-10); color: var(--muted); padding: 2px 0 3px; margin-bottom: 1px; border: none; background: none; cursor: pointer; border-radius: var(--r-pill);
   &:hover { background: var(--hover); color: var(--ink); }
   &.on { font-weight: 700; }
   &.on.pz { background: var(--hover); color: var(--muted); }
@@ -1155,8 +1155,8 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
     border: 0 solid var(--deadline); border-top-width: 2px; border-bottom-width: 2px; }
   .bar.l { left: 0px; border-left-width: 2px; border-color: var(--accent); }
   .bar.r { right: 0px; border-right-width: 2px; }
-  &.fsel .bar.l { display: block; animation: cap-in-l 180ms var(--ease-out); }   /* fsel, not "st" — .st is the stepper primitive */
-  &.dsel .bar.r { display: block; animation: cap-in 180ms var(--ease-out); }   /* the wall LANDS (display flip restarts it when the class hops cells) */
+  &.fsel .bar.l { display: block; }   /* fsel, not "st" — .st is the stepper primitive */
+  &.dsel .bar.r { display: block; }
   &.only .bar { border-color: var(--deadline); }   /* an only-day has no soft side — both walls red */
   &.sel:not(.today, .wnd, .end) .bar { filter: drop-shadow(1px 0 0 var(--panel)) drop-shadow(-1px 0 0 var(--panel)) drop-shadow(0 1px 0 var(--panel)) drop-shadow(0 -1px 0 var(--panel)); }   /* glyph-shaped 1px halo keeps red legible over the deep fill */
   .ordn { position: absolute; left: 50%; bottom: 1px; transform: translateX(-50%); font-size: var(--fs-10); font-weight: 700; line-height: 10px; min-width: 13px; height: 10px; padding: 0 2px; text-align: center; color: var(--accent); }   /* which repetition: a bare numeral in the dot's slot */
@@ -1164,8 +1164,6 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &.today .ordn { left: auto; right: -1px; bottom: -1px; transform: none; }   /* the disc holds the numeral: the ordinal steps to the free corner */
   &.today.end .ordn { right: auto; left: -1px; }   /* the end wall holds the right edge */
 }
-@keyframes cap-in { from { transform: scaleX(.2) translateX(4px); opacity: 0; } }
-@keyframes cap-in-l { from { transform: scaleX(.2) translateX(-4px); opacity: 0; } }
 /* Repeat marker on the date chip + the recurrence picker at the bottom of the date popover */
 .chip-due .due-short { display: none; }   /* the bar's short date, see barFit */
 .chip .rep-on { width: 12px; height: 12px; flex: none; margin-left: -3px; color: var(--accent); }
@@ -1332,8 +1330,8 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 /* Location constraint popover */
 /* Location hybrid picker: Anywhere / At / Away from seg + block-driven here-row + region chip rows (design: location-ui-explorations.html ★, deleted 79ae889; git history) */
 .pop.loc-pop { min-width: 232px; max-width: 264px; padding: var(--sp-6); }
-.lp-line { padding: 0 var(--sp-4); margin: var(--sp-4) 0 var(--sp-8); .seg { display: inline-flex; margin: 0; } .seg button { flex: none; padding-inline: var(--sp-10); font-size: var(--fs-13); } }   /* sized to its words, as the settings rows' seg */
-.lp-kbd { display: block; margin-top: var(--sp-4); color: var(--muted); font-size: var(--fs-11); }
+.lp-line { padding: 0 var(--sp-4); margin: var(--sp-4) 0 var(--sp-6); .seg { margin: 0; } .seg button { flex: auto; padding-inline: var(--sp-8); font-size: var(--fs-13); } }   /* each its words plus an even share of the line */
+.lp-kbd { display: block; margin-top: var(--sp-6); text-align: center; color: var(--muted); font-size: var(--fs-11); }
 .lp-here {
   background: color-mix(in srgb, var(--q-today) 7%, transparent);
   .heredot { width: 7px; height: 7px; border-radius: 50%; background: var(--q-today); box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-today) 20%, transparent); flex: none; }
@@ -3013,8 +3011,7 @@ html[data-theme="dark"] { color-scheme: dark; }
 
 /* Areas cluster (Threads): usage-weighted pills + ghost create chip in the composer area popover.
    Scoped under .area-cluster so the goal popover's shared .area-grid/.area-opt stay untouched. */
-.area-cluster .area-opt { transition: transform .15s var(--ease-out); }
-@media (any-hover: hover) and (any-pointer: fine) { .area-cluster .area-opt:hover:where(:not(.touch *)) { transform: scale(1.03); } }
+@media (any-hover: hover) and (any-pointer: fine) { .area-cluster .area-opt:not(.on):hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--tc) 15%, transparent); } }   /* a fill step between rest and on: no scale in a pop */
 .area-cluster .area-opt.s1 { font-size: var(--fs-15); padding: var(--sp-6) var(--sp-12); }
 .area-cluster .area-opt.s3 { font-size: var(--fs-11); padding: var(--sp-2) var(--sp-6); opacity: .75; }
 .area-ghost { border: 1px dashed var(--edge-hi); padding: var(--sp-4) var(--sp-8); cursor: text;

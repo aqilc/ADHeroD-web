@@ -574,7 +574,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="ico"><use :href="draft.importance !== 'none' && !_inBar() ? '#i-prio-fill' : '#i-prio'"/></svg>
               <span x-text="impName(draft.importance, 'Importance')"></span>
             </button>
-            <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+            <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" :class="{ dock: popDock }" :style="popStyle()">
               <template x-for="o in [['none','None','No special handling'],['focus','Focus','Keep it in front of me'],['must','Must','Hard to ignore'],['someday','Someday','Park it for later']]" :key="o[0]">
                 <button type="button" class="pri-chip" :class="{ sel: draft.importance === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="draft.importance = o[0]; pop = null">
                   <svg class="ico"><use href="#i-prio"/></svg>
@@ -590,10 +590,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <i class="discs inline-flex" x-show="areaObjs(draft.areas).length" x-html="areaDiscsHtml()"></i>
               <span x-text="areaLabel()"></span>
             </button>
-            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" :class="{ dock: popDock }" :style="popStyle()">
               <div class="area-grid area-cluster items-center">
                 <template x-for="l in areas" :key="l.id">
-                  <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="clusterPick($el, l.id)" x-html="areaOptHtml(l, draft.areas.includes(l.id))"></button>
+                  <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="toggleArea(l.id)" x-html="areaOptHtml(l, draft.areas.includes(l.id))"></button>
                 </template>
                 <label class="area-ghost inline-flex items-center rounded-pill"><input type="text" placeholder="new area…" x-model="newAreaName" @keydown.enter.prevent="createAndToggleArea()" @keydown.stop></label>
               </div>
@@ -605,7 +605,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="ico"><use :href="sizeNow() ? '#i-size-' + sizeNow() + (_inBar() ? '' : '-fill') : '#i-clock'"/></svg>
               <span x-text="durLabel()"></span>
             </button>
-            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" :class="{ dock: popDock }" :style="popStyle()">
               <div class="lad">
                 <button type="button" class="pop-item" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><span class="rt">~5 m</span></button>
                 <button type="button" class="pop-item" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><span class="rt">&lt;15 m</span></button>
@@ -630,12 +630,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <!-- unified calendar pop lives below (one instance, mode driven via `pop`) -->
           </div>
           <!-- the time popover, opened by a repeat statement's [at …] chip — fixed to the viewport so it can sit over the teleported .pop -->
-          <template x-if="pzpop"><template x-teleport="body"><div class="pop pz-pop" x-cloak :style="pzpop.style" @click.stop @click.outside="pzpop = null">
+          <template x-if="pzpop"><template x-teleport="body"><div class="pop pz-pop" :style="pzpop.style" @click.stop @click.outside="pzpop = null">
             <template x-for="o in pausePicks()" :key="o.label"><button type="button" class="pop-item" @click="pauseUntil(o.iso)"><span x-text="o.label"></span><span class="rt" x-text="fmt(o.iso)"></span></button></template>
             <button type="button" class="pop-item" @click="pzpop = null; pausePicking = true">Pick a day</button>
             <button type="button" class="pop-item" @click="pauseUntil('')">Until I resume</button>
           </div></template></template>
-          <template x-if="tpop"><template x-teleport="body"><div class="pop tpop" x-cloak :style="tpopStyle" @click.stop @click.outside="tpop = false">
+          <template x-if="tpop"><template x-teleport="body"><div class="pop tpop" :style="tpopStyle" @click.stop @click.outside="tpop = false">
             <div class="tin"><input type="text" :placeholder="timeGet() ? fmtTime(timeGet()) : '4:07pm'" x-ref="tpopIn" @keydown.enter.prevent="applyTimeText($event)" @keydown.stop="$event.key === 'Escape' && escape()"></div>
             <div class="thg">
               <template x-for="h in tpopHours()" :key="h.h">
@@ -656,7 +656,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="ico"><use :href="draft.reminders.length ? '#i-bell-fill' : '#i-bell'"/></svg>
               <span x-text="remLabel()"></span>
             </button>
-            <template x-if="pop === 'rem'"><template x-teleport="body"><div class="pop rem-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()" x-init="remEd = null; evMonth = false">
+            <template x-if="pop === 'rem'"><template x-teleport="body"><div class="pop rem-pop" :class="{ dock: popDock }" :style="popStyle()" x-init="remEd = null; evMonth = false">
               <template x-if="!remEd"><div class="pop-item rem-head"><svg class="ico"><use href="#i-bell"/></svg><span>Reminders</span></div></template>
               <template x-if="remEd"><button type="button" class="pop-item clear rem-head" aria-label="Back to reminders" @click="remBack()"><svg class="ico"><use href="#i-chev-l"/></svg><span>Reminders</span></button></template>
               <template x-if="!remEd"><div class="rem-body">
@@ -714,7 +714,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <span x-text="locChipLabel()"></span>
             </button>
             <!-- Hybrid picker: Anywhere / At / Away from + block-driven here-row + region chip rows -->
-            <template x-if="pop === 'loc'"><template x-teleport="body"><div class="pop loc-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+            <template x-if="pop === 'loc'"><template x-teleport="body"><div class="pop loc-pop" :class="{ dock: popDock }" :style="popStyle()">
               <div class="lp-line">
                 <div class="seg" role="group" aria-label="Where">
                   <template x-for="[mode, label] in [['any', 'Anywhere'], ['only', 'At'], ['except', 'Away from']]" :key="mode">
@@ -768,7 +768,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
         </template>
         <!-- ── Unified calendar pop (.pop.cal): due, plan-nav — outside the composer's x-if so clnav works while it's closed ── -->
-        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" x-cloak :class="{ 'cal-wk': pop === 'clnav' && clView === 'week', dock: popDock }" :style="popStyle()">
+        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" :class="{ 'cal-wk': pop === 'clnav' && clView === 'week', dock: popDock }" :style="popStyle()">
           <!-- date-text input (not shown for clnav) -->
           <input type="text" class="cal-type" x-show="pop === 'due'" placeholder="Date or repeat (every 2 weeks)" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
           <!-- due: scheduling suggestions + clear chip -->
@@ -819,7 +819,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" class="c ghosty" @click="addRepeat()">+ repeat</button></div>
         </div></template></template>
         <!-- A rolled chip's list (.row-rels), its kind only: each opens, or goes (Undo restores). The blocking task or the file itself stays. -->
-        <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('rels', $event)">
+        <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('rels', $event)">
           <template x-for="id in relsList()" :key="id">
             <div class="flex items-center gap-4">
               <template x-if="relsFor.kind === 'file'"><button type="button" class="pop-item min-w-0" @click="pop = null; openFileId(id)"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><span class="truncate" x-text="fileName(id)"></span></button></template>
@@ -828,7 +828,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div>
           </template>
         </div></template></template>
-        <template x-if="pop === 'link'"><template x-teleport="body"><div class="pop link-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('link', $event)" @mousedown.prevent>
+        <template x-if="pop === 'link'"><template x-teleport="body"><div class="pop link-pop" :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('link', $event)" @mousedown.prevent>
           <span class="link-host truncate" x-text="linkUrl.startsWith('adherod://task/') ? byId.get(linkUrl.slice(15))?.content ?? '' : linkUrl.replace(/^\w+:(\/\/)?(www\.)?/, '').replace(/\/$/, '')"></span>
           <button type="button" class="pop-item" @click="linkOpen()"><svg class="ico"><use href="#i-external"/></svg>Open</button>
           <button type="button" class="pop-item" @click="linkCopy()"><svg class="ico"><use href="#i-copy"/></svg>Copy</button>
@@ -842,7 +842,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <svg class="proj-pick-ico ico" x-show="pickIsDefault()"><use href="#i-backlog"/></svg><span class="pring" x-show="!pickIsDefault()" :style="pickIsDefault() ? {} : ringVars(pickProj() || {})"></span><span x-text="kaEdit() &amp;&amp; draft.project_id ? projectPath(byId.get(draft.project_id)) : draft.project || defaultProjName() || 'Project'"></span>
             </button>
             <button type="button" class="ka-notes inline-flex items-center" x-show="kaEdit() &amp;&amp; notesChip()[1] !== 'Steps and notes'" :aria-expanded="notesOpen" @click="toggleNotes()"><svg class="ico"><use :href="'#i-' + notesChip()[0]"/></svg><span x-text="notesChip()[1]"></span></button>
-            <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+            <template x-if="pop === 'proj'"><template x-teleport="body"><div class="pop proj-pop" data-pos="up" :class="{ dock: popDock }" :style="popStyle()">
               <input type="text" class="pop-input" placeholder="Type a project name" x-model="pickerQ" @keydown.enter.prevent="enterProj()" @keydown.stop="$event.key === 'Escape' && escape()">
               <div class="contents" x-html="projRowsHtml(filteredProjects(), draft.project_id)" @click="pidOf($event) && pickProject(pidOf($event))"></div>
               <button type="button" class="pop-item create" x-show="pickerQ.trim()" @click="createFilteredProj()">Create "<span x-text="pickerQ.trim()"></span>"</button>
@@ -858,7 +858,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <!-- overflow 3-dot menu: leftmost icon in the cluster; edit-only; opens downward -->
             <div class="more-wrap inline-flex items-center" x-show="editing || phoneDock()" @click.document.capture="['overflow', 'rel'].includes(pop) && outside($event, $el) && !$event.target.closest('.rel-tog') && popAway(pop, $event)">
               <button type="button" class="more-btn inline-flex items-center" @click="togglePop('overflow', $el)" title="More actions" aria-haspopup="menu" :aria-expanded="pop === 'overflow'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
-              <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+              <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" :class="{ dock: popDock }" :style="popStyle()">
                 <!-- phone: the dock's hidden chips and buttons (9A), anchored on the ··· they came from -->
                 <template x-if="phoneDock()"><div class="contents">
                   <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; filesUrl &amp;&amp; session" @click="pop = null; document.querySelector('.jb-host .attach input')?.click()"><svg class="ico"><use href="#i-clip"/></svg>Attach file</button>
@@ -878,7 +878,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 </div></template>
               </div></template></template>
               <!-- Picker rows: a click adds as Relates; a drag onto a well picks the kind -->
-              <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+              <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" :class="{ dock: popDock }" :style="popStyle()">
                 <div class="relations-section">
                   <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
                   <div class="rel-picker">
@@ -1872,24 +1872,24 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
-          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" x-cloak :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('eventEdit')"></div></template></template>
+          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('eventEdit')"></div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
           <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(eventEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(eventEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(eventEdit.location_id) || 'Place'"></span></button>
-          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" x-cloak :style="popStyle()">
+          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :style="popStyle()">
             <button type="button" class="pop-item" :class="{ on: !eventEdit.location_id }" @click="eventEdit.location_id = null; pop = null">Anywhere</button>
             <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: eventEdit.location_id === l.id }" @click="eventEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clRepeat', $event, $el)">
           <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(eventEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(eventEdit) || 'Repeat'"></span></button>
-          <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
+          <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
             <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
           </div></div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clTicket', $event, $el)">
           <button type="button" class="chip chip-ticket inline-flex items-center" :class="{ set: eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length }" title="Ticket" aria-haspopup="dialog" :aria-expanded="pop === 'clTicket'" @click="togglePop('clTicket', $el)"><svg class="ico"><use href="#i-clip"/></svg><span x-show="eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length">Ticket</span></button>
-          <template x-if="pop === 'clTicket'"><template x-teleport="body"><div class="pop cl-pop ev-ticket" x-cloak :style="popStyle()">
+          <template x-if="pop === 'clTicket'"><template x-teleport="body"><div class="pop cl-pop ev-ticket" :style="popStyle()">
             <textarea class="ev-field" rows="1" placeholder="Link or code" aria-label="Link or code" :value="eventEdit.ticket" @input="eventEdit.ticket = $event.target.value" @keydown.enter.prevent="pop = null"></textarea>
             <template x-if="/https?:\/\/\S+/.test(eventEdit.ticket)"><a class="pop-item" :href="eventEdit.ticket.match(/https?:\/\/\S+/)[0]" target="_blank" rel="noopener"><svg class="ico"><use href="#i-link"/></svg>Open link</a></template>
             <template x-if="eventDrop() && session"><label class="pop-item"><svg class="ico"><use href="#i-clip"/></svg>Attach file<input type="file" multiple hidden @change="addFiles($event.target.files, eventEdit.files); $event.target.value = ''; pop = null"></label></template>
@@ -1898,7 +1898,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="field"><button type="button" class="chip chip-rem ev-countdown inline-flex items-center" :class="{ set: eventEdit.countdown }" title="Count down to this" :aria-pressed="eventEdit.countdown" @click="eventEdit.countdown = !eventEdit.countdown"><svg class="ico"><use href="#i-bell-alarm"/></svg><span>Count down</span></button></div>
         <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
           <button type="button" class="chip chip-color inline-flex items-center" :class="{ set: eventEdit.color }" title="Color" aria-haspopup="dialog" :aria-expanded="pop === 'clColor'" @click="togglePop('clColor', $el)"><svg class="ico"><use href="#i-palette"/></svg></button>
-          <template x-if="pop === 'clColor'"><template x-teleport="body"><div class="pop cl-pop ev-colors" x-cloak :style="popStyle()" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div></template></template>
+          <template x-if="pop === 'clColor'"><template x-teleport="body"><div class="pop cl-pop ev-colors" :style="popStyle()" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div></template></template>
         </div>
       </div>
       <div x-html="evActionsHtml('eventEdit')"></div>
@@ -1910,11 +1910,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(blockEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(blockEdit.date)[0]"/></svg><span x-text="clWhenLabel(blockEdit)"></span></button>
-          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" x-cloak :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('blockEdit')"></div></template></template>
+          <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('blockEdit')"></div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clRepeat', $event, $el)">
           <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(blockEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(blockEdit) || 'Repeat'"></span></button>
-          <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" x-cloak :style="popStyle()">
+          <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" :style="popStyle()">
             <div class="flex flex-wrap items-center gap-6">
               <template x-for="w in clBlockWeekdays" :key="w.d">
                 <button type="button" class="blk-wd" :class="{ sel: blockEdit.weekdays.includes(w.d) }" @click="_toggleIn(blockEdit.weekdays, w.d)" x-text="w.l"></button>
@@ -1925,7 +1925,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
         <div class="field" x-show="areas.length" @click.document.capture="clPopAway('clArea', $event, $el)">
           <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: blockEdit.areas.length }" :style="'--cc:' + (areaObjs(blockEdit.areas)[0]?.color || 'var(--ink)')" title="Areas" aria-haspopup="dialog" :aria-expanded="pop === 'clArea'" @click="togglePop('clArea', $el)"><svg class="ico"><use :href="blockEdit.areas.length ? '#i-tag-fill' : '#i-tag-tag'"/></svg><span x-text="areaObjs(blockEdit.areas).map(a => a.name).join(', ') || 'Areas'"></span></button>
-          <template x-if="pop === 'clArea'"><template x-teleport="body"><div class="pop cl-pop area-pop" x-cloak :style="popStyle()">
+          <template x-if="pop === 'clArea'"><template x-teleport="body"><div class="pop cl-pop area-pop" :style="popStyle()">
             <div class="area-grid area-cluster items-center">
               <template x-for="l in areas" :key="l.id">
                 <button type="button" class="area-opt" :class="areaTier(l.id) + (blockEdit.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="_toggleIn(blockEdit.areas, l.id)" x-html="areaOptHtml(l, blockEdit.areas.includes(l.id))"></button>
@@ -1935,21 +1935,21 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
         <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
           <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(blockEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(blockEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(blockEdit.location_id) || 'Place'"></span></button>
-          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" x-cloak :style="popStyle()">
+          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :style="popStyle()">
             <button type="button" class="pop-item" :class="{ on: !blockEdit.location_id }" @click="blockEdit.location_id = null; pop = null">Anywhere</button>
             <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: blockEdit.location_id === l.id }" @click="blockEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clUsable', $event, $el)">
           <button type="button" class="chip chip-usable inline-flex items-center" :class="{ set: +blockEdit.est_minutes }" title="Usable time" aria-haspopup="dialog" :aria-expanded="pop === 'clUsable'" @click="togglePop('clUsable', $el)"><svg class="ico"><use href="#i-clock"/></svg><span x-text="+blockEdit.est_minutes ? durFmt(+blockEdit.est_minutes) + ' usable' : 'Usable time'"></span></button>
-          <template x-if="pop === 'clUsable'"><template x-teleport="body"><div class="pop cl-pop blk-capacity" x-cloak :style="popStyle()">
+          <template x-if="pop === 'clUsable'"><template x-teleport="body"><div class="pop cl-pop blk-capacity" :style="popStyle()">
             <span class="ev-lab">Usable min</span>
             <input class="ev-field" type="number" min="0" step="5" placeholder="whole span" :value="blockEdit.est_minutes ?? ''" @input="blockEdit.est_minutes = $event.target.value" @keydown.enter="pop = null">
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
           <button type="button" class="chip chip-color inline-flex items-center" :class="{ set: blockEdit.color }" title="Color" aria-haspopup="dialog" :aria-expanded="pop === 'clColor'" @click="togglePop('clColor', $el)"><svg class="ico"><use href="#i-palette"/></svg></button>
-          <template x-if="pop === 'clColor'"><template x-teleport="body"><div class="pop cl-pop ev-colors" x-cloak :style="popStyle()" @click="swatchPick($event, v => blockEdit.color = v)" x-html="swatchRow(blockEdit.color)"></div></template></template>
+          <template x-if="pop === 'clColor'"><template x-teleport="body"><div class="pop cl-pop ev-colors" :style="popStyle()" @click="swatchPick($event, v => blockEdit.color = v)" x-html="swatchRow(blockEdit.color)"></div></template></template>
         </div>
       </div>
       <template x-if="blockEdit.id && clDayPanel(blocks.find(b => b.id === blockEdit.id), blockEdit.viewIso)">

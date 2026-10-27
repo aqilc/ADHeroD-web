@@ -3689,26 +3689,9 @@ document.addEventListener('alpine:init', () => {
       const names = [...new Set(hits.map(o => this.byId.get(o.ref_id).content))].join(', ');
       return (hits.length > 1 ? hits.length + ' other reminders go off then: ' : 'Another reminder goes off then: ') + names + '.';
     },
-    // The swap (R.go, Card round 4): the old body leaves as an inert copy while the new one slides in the way you went, the pop's
-    // height following; the title row stays. Reduced motion keeps the fades (motion.soften).
-    remGo(change) {
+    remGo(change) {   // the swap is instant, as every pop is (user 10-26: "cut out all of the pop-up animations"); the title row stays
       this.evMonth = false;   // the setter opens on its Day chips
-      const pop = document.querySelector('body > .pop.rem-pop'), old = pop?.querySelector('.rem-body:not([inert])'), dir = this.remEd ? -1 : 1;
-      if (!old) return change();
-      const h0 = pop.offsetHeight, ghost = old.cloneNode(true);
-      Object.assign(ghost.style, { position: 'absolute', top: old.offsetTop + 'px', left: old.offsetLeft + 'px', width: old.offsetWidth + 'px' });
-      ghost.inert = true;
-      ghost.setAttribute('x-ignore', '');   // a copy: Alpine would re-run its bindings out of scope
       change();
-      queueMicrotask(() => {   // after Alpine's flush: the new body is in
-        const fresh = pop.querySelector('.rem-body:not([inert])'), out = DESIGN.ease.out, drop = () => ghost.remove();
-        if (!fresh) return;
-        fresh.before(ghost);
-        motion.go(null, pop, { height: [h0 + 'px', pop.offsetHeight + 'px'] }, { duration: 200, easing: DESIGN.ease['in-out'], fill: 'none' });
-        motion.go(null, ghost, { opacity: [1, 0], transform: ['none', `translateX(${-16 * dir}px)`] }, { duration: 100, easing: out, fill: 'forwards' }).finished.then(drop, drop);
-        motion.go(null, fresh, { opacity: [0, 1], transform: [`translateX(${16 * dir}px)`, 'none'] }, { duration: 180, delay: 60, easing: out });
-        motion.go(null, pop.querySelector('.rem-head .ico'), { opacity: [0, 1] }, { duration: 150, easing: out });
-      });
     },
     // Create-then-delete: a reconcile never leaves the user with fewer reminders than they authored. It removes only what the draft
     // dropped from `base`, what the composer opened with: a reminder another tab added since was never on screen to remove. A removal
@@ -3945,7 +3928,7 @@ document.addEventListener('alpine:init', () => {
       let rafId = null, dead = false;
       const cleanup = () => { dead = true; cancelAnimationFrame(rafId); if (this._popTrack === cleanup) this._popTrack = null; };
       this._popTrack = cleanup;
-      this.$nextTick(() => {
+      queueMicrotask(() => {   // after the flush that mounts it: a $nextTick held by a starting x-transition painted it a frame unplaced (uncapped, or below when it flips up)
         if (dead) return;
         const el = document.querySelector('body > .pop');   // the teleported one: list menus are .pop too, drawn through their leave
         if (!el) return;
@@ -4100,11 +4083,6 @@ document.addEventListener('alpine:init', () => {
       if (use[ranked[0]] === use[ranked.at(-1)]) return 's2';
       const third = Math.ceil(ranked.length / 3);
       return 's' + (Math.min(Math.floor(ranked.findIndex(r => use[r] === use[id]) / third), 2) + 1);
-    },
-    clusterPick(el, id) {   // toggle + soft scale pop on select (reduced-motion: none)
-      this.toggleArea(id);
-      if (this.draft.areas.includes(id) && !this.reduceMotion())
-        el.animate({ transform: ['scale(1)', 'scale(1.06)', 'scale(1)'] }, { duration: 180, easing: getComputedStyle(document.documentElement).getPropertyValue('--ease-out').trim() || 'ease-out' });
     },
     endPicking: false, tpop: false, pzpop: null, pausePicking: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
     // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (placement, amber,
