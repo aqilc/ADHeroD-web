@@ -1737,7 +1737,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .mail-none { padding: var(--sp-6) var(--sp-10) var(--sp-6) var(--gut); color: var(--muted); }
 /* An opened mail (things-9-6 B): its row grows in place under a --hover fill, the list unbounded while it's open */
 .mail-row > .body { cursor: pointer; }
-.mail-list:has(.mail-open) { max-height: none; }
+.mail-list:has(.mail-open) { max-height: none; overflow: visible; }   /* no scroller: one with contain swallowed every wheel over the mail */
 .mail-open { background: var(--hover); border-radius: var(--r-8); padding-bottom: var(--sp-12);
   .title { white-space: normal; }
 }

@@ -5624,7 +5624,7 @@ document.addEventListener('alpine:init', () => {
       // not the chip that opened it; remember the opener per menu if that is reported or a menu shares triggers across rows.
       const trigger = document.activeElement?.closest('.pop:not(.tpop)') && document.querySelector('[aria-haspopup][aria-expanded="true"]');   // the time pop's Escape keeps its date pop, so no trigger
       const o = OVERLAYS.find(([open]) => open(this));
-      if (o) o[1](this, back); else if (this.focusId) this._setKbFocus(null);
+      if (o) o[1](this, back); else if (this.focusId) this._setKbFocus(null); else if (this.mailOpened) this.mailOpened = null;
       trigger?.focus();
     },
 
