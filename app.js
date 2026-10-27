@@ -572,7 +572,7 @@ document.addEventListener('alpine:init', () => {
     qfDue: null,        // quick-filter: 'today'|'overdue'|'has'|'none'|null
     qfOpen: true,       // state lenses: open tasks fill the list, done and archived add the section below; any mix, never none
     qfArchived: false,
-    mail: null,        // the mailbox's messages, newest first: {id, subject, from, at, preview, read, files}; null = none connected, so Backlog shows no Mail panel
+    mail: null,        // the mailbox's messages, newest first: {id, subject, from, at, preview, read, files}; null = none connected, so All and Backlog show no Mail panel
     mailbox: null,     // the connected mailbox: setRead(id, read) / archive(id) / remove(id) → boolean
     mailError: '',     // why the last read failed, shown atop the panel
     mailQ: '',
@@ -2007,7 +2007,7 @@ document.addEventListener('alpine:init', () => {
         + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg>`
         + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>${raw(pie)}<span class="head-rule"></span></li>`;
     },
-    // Backlog's Mail panel: search matches subject, sender and preview. Each action lands only once the mailbox says it did.
+    // All's and Backlog's Mail panel: search matches subject, sender and preview. Each action lands only once the mailbox says it did.
     mailRows() { const q = this.mailQ.trim().toLowerCase(); return q ? this.mail.filter(m => (m.subject + ' ' + m.from + ' ' + m.preview).toLowerCase().includes(q)) : this.mail; },
     async mailRead(m) { if (await this.mailbox.setRead(m.id, !m.read)) m.read = !m.read; },
     async mailDrop(m, act) {
