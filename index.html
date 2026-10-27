@@ -413,7 +413,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                       <dt x-show="mailOpened.cc.length">Cc</dt><dd x-show="mailOpened.cc.length" x-html="mailWho(mailOpened.cc)"></dd><span x-show="mailOpened.cc.length"></span>
                     </dl>
                     <div class="mail-files flex" x-show="mailOpened.files.length"><template x-for="f in mailOpened.files"><span class="mail-file inline-flex items-center"><svg class="ico"><use href="#i-file"/></svg><span x-text="f.name"></span><i x-text="mailSize(f.size)"></i></span></template></div>
-                    <div class="mail-text"><template x-for="para in mailOpened.body.split(/\r?\n\s*\r?\n/).filter(t => t.trim())"><p x-text="para"></p></template></div>
+                    <template x-if="mailOpened.html"><div class="mail-text">
+                      <div class="mail-pics flex items-center gap-8" x-show="!mailPics && mailView().hidden">Pictures from the web are hidden.<button type="button" class="ghost" @click="mailPics = true">Show pictures</button></div>
+                      <iframe class="mail-frame" sandbox="allow-same-origin" :srcdoc="mailView().doc" @load="mailFit($el)"></iframe>
+                    </div></template>
+                    <div class="mail-text" x-show="!mailOpened.html"><template x-for="para in mailOpened.body.split(/\r?\n\s*\r?\n/).filter(t => t.trim())"><p x-text="para"></p></template></div>
                     <template x-if="mailDraft?.id === m.id"><div class="mail-reply flex-col">
                       <div class="mail-to" x-show="mailDraft.kind !== 'forward'" x-html="(mailDraft.kind === 'all' ? 'Reply all to ' : 'Reply to ') + mailWho(mailDraft.kind === 'all' ? [mailOpened.from, ...mailOpened.to, ...mailOpened.cc] : [mailOpened.from])"></div>
                       <label class="mail-to flex items-center gap-8" x-show="mailDraft.kind === 'forward'">Forward to<input type="email" class="inp grow" x-model="mailDraft.to" placeholder="Email address"></label>
@@ -1070,7 +1074,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <h2 class="cl-period grow min-w-0 flex" @click.document.capture="pop === 'clnav' && outside($event, $el) && popAway('clnav', $event)">
           <button type="button" class="cl-period-btn" :class="{ pick: clView === 'day' || clView === 'week' }" @click="clOpenDatePop($el)"><span class="cl-dn-t" x-text="clTitleParts()[2]"></span><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></button>
           <!-- A2·B: what's COMING rides the title's line — part of the date you're looking at, not one more control -->
-          <span class="cl-cds flex flex-wrap grow"><div class="cl-cd cl-err" x-show="calError"><span x-text="calError"></span></div><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
+          <span class="cl-cds flex flex-wrap grow"><template x-if="calError"><div class="cl-cd cl-err"><span x-text="calError"></span></div></template><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
         </h2>
         <!-- calendar nav pop is the shared unified cal pop (see composer section) -->
         <template x-if="bar"><button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">   <!-- the jot bar's, as on Lists -->

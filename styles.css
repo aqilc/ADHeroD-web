@@ -1764,6 +1764,10 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .mail-text { font-size: var(--fs-14); line-height: 1.55; overflow-wrap: anywhere; border-top: 1px solid var(--hair); padding-top: var(--sp-12);
   p { margin: 0 0 var(--sp-10); white-space: pre-wrap; }
 }
+.mail-pics { font-size: var(--fs-13); color: var(--muted);
+  .ghost { white-space: nowrap; }
+}
+.mail-frame { display: block; width: 100%; border: 0; }
 .mail-reply { gap: var(--sp-8); border-top: 1px solid var(--hair); padding-top: var(--sp-12);
   textarea { min-height: 88px; resize: vertical; font: inherit; font-size: var(--fs-14); }
   .primary .ico { width: 14px; height: 14px; }

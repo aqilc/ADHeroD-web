@@ -127,6 +127,7 @@ let _hayOf = new WeakMap();   // candidate array -> { hay, low }: a memoized poo
 const _seqIn = (low, f) => { let at = 0; for (let k = 0; k < f.length; k++) if (!(at = low.indexOf(f[k], at) + 1)) return false; return true; };   // f in order within low; both lowercased
 const _relMemo = new Map(), _candMemo = new Map();   // _relIdx / relationCandidates, one entry each
 const _clSideOut = Object.fromEntries(['res', 'old', 'week', 'due', 'more'].map(k => [k, { rows: [], html: new Map(), n: 0 }]));   // clSideRows(): each section's last rows + their key (_rowV|day(|tick)) + id → row html; hidden, the last rows show
+let _mailView = null;   // mailView(): the open mail's frame document, built once per mail and pictures choice
 let _clSecs = { key: '' };   // _clSideSecs(): the panel's sections, built once per change
 let _clSideV = -1;   // the _rowV the tray's cached row html holds for: _patchTask keeps it current, any other bump leaves it behind
 let _clAdNxH = null;   // last written --adh (the incoming claims rail height)
@@ -586,8 +587,9 @@ document.addEventListener('alpine:init', () => {
     calError: '',      // why the last Outlook calendar read failed, shown there too
     mailQ: '',
     mailShut: false,
-    mailOpened: null,  // the mail opened in its row: {id, from, to, cc, files, body, high, flagged, at}, or {id, error} when Outlook refused
+    mailOpened: null,  // the mail opened in its row: {id, from, to, cc, files, body, html, high, flagged, at} (html empty for plain text), or {id, error} when Outlook refused
     mailDraft: null,   // his answer to it: {id, kind: reply | all | forward, text, to}
+    mailPics: false,   // pictures from the web, shown for the open mail
     editing: null,
     confirm: null,
     shortcutsOpen: false,
@@ -756,22 +758,23 @@ document.addEventListener('alpine:init', () => {
         setInterval(checkUpdate, 6 * 3600e3);
         // Work mail: the classic Outlook open on this PC (desktop/main.cpp § Outlook); null = none installed. A failed read keeps the last list.
         this.mailbox = { setRead: (id, read) => desktopWindow('mail', 'read', id, read), archive: id => desktopWindow('mail', 'archive', id), remove: id => desktopWindow('mail', 'delete', id),
-          open: id => desktopWindow('mail', 'open', id), show: id => desktopWindow('mail', 'display', id), reply: (id, kind, text, to) => desktopWindow('mail', 'reply', id, kind, text, to) };
+          open: id => desktopWindow('mail', 'open', id), show: id => desktopWindow('mail', 'display', id), reply: (id, kind, text, to) => desktopWindow('mail', 'reply', id, kind, text, to),
+          respond: (id, going, tell) => desktopWindow('mail', 'respond', id, going, tell), calendar: () => loadCalendar() };
         const loadMail = async () => {
           const got = await desktopWindow('mail', 'list');
           this.mailError = got?.error ? (got.error === 'closed' ? 'Open classic Outlook to see new mail.' : `Can't read Outlook (${got.error}).`) : '';
           if (Array.isArray(got)) this.mail = got;
         };
-        // Outlook's own all-day end is the next midnight; ours is the last day. going: set, so the day never asks.
+        // Outlook's own all-day end is the next midnight; ours is the last day. going: Outlook's answer; none asks on its day.
         const pcDay = (iso, back = 0) => { const d = new Date(iso.slice(0, 10) + 'T00:00'); d.setDate(d.getDate() - back); return isoDate(d); };
         const loadCalendar = async () => {
           const got = await desktopWindow('mail', 'calendar');
           this.calError = got?.error && got.error !== 'closed' ? `Can't read Outlook's calendar (${got.error}).` : '';   // closed: the mail line says so
           if (!Array.isArray(got)) return;
           _calDataV++;
-          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, remind: e.remind, going: { pc: true }, recurrence: null, color: null, all_day: e.allDay,
+          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, remind: e.remind, going: e.going == null ? {} : { pc: e.going }, recurrence: null, color: null, all_day: e.allDay,
             starts_at: e.allDay ? pcDay(e.start) : e.start.slice(0, 16), ends_at: e.allDay ? pcDay(e.end, 1) : e.end.slice(0, 16) }));
-          outlook = got;
+          outlook = got.filter(e => e.going !== false);   // Not going rings nothing
           ring();
         };
         // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one as an Alarm, late if the app was
@@ -2079,6 +2082,7 @@ document.addEventListener('alpine:init', () => {
       const got = await this.mailbox.open(m.id);
       if (!got) return this.toast("Couldn't open");
       this.mailOpened = { id: m.id, ...got };
+      this.mailPics = false;
       if (!m.read && !got.error) this.mailRead(m);
     },
     mailWrite(kind) { this.mailDraft = { id: this.mailOpened.id, kind, text: this.mailDraft?.id === this.mailOpened.id ? this.mailDraft.text : '', to: '' }; },
@@ -2090,6 +2094,59 @@ document.addEventListener('alpine:init', () => {
     },
     mailWho(people) { return people.filter(Boolean).map(p => p.name && p.name !== p.address ? html`<b>${p.name}</b> <i>&lt;${p.address}&gt;</i>` : html`<b>${p.address || p.name}</b>`).join(', '); },
     mailWhen(iso) { return new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + this.fmtTime(iso.slice(11, 16)); },
+    // An HTML mail in a frame that runs no script (this page can send mail); pictures from the web load only on his click.
+    mailView() {
+      const key = this.mailOpened.html + this.mailPics;
+      if (_mailView?.key === key) return _mailView;
+      const doc = new DOMParser().parseFromString(this.mailOpened.html, 'text/html');
+      doc.querySelectorAll('script, iframe, object, embed, form, link, meta, base, title').forEach(el => el.remove());
+      for (const el of doc.querySelectorAll('*'))
+        for (const { name, value } of [...el.attributes]) if (name.startsWith('on') || /^\s*javascript:/i.test(value)) el.removeAttribute(name);
+      let hidden = 0;
+      for (const img of doc.querySelectorAll('img')) {
+        if (!/^https?:/i.test(img.getAttribute('src') || '')) continue;
+        if (+img.getAttribute('width') <= 2 && img.getAttribute('width') !== null || /display:\s*none/.test(img.getAttribute('style') || '')) { img.remove(); continue; }   // tracking pixels never load
+        if (!this.mailPics) { img.remove(); hidden++; }
+      }
+      const csp = `default-src 'none'; img-src data:${this.mailPics ? ' https:' : ''}; style-src 'unsafe-inline'`;
+      const look = 'body { margin: 0; overflow-wrap: break-word; } img { max-width: 100%; height: auto; }';
+      return _mailView = { key, hidden, doc: `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${look}</style>${doc.head.innerHTML}${doc.body.outerHTML}` };
+    },
+    // His pick (things-9-7): the sender's layout, themed into the app. Neutral ink, page and rule colors take the app's, and the
+    // app's type everywhere; a dark band (a button, a header) keeps its colors and its text's; in dark, a pale color becomes a
+    // tint of its hue and colored text lightens. ceiling: themed at open; a theme switch with a mail open shows on the next open.
+    mailFit(frame) {
+      const d = frame.contentDocument, app = getComputedStyle(frame.parentElement), root = getComputedStyle(document.documentElement);
+      const rgb = c => c.match(/[\d.]+/g).map(Number), lum = c => { const [r, g, b] = rgb(c); return (r * .3 + g * .59 + b * .11) / 255; };
+      const neutral = c => { const [r, g, b] = rgb(c); return Math.max(r, g, b) - Math.min(r, g, b) < 30; }, dark = lum(app.color) > .5;
+      const ink = c => neutral(c) ? (lum(c) > .3 && lum(c) < .85 ? root.getPropertyValue('--muted') : app.color) : dark ? `oklch(from ${c} max(l, .75) c h)` : c;
+      const sides = ['Top', 'Right', 'Bottom', 'Left'], els = [d.body, ...d.body.querySelectorAll('*')];
+      const read = els.map(el => { const cs = getComputedStyle(el); return { bg: cs.backgroundColor, color: cs.color, font: cs.fontFamily, borders: sides.map(side => cs[`border${side}Width`] !== '0px' && cs[`border${side}Color`]) }; });
+      const kept = new Set();   // inside a dark band: left as the sender drew it
+      els.forEach((el, i) => {
+        const { bg, color, font, borders } = read[i], set = (prop, value) => el.style.setProperty(prop, value, 'important');
+        if (!/mono|courier|consolas/i.test(font)) set('font-family', app.fontFamily);
+        if (kept.has(el.parentElement) || bg !== 'rgba(0, 0, 0, 0)' && lum(bg) < .6) return kept.add(el);
+        if (bg !== 'rgba(0, 0, 0, 0)') set('background-color', lum(bg) > .94 && neutral(bg) ? 'transparent' : neutral(bg) ? 'var(--fill)' : dark ? `color-mix(in oklab, ${bg} 18%, transparent)` : bg);
+        set('color', el.closest('a[href]') ? root.getPropertyValue('--accent') : ink(color));
+        borders.forEach((border, side) => border && neutral(border) && set(`border-${sides[side].toLowerCase()}-color`, root.getPropertyValue('--hair')));
+      });
+      d.documentElement.style.cssText += `--fill: color-mix(in srgb, ${app.color} 6%, transparent); color-scheme: ${dark ? 'dark' : 'light'}`;   // a scheme unlike the app's paints the frame opaque
+      d.addEventListener('click', e => {   // links open in the browser (window.open is the desktop's), never in the frame
+        const link = e.target.closest('a[href]');
+        if (!link) return;
+        e.preventDefault();
+        if (/^(https?|mailto):/i.test(link.href)) window.open(link.href, '_blank', 'noopener');
+      });
+      const fit = () => {   // the frame is as tall as its mail; a mail wider than the column zooms out to fit, as phone mail apps do
+        d.body.style.zoom = '';
+        const over = d.documentElement.scrollWidth / frame.clientWidth;
+        if (over > 1.01) d.body.style.zoom = 1 / over;
+        frame.style.height = d.documentElement.getBoundingClientRect().height + 'px';
+      };
+      fit();
+      new ResizeObserver(fit).observe(d.body);
+    },
     mailSize(bytes) { return bytes < 1048576 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB'; },
     mailDay(iso) { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); },
     completedRows() { this.visibleRows(); return _doneMemo; },   // computed alongside visibleRows; the Done list below the add button
@@ -8632,7 +8689,7 @@ document.addEventListener('alpine:init', () => {
     clViews() { return this.narrow ? ['day', 'month'] : ['day', 'week', 'month']; },
     clSetView(v, instant, frac) {   // frac: the hour to open at (_clScrollToPeriod)
       this._clSaveName();
-      if (this.clView === 'month') this._clMAnchor(); else this.clAnchor = isoDate(this._clAt());   // a picked week/day sets clAnchor after
+      if (this.clView === 'month') this._clMAnchor(); else this.clAnchor = isoDate(this._clAt());
       if (this.clScrolling || this._clMDue) { clearTimeout(_clScrollT); this._clMSettle(); }   // the switch is the land: left running, a month scroll's flag read the new view's period as live
       this._clWeekDropped = null;   // the week hour a phone width dropped; any switch, the user's or the width's, settles the view: widening restores nothing
       if (v === 'week' && this.narrow) v = 'day';
@@ -8807,7 +8864,7 @@ document.addEventListener('alpine:init', () => {
     // a rAF identity-check invalidates the zero so the next call re-measures once the DOM has laid out.
     _clMetrics() {
       if (this._clM) return this._clM;
-      const el = this.$refs.clPages, m = { vh: document.documentElement.clientHeight || window.innerHeight || 800, port: el ? el.clientHeight : 0 };
+      const el = _staticEl('.cl-pages'), m = { vh: document.documentElement.clientHeight || window.innerHeight || 800, port: el ? el.clientHeight : 0 };
       this._clM = m;
       if (!m.port) { const snap = this._clM; requestAnimationFrame(() => { if (this._clM === snap) this._clM = null; }); }
       return this._clM;
@@ -9040,7 +9097,7 @@ document.addEventListener('alpine:init', () => {
     // block tops (which are calc(var(--ph) * rel)) disagreeing for a frame. Both are custom properties on
     // already-composited elements: no layout, no Alpine, no style recalc beyond the transform itself.
     _clPaint() {
-      const el = this.$refs.clPages, inner = this.$refs.clInner; if (!inner) return;
+      const el = _staticEl('.cl-pages'), inner = _staticEl('.cl-pages-inner'); if (!inner) return;
       el?.style.setProperty('--ph', this.clPeriodH() + 'px');
       inner.style.setProperty('--pf', this.clPosOff());
       this._clAdPaint();
@@ -9522,7 +9579,7 @@ document.addEventListener('alpine:init', () => {
     // Park the anchor period under the chrome, opening at the waking hour — or at `frac`, the hour a keyboard step keeps.
     // clientHeight is 0 on first open, and _clMaxFrac needs it — retry until layout settles. One assignment; nothing to re-assert afterwards.
     _clScrollToPeriod(tries = 8, frac, turn) {   // turn: Today and a picked date turn the page as the wheel does (decision #75)
-      this._clHalt(); const el = this.$refs.clPages; if (!el) return;
+      this._clHalt(); const el = _staticEl('.cl-pages'); if (!el) return;   // not $refs: Alpine resolves it from the caller, and a week tile that opened its day is gone by now
       if (!el.clientHeight) { if (tries > 0) requestAnimationFrame(() => this._clScrollToPeriod(tries - 1, frac, turn)); return; }
       if (!this.clHourH) this.clRecalcPages();
       // day: the whole day is on one page, so there is no waking-hours offset to scroll past. In week it is a
@@ -9590,7 +9647,7 @@ document.addEventListener('alpine:init', () => {
     // Zoom changes the SCALE and nothing else — clPos already says where we are, in units a scale cannot
     // touch, and the transform is bound to the same --ph the blocks are, so both change in one flush.
     _clZoomTo(z) {
-      if (!this.$refs.clPages) return;
+      if (!_staticEl('.cl-pages')) return;
       this.clZoom = z; this.clHourH = Math.max(18, Math.round(this._clFitHour() * z));
       this._clSetPos(this.clPos.idx, Math.min(this.clPos.frac, this._clMaxFrac()));   // a coarser scale can shrink the room to travel
     },
@@ -9753,11 +9810,20 @@ document.addEventListener('alpine:init', () => {
     },
     // applies on press, as a block's Skip today does: an editor closed unsaved keeps it
     async clSetGoing(v, e = this.eventEdit) {
+      if (String(e.id).startsWith('pc:')) return this._clPcGoing(e.id.slice(3), v);
       const was = this.events.find(x => x.id === e.id); if (!was || e.going === v) return;
       const going = was.recurrence?.freq ? { ...was.going, [e.day]: v } : { [was.starts_at.slice(0, 10)]: v };
       if (await this._journalRowChange(v ? 'Going' : 'Not going', 'event', e.id, () => this.store.events.update(e.id, { going }))) e.going = v;
     },
-    clItemClick(it, tile) { if (!it) return; if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
+    // An Outlook meeting answers in Outlook, silently; Not going offers to tell the organizer (things-11-1)
+    async _clPcGoing(id, v, tell = false) {
+      const done = await this.mailbox.respond(id, v, tell);
+      if (!done) return this.notify('Not answered in Outlook');
+      await this.mailbox.calendar();
+      if (tell) return this.notify(done === 'shown' ? 'Reply opened in Outlook' : 'Organizer told');
+      this.notify(v ? 'Going' : 'Not going', { actions: v ? [] : [{ label: 'Tell organizer', fn: () => this._clPcGoing(id, v, true) }] });
+    },
+    clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clAsks(it) && this.clOpenDay(it.start.slice(0, 10)); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
     // ONE state class for every calendar mark of a task (and a Not going event) — chip, timeline event, agenda row, chapter band,
@@ -10027,7 +10093,7 @@ document.addEventListener('alpine:init', () => {
       // scroll FIRST, so the preview reads the grid the drop will. .cl-pages is overflow:clip under pinned chrome: its edge
       // zone starts below the chrome, and travel means clPos — only in a glide frame, which paints the preview it reads:
       // a dragover's step lands the drop it comes before (Chrome sends one) where no frame showed.
-      const sc = e.target?.closest?.('.cl-pages, .cl-month, .peek-body'), pg = sc === this.$refs.clPages, v = edgeScrollStep(sc, e.clientY, false, pg ? this._clHeadH() : 0);
+      const sc = e.target?.closest?.('.cl-pages, .cl-month, .peek-body'), pg = sc === _staticEl('.cl-pages'), v = edgeScrollStep(sc, e.clientY, false, pg ? this._clHeadH() : 0);
       if (v && pg && glide) this._clSetPos(this.clPos.idx, Math.max(0, Math.min(this._clMaxFrac(), this.clPos.frac + v / this.clPeriodH())));
       this._dndHold(v && !pg ? sc : null);   // .cl-pages is overflow:clip — no native autoscroll to hold off
       if (v && pg && !glide) this._clEdgeGlide(e.clientX, e.clientY);
