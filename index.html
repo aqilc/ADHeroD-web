@@ -2026,13 +2026,15 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </template>
       <div class="blk-field" x-show="clAttachedTasks().length">
         <label class="section-label">Attached tasks</label>
-        <template x-for="si in clAttachedTasks()" :key="si.id">
-          <div class="blk-attached-row flex items-center gap-8">
-            <span class="blk-attached-t grow min-w-0 truncate" x-text="byId.get(si.task_id)?.content || '(deleted)'"></span>
-            <button type="button" class="blk-role-chip flex-none" @click="clCycleRole(si.id)" x-text="si.role"></button>
-            <button type="button" class="sel-x inline-flex items-center justify-center flex-none" @click="clRemoveAttached(si.id)" aria-label="Remove"><svg class="ico"><use href="#i-x"/></svg></button>
+        <div class="entry-list flex flex-col"><template x-for="{ si, t } in clAttachedTasks()" :key="si.id">
+          <div class="entry" :class="{ done: t.completed_at }">   <!-- a subtask's row (SUB_ROW): ticks, opens, detaches -->
+            <span class="entry-chk" x-html="entryCheckHtml(t)" @click="toggle(t)"></span>
+            <div class="entry-txt" x-text="t.content"></div>
+            <button type="button" class="c g flex-none" @click="clCycleRole(si.id)" x-text="si.role[0].toUpperCase() + si.role.slice(1)"></button>
+            <button type="button" class="entry-kids" title="Open this task" @click="editTask(t)"><svg class="ico"><use href="#i-chev-r"/></svg></button>
+            <button type="button" class="entry-del" title="Detach" @click="clRemoveAttached(si.id)"><svg class="ico"><use href="#i-x"/></svg></button>
           </div>
-        </template>
+        </template></div>
       </div>
       <div x-html="evActionsHtml('blockEdit')"></div>
     </div></template>

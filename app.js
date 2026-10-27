@@ -10399,7 +10399,10 @@ document.addEventListener('alpine:init', () => {
       const el = document.querySelector('.block-editor .ev-title');   // a mounted editor's field shows it; one mounting later reads it
       if (el) el.innerHTML = titleLive(title);
     },
-    clAttachedTasks() { const id = this.blockEdit?.id; if (!id) return []; return this.scheduleItems.filter(s => s.block_id === id); },
+    clAttachedTasks() {   // Before, During, After: the order they run in
+      const id = this.blockEdit?.id, roles = ['before', 'during', 'after']; if (!id) return [];
+      return this.scheduleItems.filter(si => si.block_id === id && this.byId.has(si.task_id)).map(si => ({ si, t: this.byId.get(si.task_id) })).sort((a, b) => roles.indexOf(a.si.role) - roles.indexOf(b.si.role));
+    },
     clCycleRole(itemId) {   // silent: a quick repeated tap, ⌘Z still steps back
       const item = this.scheduleItems.find(x => x.id === itemId);
       if (item) return this.perform('Changed role', { kind: 'update', target: 'scheduleItem', id: itemId, after: { role: { before: 'during', during: 'after', after: 'before' }[item.role] || 'during' } }, { silent: true });

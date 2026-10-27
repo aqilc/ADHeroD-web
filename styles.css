@@ -2504,6 +2504,7 @@ textarea.inp { resize: vertical; }
 .cl-side-list .item, .drag-ghost > .item { border-radius: var(--r); --row-hov: color-mix(in srgb, var(--hover) 60%, var(--accent) 8%); }
 .drag-ghost > .item { background-color: var(--row-hov); }   /* the tray row's copy wears its grabbed (hover) pill */
 @media (any-pointer: fine) { :where(:root:not(.touch)) .cl-side-list .item, :where(:root:not(.touch)) .drag-ghost > .item { --row-pt: 5px; } }   /* D3: tighter, so more clears the fold; a touch row keeps its height */
+@media (any-pointer: fine) { :where(:root:not(.touch)) .cl-side-list.list { --gut: 5px; margin: 0 calc(-1 * var(--gut)); } }   /* the check's left inset matches its 5px top, centered in the hover box; it stays on the panel's content edge */
 .cl-side-list .item.sel { background: var(--hover); }
 .cl-side-list .proj-inbox, .drag-ghost > .item .proj-inbox { display: none; }   /* every undated task is in Backlog: the glyph would mark nearly every row */
 .cl-side-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-6); list-style: none; }
@@ -2596,16 +2597,13 @@ textarea.inp { resize: vertical; }
 .touch .cl-pop { .ev-days .th, .ev-allday { height: 44px; } :is(.ev-hours .th, .ev-time, .ev-days .icon-btn) { height: 40px; min-width: 40px; }
   .tpop .th { font-size: var(--fs-13); em { font-size: var(--fs-11); } } .tq button { height: 40px; padding: 0; font-size: var(--fs-13); } .ev-time { font-size: var(--fs-15); } }
 .blk-field { margin-top: var(--sp-12); }
+.blk-field .entry-del { opacity: .6; }   /* an attached task has no text to Backspace out of: the x is its only detach, shown at rest (touch has no hover) */
 /* .ev-field appearance is the shared .inp rule; only ev-specific layout lives here */
 .ev-dash { color: var(--muted); }
 .ev-lab { color: var(--muted); font-size: var(--fs-13); flex: none; white-space: nowrap; }
 /* Block editor extras: weekday repeat toggles */
 .section-label { display: block; margin-bottom: var(--sp-6); }
 .blk-wd { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel); color: var(--ink); font-size: var(--fs-12); }
-.blk-attached-row { padding: var(--sp-4) 0; }
-.blk-attached-t { font-size: var(--fs-13); color: var(--ink); }
-.blk-role-chip { padding: var(--sp-2) var(--sp-8); border-radius: var(--r-lg); border: 1px solid var(--edge); background: var(--hover); color: var(--muted); font-size: var(--fs-11); font-weight: 600; letter-spacing: .04em; cursor: pointer; transition: background-color .12s; }
-.blk-role-chip:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); }
 .blk-today-actions { display: flex; align-items: center; gap: var(--sp-8); }
 .blk-today-state { color: var(--muted); font-size: var(--fs-12); }
 .blk-today-lead { color: var(--muted); font-size: var(--fs-12); }
