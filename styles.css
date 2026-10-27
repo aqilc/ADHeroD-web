@@ -1688,6 +1688,41 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 /* the picker's project pie, sized for a section head — same mark in both places, so "this section is a project
    and it's this far along" needs no second vocabulary. ::after inset scales with it (4px would leave no core). */
 .sec-pie { width: 12px; height: 12px; margin-left: var(--sp-8); }
+/* Backlog's Mail panel: a section head, search, then its own scroller (faded at the foot while more is below) above
+   a 1px --hair line; it bleeds like .list so the envelope sits in the check's column. */
+.mail-panel { margin: 0 -10px var(--sp-12) -18px;
+  > .sec-row { border: 0; background: none; text-align: left; padding-top: var(--sp-10); padding-bottom: var(--sp-2); }
+  &::after { content: ''; display: block; height: 1px; background: var(--hair); margin: var(--sp-6) var(--sp-10) 0 var(--gut); }
+}
+.mail-unread-ct { margin-left: var(--sp-6); text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
+.mail-find { display: flex; align-items: center; gap: var(--sp-10); padding: var(--sp-4) var(--sp-10) var(--sp-4) var(--gut); color: var(--muted);
+  .ico { width: 16px; height: 16px; flex: none; margin-left: 1px; }
+  input { flex: 1; min-width: 0; border: none; background: none; font: inherit; color: var(--ink); outline: none; padding: 0; }
+  input::placeholder { color: var(--muted); }
+}
+.mail-list { list-style: none; padding: 0; margin: 0; max-height: 400px; overflow-y: auto; overscroll-behavior: contain;
+  &.more { mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
+}
+.mail-row { padding-left: var(--gut); }
+.mail-bold { font-weight: 600; }
+.mail-env { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border: none; background: none; padding: 0; cursor: pointer;
+  color: var(--p4); border-radius: var(--r-4);
+  .ico { width: 20px; height: 20px; }
+  &.read { color: var(--faint); }
+  &:hover:where(:not(.touch *)) { background: var(--hover); }
+}
+.mail-acts { flex: none; gap: var(--sp-2); align-self: flex-start; }
+.mail-btn { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border: none; background: none; color: var(--faint); border-radius: var(--r-4); cursor: pointer; padding: 0;
+  .ico { width: 16px; height: 16px; }
+  &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
+}
+.mail-none { padding: var(--sp-6) var(--sp-10) var(--sp-6) var(--gut); color: var(--muted); }
+@media (max-width: 640px) {
+  .mail-list { max-height: 330px; }
+  .mail-row .title { white-space: normal; }
+  .mail-row .r1l { flex-wrap: wrap; row-gap: 0; }
+  .mail-row .row2 .mail-acts { margin-right: calc(-1 * var(--sp-4)); }
+}
 .sec-lbl { display: flex; min-width: 0; white-space: nowrap; }
 /* a nested section's ancestors; the last segment keeps the head's tone. Short of room the path gives way first
    (the name doesn't shrink); a name wider than the whole label then ellipsizes too (max-width), never under the count.
@@ -2542,6 +2577,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .app { --pad-x: 14px; max-width: none; padding: var(--sp-16) var(--pad-x) var(--list-end); }
   .topbar { align-items: center; margin-top: var(--sp-16); }
   .list { margin: 0 -8px; }
+  .mail-panel { margin-inline: -8px; }   /* bleeds as .list does here, so the envelope keeps the check's column */
   /* The ghost row bleeds exactly as far as the list it stands in for. Its desktop bleed is -18px/+28px
      because that is .list's bleed there; here .list drops to -8px, so an unchanged button sat 10px left
      of every real row and hung off the screen edge. Left padding stays the rows' --gut (below) to keep the
@@ -2707,7 +2743,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   :is(.touch, .bar-on .jb-host) .composer-opts { flex: 1; min-width: 0; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 0; margin: 0; padding-right: var(--sp-12);
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-12));
     &::after { content: none; }   /* the desktop row's spacer: a mouse window's bar takes this dock */
-    > .field { flex: none; } .field:has(> .chip.set) { order: -1; } .field:has(> .chip-notes.chip) { order: -2; }   /* the notes lead, never scrolled away: the only way to the steps */
+    > .field { flex: none; } .field:has(> .chip.set) { order: -2; } .field:has(> .chip-notes.chip) { order: -3; }   /* the notes lead, never scrolled away: the only way to the steps */
+    .field:has(> :is(.chip-area, .chip-loc).set) { order: -1; } .field:has(> :is(.chip-area, .chip-loc):not(.set)) { order: 1; }   /* areas sit by importance on a mouse row, where they are discs; here they carry names, so they follow the date */
     &:not(.cl-opts) .field:has(> :is(.chip-dur, .chip-loc):not(.set)) { display: none; }   /* the editors have no ··· to hold them */
     .chip:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; } }
   :is(.touch, .bar-on .jb-host) .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
@@ -2863,7 +2900,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* KA: the steps icon last */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go to their icons (barFit), never the bare icons or the steps */
-      &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; }   /* the last first */
+      &:not(:has(~ .field > .chip.set:not(.chip-notes))):where(:has(> .chip-loc), .composer-opts:not(:has(.chip-area.set)) *), &:has(> .chip-area):not(:has(~ .field > .chip-loc.set)) { flex-shrink: 100; }   /* the last first, as shown: the areas after the date */
       &:has(> .bare) { min-width: fit-content; mask-image: none; } }   /* a bare icon whole: the place's map is wider than 38 */
     .chip.set:is(.short, .bare) { position: relative; overflow: hidden; > span { position: absolute; visibility: hidden; } }   /* out of flow at its own size: barFit still sees its text change */
     .chip.set.bare { width: auto; min-width: 38px; padding: 0; justify-content: center; .rep-on { display: none; } }   /* the bare icons' box */

@@ -572,6 +572,11 @@ document.addEventListener('alpine:init', () => {
     qfDue: null,        // quick-filter: 'today'|'overdue'|'has'|'none'|null
     qfOpen: true,       // state lenses: open tasks fill the list, done and archived add the section below; any mix, never none
     qfArchived: false,
+    mail: null,        // the mailbox's messages, newest first: {id, subject, from, at, preview, read, files}; null = none connected, so Backlog shows no Mail panel
+    mailbox: null,     // the connected mailbox: setRead(id, read) / archive(id) / remove(id) → boolean
+    mailError: '',     // why the last read failed, shown atop the panel
+    mailQ: '',
+    mailShut: false,
     editing: null,
     confirm: null,
     shortcutsOpen: false,
@@ -738,6 +743,15 @@ document.addEventListener('alpine:init', () => {
         const checkUpdate = async () => { this.updateUrl = await desktopUpdate(); };
         checkUpdate();
         setInterval(checkUpdate, 6 * 3600e3);
+        // Work mail: the classic Outlook open on this PC (desktop/main.cpp § Outlook); null = none installed. A failed read keeps the last list.
+        this.mailbox = { setRead: (id, read) => desktopWindow('mail', 'read', id, read), archive: id => desktopWindow('mail', 'archive', id), remove: id => desktopWindow('mail', 'delete', id) };
+        const loadMail = async () => {
+          const got = await desktopWindow('mail', 'list');
+          this.mailError = got?.error ? (got.error === 'closed' ? 'Open classic Outlook to see new mail.' : `Can't read Outlook (${got.error}).`) : '';
+          if (Array.isArray(got)) this.mail = got;
+        };
+        loadMail();
+        addEventListener('focus', loadMail);
       }
       document.addEventListener('selectionchange', () => this._chkSelTint());   // checklist cross-row selection tint
       // An IME owns its keys mid-composition (its Enter converts): no handler may act on them — a title Enter saved the unconverted word.
@@ -1993,6 +2007,15 @@ document.addEventListener('alpine:init', () => {
         + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg>`
         + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>${raw(pie)}<span class="head-rule"></span></li>`;
     },
+    // Backlog's Mail panel: search matches subject, sender and preview. Each action lands only once the mailbox says it did.
+    mailRows() { const q = this.mailQ.trim().toLowerCase(); return q ? this.mail.filter(m => (m.subject + ' ' + m.from + ' ' + m.preview).toLowerCase().includes(q)) : this.mail; },
+    async mailRead(m) { if (await this.mailbox.setRead(m.id, !m.read)) m.read = !m.read; },
+    async mailDrop(m, act) {
+      if (!await this.mailbox[act](m.id)) return this.toast(act === 'archive' ? "Couldn't archive" : "Couldn't delete");
+      this.mail = this.mail.filter(x => x !== m);
+      this.toast(act === 'archive' ? 'Archived' : 'Deleted');
+    },
+    mailDay(iso) { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); },
     completedRows() { this.visibleRows(); return _doneMemo; },   // computed alongside visibleRows; the Done list below the add button
     // Same pure row markup as listHtml (order + depth padding so it aligns with the active list), so the single
     // composer can relocate into the Done list and open inline on a completed task. Edit styling via applyEditDom().
@@ -4519,7 +4542,7 @@ document.addEventListener('alpine:init', () => {
       const fit = new ResizeObserver(() => {
         const chips = [...opts.querySelectorAll(':scope > .field > .chip.set:not(.chip-notes)')];
         for (const chip of chips) chip.classList.remove('short', 'bare');
-        if (this._inBar()) for (const chip of chips.reverse()) for (const step of chip.matches('.chip-due') ? ['short', 'bare'] : ['bare']) if (chip.parentElement.scrollWidth > chip.parentElement.clientWidth) chip.classList.add(step);
+        if (this._inBar()) for (const chip of chips.sort((a, b) => b.parentElement.offsetLeft - a.parentElement.offsetLeft)) for (const step of chip.matches('.chip-due') ? ['short', 'bare'] : ['bare']) if (chip.parentElement.scrollWidth > chip.parentElement.clientWidth) chip.classList.add(step);   // last shown first: the bar puts the areas after the date
       });
       for (const el of [opts, ...opts.querySelectorAll('.chip > span')]) fit.observe(el);   // never a field or chip: the fit resizes them
     },

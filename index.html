@@ -119,6 +119,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        two separate paints double their alpha wherever they meet (the tray line hits the box walls at x=2/x=22),
        which read as dark blobs on the glyph. A single stroke op composites the union once, at one alpha. -->
   <symbol id="i-backlog" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
+  <symbol id="i-mail-open" viewBox="0 0 24 24"><path d="M21.2 8.4c.5.38.8.97.8 1.6v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V10a2 2 0 0 1 .8-1.6l8-6a2 2 0 0 1 2.4 0l8 6Z"/><path d="m22 10-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 10"/></symbol>
   <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="5" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol>
 <symbol id="i-all" viewBox="0 0 24 24"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
@@ -370,6 +372,34 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <template x-if="!(navSel.type === 'filter' || filtering()) && completedRows().hidden"><svg class="empty-sun" viewBox="0 0 48 28" aria-hidden="true"><path class="arc" d="M8 26a16 16 0 0 1 32 0"/><path class="ray" d="M24 4V0"/><path class="ray" d="M10 10 7 7"/><path class="ray" d="M38 10l3-3"/><path class="ray" d="M4 22H0"/><path class="ray" d="M44 22h4"/></svg></template>
       <span class="empty-t" x-text="navSel.type === 'filter' || filtering() || !qfOpen ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></span>
     </div>
+    <!-- Mail: the connected mailbox atop Backlog, its own scroller; a 1px line parts it from the tasks. Rows wear .item's look; mounted only with a mailbox, so its .sec-row head never joins the list's heads. -->
+    <template x-if="navSel.type === 'backlog' && (mail || mailError)"><section class="mail-panel">
+      <button type="button" class="sec-row flex items-center" @click="mailShut = !mailShut" :aria-expanded="!mailShut">
+        <svg class="ico sec-chev" :style="mailShut && 'transform:rotate(-90deg)'"><use href="#i-chev-d"/></svg>
+        <span class="sec-lbl"><span class="sec-nm">Mail</span></span><span class="sec-ct" x-text="mail?.length || ''"></span>
+        <span class="mail-unread-ct" x-text="mail?.some(m => !m.read) ? mail.filter(m => !m.read).length + ' unread' : ''"></span>
+      </button>
+      <p class="mail-none" x-show="mailError && !mailShut" x-text="mailError"></p>
+      <template x-if="mail && !mailShut"><div>
+        <label class="mail-find" x-show="mail.length"><svg class="ico"><use href="#i-search"/></svg><input type="search" x-model="mailQ" placeholder="Search mail" aria-label="Search mail"></label>
+        <ul class="mail-list flex-col" x-init="new ResizeObserver(() => $el.classList.toggle('more', $el.scrollHeight > $el.clientHeight + $el.scrollTop + 1)).observe($el)" @scroll="$el.classList.toggle('more', $el.scrollHeight > $el.clientHeight + $el.scrollTop + 1)">
+          <template x-for="m in mailRows()" :key="m.id">
+            <li class="item mail-row flex gap-10">
+              <button type="button" class="mail-env" :class="m.read && 'read'" @click="mailRead(m)" :title="m.read ? 'Mark unread' : 'Mark read'" :aria-label="m.read ? 'Read. Mark unread' : 'Unread. Mark read'"><svg class="ico"><use :href="m.read ? '#i-mail-open' : '#i-mail'"/></svg></button>
+              <div class="body grow min-w-0">
+                <div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title" :class="!m.read && 'mail-bold'" x-text="m.subject"></span>
+                  <div class="row-rels flex items-center gap-8 min-w-0"><template x-for="f in m.files"><span class="row-rel file inline-flex items-center gap-4 muted-11"><svg class="ico"><use href="#i-file"/></svg><span class="row-rel-name" x-text="f"></span></span></template></div></div>
+                  </div>
+                <div class="row2 flex items-center gap-8"><span class="desc-line grow min-w-0 truncate" x-text="(m.from && 'From ' + m.from + ', ') + mailDay(m.at) + '.' + (m.preview && ' ' + m.preview)"></span><template x-if="narrow"><span class="mail-acts flex"><button type="button" class="mail-btn" title="Archive" aria-label="Archive" @click="mailDrop(m, 'archive')"><svg class="ico"><use href="#i-archive"/></svg></button><button type="button" class="mail-btn" title="Delete" aria-label="Delete" @click="mailDrop(m, 'remove')"><svg class="ico"><use href="#i-trash"/></svg></button></span></template></div>
+              </div>
+              <template x-if="!narrow"><span class="mail-acts flex"><button type="button" class="mail-btn" title="Archive" aria-label="Archive" @click="mailDrop(m, 'archive')"><svg class="ico"><use href="#i-archive"/></svg></button><button type="button" class="mail-btn" title="Delete" aria-label="Delete" @click="mailDrop(m, 'remove')"><svg class="ico"><use href="#i-trash"/></svg></button></span></template>
+            </li>
+          </template>
+          <li class="mail-none" x-show="mail.length && !mailRows().length">No mail matches</li>
+          <li class="mail-none" x-show="!mail.length">No mail</li>
+        </ul>
+      </div></template>
+    </section></template>
     <!-- rows: one innerHTML parse (not x-for) — ~1s→~50ms; events delegated to <ul>; hover/drag/kbfocus imperative -->
     <ul class="list flex-col" x-effect="paintSel()" x-init="initListSort($el)"
         @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)" @contextmenu="rowMenuOpen($event)"
@@ -553,6 +583,43 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </template>
             </div></template></template>
           </div>
+          <!-- Area multi-select -->
+          <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
+            <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :title="areaLabel()" @click="togglePop('area', $el)">
+              <svg class="ico" x-show="!areaObjs(draft.areas).length"><use href="#i-tag-tag"/></svg>
+              <i class="discs inline-flex" x-show="areaObjs(draft.areas).length" x-html="areaDiscsHtml()"></i>
+              <span x-text="areaLabel()"></span>
+            </button>
+            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+              <div class="area-grid area-cluster items-center">
+                <template x-for="l in areas" :key="l.id">
+                  <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="clusterPick($el, l.id)" x-html="areaOptHtml(l, draft.areas.includes(l.id))"></button>
+                </template>
+                <label class="area-ghost inline-flex items-center rounded-pill"><input type="text" placeholder="new area…" x-model="newAreaName" @keydown.enter.prevent="createAndToggleArea()" @keydown.stop></label>
+              </div>
+            </div></template></template>
+          </div>
+          <!-- Duration -->
+          <div class="field" @click.document.capture="pop === 'dur' && outside($event, $el) && popAway('dur', $event)">
+            <button type="button" class="chip chip-dur inline-flex items-center" :class="{ set: durMinNow() }" :title="durLabel()" aria-haspopup="dialog" :aria-expanded="pop === 'dur'" @click="togglePop('dur', $el)">
+              <svg class="ico"><use :href="sizeNow() ? '#i-size-' + sizeNow() + (_inBar() ? '' : '-fill') : '#i-clock'"/></svg>
+              <span x-text="durLabel()"></span>
+            </button>
+            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :class="{ dock: popDock }" :style="popStyle()">
+              <div class="lad">
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><span class="rt">~5 m</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><span class="rt">&lt;15 m</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'session' }" @click="setSize('session')"><svg class="ico"><use href="#i-size-session"/></svg>Session <i>one sitting</i><span class="rt">½–1 h</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'multi' }" @click="setSize('multi')"><svg class="ico"><use href="#i-size-multi"/></svg>Multi <i>spread across days</i><span class="rt">2 h+</span></button>
+              </div>
+              <!-- Exact minutes: one field, no wheels. Type a number → Enter commits and closes; empty commits
+                   nothing (the ladder pick stands). The ladder writes it too, so the two never disagree. -->
+              <label class="hmrow"><svg class="ico"><use href="#i-clock"/></svg>Exactly
+                <input class="inp durx" inputmode="numeric" placeholder="–" :value="draft.durMin || ''" @beforeinput="/\D/.test($event.data ?? '') && $event.preventDefault()"
+                       @keydown.stop @keydown.enter.prevent.stop="setDur(Math.max(0, +$el.value || 0)); pop = null" @change="setDur(Math.max(0, +$el.value || 0))">min</label>
+              <button type="button" class="pop-item clear dur-clr" x-show="durMinNow()" @click="draft.durMin = null; pop = null"><svg class="ico"><use href="#i-x"/></svg>No size</button>
+            </div></template></template>
+          </div>
           <!-- Due date -->
           <div class="field" @click.document.capture="pop === 'due' && outside($event, $el) && popAway('due', $event)">
             <button type="button" class="chip chip-due inline-flex items-center" :class="{ set: draft.on || draft.recurrence || draft.deadline_at || draft.available_from, open: pop === 'due' }" :style="'--cc:' + dueLook()[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'due'" @click="openDate('due', $el)">
@@ -582,27 +649,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div>
             <button type="button" class="pop-item clear tx" @click="timeSet(''); tpop = false"><svg class="ico"><use href="#i-x"/></svg>no time</button>
           </div></template></template>
-          <!-- Duration -->
-          <div class="field" @click.document.capture="pop === 'dur' && outside($event, $el) && popAway('dur', $event)">
-            <button type="button" class="chip chip-dur inline-flex items-center" :class="{ set: durMinNow() }" :title="durLabel()" aria-haspopup="dialog" :aria-expanded="pop === 'dur'" @click="togglePop('dur', $el)">
-              <svg class="ico"><use :href="sizeNow() ? '#i-size-' + sizeNow() + (_inBar() ? '' : '-fill') : '#i-clock'"/></svg>
-              <span x-text="durLabel()"></span>
-            </button>
-            <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" x-cloak :class="{ dock: popDock }" :style="popStyle()">
-              <div class="lad">
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><span class="rt">~5 m</span></button>
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><span class="rt">&lt;15 m</span></button>
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'session' }" @click="setSize('session')"><svg class="ico"><use href="#i-size-session"/></svg>Session <i>one sitting</i><span class="rt">½–1 h</span></button>
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'multi' }" @click="setSize('multi')"><svg class="ico"><use href="#i-size-multi"/></svg>Multi <i>spread across days</i><span class="rt">2 h+</span></button>
-              </div>
-              <!-- Exact minutes: one field, no wheels. Type a number → Enter commits and closes; empty commits
-                   nothing (the ladder pick stands). The ladder writes it too, so the two never disagree. -->
-              <label class="hmrow"><svg class="ico"><use href="#i-clock"/></svg>Exactly
-                <input class="inp durx" inputmode="numeric" placeholder="–" :value="draft.durMin || ''" @beforeinput="/\D/.test($event.data ?? '') && $event.preventDefault()"
-                       @keydown.stop @keydown.enter.prevent.stop="setDur(Math.max(0, +$el.value || 0)); pop = null" @change="setDur(Math.max(0, +$el.value || 0))">min</label>
-              <button type="button" class="pop-item clear dur-clr" x-show="durMinNow()" @click="draft.durMin = null; pop = null"><svg class="ico"><use href="#i-x"/></svg>No size</button>
-            </div></template></template>
-          </div>
           <!-- Reminders: the list looks, the setter sets (remind-1); one title row on both, the bell turning into Back.
                Severity is the lead icon's SHAPE; a self-repeating reminder shows the repeat switch instead, and tapping it pauses. -->
           <div class="field" @click.document.capture="pop === 'rem' && outside($event, $el) && popAway('rem', $event)">
@@ -658,22 +704,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <div class="rem-note" x-show="remClash()" x-text="remClash()"></div>
                 <div class="rem-foot"><button type="button" class="rem-delete" x-show="remEd.id" @click="remDelete()">Delete</button><button type="button" class="primary" :disabled="remPassed(remEd.r)" @click="remDone()" x-text="remEd.id ? 'Done' : 'Add'"></button></div>
               </div></template>
-            </div></template></template>
-          </div>
-          <!-- Area multi-select -->
-          <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
-            <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :title="areaLabel()" @click="togglePop('area', $el)">
-              <svg class="ico" x-show="!areaObjs(draft.areas).length"><use href="#i-tag-tag"/></svg>
-              <i class="discs inline-flex" x-show="areaObjs(draft.areas).length" x-html="areaDiscsHtml()"></i>
-              <span x-text="areaLabel()"></span>
-            </button>
-            <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" x-cloak :class="{ dock: popDock }" :style="popStyle()">
-              <div class="area-grid area-cluster items-center">
-                <template x-for="l in areas" :key="l.id">
-                  <button type="button" class="area-opt" :class="areaTier(l.id) + (draft.areas.includes(l.id) ? ' on' : '')" :style="'--tc:' + (l.color || areaDefault)" @click="clusterPick($el, l.id)" x-html="areaOptHtml(l, draft.areas.includes(l.id))"></button>
-                </template>
-                <label class="area-ghost inline-flex items-center rounded-pill"><input type="text" placeholder="new area…" x-model="newAreaName" @keydown.enter.prevent="createAndToggleArea()" @keydown.stop></label>
-              </div>
             </div></template></template>
           </div>
           <!-- Location constraint -->
