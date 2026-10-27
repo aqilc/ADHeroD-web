@@ -376,13 +376,13 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <span class="empty-t" x-text="navSel.type === 'filter' || filtering() || !qfOpen ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></span>
     </div>
     <!-- Mail: the connected mailbox atop Backlog, its own scroller; a 1px line parts it from the tasks. Rows wear .item's look; mounted only with a mailbox, so its .sec-row head never joins the list's heads. -->
-    <template x-if="(navSel.type === 'all' || navSel.type === 'backlog') && (mail || mailError)"><section class="mail-panel">
+    <template x-if="(navSel.type === 'all' || navSel.type === 'backlog') && (mail || mailError || calError)"><section class="mail-panel">
       <button type="button" class="sec-row flex items-center" @click="mailShut = !mailShut" :aria-expanded="!mailShut">
         <svg class="ico sec-chev" :style="mailShut && 'transform:rotate(-90deg)'"><use href="#i-chev-d"/></svg>
         <span class="sec-lbl"><span class="sec-nm">Mail</span></span><span class="sec-ct" x-text="mail?.length || ''"></span>
         <span class="mail-unread-ct" x-text="mail?.some(m => !m.read) ? mail.filter(m => !m.read).length + ' unread' : ''"></span>
       </button>
-      <p class="mail-none" x-show="mailError && !mailShut" x-text="mailError"></p>
+      <p class="mail-none" x-show="(mailError || calError) && !mailShut" x-text="mailError || calError"></p>
       <template x-if="mail && !mailShut"><div>
         <label class="mail-find" x-show="mail.length"><svg class="ico"><use href="#i-search"/></svg><input type="search" x-model="mailQ" placeholder="Search mail" aria-label="Search mail"></label>
         <ul class="mail-list flex-col" x-init="new ResizeObserver(() => $el.classList.toggle('more', $el.scrollHeight > $el.clientHeight + $el.scrollTop + 1)).observe($el)" @scroll="$el.classList.toggle('more', $el.scrollHeight > $el.clientHeight + $el.scrollTop + 1)">
@@ -1070,7 +1070,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <h2 class="cl-period grow min-w-0 flex" @click.document.capture="pop === 'clnav' && outside($event, $el) && popAway('clnav', $event)">
           <button type="button" class="cl-period-btn" :class="{ pick: clView === 'day' || clView === 'week' }" @click="clOpenDatePop($el)"><span class="cl-dn-t" x-text="clTitleParts()[2]"></span><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></button>
           <!-- A2·B: what's COMING rides the title's line — part of the date you're looking at, not one more control -->
-          <span class="cl-cds flex flex-wrap grow"><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
+          <span class="cl-cds flex flex-wrap grow"><div class="cl-cd cl-err" x-show="calError"><span x-text="calError"></span></div><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
         </h2>
         <!-- calendar nav pop is the shared unified cal pop (see composer section) -->
         <template x-if="bar"><button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">   <!-- the jot bar's, as on Lists -->

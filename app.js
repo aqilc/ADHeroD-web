@@ -583,6 +583,7 @@ document.addEventListener('alpine:init', () => {
     mail: null,        // the mailbox's messages, newest first: {id, subject, from, at, preview, read, files}; null = none connected, so All and Backlog show no Mail panel
     mailbox: null,     // the connected mailbox: setRead(id, read) / archive(id) / remove(id) → boolean
     mailError: '',     // why the last read failed, shown atop the panel
+    calError: '',      // why the last Outlook calendar read failed, shown there too
     mailQ: '',
     mailShut: false,
     mailOpened: null,  // the mail opened in its row: {id, from, to, cc, files, body, high, flagged, at}, or {id, error} when Outlook refused
@@ -765,6 +766,7 @@ document.addEventListener('alpine:init', () => {
         const pcDay = (iso, back = 0) => { const d = new Date(iso.slice(0, 10) + 'T00:00'); d.setDate(d.getDate() - back); return isoDate(d); };
         const loadCalendar = async () => {
           const got = await desktopWindow('mail', 'calendar');
+          this.calError = got?.error && got.error !== 'closed' ? `Can't read Outlook's calendar (${got.error}).` : '';   // closed: the mail line says so
           if (!Array.isArray(got)) return;
           _calDataV++;
           this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, remind: e.remind, going: { pc: true }, recurrence: null, color: null, all_day: e.allDay,

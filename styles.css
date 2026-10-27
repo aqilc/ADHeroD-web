@@ -1951,6 +1951,7 @@ textarea.inp { resize: vertical; }
 .cl-cds { height: 1em; overflow: hidden; }   /* one title line (line-height 1) */
 .cl-cd { max-width: 230px; line-height: 1; margin-left: var(--sp-16); }   /* clear of the title's hover surface (it bleeds 8px) */
 .cl-cd + .cl-cd { margin-left: var(--sp-10); }
+.cl-err { --prox: 0; max-width: none; }   /* a failed Outlook calendar read, whole: its code is the clue */
 .cl-cd b { margin-right: 5px; font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums;
   font-size: calc(var(--fs-13) + var(--prox) * 6px); color: color-mix(in oklch, var(--muted), var(--gold) calc(var(--prox) * 100%)); }
 .cl-cd span { font-size: calc(var(--fs-11) + var(--prox) * 2px); font-weight: calc(500 + var(--prox) * 200); letter-spacing: 0;
