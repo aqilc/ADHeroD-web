@@ -2811,9 +2811,9 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-12));
     &::after { content: none; }   /* the desktop row's spacer: a mouse window's bar takes this dock */
     > .field { flex: none; } .field:has(> .chip.set) { order: -2; } .field:has(> .chip-notes.chip) { order: -3; }   /* the notes lead, never scrolled away: the only way to the steps */
-    .field:has(> :is(.chip-area, .chip-loc).set) { order: -1; } .field:has(> :is(.chip-area, .chip-loc):not(.set)) { order: 1; }   /* areas sit by importance on a mouse row, where they are discs; here they carry names, so they follow the date */
+    .field:has(> .chip-loc.set) { order: -1; } .field:has(> :is(.chip-area, .chip-loc):not(.set)) { order: 1; }
     &:not(.cl-opts) .field:has(> :is(.chip-dur, .chip-loc):not(.set)) { display: none; }   /* the editors have no ··· to hold them */
-    .chip:is(:not(.set), .chip-imp, .chip-dur) > span { display: none; } }
+    .chip:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span { display: none; } }   /* areas read by their discs, as on a mouse row; the names are in the picker */
   :is(.touch, .bar-on .jb-host) .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
   :is(.touch, .bar-on .jb-host) .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
     .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
@@ -2967,8 +2967,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* KA: the steps icon last */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go to their icons (barFit), never the bare icons or the steps */
-      &:not(:has(~ .field > .chip.set:not(.chip-notes))):where(:has(> .chip-loc), .composer-opts:not(:has(.chip-area.set)) *), &:has(> .chip-area):not(:has(~ .field > .chip-loc.set)) { flex-shrink: 100; }   /* the last first, as shown: the areas after the date */
-      &:has(> .bare) { min-width: fit-content; mask-image: none; } }   /* a bare icon whole: the place's map is wider than 38 */
+      &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; }   /* the last first, as shown */
+      &:has(> :is(.bare, .chip-area)) { min-width: fit-content; mask-image: none; } }   /* a bare icon whole: the place's map and the area discs are wider than 38 */
     .chip.set:is(.short, .bare) { position: relative; overflow: hidden; > span { position: absolute; visibility: hidden; } }   /* out of flow at its own size: barFit still sees its text change */
     .chip.set.bare { width: auto; min-width: 38px; padding: 0; justify-content: center; .rep-on { display: none; } }   /* the bare icons' box */
     .chip-due.set.short:not(.bare) > .due-short { position: static; display: inline; visibility: visible; &::before { content: attr(data-short); } } }   /* not text: the chip's textContent stays its one label */

@@ -881,7 +881,7 @@ document.addEventListener('alpine:init', () => {
         return true;
       };
       _field = new ResizeObserver(([e]) => vars.setProperty('--field', e.borderBoxSize[0].blockSize + 'px'));   // the bar's chat field: a thread keeps its last message above it
-      new ResizeObserver(([e]) => vars.setProperty('--dock', e.borderBoxSize[0].blockSize + 'px')).observe(this.$refs.composer.querySelector('.composer-dock'), { box: 'border-box' });   // html.kb pads the dock without resizing its content
+      new ResizeObserver(([e]) => { const h = e.borderBoxSize[0].blockSize + 'px'; if (vars.getPropertyValue('--dock') !== h) vars.setProperty('--dock', h); }).observe(this.$refs.composer.querySelector('.composer-dock'), { box: 'border-box' });   // html.kb pads the dock without resizing its content; every grow frame reports the same height, and a rewrite restyles the page
       visualViewport.addEventListener('resize', _keyboard);
       visualViewport.addEventListener('scroll', _keyboard);
       // Phone width is a real mode, not just a stylesheet: week view is dropped and the calendar's view
@@ -4691,7 +4691,7 @@ document.addEventListener('alpine:init', () => {
       const fit = new ResizeObserver(() => {
         const chips = [...opts.querySelectorAll(':scope > .field > .chip.set:not(.chip-notes)')];
         for (const chip of chips) chip.classList.remove('short', 'bare');
-        if (this._inBar()) for (const chip of chips.sort((a, b) => b.parentElement.offsetLeft - a.parentElement.offsetLeft)) for (const step of chip.matches('.chip-due') ? ['short', 'bare'] : ['bare']) if (chip.parentElement.scrollWidth > chip.parentElement.clientWidth) chip.classList.add(step);   // last shown first: the bar puts the areas after the date
+        if (this._inBar()) for (const chip of chips.sort((a, b) => b.parentElement.offsetLeft - a.parentElement.offsetLeft)) for (const step of chip.matches('.chip-due') ? ['short', 'bare'] : ['bare']) if (chip.parentElement.scrollWidth > chip.parentElement.clientWidth) chip.classList.add(step);   // last shown first
       });
       for (const el of [opts, ...opts.querySelectorAll('.chip > span')]) fit.observe(el);   // never a field or chip: the fit resizes them
     },
