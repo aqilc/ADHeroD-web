@@ -756,6 +756,7 @@ document.addEventListener('alpine:init', () => {
         const checkUpdate = async () => { this.updateUrl = await desktopUpdate(); };
         checkUpdate();
         setInterval(checkUpdate, 6 * 3600e3);
+        addEventListener('desktopshow', checkUpdate);   // reopened from the tray: a close only hides the app
         // Work mail: the classic Outlook open on this PC (desktop/main.cpp § Outlook); null = none installed. A failed read keeps the last list.
         this.mailbox = { setRead: (id, read) => desktopWindow('mail', 'read', id, read), archive: id => desktopWindow('mail', 'archive', id), remove: id => desktopWindow('mail', 'delete', id),
           open: id => desktopWindow('mail', 'open', id), show: id => desktopWindow('mail', 'display', id), reply: (id, kind, text, to) => desktopWindow('mail', 'reply', id, kind, text, to),
