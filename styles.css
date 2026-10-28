@@ -2966,8 +2966,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host .composer-opts { height: 48px; min-width: 38px; padding-right: 0;   /* never 0 wide: it would fit beside the line break */
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* clear of a glyph at rest */
     &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
-    .chip { height: 40px; width: 38px; padding: 0; justify-content: center; .ico { width: 19px; height: 19px; } }
-    .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); .ico { width: 17px; height: 17px; } }
+    .chip { height: 40px; width: 38px; padding: 0; justify-content: center; > .ico { width: 19px; height: 19px; } }   /* never an area disc's glyph */
+    .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); > .ico { width: 17px; height: 17px; } }
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* KA: the steps icon last */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go to their icons (barFit), never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; }   /* the last first, as shown */

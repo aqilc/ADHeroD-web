@@ -773,7 +773,7 @@ document.addEventListener('alpine:init', () => {
           this.calError = got?.error && got.error !== 'closed' ? `Can't read Outlook's calendar (${got.error}).` : '';   // closed: the mail line says so
           if (!Array.isArray(got)) return;
           _calDataV++;
-          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, remind: e.remind, going: e.going == null ? {} : { pc: e.going }, recurrence: null, color: null, all_day: e.allDay,
+          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, join: e.join, remind: e.remind, going: e.going == null ? {} : { pc: e.going }, recurrence: null, color: null, all_day: e.allDay,
             starts_at: e.allDay ? pcDay(e.start) : e.start.slice(0, 16), ends_at: e.allDay ? pcDay(e.end, 1) : e.end.slice(0, 16) }));
           outlook = got.filter(e => e.going !== false);   // Not going rings nothing
           ring();
@@ -786,10 +786,10 @@ document.addEventListener('alpine:init', () => {
           clearTimeout(ringTimer);
           const rung = new Set(JSON.parse(localStorage.getItem('adherod.rung') || '[]')), now = Date.now(), late = now - 10 * 60e3, nowAt = localStamp(new Date());
           const due = outlook.filter(e => e.remind != null).map(e => ({ id: e.id, at: new Date(e.start) - e.remind * 60e3, until: +new Date(e.end), sev: 'alarm', title: e.title,
-            body: [e.allDay ? 'All day' : this.fmtTime(e.start.slice(11, 16)), e.location].filter(Boolean).join(', ') }));
+            body: [e.allDay ? 'All day' : this.fmtTime(e.start.slice(11, 16)), e.location].filter(Boolean).join(', '), join: e.join || '' }));   // an older exe has no join
           for (const r of this.reminders) {
             const task = r.kind === 'user' && !r.paused && this.byId.get(r.ref_id), when = task && (isRepeating(r) ? nextAt(r, late) : fireAt(r, task, nowAt));
-            if (when) due.push({ id: r.id + '@' + when, at: +new Date(when), until: +new Date(when) + 10 * 60e3, sev: sevOf(r), title: task.content, body: '' });   // the id carries the time: a repeat rings again
+            if (when) due.push({ id: r.id + '@' + when, at: +new Date(when), until: +new Date(when) + 10 * 60e3, sev: sevOf(r), title: task.content, body: '', join: '' });   // the id carries the time: a repeat rings again
           }
           let next = Infinity;
           for (const item of due) {
@@ -797,11 +797,13 @@ document.addEventListener('alpine:init', () => {
             if (item.at > now) next = Math.min(next, item.at);
             else {
               rung.add(item.id);
-              if (item.sev === 'alarm') desktopWindow('alarm', item.title, item.body);
-              else {
-                pinged.unshift(item.title);
-                desktopWindow('ping', pinged[0], pinged.slice(1).join('\n'));
-              }
+              if (item.sev !== 'alarm') pinged.unshift(item.title);
+              // Windows refused it (notifications off for the app, a policy): not rung, so the next read rings it again, and the app says so
+              (item.sev === 'alarm' ? desktopWindow('alarm', item.title, item.body, item.join) : desktopWindow('ping', pinged[0], pinged.slice(1).join('\n'))).then(shown => {
+                if (shown) return;
+                localStorage.setItem('adherod.rung', JSON.stringify(JSON.parse(localStorage.getItem('adherod.rung') || '[]').filter(id => id !== item.id)));
+                this.notify(`Windows didn't show the alert for ${item.title}`);
+              });
             }
           }
           localStorage.setItem('adherod.rung', JSON.stringify(due.map(item => item.id).filter(id => rung.has(id))));   // past ones drop out
@@ -5742,7 +5744,7 @@ document.addEventListener('alpine:init', () => {
     // Never a blank button: an id whose area is gone (deleted elsewhere, not yet loaded) resolves to nothing,
     // and keying the label off draft.areas.length alone left the chip showing its icon and no word at all.
     // A set chip's lead: each area's glyph on a disc of its color, the first on top.
-    areaDiscsHtml() { return this.areaObjs(this.draft.areas).map((a, i, all) => `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}"><svg class="ico"><use href="#${a.icon || 'i-tag-fill'}"/></svg></i>`).join(''); },
+    areaDiscsHtml() { return this.areaObjs(this.draft.areas).map((a, i, all) => `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}"><svg class="ico"><use href="#${a.icon || 'i-tag-tag'}"/></svg></i>`).join(''); },
     areaLabel() { return this.areaObjs(this.draft.areas).map(a => a.name).filter(Boolean).join(', ') || 'Areas'; },
     // The ONE map from a data kind to the narrowest re-read that covers it — shared by our own writes
     // (_reloadFor) and by realtime (_subscribeStore), so the two paths can never disagree about what's current.
@@ -9824,7 +9826,7 @@ document.addEventListener('alpine:init', () => {
       if (tell) return this.notify(done === 'shown' ? 'Reply opened in Outlook' : 'Organizer told');
       this.notify(v ? 'Going' : 'Not going', { actions: v ? [] : [{ label: 'Tell organizer', fn: () => this._clPcGoing(id, v, true) }] });
     },
-    clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clAsks(it) && this.clOpenDay(it.start.slice(0, 10)); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
+    clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clAsks(it) ? this.clOpenDay(it.start.slice(0, 10)) : it.join && desktopWindow('open', it.join); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
     // ONE state class for every calendar mark of a task (and a Not going event) — chip, timeline event, agenda row, chapter band,

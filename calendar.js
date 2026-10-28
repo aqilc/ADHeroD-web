@@ -65,7 +65,7 @@ export function calendarItems(events, tasks, fromIso, toIso, placed) {
     const dur = Math.max(0, minutesBetween(ev.starts_at, ev.ends_at) || 0), daily = recursDaily(ev.recurrence);
     for (const start of occurrencesInRange(ev.recurrence, ev.starts_at, back(Math.ceil(dur / 1440) + 1), toIso)) {
       const end = addMinutes(start, dur, ev.all_day);
-      if (overlaps(start, end)) items.push({ kind: 'event', id: ev.id, title: ev.title, start, end, allDay: ev.all_day, color: ev.color, daily, going: goingOn(ev, dateOf(start)) });
+      if (overlaps(start, end)) items.push({ kind: 'event', id: ev.id, title: ev.title, start, end, allDay: ev.all_day, color: ev.color, daily, going: goingOn(ev, dateOf(start)), join: ev.join });   // join: an Outlook call's link
     }
   }
   const inRange = iso => { const day = dateOf(iso); return day >= from && day <= to; };
