@@ -778,14 +778,15 @@ document.addEventListener('alpine:init', () => {
           outlook = got.filter(e => e.going !== false);   // Not going rings nothing
           ring();
         };
-        // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one as an Alarm, late if the app was
-        // closed, until its meeting ends; ours as its severity says, Pings newest first in one notification of those since the app was last looked at.
+        // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one late if the app was closed, until its
+        // meeting ends, as an Alarm only when marked High (his 10-29: woken by a looping Alarm for an ordinary meeting), else a Ping with its
+        // room and call; ours as its severity says. Pings go newest first in one notification of those since the app was last looked at.
         // ceiling: ours more than 10 minutes late (app closed, PC asleep) are skipped, not rung, as a restore never fires late; revisit with a missed list.
         let outlook = [], ringTimer = 0, pinged = [];
         const ring = () => {   // synchronous, so a reload mid-ring can't ring twice
           clearTimeout(ringTimer);
           const rung = new Set(JSON.parse(localStorage.getItem('adherod.rung') || '[]')), now = Date.now(), late = now - 10 * 60e3, nowAt = localStamp(new Date());
-          const due = outlook.filter(e => e.remind != null).map(e => ({ id: e.id, at: new Date(e.start) - e.remind * 60e3, until: +new Date(e.end), sev: 'alarm', title: e.title,
+          const due = outlook.filter(e => e.remind != null).map(e => ({ id: e.id, at: new Date(e.start) - e.remind * 60e3, until: +new Date(e.end), sev: e.high ? 'alarm' : 'ping', title: e.title,
             body: [e.allDay ? 'All day' : this.fmtTime(e.start.slice(11, 16)), e.location].filter(Boolean).join(', '), join: e.join || '' }));   // an older exe has no join
           for (const r of this.reminders) {
             const task = r.kind === 'user' && !r.paused && this.byId.get(r.ref_id), when = task && (isRepeating(r) ? nextAt(r, late) : fireAt(r, task, nowAt));
@@ -799,7 +800,7 @@ document.addEventListener('alpine:init', () => {
               rung.add(item.id);
               if (item.sev !== 'alarm') pinged.unshift(item.title);
               // Windows refused it (notifications off for the app, a policy): not rung, so the next read rings it again, and the app says so
-              (item.sev === 'alarm' ? desktopWindow('alarm', item.title, item.body, item.join) : desktopWindow('ping', pinged[0], pinged.slice(1).join('\n'))).then(shown => {
+              (item.sev === 'alarm' ? desktopWindow('alarm', item.title, item.body, item.join) : desktopWindow('ping', pinged[0], [item.body, ...pinged.slice(1)].filter(Boolean).join('\n'), item.join)).then(shown => {
                 if (shown) return;
                 localStorage.setItem('adherod.rung', JSON.stringify(JSON.parse(localStorage.getItem('adherod.rung') || '[]').filter(id => id !== item.id)));
                 this.notify(`Windows didn't show the alert for ${item.title}`);
