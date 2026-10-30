@@ -2369,6 +2369,7 @@ textarea.inp { resize: vertical; }
 .cl-stk:hover, .cl-stk:focus-visible { background: var(--tint); z-index: 20 !important; }   /* !important: the lane's z-index is inline, and peers in a stack all carry the same one */
 /* density tiers — a 15-min standup must not speak with the same voice as a 3-hour block */
 .cl-event-b { display: block; min-width: 0; overflow: hidden; }
+.cl-event-imp { display: inline-block; width: 9px; height: 9px; margin-right: var(--sp-2); vertical-align: -1px; }   /* leads the title: the time line's .75 opacity drops Must's red under 3:1 */
 .cl-event-tm { display: block; font-size: var(--fs-10); line-height: 1.3; opacity: .75; font-variant-numeric: tabular-nums; }
 .cl-event-tm:has(.cl-ask) { opacity: 1; > span { opacity: .75; } }   /* the label dims, the Going? ask keeps its contrast */
 /* .cl-cov = something is drawn OVER this one, so only its top strip shows: the time joins the title on that
@@ -2810,6 +2811,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     > .field { flex: none; } .field:has(> .chip.set) { order: -2; } .field:has(> .chip-notes.chip) { order: -3; }   /* the notes lead, never scrolled away: the only way to the steps */
     .field:has(> .chip-loc.set) { order: -1; } .field:has(> :is(.chip-area, .chip-loc):not(.set)) { order: 1; }
     &:not(.cl-opts) .field:has(> :is(.chip-dur, .chip-loc):not(.set)) { display: none; }   /* the editors have no ··· to hold them */
+    &.cl-opts .field:has(> .chip-imp:not(.set)) { order: 2; }   /* an event's unset Importance goes last, so its place stays in view */
     .chip:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span { display: none; } }   /* areas read by their discs, as on a mouse row; the names are in the picker */
   :is(.touch, .bar-on .jb-host) .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
   :is(.touch, .bar-on .jb-host) .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);

@@ -101,7 +101,7 @@ function hydrateEvent(row) {
     recurrence: row.recurrence ?? null,
     location: { mode: row.location_mode ?? 'any', ids: row.location_ids ?? [] },
     color: row.color ?? null, source: row.source ?? 'local', external_id: row.external_id ?? null, ics_seq: row.ics_seq ?? null,
-    countdown: row.countdown ?? false, ticket: row.ticket ?? null, attachments: row.attachments ?? [], going: row.going ?? {},
+    countdown: row.countdown ?? false, ticket: row.ticket ?? null, attachments: row.attachments ?? [], going: row.going ?? {}, importance: row.importance ?? 'none',
     created_at: row.created_at, updated_at: row.updated_at,
   };
 }
@@ -122,8 +122,8 @@ function hydrateBlock(row) {
 
 // hydrateEvent/hydrateBlock's inverse for the fields present: the app's shape back to columns.
 const eventCols = ({ location, ...f }) => ({ ...f, ...location !== undefined && { location_mode: location?.mode ?? 'any', location_ids: location?.ids ?? [] } });
-const lateCols = f => { const late = { ...(f.ticket || f.attachments?.length) && { ticket: f.ticket ?? null, attachments: f.attachments ?? [] }, ...Object.keys(f.going ?? {}).length && { going: f.going } }; return Object.keys(late).length ? late : null; };
-const sansLate = ({ ticket, attachments, going, ...f }) => f;
+const lateCols = f => { const late = { ...(f.ticket || f.attachments?.length) && { ticket: f.ticket ?? null, attachments: f.attachments ?? [] }, ...Object.keys(f.going ?? {}).length && { going: f.going }, ...f.importance && f.importance !== 'none' && { importance: f.importance } }; return Object.keys(late).length ? late : null; };
+const sansLate = ({ ticket, attachments, going, importance, ...f }) => f;
 const blockCols = ({ areas, ...f }) => ({ ...f, ...areas !== undefined && { area_ids: areas ?? [] } });
 
 // The update payload every table builds: the named columns the caller actually passed, nulled rather than dropped.
@@ -505,7 +505,7 @@ export function createSupabaseStore(client) {
     events: {
       list: () => COLL.events.list(),
       get: id => COLL.events.one(id),
-      // ticket, attachments and going ride an UPDATE: an INSERT naming them fails whole until db:apply. A failed one takes the new row back.
+      // ticket, attachments, going and importance ride an UPDATE: an INSERT naming them fails whole until db:apply. A failed one takes the new row back.
       async add(fields) {
         const row = await COLL.events.insert({
           title: fields.title || '', notes: fields.notes ?? null,
@@ -517,7 +517,7 @@ export function createSupabaseStore(client) {
         if (!row || !late) return row;
         return await COLL.events.patch(row.id, late) ?? (await COLL.events.del(row.id), null);
       },
-      update: (id, fields) => COLL.events.patch(id, eventCols(pick(fields, ['title', 'notes', 'starts_at', 'ends_at', 'all_day', 'color', 'source', 'external_id', 'ics_seq', 'recurrence', 'location', 'countdown', 'ticket', 'attachments', 'going']))),
+      update: (id, fields) => COLL.events.patch(id, eventCols(pick(fields, ['title', 'notes', 'starts_at', 'ends_at', 'all_day', 'color', 'source', 'external_id', 'ics_seq', 'recurrence', 'location', 'countdown', 'ticket', 'attachments', 'going', 'importance']))),
       remove: id => COLL.events.del(id),
     },
 

@@ -1039,7 +1039,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <div class="cl-now" :style="clNowAt(col, 'top', true)"></div>
                 <template x-for="(p, ix) in col.timed" :key="'pkt' + p.it.kind + p.it.id + ix">
                   <div class="cl-event" :class="clEvClass(p)" :style="clEvStyle(p, ix)" :title="p.it.title">
-                    <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm" x-text="clTimeLabel(p.it)"></span></span>
+                    <span class="cl-event-b"><span class="cl-event-t"><template x-if="p.it.importance === 'must' || p.it.importance === 'focus'"><svg class="ico cl-event-imp" :style="'color:' + pc(p.it.importance)"><use href="#i-prio-fill"/></svg></template><span x-text="p.it.title"></span></span><span class="cl-event-tm" x-text="clTimeLabel(p.it)"></span></span>
                   </div>
                 </template>
               </div>
@@ -1268,7 +1268,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
                     <div class="cl-event" :class="clEvClass(p)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id, p.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it, true)" :style="clEvStyle(p, ix)">
                       <template x-if="p.it.kind === 'task-block'"><span x-html="clCheckHtml(p.it,'cl-evt-check')" @click.stop="clToggleTask(p.it.id)"></span></template>
-                      <span class="cl-event-b"><span class="cl-event-t" x-text="p.it.title"></span><span class="cl-event-tm"><span x-text="clTimeLabel(p.it)"></span><template x-if="clAsks(p.it)"><b class="cl-ask">Going?</b></template></span></span>
+                      <span class="cl-event-b"><span class="cl-event-t"><template x-if="p.it.importance === 'must' || p.it.importance === 'focus'"><svg class="ico cl-event-imp" :style="'color:' + pc(p.it.importance)"><use href="#i-prio-fill"/></svg></template><span x-text="p.it.title"></span></span><span class="cl-event-tm"><span x-text="clTimeLabel(p.it)"></span><template x-if="clAsks(p.it)"><b class="cl-ask">Going?</b></template></span></span>
                     </div>
                   </template>
                 </div>
@@ -1921,6 +1921,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
             <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
           </div><div x-html="clRepHtml('eventEdit')"></div></div></template></template>
+        </div>
+        <div class="field" @click.document.capture="clPopAway('clImp', $event, $el)">
+          <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: eventEdit.importance !== 'none' }" :style="'--cc:' + pc(eventEdit.importance)" :title="impName(eventEdit.importance, 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'clImp'" @click="togglePop('clImp', $el)"><svg class="ico"><use :href="eventEdit.importance !== 'none' ? '#i-prio-fill' : '#i-prio'"/></svg><span x-text="impName(eventEdit.importance, 'Importance')"></span></button>
+          <template x-if="pop === 'clImp'"><template x-teleport="body"><div class="pop cl-pop pri-pop" :style="popStyle()">
+            <template x-for="o in [['none','None','No special handling'],['focus','Focus','Holds other pings while it runs'],['must','Must','Rings until it starts']]" :key="o[0]">
+              <button type="button" class="pri-chip" :class="{ sel: eventEdit.importance === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="eventEdit.importance = o[0]; pop = null"><svg class="ico"><use href="#i-prio"/></svg><span x-text="o[1]"></span></button>
+            </template>
+          </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clTicket', $event, $el)">
           <button type="button" class="chip chip-ticket inline-flex items-center" :class="{ set: eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length }" title="Ticket" aria-haspopup="dialog" :aria-expanded="pop === 'clTicket'" @click="togglePop('clTicket', $el)"><svg class="ico"><use href="#i-clip"/></svg><span x-show="eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length">Ticket</span></button>

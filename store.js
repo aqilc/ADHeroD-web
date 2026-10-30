@@ -646,7 +646,7 @@ export function createLocalStore(opts = {}) {
           // source stays 'local' — the enum has no other member; an .ics import's provenance is external_id,
           // which is also what a re-drop dedups on. ics_seq gates whether a re-drop may overwrite.
           source: 'local', external_id: fields.external_id ?? null, ics_seq: fields.ics_seq ?? null, countdown: !!fields.countdown,
-          ticket: fields.ticket ?? null, attachments: fields.attachments ?? [], going: fields.going ?? {},
+          ticket: fields.ticket ?? null, attachments: fields.attachments ?? [], going: fields.going ?? {}, importance: fields.importance ?? 'none',
         });
       },
       async update(id, fields) { return patchRow(EVENTS_KEY, writeEvents, id, fields); },

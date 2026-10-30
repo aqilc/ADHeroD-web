@@ -779,18 +779,41 @@ document.addEventListener('alpine:init', () => {
           ring();
         };
         // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one late if the app was closed, until its
-        // meeting ends, as an Alarm only when marked High or Must, else a Ping with its
-        // room and call; ours as its severity says. Pings go newest first in one notification of those since the app was last looked at.
+        // meeting ends, with its room and call, a Ping unless High or Must: an Alarm until its start, hushed there like ours;
+        // ours as its severity says. Pings go newest first in one notification of those since the app was last looked at.
+        // Our events Ping 15 minutes before with time, place and ticket, late until they end; a Must rings an Alarm instead, hushed
+        // at its start; Not going rings nothing. A Pinging thing due while a Focus event runs waits for its end; Alarms still come through.
         // ceiling: ours more than 10 minutes late (app closed, PC asleep) are skipped, not rung, as a restore never fires late; revisit with a missed list.
         let outlook = [], ringTimer = 0, pinged = [];
         const ring = () => {   // synchronous, so a reload mid-ring can't ring twice
           clearTimeout(ringTimer);
           const rung = new Set(JSON.parse(localStorage.getItem('adherod.rung') || '[]')), now = Date.now(), late = now - 10 * 60e3, nowAt = localStamp(new Date());
-          const due = outlook.filter(e => e.remind != null).map(e => ({ id: e.id, at: new Date(e.start) - e.remind * 60e3, until: +new Date(e.end), sev: (this.pcMustSet[e.id.split('#')[0]] ?? e.high) ? 'alarm' : 'ping', title: e.title,
-            body: [e.allDay ? 'All day' : this.fmtTime(e.start.slice(11, 16)), e.location].filter(Boolean).join(', '), join: e.join || '' }));   // an older exe has no join
+          const due = [];
+          for (const e of outlook.filter(e => e.remind != null)) {
+            const start = +new Date(e.start), must = this.pcMustSet[e.id.split('#')[0]] ?? e.high, more = must ? ['', 'must:' + e.id] : [];   // the tag its hush replaces
+            const item = { id: e.id, at: start - e.remind * 60e3, until: must ? start : +new Date(e.end), sev: must ? 'alarm' : 'ping', title: e.title,
+              body: [e.allDay ? 'All day' : this.fmtTime(e.start.slice(11, 16)), e.location].filter(Boolean).join(', '), join: e.join || '', more };   // an older exe has no join
+            due.push(item);
+            if (must) due.push({ ...item, id: e.id + '#start', at: start, until: +new Date(e.end), sev: rung.has(e.id) ? 'hush' : 'ping' });
+          }
           for (const r of this.reminders) {
             const task = r.kind === 'user' && !r.paused && this.byId.get(r.ref_id), when = task && (isRepeating(r) ? nextAt(r, late) : fireAt(r, task, nowAt));
             if (when) due.push({ id: r.id + '@' + when, at: +new Date(when), until: +new Date(when) + 10 * 60e3, sev: sevOf(r), title: task.content, body: '', join: '' });   // the id carries the time: a repeat rings again
+          }
+          const day = new Date(now), events = new Map(this.events.map(e => [e.id, e])), focus = [];
+          day.setDate(day.getDate() + 1);
+          for (const o of calendarItems(this.events, [], nowAt, isoDate(day))) {
+            if (o.allDay || o.going === false) continue;
+            const e = events.get(o.id), start = +new Date(o.start), end = +new Date(o.end), id = o.id + '@' + o.start, link = e.ticket?.match(/https?:\/\/\S+/)?.[0] ?? '';
+            const body = [this.fmtTime(o.start.slice(11, 16)), e.location?.mode === 'only' && this.locName(e.location.ids[0]), !link && e.ticket?.trim()].filter(Boolean).join(', ');
+            const must = o.importance === 'must', more = [link && 'Open ticket', must ? 'must:' + id : ''];
+            due.push({ id, at: start - 15 * 60e3, until: must ? start : end, sev: must ? 'alarm' : 'ping', title: o.title, body, join: link, more });
+            if (must) due.push({ id: id + '#start', at: start, until: end, sev: rung.has(id) ? 'hush' : 'ping', title: o.title, body, join: link, more });   // silently replaces its Alarm; first rung after its start, a Ping
+            if (o.importance === 'focus') focus.push([start, end]);
+          }
+          for (const item of due) {
+            const held = item.sev === 'ping' ? focus.filter(([start, end]) => start <= item.at && item.at < end) : [];
+            if (held.length) { item.at = Math.max(...held.map(f => f[1])); item.until = Math.max(item.until, item.at + 10 * 60e3); }
           }
           let next = Infinity;
           for (const item of due) {
@@ -798,9 +821,9 @@ document.addEventListener('alpine:init', () => {
             if (item.at > now) next = Math.min(next, item.at);
             else {
               rung.add(item.id);
-              if (item.sev !== 'alarm') pinged.unshift(item.title);
+              if (item.sev === 'ping') pinged.unshift(item.title);
               // Windows refused it (notifications off for the app, a policy): not rung, so the next read rings it again, and the app says so
-              (item.sev === 'alarm' ? desktopWindow('alarm', item.title, item.body, item.join) : desktopWindow('ping', pinged[0], [item.body, ...pinged.slice(1)].filter(Boolean).join('\n'), item.join)).then(shown => {
+              desktopWindow(...item.sev === 'ping' ? ['ping', pinged[0], [item.body, ...pinged.slice(1)].filter(Boolean).join('\n')] : [item.sev, item.title, item.body], item.join, ...item.more ?? []).then(shown => {
                 if (shown) return;
                 localStorage.setItem('adherod.rung', JSON.stringify(JSON.parse(localStorage.getItem('adherod.rung') || '[]').filter(id => id !== item.id)));
                 this.notify(`Windows didn't show the alert for ${item.title}`);
@@ -810,7 +833,7 @@ document.addEventListener('alpine:init', () => {
           localStorage.setItem('adherod.rung', JSON.stringify(due.map(item => item.id).filter(id => rung.has(id))));   // past ones drop out
           if (next < Infinity) ringTimer = setTimeout(ring, Math.min(next - now, 2 ** 31 - 1));
         };
-        Alpine.effect(ring);   // reads this.reminders and this.byId: an edit reschedules
+        Alpine.effect(ring);   // reads this.reminders, this.byId and this.events: an edit reschedules
         addEventListener('focus', () => { pinged = []; });   // seen: the next Ping starts a new notification
         const loadOutlook = () => { loadMail(); loadCalendar(); };
         loadOutlook();
@@ -9492,13 +9515,13 @@ document.addEventListener('alpine:init', () => {
       col = this._clColNow(key, col);
       const rows = col.agenda?.rows || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0, dot = raw(html`<span class="cl-ag-dot"></span>`);
       const parts = rows.map((r, ix) => {
-        const it = r.it, ask = !r.free && this.clAsks(it), must = !r.free && String(it.id).startsWith('pc:') && it.going !== false && { on: this.pcMust(it.id) }, mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
+        const it = r.it, ask = !r.free && this.clAsks(it), pc = !r.free && String(it.id).startsWith('pc:'), must = !r.free && it.going !== false && (pc ? { on: this.pcMust(it.id) } : it.importance === 'must'), mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
           : it.kind === 'task-deadline' ? raw(html`<svg class="ico cl-dl-ico"><use href="#i-flag"/></svg>`) : dot;
         return { id: r.key, html: html`<div class="cl-ag-row ${r.free ? 'free' : it.kind + (r.mark ? ' mark' : '') + this.clTaskState(it)}${!r.allday && r.min + r.mins <= cut ? ' past' : ''}"`
           + html` data-id="${r.key}" tabindex="${r.free ? -1 : 0}"${raw(!r.free && this._dndKind(it.kind) ? ' draggable="true"' : '')}`
           + html` style="--i:${ix};--cc:${r.free ? 'var(--muted)' : this.clItemColor(it)}"><span class="cl-ag-t">${r.allday ? 'All day' : this.clAgTime(r.min)}`
           + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n"${raw(ask ? ' tabindex="-1"' : '')}>${r.free ? this.durFmt(r.mins) + ' free' : it.title}`
-          + html`</span><span class="cl-ag-d">${r.free ? '' : !ask && !must ? this.clAgSub(r) : raw(html`<span class="cl-ag-s">${this.clAgSub(r)}</span><span class="cl-ag-ask">${raw(ask ? html`<button type="button" class="pri-chip tog" data-go="1">Going</button><button type="button" class="pri-chip tog" data-go="0">Not going</button>` : '')}${raw(must ? html`<button type="button" class="pri-chip ${must.on ? 'sel' : 'tog'}" style="${must.on ? '--pc:var(--p1)' : ''}" data-must aria-pressed="${must.on}"><svg class="ico"><use href="#i-prio"/></svg>Must</button>` : '')}</span>`)}</span></span></div>` };
+          + html`</span><span class="cl-ag-d">${r.free ? '' : !ask && !must ? this.clAgSub(r) : raw(html`<span class="cl-ag-s">${this.clAgSub(r)}</span><span class="cl-ag-ask">${raw(ask ? html`<button type="button" class="pri-chip tog" data-go="1">Going</button><button type="button" class="pri-chip tog" data-go="0">Not going</button>` : '')}${raw(!must ? '' : pc ? html`<button type="button" class="pri-chip ${must.on ? 'sel' : 'tog'}" style="${must.on ? '--pc:var(--p1)' : ''}" data-must aria-pressed="${must.on}"><svg class="ico"><use href="#i-prio"/></svg>Must</button>` : html`<span class="pri-chip sel" style="--pc:var(--p1)"><svg class="ico"><use href="#i-prio"/></svg>Must</span>`)}</span>`)}</span></span></div>` };   // ours shows Must, set in its editor; the row opens it
       });
       if (!rows.length) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });
       if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });
@@ -9773,13 +9796,13 @@ document.addEventListener('alpine:init', () => {
     clOpenDay(iso) { this.clSetView('day'); this.clAnchor = iso; },
     // --- Event editor (create / edit / delete) ---
     clNewEvent(date, draft = false) {
-      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, location_id: null, weekdays: [], countdown: false, notes: '', ticket: '', attachments: [], files: [], draft };
+      this.eventEdit = { title: '', date: date || isoDate(this._clAt()), start: '09:00', end: '10:00', span: 0, all_day: false, color: null, location_id: null, weekdays: [], countdown: false, importance: 'none', notes: '', ticket: '', attachments: [], files: [], draft };
     },
     clEditEvent(id, tile = false, day = null) {
       const e = this.events.find(x => x.id === id); if (!e) return;
       day = e.recurrence?.freq ? day : e.ends_at.slice(0, 10);   // a repeating event answers per occurrence (no day, no answer); a one-off until its last day
       const multi = e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10);
-      this.eventEdit = { draft: tile && !multi, viewIso: e.recurrence?.freq ? day : null, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), ...this._clRep(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [], day, going: day ? goingOn(e, day) ?? null : null };
+      this.eventEdit = { draft: tile && !multi, viewIso: e.recurrence?.freq ? day : null, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), ...this._clRep(e.recurrence), countdown: !!e.countdown, importance: e.importance || 'none', notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [], day, going: day ? goingOn(e, day) ?? null : null };
       this._loadFiles(this.eventEdit.attachments);
     },
     // applies on press, as a block's Skip today does: an editor closed unsaved keeps it
@@ -9856,12 +9879,13 @@ document.addEventListener('alpine:init', () => {
     async clSaveEvent() {
       const e = this.eventEdit; if (!e) return;
       if (!e.files.every(f => f.row)) return this.toast(e.files.some(f => f.failed) ? 'A file didn’t upload. Retry or remove it' : 'Files are still uploading');
-      const recurrence = this._clRule(e), fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, recurrence, ...this._evRange(e, this._clAnchor(recurrence, e.date)),
+      const recurrence = this._clRule(e), fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, importance: e.importance, recurrence, ...this._evRange(e, this._clAnchor(recurrence, e.date)),
         ticket: e.ticket.trim() || null, attachments: [...new Set([...e.attachments, ...e.files.map(f => f.row.id)])],
         location: { mode: e.location_id ? 'only' : 'any', ids: e.location_id ? [e.location_id] : [] } };   // an event has one place: no writer sets 'except' or several
       if (fields.ends_at <= fields.starts_at && e.multi && !e.all_day) return this.toast('The end is before the start');   // stored as typed it would collapse the event
       const was = e.id && this.events.find(x => x.id === e.id);
       if (was && fields.ticket === (was.ticket ?? null) && fields.attachments.join() === (was.attachments ?? []).join()) { delete fields.ticket; delete fields.attachments; }   // unchanged stays unsent: an UPDATE naming them fails until db:apply
+      if (was && fields.importance === (was.importance || 'none')) delete fields.importance;
       const start = fields.starts_at.slice(0, 10);
       if (was?.recurrence?.freq && !recurrence && Object.keys(was.going ?? {}).some(k => k !== start)) fields.going = was.going[start] == null ? {} : { [start]: was.going[start] };   // a series ending as a one-off keeps its own day's answer alone
       // a failed write keeps the editor and its edits
@@ -10156,7 +10180,7 @@ document.addEventListener('alpine:init', () => {
           if (!d.date) { this.notify('Drag this occurrence from the week or day view to move it'); return; }
           if (fields.starts_at === (it.all_day ? d.date : d.date + 'T' + this._fmtMin(this._clMin(it.starts_at)))) return;   // dropped where it already is
           const fail = async (msg = 'Failed moving this occurrence. Try again?') => { await this._reloadFor('event'); this.notify(msg); };
-          const copy = await this.store.events.add({ title: it.title, notes: it.notes, color: it.color, location: it.location, countdown: it.countdown, ticket: it.ticket, attachments: it.attachments, ...it.going?.[d.date] != null && { going: { [fields.starts_at.slice(0, 10)]: it.going[d.date] } }, all_day: false, ...fields }).catch(() => null);
+          const copy = await this.store.events.add({ title: it.title, notes: it.notes, color: it.color, location: it.location, countdown: it.countdown, importance: it.importance, ticket: it.ticket, attachments: it.attachments, ...it.going?.[d.date] != null && { going: { [fields.starts_at.slice(0, 10)]: it.going[d.date] } }, all_day: false, ...fields }).catch(() => null);
           if (!copy) return fail();
           const was = { recurrence: it.recurrence }, after = { recurrence: { ...it.recurrence, exdates: [...(it.recurrence.exdates || []), d.date] } };
           // A lost response (cloud patch → null) can hide a write that landed: re-read before rolling back, or the
