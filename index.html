@@ -81,11 +81,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-tag-cart" viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></symbol>
   <symbol id="i-tag-dollar" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></symbol>
   <symbol id="i-tag-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
-  <!-- Bar+plates, straight lines only: the diagonal lucide dumbbell (6 arc-heavy subpaths) was mush at the 11px chip size. -->
+  <!-- Bar+plates, straight lines only: the diagonal lucide dumbbell (6 arc-heavy subpaths) is mush at the 11px chip size. -->
   <symbol id="i-tag-dumbbell" viewBox="0 0 24 24"><path d="M3 10v4M21 10v4"/><path d="M6.5 7v10M17.5 7v10M6.5 12h11"/></symbol>
   <symbol id="i-tag-plane" viewBox="0 0 24 24"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></symbol>
   <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
-  <!-- set-value fills (composer chips): knock-outs take the card's panel colour -->
+  <!-- set-value fills (composer chips): knock-outs take the card's panel color -->
   <symbol id="i-cal-fill" viewBox="0 0 24 24"><rect width="18" height="17" x="3" y="4.5" rx="2.5" fill="currentColor"/><path d="M8 2.5v3"/><path d="M16 2.5v3"/><path d="M3 10h18" class="knock"/></symbol>
   <symbol id="i-sun-fill" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></symbol>
   <symbol id="i-sofa-fill" viewBox="0 0 24 24"><path d="M20 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v3z" fill="currentColor"/><path d="M2 16a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5a2 2 0 0 0-4 0v1.5a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5V11a2 2 0 0 0-4 0z" fill="currentColor"/><path d="M4 18v2"/><path d="M20 18v2"/></symbol>
@@ -110,6 +110,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-repeat" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
   <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><polygon points="7 4 19 12 7 20 7 4"/></symbol>
+  <symbol id="i-square" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><polyline points="4 13 10 19 20 6"/></symbol>
   <symbol id="i-repeat-done" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/><path d="M9 12.5l2.2 2.2 4-4.5"/></symbol>
   <!-- one path, four subpaths: the four bars CROSS, and as separate <line>s each crossing paints twice (see i-backlog) -->
@@ -117,7 +118,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-panel-r" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></symbol>
   <!-- ONE path, two subpaths — not two <path>s. The row's project chip strokes with a SEMI-TRANSPARENT color, and
        two separate paints double their alpha wherever they meet (the tray line hits the box walls at x=2/x=22),
-       which read as dark blobs on the glyph. A single stroke op composites the union once, at one alpha. -->
+       which reads as dark blobs on the glyph. A single stroke op composites the union once, at one alpha. -->
   <symbol id="i-backlog" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
   <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
   <symbol id="i-reply" viewBox="0 0 24 24"><path d="M20 18v-2a4 4 0 0 0-4-4H4"/><path d="m9 17-5-5 5-5"/></symbol>
@@ -131,7 +132,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <!-- thumbtack tilted ~40° (not the map-pin i-pin; that stays for locations). One fill-only path: a stroked fill doubles a translucent ink (dark --muted) where they overlap -->
   <symbol id="i-tack" viewBox="0 0 24 24"><path transform="rotate(40 12 12)" fill="currentColor" stroke="none" d="M8 3h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2zM8 4h8v5.77L18.62 15H5.38L8 9.77zM11 14h2v6a1 1 0 0 1-2 0z"/></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
-  <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle (user 10-05). 19 wide, 24 tall; up 4/3 so its ink mass centres on the box; joint and shift are multiples of 4/3, whole pixels in an 18px box at 1-3x (no seam) -->
+  <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle. 19 wide, 24 tall; up 4/3 so its ink mass centers on the box; joint and shift are multiples of 4/3, whole pixels in an 18px box at 1-3x (no seam) -->
   <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M2.526 9.333V8.141a9.474 9.474 0 0 1 18.947 0V9.333h-3.789V8.141a5.684 5.684 0 0 0-11.368 0V9.333z"/><rect class="lk-leg" fill="currentColor" stroke="none" x="2.526" y="6.833" width="3.789" height="2.5"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M2.526 9.333h18.947v9.545a3.789 3.789 0 0 1-3.789 3.789h-11.368a3.789 3.789 0 0 1-3.789-3.789zM12 13.5a2.021 2.021 0 0 0-.884 3.84V19.058h1.768v-1.718A2.021 2.021 0 0 0 12 13.5z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
@@ -170,7 +171,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
     <main class="app" :class="{ tinted: !!listTintCol() }" @dragenter="listDragLeft($event)" @dragover="listDragLeft($event)" @drop.self.prevent="listDrop($event)" :style="listTintStyle()">
     <div class="topbar flex justify-between">
-      <div class="topbar-title min-w-0" @click="openListTray()">   <!-- the phone's title opens the lists tray (droid-18 R) -->
+      <div class="topbar-title min-w-0" @click="openListTray()">   <!-- the phone's title opens the lists tray -->
         <h1 x-text="navHeading()"></h1>
         <svg class="ico title-chev" aria-hidden="true"><use href="#i-chev-d"/></svg>
       </div>
@@ -233,7 +234,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   x-text="qfFacets() > 1 ? '+' : '+ and…'"></button>
         </template>
 
-        <!-- unified filter menu: every fragment one click deep (replaces the 3 separate chip menus) -->
+        <!-- unified filter menu: every fragment one click deep -->
         <div class="pop lc-pop ls-add-pop" x-show="listMenu === 'add'" x-cloak x-transition:leave="lc-anim" x-transition:leave-start="lc-show" x-transition:leave-end="lc-hide" @click.document="listMenu === 'add' && outside($event, $el) && (listMenu = null)">
           <div class="pop-sub-head">Importance</div>
           <div class="ls-prow flex gap-6">
@@ -255,7 +256,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div>
           </template>
           <div class="pop-sub-head">Due</div>
-          <!-- each choice wears the date badge it filters for (user 10-26 W1-4 V2) -->
+          <!-- each choice wears the date badge it filters for -->
           <div class="ls-due">
             <template x-for="o in [['today','Today','i-cal','today'],['overdue','Overdue','i-clock','overdue'],['has','Has a date','i-cal','soon'],['none','No date','i-circle','none']]" :key="o[0]">
               <button type="button" class="badge" :class="o[3] + (qfDue === o[0] ? ' sel' : '')" :aria-pressed="qfDue === o[0]" @click="setQfDue(o[0])"><svg class="ico"><use :href="'#' + o[2]"/></svg><span x-text="o[1]"></span></button>
@@ -285,7 +286,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <template x-if="sortBy === o[0]"><svg class="tick ico" :style="o[0] !== 'manual' && sortDir === 'desc' ? 'transform:rotate(180deg)' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path :d="o[0] === 'manual' ? 'M20 6 9 17l-5-5' : 'M12 19V5M5 12l7-7 7 7'"/></svg></template>
               </button>
             </template>
-            <!-- Grouping shares the sort menu: both answer "how is this list arranged?" (F12) -->
+            <!-- Grouping shares the sort menu: both answer "how is this list arranged?" -->
             <div class="pop-sub-head">Group into sections</div>
             <template x-for="o in [['none','Nothing','i-all'],['project','Project','i-proj'],['area','Area','i-tag-tag'],['due','Due date','i-cal'],['importance','Importance','i-prio'],['place','Place','i-pin']]" :key="o[0]">
               <button type="button" class="pop-item" @click="setGroup(o[0])">
@@ -505,7 +506,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                  linkPicker() is already null (Alpine Expression Error, harmless but printed) -->
             <button type="button" class="pop-item" :class="{ hot: i === linkPicker()?.sel }"
                     @click="pickLink(r.t.id)" @mousemove="linkPicker() && (linkPicker().sel = i)">
-              <!-- the task's OWN checkbox (shared builder), not the relation stop sign — that read as archived -->
+              <!-- the task's OWN checkbox (shared builder), not the relation stop sign, which reads as archived -->
               <span class="ac-ck inline-flex flex-none" x-html="rowCheckHtml(r)"></span><span class="nm truncate" x-text="r.t.content"></span>
               <span class="rt truncate" x-text="r.projName"></span>
             </button>
@@ -516,7 +517,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" class="pop-item" :class="{ hot: i === locPicker.sel }"
                     @click="pickPill('loc', l.name)" @mousemove="locPicker.sel = i">
               <svg class="ico"><use href="#i-pin"/></svg><span class="nm truncate" x-text="l.name"></span>
-              <!-- how many open tasks already wait there: places are for batching, not just labelling; closed, it counts nothing (a tick would re-scan every task) -->
+              <!-- how many open tasks already wait there: places are for batching, not just labeling; closed, it counts nothing (a tick would re-scan every task) -->
               <span class="rt" x-text="locPicker.open && locOpenCount(l.id) || ''"></span>
             </button>
           </template>
@@ -684,7 +685,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div>
             <button type="button" class="pop-item clear tx" @click="timeSet(''); tpop = false"><svg class="ico"><use href="#i-x"/></svg>no time</button>
           </div></template></template>
-          <!-- Reminders: the list looks, the setter sets (remind-1); one title row on both, the bell turning into Back.
+          <!-- Reminders: the list looks, the setter sets; one title row on both, the bell turning into Back.
                Severity is the lead icon's SHAPE; a self-repeating reminder shows the repeat switch instead, and tapping it pauses. -->
           <div class="field" @click.document.capture="pop === 'rem' && outside($event, $el) && popAway('rem', $event)">
             <button type="button" class="chip chip-rem inline-flex items-center" :class="{ set: draft.reminders.length, open: pop === 'rem' }" title="Remind" aria-haspopup="dialog" :aria-expanded="pop === 'rem'" @click="togglePop('rem', $el)">
@@ -793,7 +794,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <button type="button" class="pop-item clear lp-mgr" @click="openLocManager()"><svg class="ico"><use href="#i-pin"/></svg>Manage places…</button>
             </div></template></template>
           </div>
-          <!-- Phone: the description and entries sit behind this chip (9A) -->
+          <!-- Phone: the description and entries sit behind this chip -->
           <div class="field" x-show="phoneDock()">
             <button type="button" class="chip chip-notes inline-flex items-center" :class="{ set: notesChip()[1] !== 'Steps and notes', open: notesOpen }" title="Steps and notes" :aria-expanded="notesOpen" @click="toggleNotes()">
               <svg class="ico"><use :href="'#i-' + notesChip()[0]"/></svg>
@@ -808,7 +809,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <input type="text" class="cal-type" x-show="pop === 'due'" placeholder="Date or repeat (every 2 weeks)" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
           <!-- due: scheduling suggestions + clear chip -->
           <div class="cal-quick" x-show="pop === 'due'">
-            <!-- Suggestions are safe in BOTH registers: calSugApply writes On and flips dreg — it can never mint a deadline (when-foot T4) -->
+            <!-- Suggestions are safe in BOTH registers: calSugApply writes On and flips dreg — it can never mint a deadline -->
             <!-- the rows are ONE Tab stop (the first); ↑/↓ walk them, Enter is the button's own click -->
             <template x-for="(s, si) in calSuggestions()" :key="s.iso">
               <button type="button" class="pop-item sug" :tabindex="si ? -1 : 0" :style="`--sug: var(--q-${s.key})`" @click="calSugApply(s.iso)" @keydown.down.prevent="$el.nextElementSibling?.closest('.sug')?.focus()" @keydown.up.prevent="$el.previousElementSibling?.closest('.sug')?.focus()"><svg class="ico"><use :href="'#i-' + s.icon"/></svg><span x-text="s.label"></span><span class="rt" x-text="s.hint"></span></button>
@@ -824,7 +825,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <!-- due: interactive weekday-toggle buttons; clnav: plain non-functional buttons -->
             <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" tabindex="-1" :class="pop === 'due' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused || pausePicking, pulse: hdrPulse }" @click="pop === 'due' && toggleRepeatWeekday(i)" x-text="w"></button></template>
           </div>
-          <!-- due: V3 phrase-builder repeat zones -->
+          <!-- due: phrase-builder repeat zones -->
           <template x-for="(r, ri) in repRules()" :key="ri">
             <div class="zone flex gap-6" x-show="pop === 'due'" :class="{ paused: r.paused || pausePicking && repIdx === ri, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
               <div class="zrail flex-col flex-none">
@@ -885,7 +886,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <template x-if="narrow &amp;&amp; filesUrl &amp;&amp; session"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="attachFiles($event.target.files); $event.target.value = ''"></label></template>
           <div class="composer-btns flex gap-6">   <!-- one unit: crowded, it wraps under the project picker whole -->
-            <!-- an edit's actions; a phone's on their own row under the chips (user 10-25 W1-2: "put all of the options in the row in composer") -->
+            <!-- an edit's actions; a phone's on their own row under the chips -->
             <div class="acts" :class="{ edit: editing }">
             <button type="button" class="act-btn ph inline-flex items-center" x-show="!durMinNow()" @click="togglePop('dur', $el)" title="Size"><svg class="ico"><use href="#i-clock"/></svg></button>
             <button type="button" class="act-btn ph inline-flex items-center" x-show="locations.length && locPolarity() === 'any'" @click="openLoc($el)" title="Place"><svg class="ico"><use href="#i-pin"/></svg></button>
@@ -894,7 +895,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <div class="more-wrap inline-flex items-center" x-show="editing || phoneDock()" @click.document.capture="['overflow', 'rel'].includes(pop) && outside($event, $el) && !$event.target.closest('.rel-tog') && popAway(pop, $event)">
               <button type="button" class="more-btn inline-flex items-center" @click="togglePop('overflow', $el)" title="More actions" aria-haspopup="menu" :aria-expanded="pop === 'overflow'"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="19" r="2.5"/></svg></button>
               <template x-if="pop === 'overflow'"><template x-teleport="body"><div class="pop overflow-pop" :class="{ dock: popDock }" :style="popStyle()">
-                <!-- phone: the dock's hidden chips and buttons (9A), anchored on the ··· they came from -->
+                <!-- phone: the dock's hidden chips and buttons, anchored on the ··· they came from -->
                 <template x-if="phoneDock()"><div class="contents">
                   <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; filesUrl &amp;&amp; session" @click="pop = null; document.querySelector('.jb-host .attach input')?.click()"><svg class="ico"><use href="#i-clip"/></svg>Attach file</button>
                   <button type="button" class="pop-item" x-show="!editing && !durMinNow()" @click="togglePop('dur', document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-clock"/></svg>Size</button>
@@ -937,7 +938,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </div></template></template>
             </div>
             <button type="button" class="overview-btn inline-flex items-center" x-show="editing && !editingTask()?.overview" @click="askShowInOverview()" title="Show in Overview"><svg class="ico"><use href="#i-overview"/></svg></button>
-            <!-- web-27A: beside the bin; a new task's beside the go (user 10-24 "near the send button") -->
+            <!-- beside the bin; a new task's beside the go -->
             <button type="button" class="act-btn inline-flex items-center" :class="{ on: typeFront(true), 'by-go': !editing }" :aria-pressed="typeFront(true)" @click="typeTap(!typeFront(true))" title="Note"><svg class="ico"><use href="#i-tack"/></svg></button>
             <template x-if="editing"><div class="contents">
               <button type="button" class="act-btn arc inline-flex items-center" @click="toggleArchive()" :title="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"><svg class="ico"><use href="#i-archive"/></svg></button>
@@ -1001,7 +1002,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </template>
       </div>
     </div>
-    <!-- Peek Pane (C2): drag a row and today's REAL day column docks in from the right — drop on the grid =
+    <!-- Peek Pane: drag a row and today's REAL day column docks in from the right — drop on the grid =
          timed schedule (est as duration), drop on the all-day strip = all-day, drop back in the list = reorder.
          Fixed overlay (move-rail pattern): never reflows the list mid-drag. Children reuse the cl-* vocabulary and
          the week column's item look (clEvClass/clBlkClass/clDlClass + styles); inert — no drag, click or check. -->
@@ -1073,7 +1074,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <!-- in day/week the title IS the date picker; a hover background is the whole affordance -->
         <h2 class="cl-period grow min-w-0 flex" @click.document.capture="pop === 'clnav' && outside($event, $el) && popAway('clnav', $event)">
           <button type="button" class="cl-period-btn" :class="{ pick: clView === 'day' || clView === 'week' }" @click="clOpenDatePop($el)"><span class="cl-dn-t" x-text="clTitleParts()[2]"></span><span x-text="clPeriodMain()"></span><span class="cl-yr" x-show="clPeriodYear()" x-text="(clPeriodMain() ? ' ' : '') + clPeriodYear()"></span></button>
-          <!-- A2·B: what's COMING rides the title's line — part of the date you're looking at, not one more control -->
+          <!-- what's COMING rides the title's line — part of the date you're looking at, not one more control -->
           <span class="cl-cds flex flex-wrap grow"><template x-if="calError"><div class="cl-cd cl-err"><span x-text="calError"></span></div></template><template x-for="cd in clCountdowns()" :key="cd.id"><div class="cl-cd truncate" :style="'--prox:' + cd.prox" :title="'Counting down to ' + cd.title"><b x-text="cd.n"></b><span x-text="cd.title"></span></div></template></span>
         </h2>
         <!-- calendar nav pop is the shared unified cal pop (see composer section) -->
@@ -1084,7 +1085,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </button></template>
       </div>
       <!-- outside .cl-bar: backdrop-filter creates a containing block, trapping position:fixed children -->
-      <!-- ONE row of chips on the title's baseline. The ‹ › steppers are gone: scrolling IS how you move
+      <!-- ONE row of chips on the title's baseline. No ‹ › steppers: scrolling IS how you move
            through time here, and two buttons that duplicate a gesture you already make are just noise.
            Views abbreviate to single letters so the whole cluster fits the line. -->
       <template x-if="!narrow">   <!-- on a phone the bar is title-only: views + actions live in the dot strip (dotStripHtml seg) -->
@@ -1104,8 +1105,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- over-header zone title overlay; top set IMPERATIVELY on scroll (_clPositionZone) — reactive top lags a frame -->
       <div class="cl-mtitles overlay" x-ref="clMtitlesBox">
         <template x-for="t in (clView === 'month' ? clZoneTitles() : _periodZoneTitles())" :key="t.name">
-          <!-- NO :style top or :class — _clPositionZone is the single writer of top and .at-bar. Two writers on top made a
-               title entering or leaving the list keep a stale y for a frame (the teleport). -->
+          <!-- NO :style top or :class — _clPositionZone is the single writer of top and .at-bar. A second writer on top leaves a
+               title entering or leaving the list at a stale y for a frame (the teleport). -->
           <div class="cl-mtitle" :data-name="t.name"><span class="cl-dn-t" x-text="clSplitTitle(t.name)[2]"></span><span x-text="clSplitTitle(t.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(t.name)[1]"></span></div>
         </template>
       </div>
@@ -1116,7 +1117,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <template x-for="w in clHeadCells()" :key="w.key">
           <div class="cl-wh" :class="{ today: w.today, weekend: w.weekend }">
             <template x-if="!w.day"><span x-text="w.name"></span></template>
-            <!-- B·V3: a week day's slot IS its name field, always an input (no swap to misalign); the weekday is the placeholder.
+            <!-- a week day's slot IS its name field, always an input (no swap to misalign); the weekday is the placeholder.
                  Value written only while unfocused, so a re-render never eats the caret. A week move or a view switch removes the head;
                  x-for strips Alpine's listeners first, so _clSetPos and clSetView blur it (_clSaveName) before, and @change still saves. -->
             <template x-if="w.day"><input class="cl-wh-n" spellcheck="false" autocomplete="off" :placeholder="w.name" :aria-label="'Name ' + w.name + ' ' + w.day"
@@ -1138,15 +1139,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <div class="cl-wk" x-detach :style="'top:calc(var(--rowh) * ' + wk.key + ')' + ((clVT && clView === 'month' && wk.key === clAnchorIdx()) ? ';view-transition-name:cl-active-week' : '')" @click="clOpenWeekRow(wk.key)">
               <template x-for="c in wk.days" :key="c.iso">
                 <!-- out-of-month is a data ATTRIBUTE, not a class: clFocusYM flips at every month boundary (~4-7× a
-                     fling) and Alpine's :class path clears and re-adds, so all ~190 cells rewrote their class twice
-                     per flip even when nothing changed (113 attribute mutations per scroll event). The generic
-                     attribute path is diff-guarded, so only the ~60 cells that really change write anything.
+                     fling) and Alpine's :class path clears and re-adds, rewriting all ~190 cells' class twice per flip.
+                     The generic attribute path is diff-guarded, so only the ~60 cells that really change write anything.
                      clDimYM, not clFocusYM: it holds while fast, when .cl-fast lifts the dim and a flip would show nothing. -->
                 <div class="cl-cell" :class="{ today: c.today, weekend: c.weekend }" :data-out="c.ym !== clDimYM ? 1 : 0" @click="narrow && ($event.stopPropagation(), clOpenDay(c.iso))" @dragover.prevent @dragenter.prevent="_clDropCell($el); clDropPreview = null" @drop="clDropOn($event, c.iso)">
                   <div class="cl-date flex items-center gap-4" role="button" :tabindex="c.iso === (clDayInView || clDayFocus || _nowDay) ? 0 : -1" :aria-label="c.label" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)"><span class="cl-mlabel" x-show="c.mlabel" x-text="c.mlabel"></span><span class="cl-dn" x-text="clDayLabel(c.iso)"></span><span class="cl-dnum" x-text="c.day"></span></div>
                   <div class="cl-chips flex-col min-w-0 gap-2">
-                    <!-- a chip has NO click of its own: it is part of its day, so the click is the day's (the side panel
-                         it used to open covered the very day you were looking at), and no Tab stop either. Drag and the checkbox still work. -->
+                    <!-- a chip has NO click of its own: it is part of its day, so the click is the day's (a side panel
+                         would cover the very day you are looking at), and no Tab stop either. Drag and the checkbox still work. -->
                     <template x-for="(it, ix) in c.items.slice(0, c.shown)" :key="it.kind+it.id+ix">
                       <div class="cl-chip flex items-center min-w-0" :class="it.pad ? 'cl-span cl-pad' : clChipCls(it)" :draggable="!it.pad && !!_dndKind(it.kind)" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id, it.start)" @dragend="clDragEndSchedule()" :style="'--cc:' + clItemColor(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><span x-html="clCheckHtml(it)" @click.stop="clToggleTask(it.id)"></span></template><template x-if="it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" :style="'--cl-label-days:' + (it.labelDays || 1) + ';--cl-label-cap:' + (it.labelCap || 0)" x-text="it.spanStart === false && !c.first ? '' : (it.spanStart === true && !it.allDay ? clAgTime(_clMin(it.start)) + ' ' : '') + it.title"></span></div>
                     </template>
@@ -1204,12 +1204,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="cl-pages" :class="{ single: clView === 'day' }" :style="'display:' + (clView === 'week' || clView === 'day' ? 'block' : 'none') + ';--clhh:' + clHourH + 'px;--ph:' + clPeriodH() + 'px'" x-ref="clPages" @wheel="clPagesWheel($event)"
            @pointerdown="clPagesTouch($event)" @pointermove="clPagesTouch($event)" @pointerup.window="clPagesTouch($event)" @pointercancel.window="clPagesTouch($event)">
         <!-- No scroller: --pf is the position in PERIODS and the transform is its only rendering. Written
-             IMPERATIVELY by _clPaint (never bound) — a binding here put an Alpine flush on every wheel event,
-             which is main-thread work per frame and felt like lag. -->
+             IMPERATIVELY by _clPaint (never bound): a binding here puts an Alpine flush on every wheel event,
+             main-thread work per frame that is felt as lag. -->
         <div class="cl-pages-inner" x-ref="clInner">
         <template x-for="pg in clBlocks()" :key="pg.key">
           <div class="cl-period-block" :style="'top:calc(var(--ph) * ' + pg.rel + ');height:var(--ph)' + (clVT && clView === 'week' && pg.key === clAnchorIdx() ? ';view-transition-name:cl-active-week' : '')">
-            <!-- DAY (C5): the day stops being a grid. The rail keeps duration and gaps felt; the agenda gives
+            <!-- DAY: the day stops being a grid. The rail keeps duration and gaps felt; the agenda gives
                  every item a real line — title, how long, which area — instead of a cell you measure by eye. -->
             <template x-if="clView === 'day'">
               <div class="cl-agbody">
@@ -1263,7 +1263,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   </template>
                   <div class="cl-elapsed" :style="col.past ? 'height:100%' : clNowAt(col, 'height')"></div>
                   <div class="cl-now" :style="clNowAt(col, 'top')"></div>
-                  <!-- F5: everything planned for this day is done — the column warms instead of going blank -->
+                  <!-- everything planned for this day is done — the column warms instead of going blank -->
                   <template x-if="col.cleared"><div class="cl-cleared"><span class="cl-cleared-t" x-text="col.cleared.label"></span></div></template>
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
                     <div class="cl-event" :class="clEvClass(p)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id, p.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it, true)" :style="clEvStyle(p, ix)">
@@ -1280,9 +1280,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
       </div>
 
-      <!-- staging tray: what still needs a slot (slipped + unscheduled). What IS scheduled is the timeline's job —
-           listing it here twice was pure duplication. Composer relocates in here when editing. -->
-      <aside class="cl-side" :class="{ open: clSideVisible() }" :inert="!clSideVisible()">   <!-- closed, it is only slid off: Tab reached it and slid the calendar sideways -->
+      <!-- staging tray: what still needs a slot (slipped + unscheduled). What IS scheduled is the timeline's job,
+           never listed here twice. Composer relocates in here when editing. -->
+      <aside class="cl-side" :class="{ open: clSideVisible() }" :inert="!clSideVisible()">   <!-- closed, it is only slid off: inert keeps Tab from reaching it and sliding the calendar sideways -->
         <div class="cl-side-top" @pointerdown="clSheetDown($event)" @pointermove="sheetMove($event)" @pointerup="sheetUp($event)" @pointercancel="sheetUp($event)"></div>
         <!-- the one real composer, for a task with no row shown here; a row's opens at its row (relocateComposer) -->
         <ul class="list cl-side-composer"></ul>
@@ -1368,7 +1368,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
      <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists and Plan on a phone, unless adherod.bar is '0'. No bar of its own: the page fades
           under it and the field floats. Lists, Plan, Social keep their order; where you are widens into the field. Lists' chip names the list a task
           lands in and opens the overview, as the current dot does; Plan's opens its view sheet. -->
-     <!-- droid-18 R: the lists tray, pulled up from the title (app.js trayDown) or held up from the bar's chip (P-A, holdMove); every list -->
+     <!-- the lists tray, pulled up from the title (app.js trayDown) or held up from the bar's chip (holdMove); every list -->
      <div class="lsw-scrim" :class="{ on: listTray }" @click="listTray = null"></div>
      <div class="pop lsw" :class="listTray" role="menu" aria-label="Your lists" :inert="!listTray" @pointerdown="trayDown($event)" @pointermove="sheetMove($event)" @pointerup="sheetUp($event)" @pointercancel="sheetUp($event)">
        <div class="lsw-top">Your lists</div>
@@ -1379,7 +1379,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        </div>
      </div>
      <template x-if="bar"><div class="jot-bar items-end" @pointermove="holdMove($event)" @pointerup="holdUp()" @pointercancel="if (listHold) { listHold = null; listTray = null }">
-       <template x-if="viewSheet"><div class="pop jb-lists jb-sheet" role="menu" @click="viewSheet = false">   <!-- droid-10: Plan's views and actions, risen from the day chip -->
+       <template x-if="viewSheet"><div class="pop jb-lists jb-sheet" role="menu" @click="viewSheet = false">   <!-- Plan's views and actions, risen from the day chip -->
          <div class="pop-scrim"></div>
          <template x-for="v in clViews()" :key="v"><button type="button" class="pop-item" role="menuitemradio" :aria-checked="clView === v" data-sk="Day / week / month" @click="clSetView(v)"><svg class="ico" aria-hidden="true" x-show="clView === v"><use href="#i-check"/></svg><span class="ico" x-show="clView !== v"></span><span x-text="v[0].toUpperCase() + v.slice(1)"></span></button></template>
          <div class="nav-pop-sep"></div>
@@ -1401,7 +1401,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
            <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot or search</button>
          </div>
        </div>
-       <template x-if="phoneThread() &amp;&amp; chat.draft.trim() &amp;&amp; !chat.editing &amp;&amp; !composer.open"><div class="pop jb-lists jb-sheet" @mousedown.prevent>   <!-- droid-12: a thread's words, as a task (a tap keeps the keyboard up) -->
+       <template x-if="phoneThread() &amp;&amp; chat.draft.trim() &amp;&amp; !chat.editing &amp;&amp; !composer.open"><div class="pop jb-lists jb-sheet" @mousedown.prevent>   <!-- a thread's words, as a task (a tap keeps the keyboard up) -->
          <button type="button" class="pop-item" @click="addAsTask()"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>Add as a task<span class="pick-tag">Backlog</span></button>
        </div></template>
        <div class="jb-el" :class="{ on: surface === 'social' }">
@@ -1409,7 +1409,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
          <template x-if="!phoneThread()"><div class="jb-field flex items-center" :inert="surface !== 'social'">
            <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot or search</button>
          </div></template>
-         <template x-if="phoneThread() &amp;&amp; openChatRow()"><div class="jb-field jb-chat flex items-end" x-init="watchField($el)">   <!-- a thread's composer (V-B): the chip leads back to the chats -->
+         <template x-if="phoneThread() &amp;&amp; openChatRow()"><div class="jb-field jb-chat flex items-end" x-init="watchField($el)">   <!-- a thread's composer: the chip leads back to the chats -->
            <button type="button" class="jb-dest inline-flex items-center min-w-0" @click="openChat(null)" :aria-label="chatPeer(openChatRow()) + ', chats'"><span class="av" x-text="chatPeer(openChatRow()).slice(0, 1).toUpperCase()"></span><span class="truncate" x-text="chatPeer(openChatRow())"></span></button>
            <textarea rows="1" x-ref="chatBar" x-model="chat.draft" @keydown="chatKey($event)" @paste="chatPaste($event)" placeholder="Message" aria-label="Message"></textarea>
            <template x-if="filesUrl &amp;&amp; !chat.editing &amp;&amp; !chat.draft"><label class="attach flex items-center justify-center" aria-label="Attach file"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg><input type="file" multiple hidden @change="addFiles($event.target.files); $event.target.value = ''"></label></template>
@@ -1751,7 +1751,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <div class="contents">
       <div class="trash-empty" x-show="!days.length">Nothing recent. Deletions and bulk changes stay here for 30 days.</div>
       <!-- ONE chronological list under day heads — the bin answers "what did I just do?", so time order is the whole point.
-           The row says what kind it is: icon, the peek's text colour (red gone, green a dropped draft) and the verb. -->
+           The row says what kind it is: icon, the peek's text color (red gone, green a dropped draft) and the verb. -->
       <div class="trash-list flex-col" x-show="days.length">
         <template x-for="day in days" :key="day.key">
           <div class="flex-col">
@@ -1920,7 +1920,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(eventEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(eventEdit) || 'Repeat'"></span></button>
           <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
             <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
-          </div></div></template></template>
+          </div><div x-html="clRepHtml('eventEdit')"></div></div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clTicket', $event, $el)">
           <button type="button" class="chip chip-ticket inline-flex items-center" :class="{ set: eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length }" title="Ticket" aria-haspopup="dialog" :aria-expanded="pop === 'clTicket'" @click="togglePop('clTicket', $el)"><svg class="ico"><use href="#i-clip"/></svg><span x-show="eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length">Ticket</span></button>
@@ -1955,6 +1955,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="blk-wd" :class="{ sel: blockEdit.weekdays.includes(w.d) }" @click="_toggleIn(blockEdit.weekdays, w.d)" x-text="w.l"></button>
               </template>
             </div>
+            <div x-html="clRepHtml('blockEdit')"></div>
             <template x-if="blockEdit.occ"><div class="ev-row" x-html="evTimesHtml('blockEdit.rule')"></div></template>
           </div></template></template>
         </div>
@@ -1978,8 +1979,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="field" @click.document.capture="clPopAway('clUsable', $event, $el)">
           <button type="button" class="chip chip-usable inline-flex items-center" :class="{ set: +blockEdit.est_minutes }" title="Usable time" aria-haspopup="dialog" :aria-expanded="pop === 'clUsable'" @click="togglePop('clUsable', $el)"><svg class="ico"><use href="#i-clock"/></svg><span x-text="+blockEdit.est_minutes ? durFmt(+blockEdit.est_minutes) + ' usable' : 'Usable time'"></span></button>
           <template x-if="pop === 'clUsable'"><template x-teleport="body"><div class="pop cl-pop blk-capacity" :style="popStyle()">
-            <span class="ev-lab">Usable min</span>
-            <input class="ev-field" type="number" min="0" step="5" placeholder="whole span" :value="blockEdit.est_minutes ?? ''" @input="blockEdit.est_minutes = $event.target.value" @keydown.enter="pop = null">
+            <div class="seg blk-parts">
+              <template x-for="p in clUsableParts(blockEdit)" :key="p.l"><button type="button" :class="{ on: p.min === (+blockEdit.est_minutes < clUsableLen(blockEdit) ? +blockEdit.est_minutes || null : null) }" @click="blockEdit.est_minutes = p.min; pop = null"><b x-text="p.l"></b><em x-text="durFmt(p.min || clUsableLen(blockEdit))"></em></button></template>
+            </div>
+            <input type="range" class="blk-range" aria-label="Usable time" min="5" step="5" :max="clUsableLen(blockEdit)" :value="+blockEdit.est_minutes || clUsableLen(blockEdit)" @input="blockEdit.est_minutes = +$el.value < clUsableLen(blockEdit) ? +$el.value : null">
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
@@ -1991,29 +1994,29 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="ev-row blk-today">
           <template x-if="(clBlockDay(blockEdit.id, blockEdit.viewIso)?.status ?? 'pending') === 'pending'">
             <span class="blk-today-actions">
-              <button type="button" class="ghost blk-start" @click="clStartBlock(blockEdit.id, blockEdit.viewIso)">Start now</button>
-              <button type="button" class="ghost blk-skip" @click="clSkipBlock(blockEdit.id, blockEdit.viewIso)">Skip today</button>
-              <template x-if="clBlockEnded(blockEdit.id, blockEdit.viewIso)"><button type="button" class="ghost blk-miss" @click="clSetBlockDay(blockEdit.id, { status: 'missed' }, blockEdit.viewIso)">Didn't happen</button></template>
+              <button type="button" class="chip blk-start inline-flex items-center" @click="clStartBlock(blockEdit.id, blockEdit.viewIso)"><svg class="ico"><use href="#i-play"/></svg><span>Start now</span></button>
+              <button type="button" class="chip blk-skip inline-flex items-center" @click="clSkipBlock(blockEdit.id, blockEdit.viewIso)"><svg class="ico"><use href="#i-forward"/></svg><span>Skip today</span></button>
+              <template x-if="clBlockEnded(blockEdit.id, blockEdit.viewIso)"><button type="button" class="chip blk-miss inline-flex items-center" @click="clSetBlockDay(blockEdit.id, { status: 'missed' }, blockEdit.viewIso)"><svg class="ico"><use href="#i-x"/></svg><span>Didn't happen</span></button></template>
             </span>
           </template>
           <template x-if="clBlockDay(blockEdit.id, blockEdit.viewIso)?.status === 'running'">
             <span class="blk-today-actions">
               <span class="blk-today-state" x-text="'Started ' + fmtTime((clBlockDay(blockEdit.id, blockEdit.viewIso).actual_start || '').slice(11, 16)) + (clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso)) ? ', didn\'t end' : '')"></span>
               <span class="blk-today-lead" x-text="clBlockLead(blockEdit.id)?.content || ''"></span>
-              <template x-if="!clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso))"><button type="button" class="ghost blk-stop" @click="clStopBlock(blockEdit.id, blockEdit.viewIso)">Stop now</button></template>
-              <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
+              <template x-if="!clUnended(clBlockDay(blockEdit.id, blockEdit.viewIso))"><button type="button" class="chip blk-stop inline-flex items-center" @click="clStopBlock(blockEdit.id, blockEdit.viewIso)"><svg class="ico"><use href="#i-square"/></svg><span>Stop now</span></button></template>
+              <button type="button" class="chip blk-undo inline-flex items-center" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
             </span>
           </template>
           <template x-if="clBlockDay(blockEdit.id, blockEdit.viewIso)?.status === 'done'">
             <span class="blk-today-actions">
               <span class="blk-today-state" x-text="'Done ' + clBlkTick(clBlockDay(blockEdit.id, blockEdit.viewIso)).slice(2)"></span>
-              <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
+              <button type="button" class="chip blk-undo inline-flex items-center" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
             </span>
           </template>
           <template x-if="['skipped', 'missed'].includes(clBlockDay(blockEdit.id, blockEdit.viewIso)?.status)">
             <span class="blk-today-actions">
               <span class="blk-today-state" x-text="clBlockDay(blockEdit.id, blockEdit.viewIso).status === 'missed' ? 'Didn\'t happen' : 'Skipped today'"></span>
-              <button type="button" class="ghost blk-undo" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
+              <button type="button" class="chip blk-undo inline-flex items-center" @click="clUndoBlockDay(blockEdit.id, blockEdit.viewIso)">Undo</button>
             </span>
           </template>
         </div>

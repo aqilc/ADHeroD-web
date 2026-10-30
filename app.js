@@ -19,7 +19,7 @@ const THEME_COLORS = Object.entries(DESIGN.themes).filter(([, t]) => t.family).m
 });
 const savedColorTheme = account => [localStorage.getItem('adherod.colorTheme'), account, 'graphite'].find(id => THEME_COLORS.some(t => t.id === id));
 const savedAppearance = () => ['light', 'dark'].includes(localStorage.getItem('adherod.theme')) ? localStorage.getItem('adherod.theme') : 'system';
-// a critically damped spring (no overshoot) as a CSS linear(): ω 26.2 puts 50% at 64 ms and 90% at 148 ms (his Things recording)
+// a critically damped spring (no overshoot) as a CSS linear(): ω 26.2 puts 50% at 64 ms and 90% at 148 ms
 const _spring = (w, ms) => `linear(${Array.from({ length: 31 }, (_, i) => { const u = w * ms / 1000 * i / 30; return i === 30 ? 1 : +(1 - (1 + u) * Math.exp(-u)).toFixed(4); }).join(', ')})`;
 const _openEase = _spring(26.2, 300), _closeEase = _spring(30, 260);
 function applyTheme(mode, family) {
@@ -53,8 +53,8 @@ import { createSupabaseStore } from './supabase-store.js';
 import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, byCreated, peerName, whenLabel, threadLine, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
-let _sb, _inFlight = 0;
-let _filesTried = new Set(), _tasksGen = 0;   // file ids a read answered without a row (not re-read per load) · loadTasks' generation   // the client's requests not yet answered: onAuth lets them land before it reloads
+let _sb, _inFlight = 0;   // _inFlight: the client's requests not yet answered: onAuth lets them land before it reloads
+let _filesTried = new Set(), _tasksGen = 0;   // file ids a read answered without a row (not re-read per load) · loadTasks' generation
 const countedFetch = async (...a) => {   // every signed-in read and write passes here
   _inFlight++;
   let synced = false;
@@ -73,8 +73,8 @@ const sbClient = () => { if (_sb === undefined) _sb = (globalThis.supabase && SU
 
 const SURF_META = { lists: { label: 'Lists', icon: 'i-all' }, plan: { label: 'Plan', icon: 'i-cal' }, social: { label: 'Social', icon: 'i-chat' } };
 const CL_HOURS = Array.from({ length: 24 }, (_, h) => h);
-const CL_WAKING_START = 8;   // default waking day start (h); future: from sleep data
-const CL_WAKING_END = 24;    // waking day end (h)
+const CL_WAKING_START = 8;   // default waking day start (h)
+const CL_WAKING_END = 24;
 // a new block's suggestions, atop its When pop: each fills the times and repeat and colors the block
 const BLOCK_PRESETS = [
   { title: 'Work', hint: '8:15–4:30 M–F', icon: 'tag-briefcase', color: '#2d7ff9', start: '08:15', end: '16:30', weekdays: [1, 2, 3, 4, 5], est_minutes: null },
@@ -100,11 +100,10 @@ const CL_STACK_Y = CL_TITLE_PX;           // (28px in a week column); a stack ke
                                           // leaves each one a WHOLE title line of its own — which is also the only
                                           // place that hovers it, so raising one can't swallow a peer's hover zone.
 // Day/week has NO SCROLLER. It is a transform viewport: clPos {idx, frac} is the position, and the timeline is
-// painted at translateY(-pf · --ph). There is no spacer, so no origin, so no drift, so no excursion — the
-// "insane scroll then teleport" is unrepresentable.
+// painted at translateY(-pf · --ph). No spacer means no origin to drift from.
 const GLIDE_YIELD = ['wheel', 'touchstart', 'pointerdown'];   // fresh wheel gestures, touches and presses outrank a glide; an existing tail doesn't
 const CL_GESTURE_GAP = 140;               // ms of quiet that ends a scroll gesture (trackpad momentum fires continuously, so this only trips when the fingers are done)
-const CL_TURN_MS = 368;                   // page-turn / nudge tween — we own the animation now that the browser doesn't
+const CL_TURN_MS = 368;                   // page-turn / nudge tween
 const CL_FLING = 0.94;                    // per-frame decay of touch-release momentum
 const CL_NO_PAGE = Object.freeze({ key: '', bands: [], cols: [] });   // the rail's empty page (see clAdPage)
 const CL_LEAVE_DIM = 0.55;                // how far the departing week fades behind the one arriving (see _clAdPaint)
@@ -121,7 +120,7 @@ const _groupMemo = new Map();   // byDay cache; busts on any task/event change
 const _placedMemo = new Map();  // task_id → placement ISO; busts on _calDataV (read once per row per pass)
 const _taskIdxMemo = new Map();  // _taskIdx(): children + inverse blocked_by, one pass per _rowV
 const _noKids = new Map();   // _kidsOf a leaf
-const _hay = new Map();   // task id -> picker search string; rebuilding it walked every parent chain per keystroke
+const _hay = new Map();   // task id -> picker search string; a rebuild walks every parent chain, so not per keystroke
 let _hayV = -1;   // _hay's data version (see pickerMatches)
 let _hayOf = new WeakMap();   // candidate array -> { hay, low }: a memoized pool (relationCandidates) reuses its haystack per keystroke
 const _seqIn = (low, f) => { let at = 0; for (let k = 0; k < f.length; k++) if (!(at = low.indexOf(f[k], at) + 1)) return false; return true; };   // f in order within low; both lowercased
@@ -138,7 +137,7 @@ const _clWkCache = new Map();   // month week rows by index, off the Alpine prox
 const _nextMemo = new Map();   // repeat rule + anchor + day → the occurrence its row shows (whenShown): one step-walk per repeat per day
 let _clBlocksSig = null, _clBlocksCache = [], _clWkOut = [], _clWkSig = null, _clPgSig = null;   // clBlocks() single-entry memo — a view switch/scroll settle re-fires it ~100×; returning the SAME array ref lets Alpine's x-for no-op instead of re-diffing 500+ nodes
 const _clWheel = { t: -Infinity, v: Infinity, hi: 0, lo: 0, hiT: 0, n: 0 };   // wheel gesture gate (_clGestureFresh): last event time and speed, peak/floor speed, the peak's time, events since it — module scope, off the Alpine proxy
-let _calDataV = 0, _clScrollT, _clFrac = 0, _clMTop = 0, _clAdD, _clAdPg, _clAdH = 0;   // last boundary offset / rail page / deadline-rail height painted   // _clFrac mirrors clPos.frac, _clMTop the month scrollTop, without Alpine reactivity
+let _calDataV = 0, _clScrollT, _clFrac = 0, _clMTop = 0, _clAdD, _clAdPg, _clAdH = 0;   // _clFrac mirrors clPos.frac, _clMTop the month scrollTop, without Alpine reactivity · _clAdD/_clAdPg/_clAdH: last boundary offset / rail page / deadline-rail height painted
 const _periodLabels = new Map();   // (view|idx) -> label; toLocaleDateString is far too slow to call per wheel event
 const _dayLabels = new Map();   // day-view label -> { iso, wd }: labels stay date-only (cached), a day's name lays over the weekday at render
 // The week edge glide (_clEdgeGlide) ends on entering anything but a day column: leaving fires dragenter, not dragover.
@@ -211,7 +210,7 @@ const LADDER = ['.row-rels', '.m.loc', '.areas', '.m.dl', '.proj', '.m.est'];
 const L2_ORDER = ['.areas', '.proj', '.m.dl', '.m.loc', '.m.est', '.row-rels'];
 const L2_STEPS = ['l2-shrink', 'icons-only', 'rolled'];
 const L2_ROW_H = 17, L2_PAD = 4;    // one wrapped meta row + the line's own margin (layout-lists.e2e "ladder")
-const STEP_FLOOR = 160;   // a Steps row's title gives way first, down to this; then chips hide (b4c, _shed)
+const STEP_FLOOR = 160;   // a Steps row's title gives way first, down to this; then chips hide (see _shed)
 // WINDOWED LIST. Only the rows within WIN_MARGIN of the viewport EXIST as <li>s; the rest are two spacer
 // <li>s holding their summed height, so the scrollbar stays honest — and every list-wide pass (fitRows, paintSel,
 // the keyed morph, the browser's style recalc) pays for the window, not the corpus (~25k elements at 1000 rows).
@@ -401,7 +400,7 @@ const _canon = document.createElement('template');
 let _linkPress = null;   // a press on a composer link (description, title, subtask or checklist row): where it started (pointer and text), whether it moved into a selection
 let _linkCard = null;   // the still press whose link card is open: its field and text point, for Edit
 let _press = null;   // the mouse press under way, a tap's too: the description shows markers at its release
-let _opened = null;   // the field openComposer focused: an opened task reads as a view, no markers, until a key or a press (web-14)
+let _opened = null;   // the field openComposer focused: an opened task reads as a view, no markers, until a key or a press
 const _textWidth = document.createElement('canvas').getContext('2d');   // _descHtml's chars-per-line estimate
 const _tpl = h => Object.assign(document.createElement('template'), { innerHTML: h }).content.firstChild;
 const CHK_ROW = _tpl(html`<div class="entry chk"><button type="button" class="chk-rect"></button><div class="entry-txt" role="textbox" tabindex="0"></div><button type="button" class="entry-del" title="Remove"><svg class="ico"><use href="#i-trash"/></svg></button></div>`);
@@ -443,13 +442,13 @@ document.addEventListener('alpine:init', () => {
     const get = evaluateLater(expression);
     effect(() => get(v => { const text = v == null ? '' : String(v); if (el.textContent !== text) Alpine.mutateDom(() => { el.textContent = text; }); }));
   });
-  // ceiling: patches Alpine 3.15.12's x-show internals — revisit on an Alpine upgrade. Untransitioned, it showed a frame
-  // late and its deferred hide applied the newest hide, so close → open → close in one frame stayed up. A show lands now
-  // and drops the pending hide. A hide lands in its flush too (a frame late, the empty state sat over the list's first rows),
-  // once every toggle of the flush has registered: one inside a hiding parent, or holding hiding children, keeps Alpine's cascade.
-  // Cost: Alpine deferred show for click-away (`clickAwayCompatibleShow`) — an x-show + @click.outside pop whose trigger
-  // sits outside it now closes on its opening click; none today (our pops contain their trigger or use x-transition/x-if).
-  // A show cancels a running leave: a leave-only pop's show doesn't, so the leave's end hid a pop reopened during it (open, invisible).
+  // ceiling: patches Alpine 3.15.12's x-show internals — revisit on an Alpine upgrade. Untransitioned, Alpine's show lands a
+  // frame late and its deferred hide applies the newest hide, so close → open → close in one frame stays up. Here a show
+  // lands at once and drops the pending hide; a hide lands in its flush (a frame late, the empty state sits over the list's
+  // first rows), once every toggle of the flush has registered: one inside a hiding parent, or holding hiding children, keeps Alpine's cascade.
+  // Cost: Alpine's deferred show for click-away (`clickAwayCompatibleShow`): an x-show + @click.outside pop whose trigger
+  // sits outside it closes on its opening click; none today (our pops contain their trigger or use x-transition/x-if).
+  // A show cancels a running leave, or the leave's end hides a pop reopened during it (open, invisible).
   const toggle = Element.prototype._x_toggleAndCascadeWithTransitions;
   Element.prototype._x_toggleAndCascadeWithTransitions = function (el, value, show, hide) {
     if (value) el._x_transitioning?.cancel();
@@ -472,7 +471,7 @@ document.addEventListener('alpine:init', () => {
     setNameOpen: false, setNameVal: '',   // …and the name friends see (chat.js › setName)
     tasks: [],
     byId: new Map(),        // id → task, rebuilt in loadTasks → O(1) lookups (projName/blocked) instead of tasks.find
-    parentIds: new Set(),   // ids that have children, rebuilt with byId — hasChildren was O(n) per call and rode every flush via the Now getters (stage-4 profile: 12,800 calls = 2.1s of a 2.2s save)
+    parentIds: new Set(),   // ids that have children, rebuilt with byId: hasChildren runs thousands of times per save, so it must be O(1)
     areas: [],
     notifs: [],   // bottom-right notification stack: [{ id, msg, actions:[{label, fn}], leaving }]
     journal: [], cursor: 0, _jV: 0,   // inverse-op recovery engine (⌘Z/⌘⇧Z drive undo()/redo())
@@ -489,14 +488,15 @@ document.addEventListener('alpine:init', () => {
     dragOverRegion: null,   // region currently hovered as a drop target
     events: [],             // calendar events, loaded from store
     pcEvents: [],           // the work PC's Outlook calendar (Windows app only), drawn beside events, never stored or edited
+    pcMustSet: JSON.parse(localStorage.getItem('adherod.must') || '{}'),   // series → Must, where it differs from Outlook's High. ceiling: this PC only; revisit if Outlook meetings show on another device
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
-    scheduleItems: [],
-    reminders: [],           // user-authored reminder rows; [] before db:apply carries the user columns      // task↔block attachments; [] before migration is applied
+    scheduleItems: [],      // task↔block attachments; [] before migration is applied
+    reminders: [],           // user-authored reminder rows; [] before db:apply carries the user columns
     blockDays: [],          // block_day answer rows (start/skip/undo written here and on Android)
-    dayNotes: [],           // named days (B·V3): { date, label }
+    dayNotes: [],           // named days: { date, label }
     clView: 'month',        // calendar view: day | week | month
     clSideOpen: false, clSideSlide: false, clSideOlder: false, clSideMore: false, clDropHint: null,   // Plan side-panel (scheduled + unscheduled + composer) toggle; 'peek-ad' while a drag hovers the Peek all-day strip
-    peekPin: false, peekIso: '', peekEdgeHot: null, peekMonHot: '',   // Peek Pane (C2): drag-summoned docked day column on Lists; pin keeps it for batch planning; edge-dwell paging + month-dwell state
+    peekPin: false, peekIso: '', peekEdgeHot: null, peekMonHot: '',   // Peek Pane: drag-summoned docked day column on Lists; pin keeps it for batch planning; edge-dwell paging + month-dwell state
     clDropPreview: null,   // { iso, min, h, label } — live ghost of where a drag will land in a week/day column
     clAnchor: isoDate(new Date()),   // calendar anchor date (YYYY-MM-DD); drives the visible period
     clRowH: 0,              // month week-row height in px = (viewport − bar − header) / 6 (macOS: 6 weeks fill the page)
@@ -510,23 +510,22 @@ document.addEventListener('alpine:init', () => {
     clFast: false,          // …moving fast enough to lift the out-of-month dim, which returns EARLIER, at a crawl
     _clMRest: true,         // month scroll at rest until a sample says otherwise (clFast = !_clMRest)
     bar: BAR,   // the jot bar replaces Lists' dot strip on a phone
-    jotted: null,   // the task the bar just added, open for its steps (S1)
+    jotted: null,   // the task the bar just added, open for its steps
     fromChat: null,   // { id, text }: the thread whose words the open composer took (Add as a task)
-    notesOpen: false,   // phone: the description and entries show, behind the Steps and notes chip (9A)
-    listHold: null,   // { hot, x, y, moved }: a finger holding the bar's chip, sliding over the lists tray (P-A)
-    listTray: null,   // 'half' | 'full': the phone title's lists tray (droid-18 R); trayRows stay drawn while it slides out
+    notesOpen: false,   // phone: the description and entries show, behind the Steps and notes chip
+    listHold: null,   // { hot, x, y, moved }: a finger holding the bar's chip, sliding over the lists tray
+    listTray: null,   // 'half' | 'full': the phone title's lists tray; trayRows stay drawn while it slides out
     trayRows: [],
-    viewSheet: false,   // Plan's views and actions, risen from the bar's day chip (droid-10)
+    viewSheet: false,   // Plan's views and actions, risen from the bar's day chip
     narrow: PHONE_MQ.matches,   // phone width — reactive twin of the 640px CSS block (a getter wouldn't re-render on resize)
     stacked: STACK_MQ.matches,  // dialogs share one cell, the covered one inert — reactive twin of the 759px CSS block
     clSideOver: SIDE_MQ.matches,   // the task panel overlays the calendar instead of squeezing it, and day view doesn't open it by itself
     clVT: false,            // a view transition is capturing — see .calendar.vt (view-transition-name is layer-promoting, so it may not linger)
-    clSettling: false, clPlaced: null,   // E3 arrival stagger · E4/F4 the block that just landed springs into place
+    clSettling: false, clPlaced: null,   // arrival stagger · the block that just landed springs into place
     clPVisStart: 0, clPVisCount: 3,   // virtualization window over the continuous day/week timeline
-    // WHERE YOU ARE, and the ONLY thing that says so. { idx: absolute period, frac: 0..1 into it }. Nothing is
-    // ever read back out of the DOM to find the position — a pixel offset changes meaning the instant
-    // clPeriodH does, so anything that stored one had to be corrected after every zoom/resize/view-switch, and
-    // every one of those corrections was a race. Held in period-space, a zoom is just a repaint.
+    // WHERE YOU ARE, and the ONLY thing that says so. { idx: absolute period, frac: 0..1 into it }. Nothing reads the
+    // position back from the DOM: a pixel offset changes meaning the instant clPeriodH does, so a stored one would need a
+    // racy correction after every zoom/resize/view switch. Held in period-space, a zoom is just a repaint.
     clPos: { idx: 0, frac: 0 },
     clTopPeriod: '',        // scroll-driven day/week heading (mirrors clTopMonth)
     clFocusYM: null,        // dominant month at center — others dim when idle
@@ -620,6 +619,7 @@ document.addEventListener('alpine:init', () => {
     _t: null,
     pop: null, remEd: null, remTi: 0, popXY: { left: 0, top: 0 }, popDock: false, rowMenu: [], rowAt: { x: 0, y: 0 },
     evPick: 's', evMonth: false,   // the When pop's picked field (start/end) and its month grid in place of the week strip
+    repCal: false,   // the Repeat sentence's ending month grid
     titleEmpty: true,
     areaPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
     projPicker: { open: false, frag: '', sel: 0, node: null, at: 0, left: 0, top: 0 },
@@ -635,7 +635,7 @@ document.addEventListener('alpine:init', () => {
     navPop: null,
     navRename: null,
     delAsk: null,   // null | { kind:'project'|'task', id, mode:'move'|'delete', target, name, count, source? }
-    // Global color list (user-extendable via settings later) + the gray default for areas with no color.
+    // Global color list + the gray default for areas with no color.
     colors: DESIGN.palette,
     areaDefault: 'var(--muted)',
     areaIcons: ['i-tag-tag','i-tag-home','i-tag-briefcase','i-tag-star','i-tag-heart','i-tag-book','i-tag-cart','i-tag-dollar','i-tag-code','i-tag-dumbbell','i-tag-plane','i-tag-bell','i-tag-flame','i-tag-leaf','i-tag-music','i-tag-map','i-tag-zap','i-tag-globe','i-tag-camera','i-tag-gift'],
@@ -661,7 +661,7 @@ document.addEventListener('alpine:init', () => {
       idle(warmNlp);
       _jBus.onmessage = () => this._jQueue(() => this._journalSync());   // another tab's entries: its deletes show in this Bin
       // While any overlay is open the app owns ONE history entry, so a phone's/browser's Back closes the topmost
-      // (escape()) instead of leaving the page (O1, D6); none open → no entry, so a real Back still leaves. Back while
+      // (escape()) instead of leaving the page; none open → no entry, so a real Back still leaves. Back while
       // typing in the composer only drops the keyboard (read a long task). A shortcut only — iOS has no back, so
       // ×/Cancel/Escape stay the way out (ui-ios-portable).
       Alpine.effect(() => this._syncHist());
@@ -674,7 +674,7 @@ document.addEventListener('alpine:init', () => {
           const from = _modalFrom, r = _modalSel, placed = from.contains(getSelection().anchorNode);   // the close's own insert put a caret in the opener: keep it
           if (at === document.body || at?.closest('.dialog-backdrop, .settings')) {
             // the page itself (body can't take focus) or a collapsed opener (out of the Tab order): keys go to the page's
-            // shortcuts — a closed dialog's hidden field kept them until the next frame (Shift+↓ right after ⌘K Escape was lost)
+            // shortcuts, or a closed dialog's hidden field keeps them until the next frame (Shift+↓ right after ⌘K Escape is lost)
             if (from !== document.body && !from.matches('[tabindex="-1"]')) from.focus();
             if (document.activeElement === at) at.blur();   // …as from an opener the pick slid off-screen (inert: the list search under ⌘K → Plan)
             else if (r && from.isContentEditable && !placed) getSelection().setBaseAndExtent(r.startContainer, r.startOffset, r.endContainer, r.endOffset);   // .focus() alone puts a contenteditable's caret at its start
@@ -691,7 +691,7 @@ document.addEventListener('alpine:init', () => {
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
       // A trackpad PINCH arrives as ctrl/⌘+wheel. Left to the browser it page-zooms, which changes the row
       // height the virtualized calendar measures dates against — the same scrollTop then reads as a different
-      // YEAR (it flew to 2014). Capture + stopPropagation so the calendar always claims it and no inner
+      // YEAR. Capture + stopPropagation so the calendar always claims it and no inner
       // scroll handler sees it as a fling.
       // Being on Plan is the WHOLE condition — ownership of a gesture must never depend on hit-testing: over the side
       // panel/margins, or the ::view-transition overlay a view STEP puts up mid-pinch (e.target is <html> for the
@@ -773,20 +773,20 @@ document.addEventListener('alpine:init', () => {
           this.calError = got?.error && got.error !== 'closed' ? `Can't read Outlook's calendar (${got.error}).` : '';   // closed: the mail line says so
           if (!Array.isArray(got)) return;
           _calDataV++;
-          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, join: e.join, remind: e.remind, going: e.going == null ? {} : { pc: e.going }, recurrence: null, color: null, all_day: e.allDay,
+          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, join: e.join, remind: e.remind, high: !!e.high, going: e.going == null ? {} : { pc: e.going }, recurrence: null, color: null, all_day: e.allDay,
             starts_at: e.allDay ? pcDay(e.start) : e.start.slice(0, 16), ends_at: e.allDay ? pcDay(e.end, 1) : e.end.slice(0, 16) }));
           outlook = got.filter(e => e.going !== false);   // Not going rings nothing
           ring();
         };
         // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one late if the app was closed, until its
-        // meeting ends, as an Alarm only when marked High (his 10-29: woken by a looping Alarm for an ordinary meeting), else a Ping with its
+        // meeting ends, as an Alarm only when marked High or Must, else a Ping with its
         // room and call; ours as its severity says. Pings go newest first in one notification of those since the app was last looked at.
         // ceiling: ours more than 10 minutes late (app closed, PC asleep) are skipped, not rung, as a restore never fires late; revisit with a missed list.
         let outlook = [], ringTimer = 0, pinged = [];
         const ring = () => {   // synchronous, so a reload mid-ring can't ring twice
           clearTimeout(ringTimer);
           const rung = new Set(JSON.parse(localStorage.getItem('adherod.rung') || '[]')), now = Date.now(), late = now - 10 * 60e3, nowAt = localStamp(new Date());
-          const due = outlook.filter(e => e.remind != null).map(e => ({ id: e.id, at: new Date(e.start) - e.remind * 60e3, until: +new Date(e.end), sev: e.high ? 'alarm' : 'ping', title: e.title,
+          const due = outlook.filter(e => e.remind != null).map(e => ({ id: e.id, at: new Date(e.start) - e.remind * 60e3, until: +new Date(e.end), sev: (this.pcMustSet[e.id.split('#')[0]] ?? e.high) ? 'alarm' : 'ping', title: e.title,
             body: [e.allDay ? 'All day' : this.fmtTime(e.start.slice(11, 16)), e.location].filter(Boolean).join(', '), join: e.join || '' }));   // an older exe has no join
           for (const r of this.reminders) {
             const task = r.kind === 'user' && !r.paused && this.byId.get(r.ref_id), when = task && (isRepeating(r) ? nextAt(r, late) : fireAt(r, task, nowAt));
@@ -818,10 +818,10 @@ document.addEventListener('alpine:init', () => {
         setInterval(loadCalendar, 5 * 60e3);   // a meeting booked while the app sits in the tray
       }
       document.addEventListener('selectionchange', () => this._chkSelTint());   // checklist cross-row selection tint
-      // An IME owns its keys mid-composition (its Enter converts): no handler may act on them — a title Enter saved the unconverted word.
+      // An IME owns its keys mid-composition (its Enter converts): no handler may act on them (a title Enter would save the unconverted word).
       document.addEventListener('keydown', e => { if (e.isComposing || e.keyCode === 229) e.stopImmediatePropagation(); }, true);
-      // A paste event can't name the shortcut that fired it — remember ⌘/Ctrl+Shift+V here so chkPaste can honour it.
       document.addEventListener('keydown', () => { _opened = null; }, true);
+      // A paste event can't name the shortcut that fired it — remember ⌘/Ctrl+Shift+V here so chkPaste can honor it.
       document.addEventListener('keydown', e => { this._rawPaste = (e.metaKey || e.ctrlKey) && e.shiftKey && /^v$/i.test(e.key); }, true);   // any other key clears it
       // Decorate on blur; raw text while editing. Pointer focus alone must not interrupt drag selection.
       // chk handlers use item.text (authoritative) not el.textContent (potentially stale on reused elements).
@@ -841,7 +841,7 @@ document.addEventListener('alpine:init', () => {
         block.innerHTML = this._blockHtml(block, e.skipped);
         if (ends) this._setSel(block, ends);
       }, true);
-      // A press on a link shows its card at release (4C): focus would put the caret there, revealing its markers under the pointer.
+      // A press on a link shows its card at release: focus would put the caret there, revealing its markers under the pointer.
       // Past 4px it selects from where it started instead; touch keeps its native long-press selection.
       document.addEventListener('mousedown', e => {
         const el = e.target.closest?.('.composer a.dm-link')?.closest('.desc, .content, .sub-ce, .entry-txt');
@@ -879,11 +879,11 @@ document.addEventListener('alpine:init', () => {
       // Its metrics land on their readers alone (uninherited, styles.css): set on <html>, each change restyled every element.
       const root = document.documentElement, sheet = new CSSStyleSheet();
       sheet.replaceSync('.app, .app::after, .dialog-backdrop, .composer-dock, .cl-side, .pop.cal, .pop.dock, .jb-host, .jot-bar, .thread, :is(.chat-comp, .jb-chat) textarea, #notif-stack {}'); document.adoptedStyleSheets.push(sheet);
-      // A docked pop (9B) counts as the keyboard: it takes the keyboard's place, so the dock rides it the same way.
+      // A docked pop counts as the keyboard: it takes the keyboard's place, so the dock rides it the same way.
       const vars = sheet.cssRules[0].style;
       _keyboard = () => {
         const keys = Math.max(0, Math.round(innerHeight - visualViewport.offsetTop - visualViewport.height));   // a tap on a docked pop's field raises the keyboard under it
-        const dock = this.pop && this.popDock && document.querySelector('body > .pop.dock:not(.overflow-pop)'), when = dock && dock.matches('.ev-when') ? dock.offsetHeight : 0, h = keys + (when ? 0 : dock?.offsetHeight || 0);   // an editor's docked When lifts its card alone (--when on .dialog-backdrop), not the tray; ··· covers the composer, never lifts it (user 10-22 N: "on top of the composer, not push the composer up")
+        const dock = this.pop && this.popDock && document.querySelector('body > .pop.dock:not(.overflow-pop)'), when = dock && dock.matches('.ev-when') ? dock.offsetHeight : 0, h = keys + (when ? 0 : dock?.offsetHeight || 0);   // an editor's docked When lifts its card alone (--when on .dialog-backdrop), not the tray; ··· covers the composer, never lifts it
         if (h === _kb && keys === _keys && when === _when) return false;
         _kb = h; _keys = keys; _when = when; vars.setProperty('--kb', h + 'px'); vars.setProperty('--keys', keys + 'px'); vars.setProperty('--when', when + 'px');
         root.classList.toggle('kb', h > 0);
@@ -903,7 +903,7 @@ document.addEventListener('alpine:init', () => {
       this.$nextTick(() => {
         const list = document.querySelector('.list');
         // contentRect is HANDED to us — the width that invalidates every row's fit costs no layout read here.
-        // Width 0 is the list hidden, not a new width: refitting every row on the way back cost ~390 layout reads.
+        // Width 0 is the list hidden, not a new width: refitting every row on the way back costs ~390 layout reads.
         // On Plan it doesn't fire: content-visibility skips Lists' layout, so a resize there refits once, on return.
         // A grow/collapse (`clip`) resizes it every frame; the composer re-windows at the motion's ends instead.
         if (list) new ResizeObserver(([e]) => { const w = Math.round(e.contentRect.width); if (!w || this.clip && w === _listW) return;
@@ -927,7 +927,7 @@ document.addEventListener('alpine:init', () => {
         // Not `scrollend` (a per-frame programmatic scroll fires it every frame); a long frame mid-fling has moved on.
         const app = document.querySelector('.app');
         // Speed = travel over the scroll EVENTS' timeStamps, however far apart: a slow phone's every frame is >150ms, and
-        // zeroing past that stopped the runway growing ahead (T22). A jump after a pause divides by the pause. Budget: O(1) per event.
+        // zeroing past that would stop the runway growing ahead. A jump after a pause divides by the pause. Budget: O(1) per event.
         // Mid-motion the runway is the last frame's length when that beats WIN_RUN: the next frame is as slow as the last, so a
         // 1s frame at 1px/ms must reach 1000px ahead, not 120 (scroll.e2e "fling", red under load). From rest (_winV 0) it stays WIN_RUN.
         if (app) app.addEventListener('scroll', e => {
@@ -955,9 +955,8 @@ document.addEventListener('alpine:init', () => {
       _restT = setTimeout(rest, 150);
     },
     // rAF-throttle, shared by both passes: a fling fires scroll far faster than a frame — undebounced, each
-    // call forces a layout. The slot REMEMBERS a
-    // re-window asked for while a fit-only frame was queued: dropping it left the rows a scroll landing in that
-    // frame had asked for unbuilt until the next scroll — a blank viewport if there was none (B5).
+    // call forces a layout. The slot REMEMBERS a re-window asked for while a fit-only frame was queued: dropped,
+    // a scroll landing in that frame leaves its rows unbuilt until the next scroll (a blank viewport if none comes).
     fitRows(win) {
       _fitW ||= !!win; if (_fitQ) return;
       const fit = () => { try { if (_fitW) { _fitW = false; this._paintRows(); } } finally { _fitQ = 0; } this._fit(); if (_fitW) this.fitRows(); };   // a re-window the paint asked for (a window move's runway) is next frame's
@@ -975,9 +974,7 @@ document.addEventListener('alpine:init', () => {
     // of the fold. Scoped to .surface-lists: Plan-surface lists are hidden (~37ms/pass of 0-rect hits).
     _fit() {
       // Fit each row ONCE per list WIDTH. Squeeze is a function of the row's content and the width it has —
-      // scrolling changes neither, so re-measuring a row that is already fitted is pure repeat work, and it
-      // was 73% of a scroll pass (18 getComputedStyle + 18 title.scrollWidth per frame at 1000 rows, ~3 of
-      // them for rows that had actually just arrived). The stamp rides on the ELEMENT, like morphRows' `_sig`:
+      // scrolling changes neither, and re-measuring fitted rows is most of a scroll pass. The stamp rides on the ELEMENT, like morphRows' `_sig`:
       // the <li> the morph replaced comes back unstamped and is re-measured. The width generation `_fitV` is
       // bumped by the .list ResizeObserver, which HANDS us the new width — asking the DOM for it here would
       // force a second layout per pass, right after the morph dirtied it.
@@ -1048,16 +1045,15 @@ document.addEventListener('alpine:init', () => {
     // Order + rationale: docs/ui/task-list.md §Row overflow. Returns true if line 2 was created.
     // RUNG-MAJOR, never row-major: each rung does ONE read pass over every row still overflowing, then one
     // write pass. Row-major (ladder one row to completion, then the next) interleaves a read after every
-    // write, so 40 rows × 6 rungs cost 240 forced layouts instead of 6 — the exact cost this pass was built
-    // to avoid, and what tests/lists-view.e2e's read ratchet exists to catch.
+    // write, so 40 rows × 6 rungs cost 240 forced layouts instead of 6 (tests/lists-view.e2e's read ratchet).
     _ladder(rows) {
       if (!rows.length) return 0;
       const fits = (el) => { const t = el._t || (el._t = el.querySelector('.title')); return t.scrollWidth <= t.clientWidth + 1 || (el._steps && t.clientWidth >= STEP_FLOOR); };
       for (const el of rows) el._steps = !!el.querySelector('.step-block');
-      // Rung 0/1 — chips in place: >3 chips roll on COUNT (unchanged from the old fitRows), otherwise the
+      // Rung 0/1 — chips in place: >3 chips roll on COUNT, otherwise the
       // squeeze that got the row here collapses them to icon pills. Both are writes; no read needed.
       for (const el of rows) this._chipMode(el);
-      // Then blocker and file chips drop their names ONE at a time, the widest named first, so the row keeps the most names it has room for (soc-2 b).
+      // Then blocker and file chips drop their names ONE at a time, the widest named first, so the row keeps the most names it has room for.
       const relRungs = batch => { while ((batch = batch.filter(el => el.querySelector('.r1l .row-rel:not(.icon-only)') && !fits(el) && (el._relAt = this._relWidest(el)) >= 0)).length) for (const el of batch) this._relIcon(el, el._relAt); };   // READ, then WRITE
       relRungs(rows);
       const line2s = new Map();
@@ -1065,8 +1061,6 @@ document.addEventListener('alpine:init', () => {
         // Shed while the title is squeezed — AND for a row holding exactly ONE item on line 2. A lone item
         // is not allowed to stay (a line must earn itself), so if another rung can still supply a second
         // one, TAKE IT rather than reverting: handing back re-clips the title the first rung just fixed.
-        // Measured: at 390 "Water the plants" shed its chips, fitted, hit the hand-back and came back
-        // clipped to "Water the…" — while at 320, where one rung was not enough, it read in full.
         const still = rows.filter(el => {                              // READ — one layout for the batch
           if (!this._shedNode(el, sel)) return false;   // an absent rung buys no space; don't measure it
           const l2 = line2s.get(el);
@@ -1096,7 +1090,7 @@ document.addEventListener('alpine:init', () => {
         if (!over.length) break;
         for (const l2 of over) l2.classList.add(cls);                          // WRITE
       }
-      for (const [el, l2] of line2s) { const fill = el.querySelector('.body > .l2-fill'); if (fill) l2.append(fill); }   // marks only fill a line 2 the row earned (user 10-18), after its shrink steps
+      for (const [el, l2] of line2s) { const fill = el.querySelector('.body > .l2-fill'); if (fill) l2.append(fill); }   // marks only fill a line 2 the row earned, after its shrink steps
       return l2s.length;
     },
     // Share eligibility with the writer: a rung that cannot move anything needs no title measurement.
@@ -1107,7 +1101,7 @@ document.addEventListener('alpine:init', () => {
     // Pure writes in L2_ORDER, also replayed by _fit without measuring.
     _shed(el, sel, line2s) {
       const n = this._shedNode(el, sel); if (!n) return;
-      // b4c: a Steps row keeps ONE title line, so the step never reads as a task — what doesn't fit hides behind a "…"
+      // A Steps row keeps ONE title line, so the step never reads as a task — what doesn't fit hides behind a "…"
       // listing it, never moving under the step. The deadline is exempt: the one red that means a consequence.
       if (el.querySelector('.step-block')) {
         n.classList.add('shed-hid');
@@ -1137,7 +1131,7 @@ document.addEventListener('alpine:init', () => {
         r1l.classList.remove('icons-only', 'rolled');
       }
     },
-    // Rung 0/1 — chips collapse IN PLACE: >3 chips roll on COUNT (unchanged from the old fitRows), otherwise
+    // Rung 0/1 — chips collapse IN PLACE: >3 chips roll on COUNT, otherwise
     // the squeeze that got the row here collapses them to icon pills. Pure writes; costs no height, so it is
     // both the first rung and what a row keeps when a line is handed back.
     _chipMode(el) {
@@ -1284,7 +1278,7 @@ document.addEventListener('alpine:init', () => {
       else this._rowV++;
     },
     watchField(el) { _field.observe(el); },
-    phoneThread() { return this.narrow && this.surface === 'social' && !!this.chat.open; },   // a whole-screen page with no switcher (soc-2e)
+    phoneThread() { return this.narrow && this.surface === 'social' && !!this.chat.open; },   // a whole-screen page with no switcher
     chatPeer(chat) { return chat ? peerName(chat, this._acct()) : ''; },
     // Signed out, Social asks to sign in and the invite waits. A refusal (400: used, yours, a bad id; 403) drops it; anything else (offline, 401, 404, 429, 5xx) keeps it for the next boot.
     async redeemInvite() {
@@ -1401,7 +1395,7 @@ document.addEventListener('alpine:init', () => {
       if (row.conversation_id === this.chat.open && !this.chat.msgs.some(m => m.id === row.id)) { this.chat.msgs.push(row); this.chat.msgs.sort(byCreated); }
       if (!chat) return void loadChats(sbClient()).then(chats => chats && this._setChats(chats));   // a chat we haven't loaded yet
       chat.last = row;
-      if (row.user_id !== this._acct() && !(this.surface === 'social' && this.chat.open === chat.id)) {   // soc-1b: a quiet card, never for the chat on screen
+      if (row.user_id !== this._acct() && !(this.surface === 'social' && this.chat.open === chat.id)) {   // a quiet card, never for the chat on screen
         Promise.resolve(!row.body && files).then(() => {   // a files-only card names its file
           const line = this.chatLine(row).split('\n')[0];
           this.notify(`${this.chatPeer(chat)}: ${line.length > 80 ? line.slice(0, 79) + '…' : line}`, { actions: [{ label: 'Open', fn: () => { this.goSurface('social'); this.openChat(chat.id); } }], timeout: 6000 });
@@ -1577,7 +1571,7 @@ document.addEventListener('alpine:init', () => {
       }
       return true;
     },
-    // Where a drag lands: a velocity flick steps one neighbour; else cross the half-way line; clamp to ends. (emil §10)
+    // Where a drag lands: a velocity flick steps one neighbor; else cross the half-way line; clamp to ends. (emil §10)
     snapTarget(dx, w, vx, idx, n) {
       const flick = Math.abs(vx) > 0.5 && Math.abs(dx) > 8;   // px/ms
       let next = flick ? idx + (vx < 0 ? 1 : -1) : (Math.abs(dx) > w / 2 ? idx + (dx < 0 ? 1 : -1) : idx);
@@ -1588,10 +1582,10 @@ document.addEventListener('alpine:init', () => {
       if (e.target.closest('input, textarea, [contenteditable], .inp, .composer, code, .md-code, .cd-seg')) return;   // let native text interaction (and a view-strip tap) win
       if (this.drag.active) return;   // ignore extra touch points once a drag owns the pointer
       this.drag = { active: true, x0: e.clientX, y0: e.clientY, w: this.$refs.canvas.offsetWidth, t0: e.timeStamp || performance.now(), id: e.pointerId, axis: null, from: e.target };
-      // Holding the strip's ＋ = a new event on the shown day (D8): the platform's 500ms, real time (motion.t zeroes it → every tap a hold); the slop below cancels it.
+      // Holding the strip's ＋ = a new event on the shown day: the platform's 500ms, real time (motion.t zeroes it → every tap a hold); the slop below cancels it.
       // A fired hold ends the drag (a mouse release lands on the editor's backdrop, missing canvasUp); the strip's @touchend eats a finger's release click, which would close it.
       if (e.target.closest('[data-act="add"]')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.clNewEvent(); }, 500);
-      else if (e.target.closest('.jb-dest:not(.jb-day)')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.listHold = { hot: -1, x: e.clientX, y: e.clientY, moved: false }; this.openListTray(); }, 500);   // P-A, same hold and slop
+      else if (e.target.closest('.jb-dest:not(.jb-day)')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.listHold = { hot: -1, x: e.clientX, y: e.clientY, moved: false }; this.openListTray(); }, 500);   // the lists tray: same hold and slop
     },
     canvasMove(e) {
       if (!this.drag.active || e.pointerId !== this.drag.id || sorting) return;   // a held row owns the finger
@@ -1600,8 +1594,7 @@ document.addEventListener('alpine:init', () => {
         clearTimeout(this.drag.hold);                         // …which is also a hold's slop
         this.drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
         // A real horizontal list owns its own axis — the same deference onCanvasWheel
-        // makes, which the pointer path never did: a finger paged the app where a trackpad scrolled the
-        // lane. Finger sign is inverted from wheel delta (drag left = scroll right), hence -dx.
+        // makes, or a finger pages the app where a trackpad scrolls the lane. Finger sign is inverted from wheel delta (drag left = scroll right), hence -dx.
         if (this.drag.axis === 'x' && this._ownedByScroller(this.drag.from, e.currentTarget, 'x', -dx)) this.drag.axis = 'own';
         if (this.drag.axis === 'x' && this.phoneThread()) this.drag.axis = 'back';   // swipes back to the chats, not to Plan
         if (this.drag.axis === 'x') this.dragging = true;
@@ -1673,7 +1666,7 @@ document.addEventListener('alpine:init', () => {
       if (type === 'project') return kids(id);
       if (type === 'backlog') return kids(def);
       if (type === 'area') return this.tasks.filter(t => t.area_ids?.includes(id));
-      // All: tasks whose parent is a container (root, backlog, overview project). byId keeps this O(n) — tasks.find per task melted at ~1k rows.
+      // All: tasks whose parent is a container (root, backlog, overview project). byId keeps this O(n): tasks.find per task melts at ~1k rows.
       const byId = this.byId;
       const inProject = pid => pid === null || pid === def || !!byId.get(pid)?.overview;
       return this.tasks.filter(t => !t.overview && t.id !== def && inProject(t.parent_id));
@@ -1686,7 +1679,7 @@ document.addEventListener('alpine:init', () => {
       let hay = _listHay.get(t.id);
       if (hay == null) {   // every typed field: title · areas · places · description · checklist; '\n' keeps a query from spanning two fields
         const places = (t.location?.ids || []).map(id => byIdIn(this.locations).get(id)?.name || '');
-        // a project's body describes the whole list it heads, so it would match everything in it (decision #99)
+        // a project's body describes the whole list it heads, so it would match everything in it
         _listHay.set(t.id, hay = [t.content || '', ...this.areaObjs(t.area_ids).map(l => l.name || ''), ...places, t.overview ? '' : bodyText(t)].join('\n').toLowerCase());
       }
       return hay.includes(q);
@@ -1752,7 +1745,7 @@ document.addEventListener('alpine:init', () => {
     },
     // The filter line's shed ladder (task-list.md §Filter line shed order). Where the line can't wrap, the search
     // field yields first (CSS); then ONE rung at a time while a piece still runs past the sentence: `showing`, the
-    // sort word → ⇅, token labels → 6ch, then the labels of tokens whose colour mark can stand in for them,
+    // sort word → ⇅, token labels → 6ch, then the labels of tokens whose color mark can stand in for them,
     // then the tokens' × (a token still opens the menu, which clears it).
     // Measured, so a long area name sheds at 414 and a short one never does.
     _fitControls() {
@@ -1774,7 +1767,7 @@ document.addEventListener('alpine:init', () => {
       const scope = this.navSel.type === 'area' ? this.areaById(this.navSel.id)?.name : null;
       this.openFilterEditor({ name: '', query: qfQuery({ imp: this.qfImp, areas, due: this.qfDue, open: this.qfOpen, done: this.showCompleted, archived: this.qfArchived, scope }) });
     },
-    // All values, always — a filter you can't reach reads as missing, not tidy (user 2026-07-23). Importance order.
+    // All values, always — a filter you can't reach reads as missing, not tidy. Importance order.
     availImp() { return IMPORTANCE; },
     // Children index (O(n) tree walk) + mkRow closure — shared by visibleRows and the link picker. Hot path: no per-row work added.
     _mkRowFn(sort, cmp) {
@@ -1964,12 +1957,12 @@ document.addEventListener('alpine:init', () => {
       if (group !== 'none') { const [secs, kept] = this._sectionize(out); _secMemo = secs; out = kept; }
       else if (this.navSel.type === 'filter') { const [secs, kept] = this._promoteSections(out, r => !r.depth && r.ctx); _secMemo = secs; out = kept; }
       // Inside a project, its overview subprojects become section heads even with grouping OFF — a subproject is
-      // a container, and drawn as one more row it read as a sibling of the tasks it actually holds.
+      // a container, and drawn as one more row it reads as a sibling of the tasks it actually holds.
       else if (subSec) { const [secs, kept] = this._promoteSections(out, r => this.isOverviewProject(r.t)); _secMemo = secs; out = kept; }
       else _secMemo = [];
       _visKey = key; return this._linkRows(out, done);
     },
-    // The note's block on now, as Mac's wFocus reads it (user 10-10: "the filtering"; #47: "only have tasks that are constrained to that block"): its "during" attachments, its areas
+    // The note's block on now, as Mac's wFocus reads it: only the tasks constrained to it, its "during" attachments and its areas
     _stickyFocus() {
       const block = this.stickyBlock && this.blocks.find(b => b.id === this.stickyBlock);
       return block && { ids: this.clDuring(block.id).map(s => s.task_id), areas: block.areas || [] };
@@ -2019,7 +2012,7 @@ document.addEventListener('alpine:init', () => {
           let n = 0;
           while (n < open.length && open[n].key === path[n]?.id) n++;
           open.length = n;
-          // each subproject gets a head labelled by its path from the top project; inside a shut one, none — it's folded away
+          // each subproject gets a head labeled by its path from the top project; inside a shut one, none — it's folded away
           for (; n < path.length && !(open[n - 1] || head).shut; n++) {
             const s = { ...this._secHead(path[n].id, path[n].content || 'Project', kept.length), up: [g.label, ...path.slice(0, n).map(p => p.content || 'Project')].join(' › ') + ' › ' };
             open.push(s); secs.push(s);
@@ -2040,7 +2033,7 @@ document.addEventListener('alpine:init', () => {
     // A row that `isHead` claims, sitting directly in the heads above it, becomes a section HEAD instead of a row,
     // and its subtree shifts up a level per head so the indent still reads as the tree. Two callers, one idiom: a
     // filter view promotes the root ancestors that only provide context (a root that MATCHED stays a row), a project
-    // view promotes its overview subprojects at every depth, a nested one labelled by its path ("Sub › Deep", as _sectionize).
+    // view promotes its overview subprojects at every depth, a nested one labeled by its path ("Sub › Deep", as _sectionize).
     _promoteSections(rows, isHead) {
       const secs = [], kept = [], open = [];   // open: the heads the row sits in, outermost first
       for (const r of rows) {
@@ -2116,7 +2109,7 @@ document.addEventListener('alpine:init', () => {
       const look = 'body { margin: 0; overflow-wrap: break-word; } img { max-width: 100%; height: auto; }';
       return _mailView = { key, hidden, doc: `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><style>${look}</style>${doc.head.innerHTML}${doc.body.outerHTML}` };
     },
-    // His pick (things-9-7): the sender's layout, themed into the app. Neutral ink, page and rule colors take the app's, and the
+    // The sender's layout, themed into the app. Neutral ink, page and rule colors take the app's, and the
     // app's type everywhere; a dark band (a button, a header) keeps its colors and its text's; in dark, a pale color becomes a
     // tint of its hue and colored text lightens. ceiling: themed at open; a theme switch with a mail open shows on the next open.
     mailFit(frame) {
@@ -2163,7 +2156,7 @@ document.addEventListener('alpine:init', () => {
       return html`<li class="item${t.completed_at ? ' done' : t.archived_at ? ' archived' : r.blocked ? ' waiting' : ''}${r.ctx ? ' ctx' : ''}${after ? ' after' : ''} flex gap-10" data-id="${t.id}" style="${style}"${raw(drag)}>${raw(this.rowBody(r, body))}</li>`;
     },
     // Height estimate for a row that has NEVER been rendered (once one has, _hCache holds its real height).
-    // One flat 38px guess against real 34/46/54+ rows made the scrollbar lurch on the way down (#307), so this
+    // One flat guess against real 34/46/54+ rows makes the scrollbar lurch on the way down, so this
     // tracks the same content the row builder renders.
     _rowEst(r, after) {   // after: a phone's group gap opens this row (styles.css .item.after)
       // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
@@ -2179,8 +2172,8 @@ document.addEventListener('alpine:init', () => {
     },
     _rowChk(r) { return r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []); },   // folded or Steps → no checklist drawn
     // How many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
-    // but a row that has never rendered has no measurement — and guessing one line for a taller row is
-    // exactly the lurch #307 fixed. Approximate from the same inputs the row builder has: title length
+    // but a row that has never rendered has no measurement — and guessing one line for a taller row
+    // makes the scrollbar lurch. Approximate from the same inputs the row builder has: title length
     // against the width left over after the metadata, then how many rows that metadata needs. Deliberately
     // cheap and slightly eager; _measure overwrites it with the real height the instant the row renders,
     // so this only has to keep the scrollbar honest while the reader scrolls past.
@@ -2251,7 +2244,7 @@ document.addEventListener('alpine:init', () => {
       return el.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop;
     },
     // Scroller px per list px: the Windows note zooms its list (.8), so a row's offsetHeight and the scroller's scrollTop
-    // differ in scale, and a window placed without it falls a fifth of the scroll depth behind the reader (win-6).
+    // differ in scale, and a window placed without it falls a fifth of the scroll depth behind the reader.
     _listZoom(sc, sel) { return (_staticEl(sel)?.parentElement.currentCSSZoom ?? 1) / (sc.currentCSSZoom ?? 1); },
     // Fold the LIVE heights of the rendered entries back into the model: the list's size memory, without which
     // the spacers, and so the scrollbar, drift.
@@ -2273,10 +2266,10 @@ document.addEventListener('alpine:init', () => {
     },
     // The open edit composer sits in the run of rows, pulled up over entry k and `x` px taller than it, with k's
     // subtree hidden under it: in SCROLL px, entry k spans the composer and its subtree spans nothing. `sp` is an
-    // entry's SPACER px (subtree zeroed; the composer is its own element). Modelling neither — the window was
-    // only widened by the composer's height — windowed the rows past it far below the fold: a blank band (B1).
+    // entry's SPACER px (subtree zeroed; the composer is its own element). Modeling neither windows the rows past
+    // it far below the fold: a blank band.
     // A DRAGGED task's subtree is out of the list until the drop, so it spans nothing too: counted, the window
-    // disagreed with the DOM and every re-window near the list's end flipped its height (list-dnd "subtree stays hidden").
+    // disagrees with the DOM and every re-window near the list's end flips its height (list-dnd "subtree stays hidden").
     _editShift(m) {
       const ent = m.ent, c = this.$refs.composer, k = _editPin != null && this.composer.open ? m.ix.get(_editPin) : undefined;
       const g = _dragDescs?.size ? _dragDescs : null, h = g ? i => g.has(ent[i].id) ? 0 : ent[i].h : i => ent[i].h;
@@ -2291,7 +2284,7 @@ document.addEventListener('alpine:init', () => {
     _winOf(m, E) {
       const sc = this._listScroller();
       if (!sc) return { s: 0, e: m.ent.length, top: 0, bot: 0 };
-      // A fling outruns a FIXED margin once one frame scrolls further than it (a slow phone frame at speed — B5).
+      // A fling outruns a FIXED margin once one frame scrolls further than it (a slow phone frame at speed).
       // Bands start once a frame outlasts margin ÷ speed (~75ms at 8000px/s), so the travel direction gets
       // _winRun ms of runway (capped at 2× the margin), at the speed the scroll listener measured.
       const z = this._listZoom(sc, m.sel), g = Math.min(2 * WIN_MARGIN, Math.abs(_winV) / z * _winRun), o = (sc.scrollTop - this._listOrigin(sc, m.sel)) / z, H = sc.clientHeight / z;
@@ -2303,7 +2296,7 @@ document.addEventListener('alpine:init', () => {
       const box = pad => span(o - pad - (_winV < 0 ? g : 0) - E.lead, o + H + pad + (_winV > 0 ? g : 0)), need = box(WIN_KEEP);
       // HYSTERESIS: keep the rendered window while it still covers the box ± WIN_KEEP (+ runway). Any pass that
       // changes the list's DOM pays a fixed style/layout/PrePaint bill however few rows it moved (~35ms of
-      // PrePaint alone at 16× CPU), so sliding every frame paid it every frame; this pays it every ~400px.
+      // PrePaint alone at 16× CPU); sliding every frame would pay it every frame, this pays it every ~400px.
       let kept = _win.get(m);
       if (kept?.part || !(kept && kept.s <= need.s && kept.e >= need.e)) {
         const full = box(WIN_MARGIN);
@@ -2339,7 +2332,7 @@ document.addEventListener('alpine:init', () => {
       if (key && m.parts?.key === key) return m.parts;
       const out = this._parts(m.ent, w.s, w.e).filter(p => !_dragDescs?.has(p.id));
       // data-id, like every other part: morphRows keys the reconciliation off it, and two elements sharing
-      // the undefined key collided: the spacer was orphaned into the list and its height double-counted.
+      // an undefined key collide: the spacer is orphaned into the list and its height double-counted.
       const pad = (id, order, h) => ({ id, html: html`<li class="win-pad" data-id="${id}" style="order:${order};height:${h}px"></li>` });
       // The composer's flex order pins it to its row's slot. If that slot is elided into a spacer, the spacer
       // would sort to the other side of the composer, and the composer's flow height (composerH - startH)
@@ -2375,7 +2368,7 @@ document.addEventListener('alpine:init', () => {
       const parts = el && this.listHtml(), doneParts = done && this.doneHtml();
       if (el) this.renderRows(el, parts);
       if (done) this.renderRows(done, doneParts);
-      // #83: the list pads its top by what the lifted rows above the grab took, so a still pointer keeps its row (and slot)
+      // The list pads its top by what the lifted rows above the grab took, so a still pointer keeps its row (and slot)
       // even scrolled to the top; dropped, the pad leaves as they come back. Scroll anchoring sits the lift out (see
       // _liftSubtree): scrolled past those rows, it would move the list by them too.
       // ceiling: a blank band of their height tops the list while they're lifted; collapse it once the drag ends if it reads as a gap
@@ -2389,8 +2382,8 @@ document.addEventListener('alpine:init', () => {
     _stampRow(el) {
       const id = el.dataset.id, c = el.classList;
       if (id === this.editing) this._editRow(el);
-      // The edited subtree, asked LIVE: a snapshot at open missed subtasks added while editing — the window (_editShift)
-      // modelled them under the composer, the list still drew them, and every row past it came in that much late.
+      // The edited subtree, asked LIVE: a snapshot at open misses subtasks added while editing, which the window (_editShift)
+      // models under the composer while the list still draws them, so every row past it comes in that much late.
       else if (this.editing && this._chain(this.byId.get(id)?.parent_id).includes(this.editing)) c.add('edit-hidden');
       if (id === this.focusId) { c.add('kbfocus'); _kbEl = el; }
       if (this.dragId && _dragIds?.has(id)) c.add('dragging');   // every carried row, not just the grabbed one
@@ -2427,14 +2420,13 @@ document.addEventListener('alpine:init', () => {
       return this._listOrigin(sc, m.sel) + y * this._listZoom(sc, m.sel);
     },
     // Anything that MEASURES or TOUCHES a row by id must bring it into the DOM first — the window only holds
-    // the rows near the viewport. Jumps to the row's modelled position and re-windows SYNCHRONOUSLY: callers
+    // the rows near the viewport. Jumps to the row's modeled position and re-windows SYNCHRONOUSLY: callers
     // need the element in this tick (editTask measures startH/blockH off it, _paintKb stamps the ring), and a
     // glide delivers a position over frames, not an element now. So this is the one place that writes
     // scrollTop by hand — and it therefore stamps the scroller's TAKEOVER clock, exactly as a wheel does.
-    // This move IS the reader's (a keypress, a palette jump), and keyboard is not in GLIDE_YIELD, so nothing
-    // stood down on their behalf: a hold in flight read the jump as layout drift and eased them straight back
-    // off the row that had just been built for them — and the row unmounted under whoever asked for it, ring
-    // and all. The stamp ends an in-flight tween on its next frame (`sc._userAt > t0`). The open's in-view hold
+    // This move IS the reader's (a keypress, a palette jump), and keyboard is not in GLIDE_YIELD: unstamped, a hold
+    // in flight reads the jump as layout drift and eases the reader back off the row just built for them, and the
+    // row unmounts under whoever asked for it, ring and all. The stamp ends an in-flight tween on its next frame (`sc._userAt > t0`). The open's in-view hold
     // can't be made "live" instead: re-asserting a CONSTANT against layout drift is its whole job, and a target
     // that re-reads scrollTop is a hold that holds nothing.
     _ensureRow(id) {
@@ -2447,8 +2439,8 @@ document.addEventListener('alpine:init', () => {
       return this._rowEl(id);
     },
     // Keyed morph of the parts into `container`, REUSING unchanged <li>s by data-id. A blanket
-    // `container.innerHTML = h` recreates every row on a single-field save, which reflowed the list and
-    // teleported the scroll (#306); here only genuinely-changed rows are replaced and the rest keep their
+    // `container.innerHTML = h` recreates every row on a single-field save, reflowing the list and
+    // teleporting the scroll; here only genuinely-changed rows are replaced and the rest keep their
     // element identity, and thus their imperative classes (hover/select/edit persist through the render).
     // `_sig` = the CLEAN template outerHTML at creation; imperative classes are added afterwards so they never
     // enter the compare (a stale live class would otherwise force a needless replace).
@@ -2465,8 +2457,8 @@ document.addEventListener('alpine:init', () => {
       if (before) queueMicrotask(() => this._glideFrom(before, false));
     },
     // The browser anchors a morph, except inside a close's collapse (closeComposer holds anchoring off) or under an arrival's
-    // glide (it moves the rows itself): there the row ⌘Enter files above the viewport pushed every row on screen down by its
-    // height (#50; a signed-in save lands after the collapse, #84). Anchor by hand, as the browser would, on the first row on
+    // glide (it moves the rows itself): there the row ⌘Enter files above the viewport pushes every row on screen down by its
+    // height (a signed-in save lands after the collapse). Anchor by hand, as the browser would, on the first row on
     // screen: read either side of the synchronous morph, so the collapse can't move it in between.
     _readerPin(el, glide) {
       const sc = !_dragIds && el.closest('.surface-lists') && this._listScroller();
@@ -2481,8 +2473,8 @@ document.addEventListener('alpine:init', () => {
       const old = new Map();
       for (const el of container.children) old.set(el.dataset.id, el);
       // Drop what's LEAVING before placing what stays. A windowed list slides its range every frame, and with
-      // the departing rows still sitting in front of the cursor every surviving row got insertBefore'd past
-      // them — a DOM move per row per frame (measured: ~12/frame of pure churn during a fling).
+      // the departing rows still sitting in front of the cursor every surviving row gets insertBefore'd past
+      // them — a DOM move per row per frame (~12/frame of pure churn during a fling).
       const want = new Set(); for (const p of parts) want.add(p.id);
       for (const [id, el] of old) if (!want.has(id)) { el.remove(); old.delete(id); }
       let cursor = container.firstElementChild, tpl = null; const made = [];
@@ -2595,16 +2587,16 @@ document.addEventListener('alpine:init', () => {
     // Paint .selected + run-position classes imperatively — O(selected) diff.
     // Contiguous selected rows form a rounded group: sel-top/sel-mid/sel-bot/sel-single (mirrors .inblock rounding).
     paintSel() {
-      this.visibleRows();   // deps: the selection, and the rows (a run's neighbours)
+      this.visibleRows();   // deps: the selection, and the rows (a run's neighbors)
       // a row folded, filtered, searched or deleted away leaves: the edit bar and a drag act on listed rows only
       const shown = this.sel.filter(id => _rowMap.has(id) || _doneMap.has(id));
       if (shown.length < this.sel.length) this.sel = shown;
       const ns = new Set(shown); if (!ns.size && !_selSet.size) return;
-      queueMicrotask(() => {   // not $nextTick: Alpine holds it while the edit bar's x-transition starts — the highlight painted a frame late
+      queueMicrotask(() => {   // not $nextTick: Alpine holds it while the edit bar's x-transition starts, so the highlight would paint a frame late
         const RUN = ['sel-top', 'sel-mid', 'sel-bot', 'sel-single'];
         const byEl = new Map([...document.querySelectorAll('.surface-lists .list .item[data-id]')].map(el => [el.dataset.id, el]));   // the open list and the Done list
         for (const id of _selSet) if (!ns.has(id)) byEl.get(id)?.classList.remove('selected', ...RUN);
-        for (const id of ns) {   // run position from the row's walk neighbours, each list its own
+        for (const id of ns) {   // run position from the row's walk neighbors, each list its own
           const el = byEl.get(id), r = _rowMap.get(id) ?? _doneMap.get(id); if (!el || !r) continue;
           const p = ns.has(r.prevId), n = ns.has(r.nextId), run = !p && n ? 'sel-top' : p && n ? 'sel-mid' : p && !n ? 'sel-bot' : 'sel-single';
           if (!el.classList.contains(run)) { el.classList.remove(...RUN); el.classList.add('selected', run); }   // unchanged rows untouched: an extend rewrites ~2, not the run
@@ -2759,7 +2751,7 @@ document.addEventListener('alpine:init', () => {
       this._navPopAt(r);
       this.startRename(a.id);
     },
-    // One tree index and one open-per-area tally per paint, shared by every row: per row they made it O(projects·tasks).
+    // One tree index and one open-per-area tally per paint, shared by every row: per row they make it O(projects·tasks).
     _rollerIdx() {
       const areaOpen = new Map();
       for (const t of this.tasks) if (!t.completed_at && !t.archived_at && !inNotes(t)) for (const a of t.area_ids || []) areaOpen.set(a, (areaOpen.get(a) || 0) + 1);
@@ -2812,7 +2804,9 @@ document.addEventListener('alpine:init', () => {
     navPopArea() { return this.navPop?.type === 'area' ? this.areas.find(l => l.id === this.navPop.id) : null; },
     // Ghost text doubles as find (uFuzzy, same matcher as the pickers): .chk-hit floats matches via
     // flex order (the lane done rows sink through) — no DOM moves, stored order untouched, nothing hidden.
+    // Steps don't: they are a sequence, and a typed step is only the next one.
     chkFind() {   // memo per (query, list length): item id → match ranges (null = hit without range info)
+      if (this.chkSteps()) return null;   // first: steps' paint never subscribes to the typed ghost
       const q = this.chkGhost.trim();
       if (!q) return null;
       const key = q + '|' + this.draft.checklist.length;
@@ -2890,7 +2884,7 @@ document.addEventListener('alpine:init', () => {
       return this._tooDeep(overId) ? 'deep' : 'into';
     },
     // Sorted, a position ranks nothing the list shows: a slot (its parent) among the row's own siblings is refused, and one moving it to
-    // another project (#90: the rail, Move or Manual do that); nest, outdent, another parent's slot in its project and the rail still land.
+    // another project (the rail, Move or Manual do that); nest, outdent, another parent's slot in its project and the rail still land.
     _sortPins(parentId) { return this.sortBy !== 'manual' && !!_dragParents && (_dragParents.has(parentId) || _dragProjs.size > 1 || !_dragProjs.has(this._projOf(parentId))); },
     _projOf(parentId) { return this._chain(parentId).find(id => !this.taskProj(this.byId.get(id))); },   // the nearest project (or Inbox) up from parentId
     // ...and under another parent the row lands at its sorted place among the parent's SHOWN rows (_parentMap: shown order, sorted), the
@@ -2938,7 +2932,7 @@ document.addEventListener('alpine:init', () => {
 
     reduceMotion() { return motion.scale === 0; },   // one dial (motion.js) — OS preference or test override
     // The LIVE card's height as-if-grown, so the grow lands where auto settles. `grown` flips on for one synchronous
-    // read with transitions held (no frame ever sees it); a probe clone laid out a second copy of every row.
+    // read with transitions held (no frame ever sees it); a probe clone would lay out a second copy of every row.
     fullGrow(g) {
       const card = g.firstElementChild; if (!card) return g.scrollHeight;
       g.style.transition = card.style.transition = 'none'; card.style.height = 'auto'; g.classList.add('grown');
@@ -2965,8 +2959,8 @@ document.addEventListener('alpine:init', () => {
         const g = grow(); g?.classList.remove('morph'); if (g?.firstElementChild) g.firstElementChild.style.clipPath = '';
       };
       const settle = () => { stop(); this.growH = null; this.clip = false; this._reflow(); };   // to auto; the list re-windows once, here
-      // Each step bails once a re-open/close supersedes THIS open (`_t`): a stale measure stripped the live
-      // `grown` class for good (opacity 0), a stale growH pinned the height.
+      // Each step bails once a re-open/close supersedes THIS open (`_t`): a stale measure strips the live
+      // `grown` class for good (opacity 0), a stale growH pins the height.
       let t = this._t = --_growGen;   // this open's generation; becomes the settle timer once the grow starts
       requestAnimationFrame(() => {   // before the first paint of the grow: it already wears the row's box
         if (this._t !== t) return;
@@ -2995,7 +2989,7 @@ document.addEventListener('alpine:init', () => {
         for (const el of fade) el.style.opacity = 0;
         // nothing flying (a phone's card has no rows): the card grows from the title's row alone and its subtree folds away under the edge
         if (!_morphMoved.length) sub.push(..._morphRows.slice(1).filter(r => r.isConnected));
-        if (sub.length) {   // at once: a glide down from the block's height showed the rows and the whole block for a frame
+        if (sub.length) {   // at once: a glide down from the block's height shows the rows and the whole block for a frame
           this.growH = this.startH; g.style.transition = 'none'; g.style.height = this.startH + 'px';
           card.style.setProperty('--from', this.startH + 'px');
           for (const r of sub) r.classList.remove('edit-hidden');
@@ -3018,7 +3012,7 @@ document.addEventListener('alpine:init', () => {
               e.animate([{ backgroundColor: 'transparent', offset: 0 }], o));   // the zebra band: the list has none
           }
           for (const el of fade) { el.style.opacity = ''; anims.push(el.animate({ opacity: [0, 1] }, { duration: dur * .5, delay: dur * .35, easing: 'ease-out', fill: 'backwards' })); }
-          // settle times from the grow's start, not the tap: a slow first paint outlasted a tap-timed one and the late grow pinned growH
+          // settle times from the grow's start, not the tap: a slow first paint outlasts a tap-timed one and the late grow pins growH
           this._t = t = setTimeout(settle, dur + 20);
         });
       });
@@ -3033,7 +3027,7 @@ document.addEventListener('alpine:init', () => {
       }
       const dur = 260;   // styles.css .closing's --md
       // pins the live height, inline at once: .morph's size containment sizes an unpinned grow to 0 until the binding lands,
-      // and a layout in that gap re-windowed the list and scrolled it by the composer's height
+      // and a layout in that gap re-windows the list and scrolls it by the composer's height
       g.style.height = (this.growH = g.offsetHeight) + 'px'; this.clip = true; g.classList.add('morph');   // the card's box follows it again
       motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
       const anims = [], fly = _morphMoved.length > 0;
@@ -3041,14 +3035,14 @@ document.addEventListener('alpine:init', () => {
       // as in Things: the fill and everything but the title and the rows going home drop at once, the row's pills fade in
       // a subtask's chips are the card's; its list row has its own, fading in
       const fade = g.querySelectorAll('.composer-dock, .composer-opts, .composer-actions, .entry:not(.ghost) .entry-txt > *');
-      // what sits in the flying rows' path goes at once: a 60 ms fade still crossed the rows going home
+      // what sits in the flying rows' path goes at once: a 60 ms fade still crosses the rows going home
       for (const el of g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or')) anims.push(el.animate({ opacity: 0 }, { duration: 0, fill: 'forwards' }));
       // the subtree rows unhide now, under a card that turns see-through
       // nothing flying (a phone's card has no rows): only the title's row waits under the card, its subtree rides the shrinking edge up
       const rows = _morphRows.filter(r => r.isConnected), sub = fly ? [] : rows.slice(1);
       for (const r of fly ? rows : rows.slice(0, 1)) r.classList.add('morph-hide', ...fly ? [] : ['morph-solo']);
       requestAnimationFrame(() => {
-        // growH null: a starved frame landed past the settle below, and collapsing now re-pinned the closed grow
+        // growH null: a starved frame landed past the settle below, and collapsing now would re-pin the closed grow
         if (!this._closingComposer || this.growH === null) return;
         const o = { duration: dur, easing: _closeEase };
         if (sub.length) end = this.startH;
@@ -3072,7 +3066,7 @@ document.addEventListener('alpine:init', () => {
     openComposer() {
       this._releaseCloseRange(true);
       this._releaseView();
-      this.notesOpen = !!this.editing && this.editing === this.jotted;   // S1 opens on its steps
+      this.notesOpen = !!this.editing && this.editing === this.jotted;   // a jotted task opens on its steps
       const focusBefore = document.activeElement, d = this.draft;
       // If the tapped task's TOP is in view, DON'T scroll — grow it in place (its bottom may extend below the
       // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. Close never
@@ -3090,7 +3084,7 @@ document.addEventListener('alpine:init', () => {
       this._listScroller()?.style.removeProperty('overflow-anchor'); _editEnd = null;   // a re-open inside the close's collapse skips its done
       this.relocateComposer();   // move the single composer into the active surface's list before it grows
       this.applyEditDom();       // style the edited row (crossfade) + hide its subtree imperatively — no list rebuild, so the scroll stays put
-      // A new task grows from the Add task row it hides: from 0, a list scrolled to its end lost that row and dropped by it.
+      // A new task grows from the Add task row it hides: from 0, a list scrolled to its end loses that row and drops by it.
       const wasOpen = this.composer.open, add = !this.editing && !this._inPanel() && this.$refs.addRow;
       if (add?.offsetHeight) _addSlot = add.offsetHeight + parseFloat(getComputedStyle(add).marginTop);   // hidden while a new task is open: keep the last
       const start = this.editing ? this.blockH : add ? _addSlot : 0;
@@ -3117,19 +3111,19 @@ document.addEventListener('alpine:init', () => {
       }));
     },
     // ONE glide, aimed at the composer WHILE IT GROWS: a live target absorbs the growth instead of chasing it (two
-    // browser animations racing over a growing element were the open/close stutter). No-op when it's already in view.
+    // browser animations racing over a growing element stutter). No-op when it's already in view.
     _showComposer() {
       const comp = this.$refs.composer, sc = this._editScroller(); if (!comp || !sc?.contains(comp)) return;   // hosted outside the list (the jot bar): its scroll is the reader's
       const start = sc.scrollTop, pad = this._seenTop(sc);
       this._glide(sc, () => {
         // A live target has to survive the target MOVING: relocateComposer re-parents this element between
         // surfaces/lists, and a detached node reports an all-zero rect — aiming at that drags the list to
-        // the top. scrollIntoView never had to care because it resolved its pixel once and forgot.
+        // the top.
         const cr = comp.getBoundingClientRect();
         if (!this.composer.open || !comp.isConnected || !cr.height) return sc.scrollTop;
         const sr = sc.getBoundingClientRect(), H = this._seenH(sc), top = sc.scrollTop + cr.top - sr.top - 8, lift = top + cr.height - H + 20, aim = top - pad;
         // taller than the viewport → sit on its top; otherwise the start, clamped so it's all in. Absolute, never the live scrollTop
-        // (the easing pulled back from it every frame, ±12px wobble) nor a bare start: one that hid it bounced the glide back there.
+        // (the easing pulls back from it every frame, a ±12px wobble) nor a bare start: one that hid it bounces the glide back there.
         return cr.height > H ? aim : Math.min(aim, lift > start + 16 ? lift : start);
       }, 420, this.$refs.grow);   // outlasts the 220ms grow, so the target is still live for the whole of it
     },
@@ -3152,8 +3146,8 @@ document.addEventListener('alpine:init', () => {
     },
     // Now has no editable list — editIndex positions the composer on Lists
     rowIndexOf(id) { this.visibleRows(); return (_rowMap.get(id) ?? _doneMap.get(id))?.i ?? -1; },
-    // A row that has just been DELETED (or filtered out) is in NEITHER list — -1 sent the composer to flex
-    // order -2, above every row, and the browser dragged the focused caret (and the scroll) up with it. Hold
+    // A row that has just been DELETED (or filtered out) is in NEITHER list — -1 would send the composer to flex
+    // order -2, above every row, and the browser would drag the focused caret (and the scroll) up with it. Hold
     // the last index the row had: the composer stays put for the frame or two before it collapses.
     editIndex() { const i = this.rowIndexOf(this.editing); if (i >= 0) _editIx = i; return _editIx; },
     editingDone() { return !!this.editing && this.completedRows().some(r => r.t.id === this.editing); },   // the edited task lives in the Done list
@@ -3171,7 +3165,7 @@ document.addEventListener('alpine:init', () => {
       if (this.surface !== 'lists' && this.navSel.type === 'filter') this.setNav('all');   // unseen, the filter can't promise the new task shows
       this.goSurface('lists'); this.startAdd(note);
     },
-    // droid-12: a thread's words open the bar's composer over its field, chipped as if typed there. Enter files them where a jot lands.
+    // A thread's words open the bar's composer over its field, chipped as if typed there. Enter files them where a jot lands.
     addAsTask() {
       const text = this.chat.draft, segs = tokenizeAll(text.replace(/\s*[\r\n]+\s*/g, ' ').trim(), new Date(), this.locNames());
       for (const seg of segs) if (seg.kind === 'proj' || seg.kind === 'area') delete seg.kind;   // a chat's #word or @name stays words: no list or area made from it
@@ -3233,7 +3227,7 @@ document.addEventListener('alpine:init', () => {
     // A Done root from a subproject names it inside the project or Backlog view (even grouped); a row of the viewed project itself doesn't.
     rowBody(r, opts) {
       const box = this.navSel.type === 'backlog' ? this._defId : this.navSel.type === 'project' && this.navSel.id, subDone = box && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== box;
-      return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...(this.sticky && { proj: false, checklist: false, desc: false }), ...opts });   // the note draws one line a task (user: "constrain tasks to single lines"); a Steps row keeps its step
+      return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...(this.sticky && { proj: false, checklist: false, desc: false }), ...opts });   // the note draws one line a task; a Steps row keeps its step
     },
     // body is inert x-html — delegate here; editTask measures .item
     onRowClick(r, e) {
@@ -3298,7 +3292,7 @@ document.addEventListener('alpine:init', () => {
     dragOver(t, e, depth, keep) {
       if (!this.dragId) return;
       _sortRefused = false;
-      // #91, user: "if it's 100px to the left (relative to screen size), unindent wherever it is": the slot under the pointer, a level up
+      // 100px to the left (relative to screen size) unindents wherever it is: the slot under the pointer, a level up
       const far = this._dragFar(e.clientX), own = _dragIds?.has(t.id) || _dragDescs?.has(t.id);
       const out = this.taskDropHint?.mode === 'outdent' && this.byId.get(this.taskDropHint.id)?.parent_id;
       if (far && out && !_rowMap.has(out) && this._chain(t.parent_id).includes(out)) return;   // out of a filter's head the ghost opens above the heads, sliding the head's rows under a still pointer
@@ -3357,7 +3351,7 @@ document.addEventListener('alpine:init', () => {
         this.taskDropHint = null; this._setDropInto(null);
       }
     },
-    // #91, user: "the cursor is on the left of the task list": a grab near a title's start leaves the list going far left;
+    // A grab near a title's start leaves the list going far left;
     // beside it, the row at the pointer's height unindents as if the pointer were on it
     listDragLeft(e) {
       const list = this.dragId && document.querySelector('.surface-lists .list');
@@ -3422,12 +3416,12 @@ document.addEventListener('alpine:init', () => {
       this._pushEntry(label, entry, { bin: bin || landed.length > 1, ...!ok && { msg: `“${label}” didn’t fully save. The list shows what’s saved` } });   // several rows: a bulk change, in Recent changes as the edit bar's Move
       return ok;
     },
-    // A project sits in Backlog only until moved out (user: "a way to make these projects top level inside the app too"): it goes last at the top.
+    // A project sits in Backlog only until moved out: it goes last at the top.
     moveOutOfBacklog(id) { this.navPop = null; return this._moveTask([id], null, [...this.childTasks(null).flatMap(x => x.id === id ? [] : [x.id]), id], { label: () => 'Moved out of Backlog' }); },
     dragEnd() {
       this._clearDrag(); this.dragId = null; this.taskDropHint = null; this.railHot = null; this.clDragEndSchedule(); this._peekCancelEdge();
     },
-    // --- Peek Pane (C2): drag a Lists row → today's real day column docks right; drop = schedule, list drop still reorders ---
+    // --- Peek Pane: drag a Lists row → today's real day column docks right; drop = schedule, list drop still reorders ---
     peekOn() { return this.surface === 'lists' && (!!this.dragId || this.peekPin); },
     peekCol() { void this.tasks; void this.events; void this.blocks;   // register deps — the memos underneath may short-circuit
       return this._clPack(this._clColumn(this.peekIso || isoDate(new Date())), 44); },   // 44: .peek-grid's --clhh, whatever Plan's scale
@@ -3437,7 +3431,7 @@ document.addEventListener('alpine:init', () => {
         if (b && !this._peekKeep) b.scrollTop = Math.max(0, b.scrollHeight * this.clNowPct() / 100 - b.clientHeight / 2);
         this._peekKeep = this.peekPin; });   // pinned pane keeps its scroll between drags
     },
-    // Edge-hold paging (user-spec): DWELL ~500ms at the pane's right edge → next day; left edge → back
+    // Edge-hold paging: DWELL ~500ms at the pane's right edge → next day; left edge → back
     // (never before today). Crossing an edge en route must not flip — the timer cancels the moment you leave.
     peekEdge(e) {
       const r = e.currentTarget.getBoundingClientRect(), EDGE = 26;   // the outer 26px (calendar-mobile-exploration §Scroll/snap physics) = .peek-eg's width
@@ -3526,15 +3520,15 @@ document.addEventListener('alpine:init', () => {
     _listScroller() { return _staticEl('.surface-lists .app'); },
     _editScroller() { return this._inPanel() ? _staticEl('.cl-side') : this._listScroller(); },   // the open's: the panel hosts it on Plan
     _rowOffscreen(sc, el) { const r = el.getBoundingClientRect().top - sc.getBoundingClientRect().top; return r < this._seenTop(sc) - 1 || r + el.offsetHeight > this._seenH(sc) + 1; },
-    _seenTop(sc) { return parseFloat(getComputedStyle(sc).scrollPaddingTop) || 0; },   // a sticky header covers the scroller's top (the jot bar's, G-A)
+    _seenTop(sc) { return parseFloat(getComputedStyle(sc).scrollPaddingTop) || 0; },   // a sticky header covers the scroller's top (the jot bar's)
     // How much of the scroller the reader SEES: the nav strip covers its bottom --foot band, and a phone's soft
-    // keyboard the visual viewport's. Landing a composer "in view" under either left its footer hidden (B3).
+    // keyboard the visual viewport's. Landing a composer "in view" under either leaves its footer hidden.
     _seenH(sc) {
       const top = sc.getBoundingClientRect().top, foot = parseFloat(getComputedStyle(sc).getPropertyValue('--foot')) || 0;
       return Math.min(sc.clientHeight - foot, visualViewport.offsetTop + visualViewport.height - top);
     },
     // --- The ONE scroll animation in the app ---
-    // Every scroll stutter we have shipped came from the same two gaps in the browser's smooth scroll: it aims
+    // The browser's smooth scroll has two gaps that stutter: it aims
     // at a pixel computed ONCE — so a reflow mid-flight (the composer still growing, a row's measured height
     // replacing its estimate, a list re-render) leaves you somewhere else — and we hold no handle on it, so
     // a second request RACES the first and your own scroll fights it instead of stopping it. Both are closed
@@ -3574,14 +3568,14 @@ document.addEventListener('alpine:init', () => {
         // swap their ESTIMATED height for the real one as the window renders them,
         // scrollHeight moves by hundreds of px and the browser's anchoring/clamping rewrites scrollTop to
         // hold the content still; the browser also yanks the focused caret into view the instant you type into
-        // the composer we're still gliding to. Reading either as a takeover ABANDONED the glide (composer left
-        // up to 760px out of view — the whole open-scroll regression). Absorb it: re-base and keep aiming at
+        // the composer we're still gliding to. Reading either as a takeover would abandon the glide (the composer
+        // up to 760px out of view). Absorb it: re-base and keep aiming at
         // the LIVE target, which is where the reader has to end up either way.
         if (Math.abs(sc.scrollTop - mine) > 24) { from += sc.scrollTop - mine; mine = sc.scrollTop; }
         const p = Math.max(0, Math.min(1, (now - t0) / ms)), was = mine;
         sc.scrollTop = mine = zero ? at() : from + (at() - from) * EASE_OUT(p);
         // A write in this frame's callbacks scrolls after its scroll events ran, so only a fit already queued re-windows before
-        // the paint. From rest none is: a first step past the window's edge painted the old rows (`q` mid-list, a 663px band).
+        // the paint. From rest none is: a first step past the window's edge would paint the old rows (`q` mid-list: a 663px band).
         if (!_fitQ && Math.abs(mine - was) > WIN_KEEP) this._paintRows();
         return p < 1;
       };
@@ -3621,42 +3615,37 @@ document.addEventListener('alpine:init', () => {
       });
     },
     // Is this row out of the reader's view? A WINDOWED list may not hold it at all, and "no element" means it
-    // is at least a margin outside the viewport — never "nothing to reveal" (reading it that way left a
-    // re-sorted row off-screen and held the list at the old position instead).
+    // is at least a margin outside the viewport, never "nothing to reveal" (a re-sorted row would stay off-screen).
     _rowAway(id) { const sc = this._listScroller(), el = id && this._rowEl(id); return !!sc && !!id && (el ? this._rowOffscreen(sc, el) : this._modelTop(id) != null); },
     // Bring a row in when it's off-screen. The target is the row's LIVE position, so a list re-render or a row
-    // growing under us retargets instead of missing (that was #307, and scrollIntoView could not be told).
+    // growing under us retargets instead of missing (scrollIntoView can't be retargeted).
     _revealRow(id, ms = 340) {
       if (!this._rowAway(id)) return;
       const sc = this._listScroller(), pad = this._seenTop(sc);
-      // ONE glide owns the scroller, always — writing scrollTop by hand here loses to whatever hold is still
-      // in flight (the open-composer hold ate the reveal and eased the list straight back). Outside the
-      // WINDOW the row has no rect, so the target comes off its MODELLED box — and both branches must land
-      // on the SAME pixel, because the glide's own scrolling renders the row and hands over mid-flight. Any
-      // disagreement re-targets there and BOUNCES: aiming the fallback at row-top matched only an UPWARD
-      // reveal (B2/B4); a downward one converges on the row's BOTTOM ~840px away and reversed twice on the
-      // way (#391). One formula, fed whichever box exists.
-      // (_ensureRow keeps its own clientHeight/3 — that aims to RENDER a row for measurement, not to land.)
+      // ONE glide owns the scroller: a scrollTop written by hand loses to a hold still in flight. Outside the
+      // WINDOW the row has no rect, so the target comes off its MODELLED box, and both branches must land on the
+      // SAME pixel: the glide's own scrolling renders the row and hands over mid-flight, and any disagreement
+      // re-targets there and bounces. One formula, fed whichever box exists.
+      // (_ensureRow keeps its own clientHeight/3: it aims to RENDER a row for measurement, not to land.)
       this._glide(sc, () => {
         const el = this._rowEl(id);
         const H = this._seenH(sc);
         if (el) { const r = el.getBoundingClientRect(), s = sc.getBoundingClientRect();
           return sc.scrollTop + this._revealBy(r.top - s.top - pad - 12, r.bottom - s.top - H + 12, r.height > H); }
-        // Residual: for a row that has never rendered, `h` is _rowEst, not a measured height — so the two
-        // branches can still part by |est − real| at the handover. Tens of px (one re-aim), not the 840px class.
+        // A row that has never rendered has `h` = _rowEst, so the two branches can still part by |est − real|
+        // at the handover: tens of px, one re-aim.
         const y = this._modelTop(id); if (y == null) return sc.scrollTop;
         const m = this._modelOf(id), h = m.ent[m.ix.get(id)].h, top = y - sc.scrollTop;
         return sc.scrollTop + this._revealBy(top - pad - 12, top + h - H + 12, h > H); }, ms);
     },
     // How far to scroll so a row sits in view. under/over = px its top falls short of the 12px line / its
     // bottom overshoots the fold. A row taller than the viewport can never have both ≤ 0, so chasing the
-    // bottom would oscillate every frame (B1): tall rows align to the top, like a row above the fold.
+    // bottom would oscillate every frame: tall rows align to the top, like a row above the fold.
     _revealBy(under, over, tall) { return tall || under < 0 ? under : over > 0 ? over : 0; },
-    // A drag, a sort change, an undo or a save's Show ends here (F9): carry the reader to the row if it left the viewport, and mark
-    // which row took the edit. A save itself stays put (tweak-2).
-    // Native smooth scroll + scroll-margin, no JS tween: honours reduced-motion for free and can't teleport.
+    // A drag, a sort change, an undo or a save's Show ends here: carry the reader to the row if it left the viewport, and mark
+    // which row took the edit. A save itself stays put.
     _landOn(id) { if (id) this.$nextTick(() => { this._revealRow(id); this._flashSaved(id); }); },
-    // A just-saved row morphs in place (keyed morph, #306) with no motion cue — a brief warm wash marks WHICH row
+    // A just-saved row morphs in place (keyed morph) with no motion cue — a brief warm wash marks WHICH row
     // took the edit. Imperative (like hover/edit state) so it never enters the morph's _sig compare. Color-only, so
     // it's reduced-motion-safe (comprehension aid, not movement). Re-trigger by removing+reflowing before re-adding.
     _flashSaved(id) {
@@ -3678,7 +3667,7 @@ document.addEventListener('alpine:init', () => {
       if (task && !await this.perform('Deleted', { target: 'task', kind: 'delete', id: task.id })) return;   // failed: keep the composer and its edits
       if (this._live(d)) this.closeComposer(true);   // row is gone → the close holds scrollTop (anchoring off for its collapse), so the rows below close the gap
     },
-    // Task 26 — deleting a task that has subtasks asks: delete them too, or move them to a destination
+    // Deleting a task that has subtasks asks: delete them too, or move them to a destination
     // (default = the parent's parent, i.e. the deleted task's parent; the top-level project if none).
     // Returns true when it opened the prompt (the caller must stop and let the dialog finish the op).
     askDeleteTask(id, source) {
@@ -3696,9 +3685,8 @@ document.addEventListener('alpine:init', () => {
       if (this.$refs.composer?.contains(document.activeElement)) document.activeElement.blur();   // a key during the collapse must not type into the closing draft
       this.draftRestored = false;
       // A close never scrolls: the list stays exactly where the reader left it. Scroll anchoring sits the collapse
-      // out — scrolled INTO a tall composer, the rows on screen are the ones below it, so one of them was the anchor:
-      // the list rode the collapse and the re-render (−349/−96px), then a pre-close HOLD eased it back — "every close
-      // jumps, then glides back" (B2). Back on two frames after done: past the close's own layout, in time for the
+      // out: scrolled INTO a tall composer, the anchor is a row below it, so the list would ride the collapse and
+      // the re-render, then glide back. Back on two frames after done: past the close's own layout, in time for the
       // next measure pass, whose estimate→real corrections it absorbs invisibly. openComposer restores it too.
       const sc = this._listScroller(), end = this.editing ? this.blockH : this._inPanel() ? 0 : _addSlot;   // the open's mirror: to 0, a list at its end dropped by the Add task row
       if (sc) sc.style.overflowAnchor = 'none';
@@ -3746,7 +3734,7 @@ document.addEventListener('alpine:init', () => {
         on: si?.date || (t.recur_from || '').slice(0, 10),
         available_from: t.available_from || '',
         dueTime: si?.start || timeOf(t.recur_from || ''), part: partOf(t.possible?.bands),
-        deadline_at: (t.deadline_at || '').slice(0, 16),   // 16, not 10: a timed deadline must survive an edit round-trip (F16)
+        deadline_at: (t.deadline_at || '').slice(0, 16),   // 16, not 10: a timed deadline must survive an edit round-trip
         durMin: min,
         project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: [...(t.area_ids || [])], goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })), checklist_plain: !!t.checklist_plain, task_type: t.task_type ?? null, recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
         location: t.location ? { ...t.location, ids: [...(t.location.ids || [])] } : { mode: 'any', ids: [] },
@@ -3755,11 +3743,11 @@ document.addEventListener('alpine:init', () => {
     },
     _subsOf(id) { return this.childTasks(id).map(c => ({ id: c.id, done: !!c.completed_at })); },   // a draft's subtask rows as stored
     _inPanel() { return this.surface === 'plan' && this.clSideVisible(); },   // the calendar's panel hosts the composer itself
-    _inBar() { return this.bar && this.narrow && (this.surface === 'lists' || this.phoneThread()); },   // …and the jot bar every task: a new one, its steps, an edit (KA)
+    _inBar() { return this.bar && this.narrow && (this.surface === 'lists' || this.phoneThread()); },   // …and the jot bar every task: a new one, its steps, an edit
     kaEdit() { return !!this.editing && this.editing !== this.jotted && this._inBar(); },   // KA-edit: a tapped task, its list and steps on a subline
     // The composer IS a row in the visible list, so a task the current view doesn't hold (another project, a
-    // filtered-out one, opened from Now/search/a subtask chevron) had nothing to sit on and landed in a broken
-    // spot. Navigate to a view that holds it; returns true when it moved, so the caller re-opens next tick.
+    // filtered-out one, opened from Now/search/a subtask chevron) has nothing to sit on. Navigate to a view that
+    // holds it; returns true when it moved, so the caller re-opens after Alpine's flush.
     goToTask(t) {
       if (!t || this._inPanel()) return false;
       if (this.surface === 'lists' && this.rowIndexOf(t.id) >= 0) return false;
@@ -3775,7 +3763,7 @@ document.addEventListener('alpine:init', () => {
       if (this.sticky) return desktopWindow('openTask', t.id);   // the note is too small for the composer: the global composer's window opens it
       if (!routed && this.goToTask(t)) return queueMicrotask(() => this.editTask(t, null, true, ghost));   // the row has to exist before it can be measured and covered: after Alpine's flush, not a $nextTick — the palette's closing transition holds that a frame, and keys typed in it reached the page
       this.jotted = routed === 'jot' ? t.id : null;
-      _jumped = !ev;   // the in-place rule is for a row the reader TAPPED; a palette/keyboard open lifts the whole composer in (B3)
+      _jumped = !ev;   // the in-place rule is for a row the reader TAPPED; a palette/keyboard open lifts the whole composer in
       // ev.currentTarget is the list (<ul>); resolve the actual row by id
       // windowed: a programmatic open must window the row in before it can be measured — not for the panel, whose jump would move hidden Lists
       const row = ev?.currentTarget?.classList.contains('item') ? ev.currentTarget : this._inPanel() ? this._trayEl(t.id) : this.jotted ? this._rowEl(t.id) : this._ensureRow(t.id);
@@ -3796,7 +3784,7 @@ document.addEventListener('alpine:init', () => {
       this._endDraft();   // a composer already open (another row, a subtask's chevron) keeps its draft under its own key
       // the ghost rows are shared DOM, and focusing one mirrors its text back into subGhost before subGhostSync runs
       this.draft = this.taskToDraft(t); _dlAuto = ''; this.subGhost = this.chkGhost = ''; this.entryKind = ''; this._clearEditor(this._ghostEl('sub'));
-      if (ghost && (_chkFuzzy ??= makeFuzzy()).search(this.draft.checklist.map(c => c.text), ghost, 0, 1e4)[0]?.length) this.chkGhost = ghost;
+      if (ghost && !this.chkSteps() && (_chkFuzzy ??= makeFuzzy()).search(this.draft.checklist.map(c => c.text), ghost, 0, 1e4)[0]?.length) this.chkGhost = ghost;
       _chkSeed = this.chkGhost;
       this.editing = t.id; _editPin = t.id;
       this.pop = null;
@@ -3913,7 +3901,7 @@ document.addEventListener('alpine:init', () => {
     remGapLabel(n) { return n ? offsetLabel(n) : 'At'; },
     remGap(n) { const r = this.remEd.r; r.offset_minutes = (r.offset_minutes > 0 ? 1 : -1) * n; },
     remSide(after) { const r = this.remEd.r; r.offset_minutes = Math.abs(r.offset_minutes || 0) * (after ? 1 : -1); },
-    // Other tasks' own reminders ringing the same minute, named: a soft note, nothing is capped (Card round 4).
+    // Other tasks' own reminders ringing the same minute, named: a soft note, nothing is capped.
     // ceiling: compares the next firing only; a times slot on a later day isn't checked
     remClash() {
       const now = localStamp(new Date()), at = fireAt(this.remEd.r, this._draftTaskShape(), now)?.slice(0, 16);
@@ -3923,7 +3911,7 @@ document.addEventListener('alpine:init', () => {
       const names = [...new Set(hits.map(o => this.byId.get(o.ref_id).content))].join(', ');
       return (hits.length > 1 ? hits.length + ' other reminders go off then: ' : 'Another reminder goes off then: ') + names + '.';
     },
-    remGo(change) {   // the swap is instant, as every pop is (user 10-26: "cut out all of the pop-up animations"); the title row stays
+    remGo(change) {   // the swap is instant, as every pop is; the title row stays
       this.evMonth = false;   // the setter opens on its Day chips
       change();
     },
@@ -3971,7 +3959,7 @@ document.addEventListener('alpine:init', () => {
       if (query == null) return [];   // its x-show/x-for evaluate while shut: a save would re-run the search (and rebuild its index) unseen
       return _memo(_palMemo, query + '|' + this._rowV, () => {
         const q = query.trim().toLowerCase();
-        // empty query → recents only; surfaces/commands appear once you type (skip navTargets() call entirely)
+        // empty query → recents only; surfaces/commands appear once you type
         const nav = q ? this.navTargets().map(t => {
           const i = (t.title + ' ' + (t.kw || '')).toLowerCase().indexOf(q);
           return i < 0 ? null : { ...t, _s: (t.title.toLowerCase().startsWith(q) ? 0 : 1) + i / 100 };
@@ -4022,13 +4010,13 @@ document.addEventListener('alpine:init', () => {
       else if (r.type === 'project') this.setNav('project', r.id);
       else if (r.type === 'area') this.setNav('area', r.id);
     },
-    // 1A: over the bar's new task, where to go while nothing is typed, then what the words already match. Enter adds.
+    // Over the bar's new task, where to go while nothing is typed, then what the words already match. Enter adds.
     // Nearest the field first (they stack upward, in reach of the thumb; what doesn't fit scrolls).
     jotting() { return this.composer.open && !this.editing && this._inBar() && !this.fromChat; },
     jotRows() {
       if (!this.jotting()) return [];
       const q = this.draft.content, go = (id, title, icon, tag = '') => ({ kind: 'cmd', type: 'command', id, title, icon, tag });
-      if (q) return this.searchResults(q).slice(0, 4);   // user 10-22 T: no "+ Add x" row (send adds); no match, the composer stands alone
+      if (q) return this.searchResults(q).slice(0, 4);   // no "+ Add x" row (send adds); no match, the composer stands alone
       const lists = this.store.search('', 50).filter(r => r.type === 'project').slice(0, 2).map(r => ({ ...r, obj: this.byId.get(r.id) })).filter(r => r.obj);
       return [go('search', 'Search everything', 'i-search'), ...lists, { kind: 'nav', type: 'surface', id: 'social', title: SURF_META.social.label, icon: SURF_META.social.icon, tag: '' }, go('today', 'Today', 'i-cal', 'Plan')];
     },
@@ -4038,7 +4026,7 @@ document.addEventListener('alpine:init', () => {
       this.closeComposer(true);   // the words were the search, not a task
       r.id === 'search' ? this.openPalette() : this.pickSearchResult(r, query);
     },
-    // P-A: hold the bar's list name, the lists tray rises, slide to a list, let go. Let go without sliding and it stays up for a tap.
+    // Hold the bar's list name, the lists tray rises, slide to a list, let go. Let go without sliding and it stays up for a tap.
     holdRows() {   // the top-level lists; the last row opens the overview for the rest
       const lists = this.overviewProjectRows().filter(r => !r.depth).map(({ p }) => ({ type: 'project', id: p.id, label: p.content, icon: 'i-proj', p }));
       return [{ type: 'all', id: null, label: 'All', icon: 'i-all' }, { type: 'backlog', id: null, label: 'Backlog', icon: 'i-backlog' }, ...lists, { type: 'more', id: null, label: 'All lists and filters', icon: 'i-search' }];
@@ -4078,15 +4066,15 @@ document.addEventListener('alpine:init', () => {
       const fields = {
         content,
         notes: d.notes || null, importance,
-        // recur_from is now ONLY the recurrence anchor — outside repeat mode draft.on is the ON register and
-        // saves as a schedule-item instead (_saveSched), so an intention never becomes a legacy due date.
+        // recur_from is ONLY the recurrence anchor: outside repeat mode draft.on is the ON register and
+        // saves as a schedule-item instead (_saveSched), so an intention never becomes a due date.
         recur_from: d.recurrence && d.on ? (d.dueTime ? d.on + 'T' + d.dueTime : d.on) : null,
         available_from: d.available_from || null,
         deadline_at: d.deadline_at || null,
         est_minutes: (d.durMin || 0) || null,
         task_size: sizeFromMinutes(d.durMin || 0),
         project: d.project || null,
-        area_ids: d.areas || [],   // draft.areas holds area IDs now; the store prefers explicit area_ids
+        area_ids: d.areas || [],   // draft.areas holds area IDs; the store prefers explicit area_ids
         goal_ids: d.goal_ids ?? [],
         checklist: d.checklist,
         recurrence: d.recurrence,
@@ -4147,12 +4135,12 @@ document.addEventListener('alpine:init', () => {
       this.calFocus = null;
       // Kill any live anchor tracker before opening a new pop
       if (this._popTrack) { this._popTrack(); this._popTrack = null; }
-      this.popDock = this.phoneDock() && (!!anchor?.closest('.composer-dock') || name === 'clWhen');   // 9B: a phone's composer pop, and an editor's When, opens in the keyboard's place
+      this.popDock = this.phoneDock() && (!!anchor?.closest('.composer-dock') || name === 'clWhen');   // a phone's composer pop, and an editor's When, opens in the keyboard's place
       if (!this.pop || !anchor) return _keyboard();
       const r = anchor.getBoundingClientRect(), m = 8, card = anchor.closest('.event-editor, .block-editor');   // an editor's pop hangs under its card, clear of Delete and Save
       this.popXY = { left: r.left, top: (card ?? anchor).getBoundingClientRect().bottom + 5 };
       // A chip's pop holds the chip's opening place in its row: chips reflow under an open pop (unsetting the date sends When to
-      // the row's end), and following the chip made the pop jump. The row still carries it through scroll and the composer's growth.
+      // the row's end), and following the chip would make the pop jump. The row still carries it through scroll and the composer's growth.
       // ceiling: the held place ignores the phone editors' sideways-scrolling chip row and a resize that re-wraps the row; follow the chip there once either shows up
       const row = anchor.closest('.composer-opts'), r0 = row?.getBoundingClientRect();
       const held = () => { const b = row.getBoundingClientRect(); return new DOMRect(r.left - r0.left + b.left, r.top - r0.top + b.top, r.width, r.height); };
@@ -4171,7 +4159,7 @@ document.addEventListener('alpine:init', () => {
         const _pos = (ar) => {
           // Vertically this one FLIPS rather than clamping — above the anchor (an editor's: its card) if the pop would
           // overflow the bottom edge, or if it's marked data-pos="up". Fitting neither side it takes the roomier one and
-          // scrolls: clamped to the top it covered its own chip. Horizontally it's the shared clamp.
+          // scrolls: clamped to the top it would cover its own chip. Horizontally it's the shared clamp.
           const own = scroll ? 0 : Math.max(0, ...[...el.querySelectorAll('.rem-body')].map(b => b.scrollHeight - b.clientHeight));   // its own scroller hides what the cap cut: counting it holds a capped pop capped, not flipping every frame
           const vh = innerHeight - _kb, ph = el.scrollHeight + el.offsetHeight - el.clientHeight + own, box = card?.getBoundingClientRect() ?? ar;   // its uncapped height
           const below = vh - m - box.bottom - 5, above = box.top - 5 - m;
@@ -4190,9 +4178,8 @@ document.addEventListener('alpine:init', () => {
           const a = anchor.getBoundingClientRect(), h = row ? held() : a, k = `${h.top},${h.left},${a.width},${el.offsetHeight},${el.offsetWidth},${_kb},${vh},${vw}`;
           if (k === prev) return;
           if (!a.width && !a.height) {
-            // Disconnected = truly removed from DOM → close immediately.
-            // Connected zero-rect: a parent still mid-show (an x-transition enter) reports zero-rect for a
-            // frame or two. Allow a few frames; permanent zero-rect still closes.
+            // A parent still mid-show (an x-transition enter) reports a zero rect for a frame or two: allow a
+            // few frames. A removed anchor or a lasting zero rect closes.
             if (!anchor.isConnected || ++zeroRects >= 4) { this.pop = null; return cleanup(); }
             return;
           }
@@ -4213,9 +4200,9 @@ document.addEventListener('alpine:init', () => {
       if (!el) return;
       el.style.transform = '';
       const r = el.getBoundingClientRect(), m = 8, vw = document.documentElement.clientWidth;
-      // Measured while the surface canvas is still gliding sideways, the whole box reads as off-screen — clamping
-      // that snapshot bakes in a permanent shift (the picker landed ~1800px right of the caret). It's already
-      // positioned correctly against its own parent, so when the parent isn't on screen, leave it alone.
+      // Measured while the surface canvas is still gliding sideways, the whole box reads as off-screen, and clamping
+      // that snapshot bakes in a permanent shift. It's already positioned against its own parent, so when the
+      // parent isn't on screen, leave it alone.
       const pr = el.offsetParent?.getBoundingClientRect();
       if (pr && (pr.right < m || pr.left > vw - m)) return;
       const dx = popLeft(r.left, r.width + m, m) - r.left;   // same clamp as the fixed pops, applied as a delta
@@ -4234,8 +4221,8 @@ document.addEventListener('alpine:init', () => {
     pickerMatches(candidates, query = this.pickerQ) {
       const q = query.trim();
       if (!q) return candidates;
-      // The haystack only changes when task data does. Rebuilding it per keystroke walked EVERY candidate's
-      // parent chain — 20k chain-walks a key, once per picker render. Cached per id, dropped on _rowV.
+      // The haystack only changes when task data does; rebuilt per keystroke it walks EVERY candidate's
+      // parent chain (20k chain-walks a key). Cached per id, dropped on _rowV.
       if (_hayV !== this._rowV) { _hayV = this._rowV; _hay.clear(); _hayOf = new WeakMap(); }
       let pool = _hayOf.get(candidates);
       if (!pool) _hayOf.set(candidates, pool = { low: null, hay: candidates.map(t => { let s = _hay.get(t.id); if (s === undefined) _hay.set(t.id, s = t.content + ' ' + this.projectPath(t)); return s; }) });
@@ -4335,14 +4322,14 @@ document.addEventListener('alpine:init', () => {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
       const phone = this.narrow && document.documentElement.classList.contains('touch'), d = this.draft;
-      this.dreg = !this.repRules().length && (d.on || phone && !d.deadline_at && !d.available_from) ? 'on' : 'by';   // hydrate: a placed task opens in On, and a dateless one on a phone (droid-27, as Android)
+      this.dreg = !this.repRules().length && (d.on || phone && !d.deadline_at && !d.available_from) ? 'on' : 'by';   // hydrate: a placed task opens in On, and a dateless one on a phone (as Android)
       this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._typedN = 1;
       this._calTo(this.draft[this._dateKey()] || this.draft.on || isoDate(new Date()));
       this.$nextTick(() => this.pop === name && !this.popDock && !document.activeElement?.closest('.pop.cal') && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it. A held tick lands late: a Tab already in the pop keeps its place
     },
-    // Pause asks when it comes back first (things-4, user 10-24: "pop-up on press, then add the line in after").
-    // A repeat resumed after falling behind starts again at its next date from today, not the pile it missed
-    // (user, tweak-9: "let's not unload onto the user when they restart a project"); one still ahead keeps its date.
+    // Pause asks when it comes back first, in a pop on press; the line goes in after.
+    // A repeat resumed after falling behind starts again at its next date from today, not the pile it missed;
+    // one still ahead keeps its date.
     repPause(r, ev) {
       if (!r.paused) return this.togglePausePop(ev, r);
       r.paused = false;
@@ -4363,7 +4350,7 @@ document.addEventListener('alpine:init', () => {
       this.pzpop = null; this.pausePicking = false;
       if (was) return;
       this.repIdx = this.repRules().indexOf(r);
-      const b = ev.currentTarget.getBoundingClientRect(), x = ev.detail ? ev.clientX : b.left;   // at the pointer (user 10-25)
+      const b = ev.currentTarget.getBoundingClientRect(), x = ev.detail ? ev.clientX : b.left;   // at the pointer
       const y = b.bottom + 184 <= innerHeight ? `top:${Math.round(b.bottom + 4)}px` : `top:auto; bottom:${Math.round(innerHeight - b.top + 4)}px`;   // under the control, above it near the window's foot: never over the value clicked
       this.pzpop = { style: `left:${Math.round(popLeft(x, 200))}px; ${y};` };
     },
@@ -4471,7 +4458,7 @@ document.addEventListener('alpine:init', () => {
       if (this.dreg === 'on') { this.draft.on = this.draft.on === c.iso ? '' : c.iso; return; }
       this.calDayBy(c);
     },
-    // BY register, nearest-endpoint model (replaces tap-tap arming): fresh tap = THE deadline.
+    // BY register, nearest-endpoint model: fresh tap = THE deadline.
     // With something set, a tap grows the window at whichever endpoint the day is nearer (only a deadline:
     // earlier = start, later = deadline moves). Re-tapping an endpoint collapses to deadline-only that day —
     // so a degenerate from==deadline window can't exist. Drag (calUp) writes the same two fields.
@@ -4549,7 +4536,7 @@ document.addEventListener('alpine:init', () => {
       if (time) this.timeSet(time);
       ev.target.value = ''; this.tpop = false;
     },
-    // Optional "until" end date — reuses the existing ends.date field (nextOccurrence/completion already honor it).
+    // Optional "until" end date, in ends.date (nextOccurrence and completion honor it).
     setRepeatUntil(iso) { const r = this.curRule(); if (!r) return; r.ends = iso ? { date: iso } : null; },
     clearRepeat(i = 0) {   // trash one statement; a single leftover collapses back to the legacy object shape
       const arr = this.repRules().filter((_, j) => j !== i);
@@ -4585,7 +4572,7 @@ document.addEventListener('alpine:init', () => {
       requestAnimationFrame(() => document.querySelector(`.pop.cal .cal-day[aria-label="${DAY_NAME.format(new Date(this.calFocus + 'T00:00'))}"]`)?.focus());
     },
     // HAZARD: args must be string literals ('eventEdit'/'blockEdit'), never reactive values — a reactive arg changes the x-html string on state updates, causing re-render that kills the input caret mid-typing.
-    // D1 T1 E1 (evd-6): a week strip (a month grid behind its button), the start and end fields, an hour grid and quarters that set the picked one
+    // A week strip (a month grid behind its button), the start and end fields, an hour grid and quarters that set the picked one
     evWhenHtml(key) {
       const ev = key === 'eventEdit';
       const sugs = BLOCK_PRESETS.map((p, i) => html`<button type="button" class="pop-item sug" style="--sug: ${p.color}" @click="clBlockPreset(${i})"><svg class="ico"><use href="#i-${p.icon}"/></svg><span>${p.title}</span><span class="rt">${p.hint}</span></button>`).join('');
@@ -4740,11 +4727,11 @@ document.addEventListener('alpine:init', () => {
       const hint = (iso, long) => new Date(iso + 'T00:00').toLocaleDateString([], long ? { weekday: 'short', month: 'short', day: 'numeric' } : { weekday: 'short' });
       return this._sugs().filter(s => { if (s.iso === on || seen.has(s.iso)) return false; seen.add(s.iso); return true; }).map(s => ({ ...s, hint: hint(s.iso, s.long) }));
     },
-    // The date chip's [icon, colour]: a day a suggestion names wears that row's filled icon and colour, any other set
+    // The date chip's [icon, color]: a day a suggestion names wears that row's filled icon and color, any other set
     // date a filled calendar, a deadline alone a flag. Never red for a placement, even a past one.
     dueLook() {
       const d = this.draft, on = d.on?.slice(0, 10), s = on && this._sugs().find(s => s.iso === on);
-      const bar = this._inBar();   // KA: the jot bar's chip keeps the calendar outline, in the day's colour
+      const bar = this._inBar();   // the jot bar's chip keeps the calendar outline, in the day's color
       if (s) return [bar ? 'i-cal' : 'i-' + s.icon + '-fill', `var(--q-${s.key})`];
       if (on || d.recurrence || d.available_from) return [bar ? 'i-cal' : 'i-cal-fill', 'var(--muted)'];
       return d.deadline_at ? ['i-flag-fill', 'var(--p1)'] : ['i-cal', 'var(--muted)'];
@@ -4769,7 +4756,7 @@ document.addEventListener('alpine:init', () => {
       // Both registers read on the one chip, each in its own voice: a placement is a plain date ("Fri 12"),
       // a wall keeps "by"/the window. Never "by" for an intention.
       const dl = this.draft.deadline_at, f = this.draft.available_from, parts = [];
-      const on = this.draft.on?.slice(0, 10);   // KA: the jot bar names the day as its title's pill does, tomorrow in full
+      const on = this.draft.on?.slice(0, 10);   // the jot bar names the day as its title's pill does, tomorrow in full
       if (on) parts.push(this.draft.part && !this.draft.dueTime ? this.partLabel(on, this.draft.part) : (!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') && !short ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : ''));
       if (f && dl && f.slice(0, 10) === dl.slice(0, 10)) parts.push('only ' + this.fmt(dl.slice(0, 10)));   // one-day world-window — walled on both sides
       else if (f && dl) parts.push(this.fmt(f.slice(0, 10)) + ' – ' + this.fmt(dl.slice(0, 10)));   // the window; its end IS the deadline
@@ -4797,7 +4784,7 @@ document.addEventListener('alpine:init', () => {
     _nlpDraft() { return _nlpFocus?.draft || this.draft; },
     // --- Inline-pill editor (contenteditable title) ---
     // draft.content = the editor's TEXT nodes only (pills excluded), whitespace-collapsed. WYSIWYG: this
-    // is the title verbatim; fields come only from pills (Task 3), never a submit-time re-parse.
+    // is the title verbatim; fields come only from pills, never a submit-time re-parse.
     syncTitle(composing, track = true) {
       const el = this._nlpEl(), d = this._nlpDraft(); if (!el) return;
       if (!composing) this._pillDraw(el);   // an IME's text draws at compositionend
@@ -4853,7 +4840,7 @@ document.addEventListener('alpine:init', () => {
     // A huge one renders as blocks of whole lines that skip layout and paint off screen (.desc-block). Only the first and the
     // always laid out last start with their markdown; the rest get theirs near the screen (init), so opening it styles about a screen, not 70K spans.
     // Few top-level nodes also keep Alpine's MutationObserver cheap: it tests each removed node against each added one,
-    // so reopening a 500K one (70K spans replaced by 70K) hung 46s. A block not yet drawn holds the height _descSize estimates.
+    // so reopening a 500K one (70K spans replaced by 70K) would hang for ~46s. A block not yet drawn holds the height _descSize estimates.
     _descHtml(text) {
       const tail = text.endsWith('\n') ? '<br>' : '';   // inside the last block, so a redraw of it keeps the closing line
       if (text.length <= DESC_BLOCK) return mdLiveRender(text) + tail;
@@ -5007,7 +4994,7 @@ document.addEventListener('alpine:init', () => {
       if (!el.contains(node)) return [];
       const toks = [];
       for (let n = node; n !== el; n = n.parentNode) if (n.classList?.contains('dm-tok')) toks.push(n);
-      // At a node's edge: the point between it and its neighbours, out to the widest node it ends ("- |**a**" touches both)
+      // At a node's edge: the point between it and its neighbors, out to the widest node it ends ("- |**a**" touches both)
       while (node !== el && (!off || off === (node.nodeType === 3 ? node.length : node.childNodes.length))) {
         off = [].indexOf.call(node.parentNode.childNodes, node) + (off && 1); node = node.parentNode;
       }
@@ -5148,7 +5135,7 @@ document.addEventListener('alpine:init', () => {
       this.syncTitle();
     },
     // Pill the token ENDING AT THE CARET (not the node's end) — so editing/re-typing a word mid-title
-    // re-recognises just like typing at the end. `off` is the caret offset; text after it is preserved.
+    // re-recognizes just like typing at the end. `off` is the caret offset; text after it is preserved.
     pillifyTrailing() {
       const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return false;
       const node = sel.anchorNode, off = sel.anchorOffset;
@@ -5224,7 +5211,7 @@ document.addEventListener('alpine:init', () => {
       if (node.nodeType === 3) { if (r.startOffset === 0) prev = node.previousSibling; }
       else if (node === this._nlpEl() && r.startOffset > 0) prev = node.childNodes[r.startOffset - 1];
       // Skip zero-width text nodes — typing past a chip leaves an empty node between the pill and the new text,
-      // so the caret's previousSibling is that empty node, not the pill (this stranded the chip on backspace).
+      // so the caret's previousSibling is that empty node, not the pill (backspace would strand the chip).
       while (prev && prev.nodeType === 3 && prev.textContent === '') prev = prev.previousSibling;
       if (!prev || !(prev instanceof HTMLElement) || !prev.classList.contains('nlp-pill')) return false;
       this._unchip(prev, true);
@@ -5467,13 +5454,13 @@ document.addEventListener('alpine:init', () => {
       if (this.editing) {
         // Capture before close (closeComposer resets draft/editing async via _growClose callback)
         const editId = this.editing, draft = this.draft, base = this._draftBase, from = _draftFrom, save = _submitting.get(sid), previous = _submitting.get(from);
-        // A save is ALWAYS slow enough to warrant feedback (composer collapse + reloadAll dominate; the store write
-        // itself is quick, so the only-if-slow 150ms gate never tripped). Spin the checkmark IMMEDIATELY and let it
-        // span the whole save — the post-save morph re-renders the row (clearing it) exactly when the saved data shows.
+        // A save is ALWAYS slow enough to warrant feedback (the collapse and reload dominate, not the store write, so
+        // the 150ms only-if-slow gate wouldn't trip). Spin the checkmark IMMEDIATELY for the whole save: the post-save
+        // morph re-renders the row (clearing it) exactly when the saved data shows.
         this._setCheckPending(editId, true);
         // Where the row sits: its list (completing moves it to Done) and the flat rows either side, OUTSIDE its own subtree. Not its
         // INDEX — a row added or removed above shifts that while the row stays put — nor its parent or siblings (a new project in the
-        // All view is not a move; its siblings are not its neighbours there) (B7). A move changes both neighbours, a neighbour's change one.
+        // All view is not a move; its siblings are not its neighbors there). A move changes both neighbors, a neighbor's change one.
         const at = () => { this.visibleRows(); const o = _rowMap.get(editId), r = o ?? _doneMap.get(editId), rows = o ? _visMemo : _doneMemo;
           let n = (r?.i ?? -2) + 1; while (rows[n]?.depth > r?.depth) n++;   // past its own subtree
           return [!o, rows[r?.i - 1]?.t.id, rows[n]?.t.id]; }, at0 = at();
@@ -5534,12 +5521,12 @@ document.addEventListener('alpine:init', () => {
             this.openComposer();
             return false;
           } else {
-            // No scroll-hold: closeComposer turns anchoring OFF for the collapse (B2's scoped exception) and back on two
+            // No scroll-hold: closeComposer turns anchoring OFF for the collapse and back on two
             // frames after, when it absorbs a later re-render. Spinner + flash are cosmetic: on once the write is confirmed.
             this._clearPending(editId, sid, this._draftSig({ draft }));   // saved → discard the pending draft so it can't resurrect over the save
             if (from) this._clearPending(editId, from);   // this draft continues that one: its rows are superseded
             this._viewFree().then(() => this.$nextTick(() => { this._setCheckPending(editId, false); this._flashSaved(editId); }));   // the row re-renders as the collapse ends
-            // A save never scrolls (composer.md §STAY rule, tweak-2): a row the SAVE moved off-screen gets a card whose Show
+            // A save never scrolls (composer.md §STAY rule): a row the SAVE moved off-screen gets a card whose Show
             // carries the reader to it. A tall row you had scrolled past is off-screen too, so only a move counts. Judged once
             // the save has landed AND the collapse settled (a signed-in save outlasts it), and after any reward has let the row go.
             // Lists only: Plan's panel has no list to show.
@@ -5595,7 +5582,7 @@ document.addEventListener('alpine:init', () => {
       // An open composer or modal keeps the browser's find; in the search, it selects the query, as the find bar does.
       if ((e.metaKey || e.ctrlKey) && e.key === 'f' && !e.shiftKey && !e.altKey && this.listView() && !this.composer.open && (!modal || sheetOnly)) { e.preventDefault(); this.shortcutsOpen = false; return this.openListSearch(true); }
       // Plan claims ⌘/Ctrl+↑/↓ as well: the native binding is "scroll to the end of the document", and the
-      // month scroller is virtualized to ~670k px, so it read as an uncontrollable fling. One period, morphed —
+      // month scroller is virtualized to ~670k px, so it reads as an uncontrollable fling. One period, morphed —
       // the same readable jump as Shift.
       // (no composer guard: the composer lives on Lists, and a stale-open one must not hand the fling back)
       if ((e.metaKey || e.ctrlKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && this.surface === 'plan'
@@ -5626,7 +5613,7 @@ document.addEventListener('alpine:init', () => {
       else if (e.key === 'g') { e.preventDefault(); this.setNav('backlog'); }
       else if (e.key === 'a') { e.preventDefault(); this.setNav('all'); }
       // d / w / m switch the calendar's view, Plan-only — the same letters as the on-screen switcher, so the
-      // keys teach themselves. `d` is free for this because the Bin moved to `b`.
+      // keys teach themselves. The Bin is `b`, so `d` is free.
       else if (this.surface === 'plan' && 'dwm'.includes(e.key)) { e.preventDefault(); this.clSetView({ d: 'day', w: 'week', m: 'month' }[e.key]); }
       // A focused month day walks the days: the month is one Tab stop, so this is how the keyboard reaches the rest.
       else if (e.target.classList?.contains('cl-date') && !e.shiftKey && CL_WALK[e.key]) { e.preventDefault(); this.clWalkDay(CL_WALK[e.key]); }
@@ -5635,7 +5622,7 @@ document.addEventListener('alpine:init', () => {
       else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && this.surface === 'plan') {
         e.preventDefault(); const dir = e.key === 'ArrowDown' ? 1 : -1;
         // Shift travels a whole period and MORPHS, like a view switch: a deliberate jump should read as
-        // movement. A held plain arrow's period steps turn the page as the wheel does (decision #75).
+        // movement. A held plain arrow's period steps turn the page as the wheel does.
         e.shiftKey ? this.clStep(dir, true, e.timeStamp) : this.clArrow(dir, e.repeat);
       }
       else if (e.shiftKey && e.key === 'ArrowDown') { e.preventDefault(); this.selExtend(1); }   // Shift+↑/↓ extends the multi-select
@@ -5644,7 +5631,7 @@ document.addEventListener('alpine:init', () => {
       else if ((e.key === 'k' || e.key === 'ArrowUp') && this.listView()) { e.preventDefault(); this.moveFocus(-1); }
       else if ((e.key === 'Enter' || e.key === 'e') && this.focusId) { e.preventDefault(); this.openFocused(); }
       else if (e.key === 'x' && this.sel.length > 1 && this.listView()) { e.preventDefault(); this.selComplete(true); }
-      else if (e.key === 'x' && this.focusId && this.listView()) { e.preventDefault(); this.toggleFocused(); }   // complete focused row (Space now opens the palette)
+      else if (e.key === 'x' && this.focusId && this.listView()) { e.preventDefault(); this.toggleFocused(); }   // complete focused row (Space opens the palette)
       else if (e.key === '?') { e.preventDefault(); this.shortcutsOpen = true; }
       else if (e.key === '/' && this.listView()) { e.preventDefault(); this.openListSearch(); }
       else if (e.key === 'f' && this.listView()) { e.preventDefault(); if (this.sel.length) this.clearSel(); this.listMenu = this.listMenu === 'add' ? null : 'add'; }   // f → filter sentence menu (clears a selection, as / does)
@@ -5742,10 +5729,10 @@ document.addEventListener('alpine:init', () => {
       _qfGone = all.filter(id => !has(id));
       if (live.join() !== this.qfAreas.join()) { this.qfAreas = live; this._saveView(); }
     },
-    // Never a blank button: an id whose area is gone (deleted elsewhere, not yet loaded) resolves to nothing,
-    // and keying the label off draft.areas.length alone left the chip showing its icon and no word at all.
     // A set chip's lead: each area's glyph on a disc of its color, the first on top.
     areaDiscsHtml() { return this.areaObjs(this.draft.areas).map((a, i, all) => `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}"><svg class="ico"><use href="#${a.icon || 'i-tag-tag'}"/></svg></i>`).join(''); },
+    // Never a blank button: an id whose area is gone (deleted elsewhere, not yet loaded) resolves to nothing, so the
+    // label keys off the resolved names, not draft.areas.length.
     areaLabel() { return this.areaObjs(this.draft.areas).map(a => a.name).filter(Boolean).join(', ') || 'Areas'; },
     // The ONE map from a data kind to the narrowest re-read that covers it — shared by our own writes
     // (_reloadFor) and by realtime (_subscribeStore), so the two paths can never disagree about what's current.
@@ -5901,7 +5888,7 @@ document.addEventListener('alpine:init', () => {
     _draftSig(s) { return JSON.stringify(this._draftState(s)); },   // s: a pending entry (default: the live composer)
     // TWO x-effects on the composer re-run this on any edit: persistDraft() on the li subscribes to every draft field +
     // both ghost buffers + editing, and persistDraft(true) on .composer-grow to the checklist alone — so a title
-    // keystroke never walks a 120-item checklist (it stringified the whole draft per key, ~1ms at 4× CPU).
+    // keystroke never walks a 120-item checklist (stringifying the whole draft is ~1ms a key at 4× CPU).
     // Writes are debounced (~300ms) to avoid N serializations per keystroke; flush fires synchronously on pagehide/
     // visibilitychange (registered in init below) so no data is lost when the page closes between keystrokes.
     persistDraft(chk) {
@@ -5983,7 +5970,7 @@ document.addEventListener('alpine:init', () => {
     trashItems() {   // reactive on _jV
       void this._jV; let rem, dated, siIds;
       // a removed reminder or checklist item that is live again (⌘Z, another copy put back) is no deletion: hidden, kept for when it goes again.
-      // An item gone from the open draft (deleted, not yet saved) is shown: Put it back returns it there (#389).
+      // An item gone from the open draft (deleted, not yet saved) is shown: Put it back returns it there.
       const has = (cl, id) => !!cl?.some(c => c.id === id), chkBack = ({ taskId, item }) => has(this.byId.get(taskId)?.checklist, item.id) && (this.editing !== taskId || has(this.draft.checklist, item.id));
       // a save's deleted subtasks' copy (_saveSubs) too; a task's own Bin row keeps its older copy over a live row (Already back)
       const ids = e => e.target === 'reminder' ? rem ??= new Set(this.reminders.map(x => x.id)) : e.label === 'Deleted subtask' && this.byId;
@@ -6039,7 +6026,7 @@ document.addEventListener('alpine:init', () => {
       return days;
     },
     // Read-only preview for a bin row: { title, detail (kind · its task · counts), peek: ONE line of what comes back, [{ text, cls }] }.
-    // Colour is the text's own: trash-del = gone (red), trash-add = a dropped draft that was being added (green), '' = a change (muted).
+    // Color is the text's own: trash-del = gone (red), trash-add = a dropped draft that was being added (green), '' = a change (muted).
     trashPreview(e) {
       const clip = (s, n = 72) => { s = (s ?? '').toString().replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
       const peek = (texts, cls) => texts.map(t => clip(t)).filter(Boolean).slice(0, 8).map(text => ({ text, cls }));   // a single truncated line: 8 is past its width
@@ -6078,7 +6065,7 @@ document.addEventListener('alpine:init', () => {
       for (const e of items) { const word = one[e.payload.field]; count.set(word, (count.get(word) || 0) + 1); }
       return [...count].map(([word, k]) => k > 1 ? many[word] : word).join(', ');
     },
-    // One small change as [{ text, cls }]: "field old → new", old red (trash-del), new green (trash-add) — colour on the text only.
+    // One small change as [{ text, cls }]: "field old → new", old red (trash-del), new green (trash-add), color on the text only.
     trashSmallWhat({ payload: { field, old, now } }) {
       const q = v => '“' + (v.length > 48 ? v.slice(0, 47) + '…' : v) + '”';
       if (field === 'content') return [{ text: 'renamed from ' }, { text: q(old || ''), cls: 'trash-del' }];
@@ -6201,9 +6188,8 @@ document.addEventListener('alpine:init', () => {
       // the stored row, not the lists': an item another device added since (a realtime gap can hide it) stays
       const t = await this.store.tasks.get(payload.taskId); if (!t) return false;
       const cl = (t.checklist || []).slice(), at = list => Math.min(payload.index ?? list.length, list.length);
-      // The STORED row can still hold the item while the open draft has dropped it (deleted, not yet saved) —
-      // skipping the write is right, returning early was not: the draft on screen never got it back, so Restore
-      // looked like it did nothing and the next save deleted it for real. Both halves are now independent.
+      // The STORED row can still hold the item while the open draft has dropped it (deleted, not yet saved): skip
+      // the write but still put it back in the draft, or Restore looks like it did nothing and the next save deletes it.
       const kept = cl.some(c => c.id === payload.item.id);
       if (!kept) {
         cl.splice(at(cl), 0, payload.item);
@@ -6549,7 +6535,7 @@ document.addEventListener('alpine:init', () => {
     _pushOps(label, target, j, opts) { if (j.length) return this._pushEntry(label, j.length > 1 || j[0][1].target !== target ? { kind: 'composite', target, ops: j.map(x => x[1]).reverse().flatMap(o => o.kind === 'composite' ? o.ops : o) } : j[0][1], opts); },
     _pushEntry(label, entryOp, { bin = false, silent = false, restored = false, msg = label, actions = [] } = {}) {
       this._journalPush({ label, target: entryOp.target, kind: entryOp.kind, op: entryOp, bin: !!bin, restored });
-      // silent = frequent actions (completion) that shouldn't toast on every press (emil: don't notify 100×/day).
+      // silent = frequent actions (completion) that shouldn't toast on every press.
       const card = silent ? null : this.notify(msg, { actions: [this._cardStep(-1, this.journal.at(-1).id), ...actions] });
       if (!bin && !restored) this._pushSmall(entryOp);
       return card;
@@ -6814,7 +6800,7 @@ document.addEventListener('alpine:init', () => {
     // Row badge: first pinned location's name (+N when several), '' when the task isn't location-scoped or names aren't loaded.
     rowLoc(t) {
       // The PICKED SET is what makes a task location-scoped — an empty set is "anywhere", whatever `mode` says
-      // (the same rule as locPolarity). Trusting mode hid the badge on every task saved with the default 'any'.
+      // (the same rule as locPolarity): trusting mode would hide the badge on every task saved with the default 'any'.
       const byId = byIdIn(this.locations), names = (t.location?.ids || []).map(id => byId.get(id)?.name).filter(Boolean);   // a place not loaded yet isn't counted, as locChipLabel
       return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0] ?? '';
     },
@@ -6825,7 +6811,7 @@ document.addEventListener('alpine:init', () => {
       if (this.pop !== 'loc') return;
       this.locNew = null; this.locExpanded = [];
       // Freeze chip order for this open: selected-first AT OPEN. Toggling must never reorder mid-interaction —
-      // keyed DOM moves while the fill transition runs left stale orange/checkmarks, and jumping chips break spatial stability.
+      // keyed DOM moves while the fill transition runs leave stale orange/checkmarks, and jumping chips break spatial stability.
       const sel = new Set(this.draft.location?.ids || []);
       this.locOrder = {};
       for (const region of this.regions()) {
@@ -6838,7 +6824,7 @@ document.addEventListener('alpine:init', () => {
     // the seg: the picked set's polarity, else the mode chosen before a place (an empty set still reads as anywhere elsewhere)
     locMode() { const p = this.locPolarity(), m = this.draft.location?.mode; return p !== 'any' ? p : (m === 'only' || m === 'except' ? m : 'any'); },
     setLocMode(mode) { this.draft.location = { mode, ids: mode === 'any' ? [] : [...this.draft.location?.ids || []] }; },
-    // "here" = the CURRENT BLOCK's location — the app's only location source for now (tracker precedence lands later)
+    // "here" = the CURRENT BLOCK's location, the app's only location source
     hereLocationId() {
       const now = new Date(), iso = isoDate(now);
       const inst = blocksInRange(this.blocks || [], iso, iso).find(i => i.location_id && (i.allDay ? i.start.slice(0, 10) <= iso && iso <= i.end : new Date(i.start) <= now && now < new Date(i.end)));
@@ -6886,7 +6872,7 @@ document.addEventListener('alpine:init', () => {
       return '<rect width="40" height="18" rx="4" opacity=".22" fill="currentColor"/><path d="M0 13 40 5M11 18 7 0M29 18 33 0" stroke="currentColor" stroke-width="2" opacity=".55"/>' + pins.join('');
     },
     openLocManager() { this.pop = null; this.locMgr = true; this.loadLocations(); },
-    toggleLocId(id) { const ids = new Set(this.draft.location?.ids || []); ids.has(id) ? ids.delete(id) : ids.add(id); this.draft.location = { mode: this.draft.location?.mode === 'except' ? 'except' : 'only', ids: [...ids] }; },   // 'any' is truthy — `|| 'only'` left picked places stored as unscoped
+    toggleLocId(id) { const ids = new Set(this.draft.location?.ids || []); ids.has(id) ? ids.delete(id) : ids.add(id); this.draft.location = { mode: this.draft.location?.mode === 'except' ? 'except' : 'only', ids: [...ids] }; },   // 'any' is truthy: `|| 'only'` would store picked places as unscoped
     regions() { return [...new Set(this.locations.map(l => l.region || 'Home'))]; },
     // Manager grouping (string model): regions in use + any just-created empty ones.
     displayRegions() { return [...new Set([...this.regions(), ...this.pendingRegions])]; },
@@ -6947,10 +6933,10 @@ document.addEventListener('alpine:init', () => {
       else {
         this.resetDraft(); this._draftBase = this._draftSig();
         this.setEditorText(''); this.setDescText('');   // now, not next tick: the next key is the next draft's
-        // Rapid add never scrolls away (ux-small-things): the reader's place is the composer they're still typing in. A
-        // sort files the new row anywhere — gliding to it, then the next key's caret-scroll yanking the list back, was
-        // B4's spurious scroll. Only keep the whole composer in view (the row it adds may push it down).
-        this.$refs.content?.focus({ preventScroll: true });   // now: deferred, it took the title back from a ↓ already pressed into the rows (Alpine holds $nextTick behind a starting transition)
+        // Rapid add never scrolls away: the reader's place is the composer they're still typing in. A sort files the
+        // new row anywhere, and gliding to it, then the next key's caret-scroll yanking the list back, is a spurious
+        // scroll. Only keep the whole composer in view (the row it adds may push it down).
+        this.$refs.content?.focus({ preventScroll: true });   // now: deferred, it would take the title back from a ↓ already pressed into the rows (Alpine holds $nextTick behind a starting transition)
         this.$nextTick(() => this._showComposer());
       }
       // Created at the end of its siblings (the parent the store resolves), so it appears just above the composer.
@@ -6982,7 +6968,7 @@ document.addEventListener('alpine:init', () => {
       for (const f of this.attach) if (f.sid === sid && !f.taskId) f.taskId = id;
       await this._attachFiles(id, true);
       await reload();   // _reloadFor task + area, and the date/reminders it wrote
-      // ONE silent entry (no toast, as before): ⌘Z reopens what the completion swept, deletes the task (its date, reminders and
+      // ONE silent entry (no toast): ⌘Z reopens what the completion swept, deletes the task (its date, reminders and
       // links go with it), and re-completes the ancestors the add reopened
       const entry = { kind: 'composite', target: 'task', ops: [...ok && done ? [{ kind: 'complete', target: 'task', mode: 'reverse', fwd: { id, done: true }, _fxCapture: fx }] : [],
         { kind: 'remove', target: 'task', id, rows: this._rowsForDelete('task', id) }, ...reopen] };
@@ -6995,7 +6981,7 @@ document.addEventListener('alpine:init', () => {
         if (c?.draft === chat.text) c.draft = '';
         this.notify('Added task', { actions: [this._cardStep(-1, this.journal.at(-1).id)] });
       }
-      if (jot && this.composer.open && !this.editing && this._draftSig() === this._draftBase) this.editTask(this.byId.get(id), null, 'jot');   // S1: the bar stays on it for its steps
+      if (jot && this.composer.open && !this.editing && this._draftSig() === this._draftBase) this.editTask(this.byId.get(id), null, 'jot');   // the bar stays on it for its steps
       if (this.sticky) {   // the note marks where the row landed, or toasts its Undo when it's out of view (Mac contract)
         // judged as it lands (the reload drew the row): a $nextTick can run after the next key has filtered it out
         if (this._rowEl(id) && !this._rowAway(id)) this._flashSaved(id);
@@ -7016,7 +7002,7 @@ document.addEventListener('alpine:init', () => {
     async _binSave(key, entry, detached) { this._pushDraftBin(this._newKey(), entry, detached); await this._journalFlush(); if (!this._jSaveFailed) this._clearPending(key); },
 
     // ONE pass per data version (_rowV bumps on every tasks write): children in position order + whom each task blocks.
-    // Replaces ~7 full scans per composer open (each childTasks template, the progress ring, descendants, relations).
+    // Saves ~7 full scans per composer open (each childTasks template, the progress ring, descendants, relations).
     _taskIdx() {
       return _memo(_taskIdxMemo, this._rowV, () => { const inv = new Map(), arch = [], tasks = this.tasks;
         for (const o of window.Alpine.raw(tasks)) {   // ids only: no proxy per row
@@ -7039,7 +7025,7 @@ document.addEventListener('alpine:init', () => {
     checklistView() { return this.chkSteps() ? { rows: this.draft.checklist, hidden: 0, more: 0 } : chkVisible(this.draft.checklist, this.chkPlain(), this.chkOpen.has(this.editing ?? 'draft') || !!this.chkFind(), _chkHeld?.key === 'draft' ? _chkHeld.done : null); },
     // reveal/re-hide the folded done items; the row repaints here: no effect may have read chkOpen for it
     chkFold(id) { this.chkOpen.has(id) ? this.chkOpen.delete(id) : this.chkOpen.add(id); this._dropRowHtml(id); this._paintRows(); },
-    // The composer's entry rows are plain DOM, not x-fors: mounting ~12 Alpine directives per row made a long list the
+    // The composer's entry rows are plain DOM, not x-fors: mounting ~12 Alpine directives per row makes a long list the
     // open's longest frame. One effect per list paints them keyed by id, after the list's ghost; a row keeps its element
     // and rewrites only what changed. Every row renders: drag, ↓/Tab, the grow's measure, zebra, copy and find read them all.
     _paintKeyed(list, items, mk, set, exit) {
@@ -7085,7 +7071,7 @@ document.addEventListener('alpine:init', () => {
       _chkDraftList = list;
       if (this.notesHidden()) return;
       const rowEls = () => [...list.querySelectorAll(':scope > .entry:not(.chk-out)')], before = exit && this._entryTops(rowEls());
-      const plain = this.chkPlain(), find = this.chkFind(), grip = this.editing && !this.chkGhost.trim(), ae = document.activeElement;   // ae: the row being typed in
+      const plain = this.chkPlain(), find = this.chkFind(), grip = this.editing && !find, ae = document.activeElement;   // ae: the row being typed in
       const cur = this.chkSteps() ? this.draft.checklist.find(x => !x.done) : null;
       const view = this.checklistView(), done = view.more - view.hidden;
       this._paintKeyed(list, view.rows, () => { const el = CHK_ROW.cloneNode(true); el._r = el.firstChild; el._t = el._r.nextSibling; return el; }, (el, item) => {
@@ -7094,7 +7080,7 @@ document.addEventListener('alpine:init', () => {
         el.classList.toggle('done', done); el.classList.toggle('chk-hit', !!find?.has(item.id)); el.classList.toggle('cur', item === cur);
         el._r.classList.toggle('done', done); el._r.classList.toggle('plain', plain);
         if (!g !== !el._g) g ? el.prepend(el._g = CHK_GRIP.cloneNode(true)) : (el._g.remove(), el._g = null);
-        // text is read raw: tracked, the row read before it took focus re-ran this whole paint on its first key.
+        // text is read raw: tracked, a row read before it took focus would re-run this whole paint on its first key.
         // Text written outside the row's own editor (undo) repaints via syncChkRows.
         if (!el._t.contains(ae)) { const h = this.chkHl(window.Alpine.raw(item)); if (force || el._t._h !== h) el._t.innerHTML = el._t._h = h; }
       }, exit);
@@ -7156,14 +7142,14 @@ document.addEventListener('alpine:init', () => {
       else if (e.key === 'x' && !e.metaKey && !e.ctrlKey && !e.altKey) this.chkTickSel(e);
       else if (e.key === 'Enter') this.chkEnter(e, item);
       else if (e.key === 'Escape') this.entryEscape(e, () => txt.innerHTML = txt._h = this.chkHl(item));
-      e.stopPropagation();   // the row's keys are its own (was @keydown.stop)
+      e.stopPropagation();   // the row's keys are its own
     },
     // Uncheckable: the checklist renders as a plain notes list (no boxes, no done styling) everywhere
     chkPlain() { return this.draft.checklist_plain; },
     chkSteps() { return !this.draft.checklist_plain && this.draft.task_type === 'steps'; },
-    phoneDock() { return this.narrow && (document.documentElement.classList.contains('touch') || this._inBar()); },   // the composer's one-row dock (9A): the 640 block's .touch and jot-bar rules
+    phoneDock() { return this.narrow && (document.documentElement.classList.contains('touch') || this._inBar()); },   // the composer's one-row dock: the 640 block's .touch and jot-bar rules
     notesHidden() { return this.phoneDock() && !this.notesOpen; },
-    // KC: a strip word types itself where the caret is and chips as a typed space would; # and @ open their picker
+    // A strip word types itself where the caret is and chips as a typed space would; # and @ open their picker
     kcType(word) {
       const r = getSelection().getRangeAt(0).cloneRange(); r.setStart(this.$refs.content, 0);
       const text = /^[#@]/.test(word) ? word[0] : word;
@@ -7183,7 +7169,7 @@ document.addEventListener('alpine:init', () => {
     },
     // Steps is picked by typing into the empty composer's "First step" ghost; it and the plain toggle are draft, like every field: nothing lands before Save. Plain and Steps exclude each other.
     toggleChecklistPlain(asked) {
-      if (!asked && this.chkSteps()) return this.askConfirm({ message: 'Turn these steps into an uncheckable list?', confirmLabel: 'Make list uncheckable', onConfirm: () => this.toggleChecklistPlain(true) });   // Steps leave only through a confirm (msg 15)
+      if (!asked && this.chkSteps()) return this.askConfirm({ message: 'Turn these steps into an uncheckable list?', confirmLabel: 'Make list uncheckable', onConfirm: () => this.toggleChecklistPlain(true) });   // Steps leave only through a confirm
       const d = this.draft, before = this._shapeSnap(); d.checklist_plain = !d.checklist_plain; if (d.checklist_plain) this.setTaskType(null);
       this._pushDraftEdit(d.checklist_plain ? 'Made list uncheckable' : 'Made list checkable', 'convert', { before, after: this._shapeSnap() });
     },
@@ -7253,14 +7239,13 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
     // Bin-only row per deleted item (detached: ⌘Z steps over it; trashView/restoreTrash handle each), so it stays
-    // restorable after the undo stack ages out. A null taskId is late-bound on save (#388).
+    // restorable after the undo stack ages out. A null taskId is late-bound on save.
     _binChkItems(taskId, list, items) { for (const it of items) this._pushChkItem(it, list.indexOf(it), it.text, null, { taskId, detached: true }); },
     // chkInput writes item.text on every keystroke, so the pre-edit value comes from the focus snapshot — blur is the commit boundary (one ⌘Z step per edit session).
     renameChecklistItem(item, text) { text = text.trimStart(); if (!text.trim()) return; if (this._chkBefore != null && text !== this._chkBefore) this._pushChkItem(item, this.draft.checklist.indexOf(item), this._chkBefore, text); item.text = text; this._chkBefore = null; },
-    // checklist rows are plain, page-selectable text until you click into one — so a vertical drag makes a
-    // normal document selection that SPANS rows (a per-row contenteditable would trap the drag in one row, killing
-    // cross-item select+copy). Click (no drag) enters edit mode with the caret where clicked; a drag keeps the
-    // multi-row selection intact for chkCopy. Keyboard focus paths still edit via the row's @focus handler.
+    // Checklist rows are plain, page-selectable text until clicked into, so a vertical drag selects across rows (a
+    // per-row contenteditable would trap it in one row). A click enters edit mode at the caret; a drag keeps the
+    // multi-row selection for chkCopy. Keyboard focus edits via the row's @focus handler.
     chkRowDown(e) { this._chkDownAt = { x: e.clientX, y: e.clientY }; this._chkPointer = true; },
     // A drag that STARTS in the row you're already typing in is confined to that editable host, so it can't reach
     // siblings. Once it leaves the row's own band, drop the row out of edit mode mid-drag and the selection spans
@@ -7281,16 +7266,14 @@ document.addEventListener('alpine:init', () => {
       const off = this._caretOffset(el);   // the clicked source position, kept through the live redraw
       this.chkFocus(el); el.focus(); this._setCaret(el, off);
     },
-    // Rows are tabbable (tabindex=0) so keyboard Tab reaches the item title — but a MOUSE press must NOT enter edit
-    // mode on focus (that would trap a cross-row drag-select in one contenteditable). _chkPointer marks the mouse path;
-    // chkRowUp then decides click-to-edit vs drag. Keyboard focus (no pointer) falls through and enables editing.
+    // Rows are tabbable so Tab reaches the item title, but a MOUSE press must not enter edit mode on focus (it would
+    // trap a cross-row drag-select in one contenteditable). Keyboard focus (no pointer) enables editing.
     chkFocus(el) {
       if (this._chkPointer || el.isContentEditable) return;   // mouse path: chkRowUp decides click-to-edit vs drag
       el.contentEditable = 'plaintext-only';
       el.innerHTML = this._rowHtml(el.textContent);   // a find hit's highlight gives way to the live markdown
       el._hist = { undo: [], redo: [], prev: { text: el.textContent, caret: null } };   // its own ⌘Z, fresh each edit (liveHistory)
-      // A div that becomes editable while already focused has NO caret inside it, so keystrokes do nothing —
-      // place a collapsed caret at the end so keyboard Tab-in is immediately typable.
+      // A div made editable while focused has no caret, so keys do nothing: put one at the end.
       this._caret(el);
     },
     // Enter → sibling item below · Shift+Enter → plain newline · ⌘/Ctrl+Enter → save & close.
@@ -7320,9 +7303,9 @@ document.addEventListener('alpine:init', () => {
     // A row's DOM → a fresh draft (text + pills), leaving the engine aimed where it was.
     _rowDraft(el, c, track = true) {
       const prev = _nlpFocus, d = emptyDraft();
-      d.goal_ids = [...(c?.goal_ids || [])];   // goals have no pill (R4) — carry the row's own, else a commit writes [] over them
+      d.goal_ids = [...(c?.goal_ids || [])];   // goals have no pill: carry the row's own, else a commit writes [] over them
       // No area fallback from the task: a row hydrated before its areas were set diffs [] vs [] (nothing written, see
-      // _childPatch), while one the user un-chipped must write [] — the fallback made removing an area chip a no-op.
+      // _childPatch), while one the user un-chipped must write []; a fallback would make removing an area chip a no-op.
       _nlpFocus = { el, draft: d, c }; this._recommitPills(PILL_KINDS); this.syncTitle(false, track); _nlpFocus = prev;
       return d;
     },
@@ -7367,8 +7350,8 @@ document.addEventListener('alpine:init', () => {
     },
     // A sub-draft → child task fields. A subtask's parent is the editing task (not a project); it has no checklist of its own.
     _subFields(d) { const f = this.draftFields(d); delete f.project; delete f.project_id; delete f.checklist; f.parent_id = this.editing; return f; },
-    // The ghost's typing → a new row next to the ghost: the draft's head, a phone's tail. Its own row, never merged into the ghost —
-    // prepending there turned "sub1 30m" + "sub2 1h" into ONE task and dropped the 30m.
+    // The ghost's typing → a new row next to the ghost: the draft's head, a phone's tail. Its own row, never merged into the
+    // ghost, or "sub1 30m" + "sub2 1h" becomes ONE task and drops the 30m.
     commitSubGhost() {
       const el = this._ghostEl('sub');
       // Rebuild the sub-draft from the ghost's DOM — covers Save, where focus may never have entered the row.
@@ -7393,7 +7376,7 @@ document.addEventListener('alpine:init', () => {
       const add = (kind, value) => { el.appendChild(this.makePill(kind, value, '')); this.commitPill(kind, value); };
       const min = c.est_minutes || 0;
       if (c.importance && c.importance !== 'none') add('imp', c.importance);
-      const si = c.recurrence ? null : this._siOf(c.id);   // the placement is the date fact; recur_from is only a rule anchor now
+      const si = c.recurrence ? null : this._siOf(c.id);   // the placement is the date fact; recur_from is only a rule anchor
       if (si || c.recur_from) add('date', { iso: si?.date || c.recur_from.slice(0, 10), time: si ? si.start || '' : timeOf(c.recur_from), from: c.available_from || null, ...partOf(c.possible?.bands) && { part: partOf(c.possible.bands) } });
       if (c.deadline_at) add('deadline', { iso: (c.deadline_at || '').slice(0, 16) });
       if (c.recurrence) add('rec', c.recurrence);
@@ -7406,8 +7389,8 @@ document.addEventListener('alpine:init', () => {
       el._base = this._rowDraft(el, c, false); el._html = el.innerHTML;   // what the row showed as filled — a commit writes only what differs from it
     },
     // Rows keep their element across reloads → refresh each idle child editor's pills from the store. Only rows still as
-    // filled, plus `id` (the row just saved or reverted): a row holding an unsaved or failed edit keeps it — a sibling's
-    // save re-hydrating it wiped the text its toast had promised to keep.
+    // filled, plus `id` (the row just saved or reverted): a row holding an unsaved or failed edit keeps it, else a
+    // sibling's save re-hydrating it wipes the text its toast promised to keep.
     syncSubRows(id) {
       if (!this.editing) return;
       document.querySelectorAll('.composer-entries .entry[data-id] .entry-txt.sub-ce').forEach(el => {
@@ -7466,11 +7449,11 @@ document.addEventListener('alpine:init', () => {
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       const el = e.target, ce = el.isContentEditable;
       // A selection spanning whole rows makes the ROW the keydown target, not an editor — it has no caret to
-      // reason about (and no .value, which used to throw and kill ⌘C over a multi-item selection).
+      // reason about (and no .value: reading it throws and kills ⌘C over a multi-item selection).
       if (!ce && typeof el.value !== 'string') return;
       const down = e.key === 'ArrowDown', s = getSelection();
       if (ce ? !s?.isCollapsed : el.selectionStart !== el.selectionEnd) return;
-      if (ce) {   // a live row's edge is its last visible character: the markers past it hide once the caret leaves (3B)
+      if (ce) {   // a live row's edge is its last visible character: the markers past it hide once the caret leaves
         const r = document.createRange(); r.selectNodeContents(el);
         if (down) r.setStart(s.focusNode, s.focusOffset); else r.setEnd(s.focusNode, s.focusOffset);
         const rest = r.cloneContents();
@@ -7606,9 +7589,8 @@ document.addEventListener('alpine:init', () => {
       if (s.add) this._pushChkItem(s, i, text, null, { kind: 'held-sub' });
       else this._pushDraftEdit(text, 'held-sub', { id: s.id, index: i, before: text, after: null, item: JSON.parse(JSON.stringify(s)) });
     },
-    // Drag-to-reorder the composer's rows (grip handle; a finger holds the row instead). Subtasks always; the checklist only while EDITING a
-    // SAVED task — that is the scope of "no grip in the composer": it was asked for on the NEW-task composer,
-    // where nothing is saved yet and the grip crowds the row. Removing it from both took it off saved tasks too.
+    // Drag-to-reorder the composer's rows (grip handle; a finger holds the row instead). Subtasks always; the checklist only
+    // while EDITING a SAVED task: a new task's composer has no grip, as nothing is saved yet and it crowds the row.
     initEntrySort(el, kind) {
       makeSortable(el, { itemSel: kind === 'sub' ? '.entry:not(.ghost, .chk-out)' : '.entry:not(.ghost, .chk-out, .done)', handleSel: '.entry-grip',
         onCommit: (from, to) => kind === 'sub' ? this.reorderSubtasks(from, to) : this.reorderChecklist(from, to) });
@@ -7666,8 +7648,7 @@ document.addEventListener('alpine:init', () => {
     // TWO different distances, both real: a step or two past the fold leaves the row IN the window (nothing
     // to build, but the reader still has to follow it — 600px of margin is 15 rows of invisible focus without
     // this), and a long walk leaves it outside the window entirely (no element until _ensureRow builds one).
-    // The follow goes through _revealRow, not scrollIntoView: `nearest` was a THIRD authority writing the same
-    // scroller behind _glide's back, and _revealRow is the same intent (±12px of air) under the one owner.
+    // The follow goes through _revealRow (±12px of air), not scrollIntoView, so _glide stays the scroller's one writer.
     _setKbFocus(id) {
       this.focusId = id;
       if (id) this._ensureRow(id);
@@ -7719,8 +7700,8 @@ document.addEventListener('alpine:init', () => {
       const outOf = el => { const par = this.byId.get(this.byId.get(el.dataset.id)?.parent_id); return par && this.taskProj(par) ? par : null; };   // a project's row, or the Inbox's, has none
       let land = null;   // sorted: the row's landing (_sortLand) and the row the gap opened by, read only while sortable's `cut` holds
       makeSortable(el, { itemSel: '.item[data-id]:not(.row-hidden)', touchOnly: true, enabled: () => !this.composer.open, fixed: () => this.navSel.type === 'area',
-        // #97, user: "the finger moves left by 15% of the screen width … and the row under the finger unindents" — desktop's rule (_dragFar,
-        // dragOver): the slot's row lands after its parent, a level up; a root row has no parent to leave
+        // a finger moved left by 15% of the screen width unindents the row under it, desktop's rule (_dragFar, dragOver):
+        // the slot's row lands after its parent, a level up; a root row has no parent to leave
         far: x => this._dragFar(x),   // ceiling: a hold starting under 15% of the width from the left edge (58.5px on a 390px phone) can't unindent; revisit if users grab near the checkbox
         pinned: (to, items, from, far) => { const up = far && outOf(items[to]); return (!!up || to !== from) && this._sortPins(up ? up.parent_id : this.byId.get(items[to].dataset.id)?.parent_id); },
         refused: () => this._sortHint(),
@@ -7796,9 +7777,8 @@ document.addEventListener('alpine:init', () => {
       (_dndHeld = el)?.style.setProperty('overflow-y', 'hidden');
     },
     // No row lookup: the drop lands wherever the pointer happens to be — the gap between rows, the list's own
-    // padding, or the drop-ghost (an .item with NO data-id, rendered exactly where you're aiming). Gating on
-    // "the release resolved to a row" threw those away, which is why some drags silently did nothing. The last
-    // dragOver already recorded the intent in taskDropHint, and drop() reads only that.
+    // padding, or the drop-ghost (an .item with NO data-id, rendered exactly where you're aiming); gating on a row
+    // would silently drop those. The last dragOver recorded the intent in taskDropHint, and drop() reads only that.
     listDrop(e) {
       if (['into', 'deep'].includes(this.taskDropHint?.mode) && performance.now() - _intoSeen.t < INTO_SEEN) this.dragOver(_dropSlot.t, e, _dropSlot.depth, _intoSeen.half);   // unseen: the slot it would have shown
       this.drop();
@@ -7878,8 +7858,8 @@ document.addEventListener('alpine:init', () => {
     // Resolver ids: the completed ancestors an OPEN task landing under parentId reopens (store.js ancestorsToReopen).
     _reopenIds(parentId) { return this._chain(parentId).filter(id => this.byId.get(id).completed_at); },
     // Optimistic: un-tick them NOW, before the store round-trip (2 on the cloud path); the reload after the write reconciles.
-    // Copy-on-write: the signed-in store's cache holds these same row objects — mutating them made the store think the
-    // parent was already open, so the DB never reopened it.
+    // Copy-on-write: the signed-in store's cache holds these same row objects; mutating them makes the store think the
+    // parent is already open, so the DB never reopens it.
     _reopenNow(parentId) {
       const ids = this._reopenIds(parentId);
       for (const id of ids) { const i = this.tasks.findIndex(t => t.id === id), t = { ...this.tasks[i], completed_at: null }; this.tasks[i] = t; this.byId.set(id, t); }
@@ -7896,7 +7876,7 @@ document.addEventListener('alpine:init', () => {
       await this.loadTasks();   // a failed create: reconciles the optimistic reopen
       return task;
     },
-    // Overflow menu: subtasks → checklist items, or subtasks/checklist ↔ Steps — Steps only behind its confirm (msg 15). A draft
+    // Overflow menu: subtasks → checklist items, or subtasks/checklist ↔ Steps — Steps only behind its confirm. A draft
     // change like the rest: Save lands the checklist first and deletes the subtasks last; until then it's one ⌘Z step.
     convertTo(type, asked) {
       const d = this.draft, subs = this.shownSubs(), steps = type === 'steps', nested = subs.reduce((n, s) => n + this.descendantCount(s.id), 0);
@@ -8056,14 +8036,14 @@ document.addEventListener('alpine:init', () => {
       const known = new Map((this.areas || []).map(a => [a.name.trim().toLowerCase(), a]));
       return rowBodyHtml({
         t, pc: this.pc(f.importance || 'none'), titleHtml: mdTitleFn(it.content),
-        // A declared-but-not-yet-created area has no row to read a colour off — fall back to the default
+        // A declared-but-not-yet-created area has no row to read a color off: fall back to the default
         // rather than dropping the chip, so the preview shows what you are agreeing to either way.
         areas: (it.areaNames || []).map(n => { const a = known.get(n.trim().toLowerCase()); return { name: n, icon: a?.icon, color: a?.color || this.areaDefault }; }),
         projName: it.listName || '', isDefaultProj: false, note: inNotes(f), rels: [], chk: f.checklist || [],
       }, { minimal: true });
     },
     // Only what the row itself does NOT already say: the check carries importance, the chip carries the
-    // list, the area chips carry areas. Repeating them here was noise.
+    // list, the area chips carry areas.
     importRowMeta(it) {
       if (it.kind === 'event') return [it.starts_at.replace('T', ' '), it.recurrence ? 'repeats' : '', it.detached_from ? 'moved occurrence' : ''].filter(Boolean).join(', ');
       const f = it.fields || {};
@@ -8080,7 +8060,7 @@ document.addEventListener('alpine:init', () => {
     },
     async _copyText(text, msg) {
       try { await navigator.clipboard.writeText(text); }
-      catch { const ta = Object.assign(document.createElement('textarea'), { value: text }); document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }   // no clipboard permission → the old way still works
+      catch { const ta = Object.assign(document.createElement('textarea'), { value: text }); document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }   // no clipboard permission → execCommand still copies
       if (msg) this.toast(msg);
     },
     copyCode(e) {
@@ -8334,7 +8314,7 @@ document.addEventListener('alpine:init', () => {
       _celeT = setTimeout(() => this._celeExit(), motion.t(600));
     },
     // A pointer tick on a Steps row (docs/ui/task-list.md §Steps, docs/ui/motion.md), one phase after another: the rail
-    // fills down to the next step in the task's colour, that step's node lights, then the write lands and the next step's
+    // fills down to the next step in the task's color, that step's node lights, then the write lands and the next step's
     // text pushes the old one up out of the row while the step after rises in below. A tick on the preview's node lights
     // it and pushes the preview line alone. The step that finishes the task takes the completion reward instead. Keys and
     // ⌘Z never come here: they stay instant. A second tap hurries the first to its end (motion.seq), then ticks what's
@@ -8378,7 +8358,7 @@ document.addEventListener('alpine:init', () => {
           box.prepend(out);
           const step = !preview && box.querySelector(':scope > .row-step'), chk = el.querySelector(':scope > .check'), o = { duration: DESIGN.motion.daily, easing: DESIGN.ease.drawer };
           const runs = motion.push(s, box, out, [...box.children].filter(c => c !== out && c !== step), d, step ? [step] : []);
-          if (step) {   // the preview's text carries on, growing and darkening into the step line (its colour is the text's own)
+          if (step) {   // the preview's text carries on, growing and darkening into the step line (its color is the text's own)
             const txt = step.querySelector('.chk-txt') ?? step;
             runs.push(motion.go(s, step, { scale: [fs / parseFloat(getComputedStyle(step).fontSize), 1] }, o), motion.go(s, txt, { color: [faint, getComputedStyle(txt).color] }, o));
           }
@@ -8387,8 +8367,8 @@ document.addEventListener('alpine:init', () => {
           return runs;
         });
     },
-    // A tick that finishes the page's project rewards its title: the project's own check, after the name, with the row's
-    // tick, ring and ember roll (user: "it should still animate the task finishing for both")
+    // A tick that finishes the page's project rewards its title too: the project's own check, after the name, with the
+    // row's tick, ring and ember roll
     _celeHead(p) {
       const full = this.celebrations === 'full';
       _celeHead?.remove();
@@ -8498,8 +8478,7 @@ document.addEventListener('alpine:init', () => {
       const ids = [...ts.map(t => t.id), ...kids.map(k => k.id)], what = ts.length > 1 ? this._nTasks(ts.length) : this.isOverviewProject(ts[0]) ? 'project' : 'task';
       let wrote;
       const set = async () => !!(wrote = await this.store.tasks.setArchived(ids, val));
-      // Unarchive keeps the dates that passed meanwhile (user, tweak-11a: "the dates are still valuable information to understand the timeline
-      // of the project"); its card offers clearing them, the open rows' past date-items re-read on the click: the card lingers 8s
+      // Unarchive keeps the dates that passed meanwhile (they tell the project's timeline); its card offers clearing them, the open rows' past date-items re-read on the click: the card lingers 8s
       const passed = () => (wrote || []).map(x => this.byId.get(x)).filter(k => k && !k.completed_at && !k.archived_at)
         .map(k => this._siOf(k.id)).filter(si => si && si.date < isoDate(new Date()));
       const dates = n => `${n} passed date${n === 1 ? '' : 's'}`;
@@ -8542,7 +8521,7 @@ document.addEventListener('alpine:init', () => {
         return this.pickerMatches(r.open ??= this.tasks.filter(t => t.id !== this.editing && t.id !== def && !r.rels.some(x => x.id === t.id))).slice(0, 40); }, 1);
     },
     relChips() { return this._relIdx().rels; },
-    // A row's blocker chip opens its task as the palette does, a file chip its file; a rolled one lists its kind (soc-2 c).
+    // A row's blocker chip opens its task as the palette does, a file chip its file; a rolled one lists its kind.
     relsFor: null,   // { taskId, kind }: the rolled chip whose list is open
     rowRelOpen(t, chip) {
       const kind = chip.dataset.kind;
@@ -8617,8 +8596,7 @@ document.addEventListener('alpine:init', () => {
     // Open = not completed/archived/a project/a parent. Callers append their own clauses (block-fill adds unscheduled/overdue).
     _openLeaf(t, held = false) { return (!t.completed_at || held && _cele.has(t.id)) && !t.archived_at && placeable(t) && !this.hasChildren(t.id); },
     async loadEvents() { const ev = await this.store.events.list(); _calDataV++; this.events = ev; },
-    // must bust _calDataV too — without it a block added between two event loads never reaches the memo, and the
-    // calendar keeps drawing the previous set until some unrelated task/event change happens to bump the sig
+    // must bust _calDataV too, else a block added between two event loads never reaches the memo
     async loadBlocks() { const bl = await this.store.blocks.list(); _calDataV++; this.blocks = bl; },
     _clDate() { return new Date(this.clAnchor + 'T00:00'); },
     // Where the view is heading, `dir` periods on: while a scroll is live, its target (a page turn's tween, a month step's
@@ -8635,7 +8613,7 @@ document.addEventListener('alpine:init', () => {
       return at;
     },
     _clWeekStart(d) { const x = new Date(d); x.setDate(x.getDate() - x.getDay()); x.setHours(0, 0, 0, 0); return x; },   // Sunday
-    // threadless items go WARM, never grey — grey is what made scheduled tasks read as disabled
+    // threadless items go WARM, never gray: gray reads as disabled
     clItemColor(it) { return it.color || (it.kind === 'task-deadline' ? 'var(--deadline)' : it.kind === 'task-due' ? 'var(--accent-info)' : 'var(--accent)'); },
     _clTime(s) { return this.clAgTime(this._clMin(s)); },
     _monthLabel(d) { return this._lbl('m|' + (d.getFullYear() * 12 + d.getMonth()), () => d.toLocaleDateString([], { month: 'long', year: 'numeric' })); },
@@ -8694,7 +8672,7 @@ document.addEventListener('alpine:init', () => {
     clSetView(v, instant, frac) {   // frac: the hour to open at (_clScrollToPeriod)
       this._clSaveName();
       if (this.clView === 'month') this._clMAnchor(); else this.clAnchor = isoDate(this._clAt());
-      if (this.clScrolling || this._clMDue) { clearTimeout(_clScrollT); this._clMSettle(); }   // the switch is the land: left running, a month scroll's flag read the new view's period as live
+      if (this.clScrolling || this._clMDue) { clearTimeout(_clScrollT); this._clMSettle(); }   // the switch is the land: left running, a month scroll's flag reads the new view's period as live
       this._clWeekDropped = null;   // the week hour a phone width dropped; any switch, the user's or the width's, settles the view: widening restores nothing
       if (v === 'week' && this.narrow) v = 'day';
       // reset zoom to fit, never to 0 — a zero hour height makes clPeriodH 0, and a divide by it has no position
@@ -8704,12 +8682,12 @@ document.addEventListener('alpine:init', () => {
     },
     _withTransition(setFn, afterFn, instant, every) {
       // Switches must not be able to land out of order: _vtSeq ensures a stale callback never applies over a newer one.
-      // A step is relative (`every`): each lands, superseded or not — dropped, a held Shift+↓ ×12 travelled 1–11 weeks.
+      // A step is relative (`every`): each lands, superseded or not — dropped, a held Shift+↓ ×12 travels 1–11 weeks.
       const seq = this._vtSeq = (this._vtSeq || 0) + 1;
       let ran = false;
       this.clVT = true;   // names go on for the capture only — see the CSS note on permanent layer promotion
       // microtask flushes, not $nextTick: Alpine holds that while any x-transition starts, until a frame — and no frame
-      // comes while this update callback runs, so a surface switch landing mid-morph froze the page for Chrome's 4s timeout
+      // comes while this update callback runs, so a surface switch landing mid-morph freezes the page for Chrome's 4s timeout
       const flush = () => new Promise(queueMicrotask);
       const run = async () => { if (ran || (!every && seq !== this._vtSeq)) return; ran = true; setFn(); await flush(); afterFn?.(); await flush(); };
       // hidden tabs abort (InvalidStateError) — guard with visibilityState
@@ -8743,20 +8721,18 @@ document.addEventListener('alpine:init', () => {
       }, 12);
     },
     // Grouped over the window snapped OUT to 8-week bounds: a fling slides clVisStart a row at a time, and an
-    // exact-window key re-ran calendarItems over every event and task on each slide; now ~one in eight misses.
+    // exact-window key would re-run calendarItems over every event and task on each slide; snapped, ~one in eight misses.
     _clVisMap() {
       const a = this.clVisStart & ~7, b = a + this.clVisCount + 8;   // b follows a, so only a crossing moves the key
       return this._clGroup(isoDate(this._weekDate(a)), isoDate(this._weekDate(b)));
     },
 
     // --- MONTH: virtualized week rows in a fixed-height spacer (constant scroll height, no reflow; buffer prevents blanks on fast flings) ---
-    // Rows are MEMOIZED per index. Scrolling one row shifts the window by one, but rebuilding every row's day
-    // objects handed Alpine fresh identities for all of them, so every cell's bindings re-ran: 1585 DOM
-    // mutations for a ONE-row shift, ~27k across a single fling. Returning the identical object makes x-for's
-    // scope write a no-op, so only the row that actually entered costs anything. The signature carries
-    // everything a row's contents depend on — the data and today. Never the height: a row is placed by --rowh in CSS
-    // (top = key × --rowh), so a resize moves every row in one style pass and rebuilds none. A per-row px top left
-    // rows a resize didn't re-bind at their old tops — overlapping, the viewport blank.
+    // Rows are MEMOIZED per index: fresh day objects re-run every cell's bindings on a one-row shift (~27k DOM
+    // mutations a fling), while the identical object makes x-for's scope write a no-op. The signature carries
+    // everything a row's contents depend on: the data and today. Never the height: --rowh places a row in CSS
+    // (top = key × --rowh), so a resize moves every row in one style pass and rebuilds none; a per-row px top leaves
+    // rows a resize didn't re-bind at their old tops, overlapping.
     clWeeks() {
       if (this.clView !== 'month' || this._clHidden()) return _clWkOut;   // hidden: keep the last rows; showing re-runs this
       if (!this.clRowH) this.clRecalc();
@@ -8794,7 +8770,7 @@ document.addEventListener('alpine:init', () => {
               const band = lane.get(it.kind + it.id), labelDays = i === band.c0 ? band.len : 1;
               items[band.row] = { ...it, labelDays, labelCap: labelDays > 1 && cols[i + labelDays - 1].bands.some(t => t.id === it.id && t.kind === it.kind && t.spanEnd) ? 1 : 0 };
             }
-            // phone (decision #65): tasks before daily items, and an overflowing day gives its third slot to "+N" — two-line chips don't fit 3 + "+N"
+            // phone: tasks before daily items, and an overflowing day gives its third slot to "+N" — two-line chips don't fit 3 + "+N"
             const singles = narrow ? tasksFirst(rest) : [...rest];
             for (let k = 0; k < items.length; k++) items[k] ||= singles.shift() || { pad: true, kind: 'pad', id: k, title: '' };
             items.push(...singles);
@@ -8821,7 +8797,7 @@ document.addEventListener('alpine:init', () => {
     _clZoneTop() { return this.clView === 'month' ? this._clHeadH() + (this.clRowH || 1) : this._clVH() - CL_FOOT; },
     // Body bands: month titles glued to the grid (top=idx*rowH), only BELOW the zone. clZoneTitles picks them up overhead.
     // The month zone is one row deep, so rows through top+1 are in it: that depends on the TOP ROW alone, read off
-    // clVisStart (top − CL_BUFFER), never the scrollTop — which re-ran this every scroll frame for an identical list.
+    // clVisStart (top − CL_BUFFER), never the scrollTop, which would re-run this every scroll frame for an identical list.
     // ceiling: clVisStart clamps at 0, so in the first CL_BUFFER weeks (Jan–Mar 2000) bands below the zone go missing; a real top-row field if the epoch nears reachable dates
     clMonthBands() {
       if (!this.clRowH) this.clRecalc();
@@ -8837,7 +8813,7 @@ document.addEventListener('alpine:init', () => {
     },
     // Parallax clamp/shove/round shared by clZoneTitles and _periodZoneTitles.
     // Callers build list as [{name, vt}]; this applies the parallax, shoves overlaps, and filters.
-    // LINEAR (not ease-out t*(2-t)): ease-out's zero slope at t=1 caused a visual "dip" at the band→overlay handoff.
+    // LINEAR (not ease-out t*(2-t)): ease-out's zero slope at t=1 dips at the band→overlay handoff.
     // `clear`: px a title keeps above its own start line in the runway — a week's riding all-day rail hangs just below
     // it, the outgoing week's deadline labels just above it. Never above the bar: there the rails are clipped under the head.
     _zoneLayout(list, head, zoneH, barY, clear = -Infinity, labelH = 46) {
@@ -8863,7 +8839,7 @@ document.addEventListener('alpine:init', () => {
       return this._zoneLayout(list, head, zoneH, barY, 34);   // 34: the .cl-mtitle line box, kept above the row that holds the 1st and its label
     },
     // Viewport + scroller height, measured ONCE per layout. Both are forced-reflow reads, and a wheel event
-    // wanted three of them — at ~10 trackpad events per frame that alone ate the budget. Invalidated wherever
+    // needs three, at ~10 trackpad events per frame. Invalidated wherever
     // either can actually move: resize, view switch, window recalc. Always cached, even at port===0 (pre-layout);
     // a rAF identity-check invalidates the zero so the next call re-measures once the DOM has laid out.
     _clMetrics() {
@@ -8888,8 +8864,8 @@ document.addEventListener('alpine:init', () => {
       this.clTopMonth = z ? z.name : this._topMonthLabel(Math.max(0, Math.floor(scrollTop / (this.clRowH || 1))));
       this._clFocus(scrollTop);
     },
-    // THE only thing that sets a zone title's `top`: with a reactive :style binding beside it, a title that entered or left
-    // the x-for kept a stale top until the next flush (the teleport). The markup is position-less (data-name only);
+    // THE only thing that sets a zone title's `top`: with a reactive :style binding beside it, a title that enters or leaves
+    // the x-for keeps a stale top until the next flush (a teleport). The markup is position-less (data-name only);
     // this is the single writer, called from the one place position moves.
     _clPositionZone(list) {
       const box = this.$refs.clMtitlesBox; if (!box) return;
@@ -8897,7 +8873,7 @@ document.addEventListener('alpine:init', () => {
       for (const el of box.children) { const t = at[el.dataset.name]; el.style.top = (t ? t.y : -999) + 'px'; el.classList.toggle('at-bar', !!t?.atBar); }   // no entry = not placeable yet; park it off-screen rather than leave it at a stale y
     },
     clMonthScroll(e) {
-      // ONE scrollTop read, before any write: re-reading it after _clPositionZone's style writes forced a second
+      // ONE scrollTop read, before any write: re-reading it after _clPositionZone's style writes forces a second
       // style+layout every scroll frame. (No rAF coalescing — scroll already fires once per frame, and the titles
       // must move THIS frame.)
       const y = e.target.scrollTop, topIdx = Math.max(0, Math.floor(y / (this.clRowH || 1)));
@@ -8915,16 +8891,16 @@ document.addEventListener('alpine:init', () => {
       });
       const t = performance.now();
       // our OWN settle glide: it still virtualizes, but it is not a gesture — re-lighting the chrome here is a flicker.
-      // It still POSTPONES the settle: a ↓/Today step inside this window otherwise let a pending week-snap fire
+      // It still POSTPONES the settle: a ↓/Today step inside this window otherwise lets a pending week-snap fire
       // mid-step and round it back to where it started. Not live, yet clAnchor lags this scroll until that settle (a wheel's
       // scroll landing just after one reads as ours too), so _clMDue has _clAt step from the month in view.
       if (t < (this._clMGlide || 0)) { this._clMDue = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this._clMSettle(), motion.t(600)); return; }
       // TWO chrome states landing at different moments: the out-of-month DIM comes back as soon as the glide
       // slows to a crawl, the month band/title text holds until the scroll has STOPPED. Both are ONE-WAY per
-      // scroll session (only _clMSettle re-arms them), because every rate gate we tried strobed — a decaying
-      // glide jitters across any threshold, and the browser hands a wheel over in bursts that dip and spike.
+      // scroll session (only _clMSettle re-arms them), because any rate gate strobes: a decaying glide jitters
+      // across any threshold, and the browser hands a wheel over in bursts that dip and spike.
       // dt is capped because speed means "distance moved in the last frame-ish window": an event's raw gap
-      // spans the IDLE time before the gesture, so a coalesced 1038px jump read 0.33px/ms — a crawl.
+      // spans the IDLE time before the gesture, so a coalesced 1038px jump reads 0.33px/ms, a crawl.
       const dt = Math.min(t - (this._clMSt || 0), 100), v = Math.abs(y - this._clMSy) / dt;
       // phantom native scroll from an el.scrollTop assignment — position unchanged; skip the chrome update. `=== 0`,
       // never `!v`: the first sample is NaN (no previous position) and must record one, or no scroll ever lights.
@@ -8939,13 +8915,13 @@ document.addEventListener('alpine:init', () => {
       this._clMSy = y; this._clMSt = t;
       clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this._clMSettle(), motion.t(600));   // backstop for a scroll whose scrollend never comes
     },
-    // @scrollend, DEBOUNCED: a wheel's notches each END their own scroll, so settling on the bare event blinked
+    // @scrollend, DEBOUNCED: a wheel's notches each END their own scroll, so settling on the bare event blinks
     // the month text off and back on 21ms later. Only a stop that lasts is a stop.
     // A FINGER's scrollend is final (it fires once the finger is up and the fling spent), so a touch lands flush
-    // right then — waiting out the settle parked the grid off-row for a visible beat before it moved again.
+    // right then: waiting out the settle parks the grid off-row for a visible beat.
     clMonthSnap() { if (this._clMTouch) this._clMFlush(); clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this._clMSettle(), motion.t(CL_MONTH_SETTLE)); },
     // The settle drops the chrome, re-arms the dim for the next scroll — and snaps the grid to a week boundary
-    // OURSELVES. CSS scroll-snap can only do this by arresting the fling mid-flight (it cut a 2400px trackpad
+    // OURSELVES. CSS scroll-snap can only do this by arresting the fling mid-flight (it cuts a 2400px trackpad
     // fling to 9px); doing it here, after the scroll has stopped, keeps the momentum free AND lands flush.
     _clMSettle() {
       this.clScrolling = this._clMDue = false; this.clFast = false; this.clDimYM = this.clFocusYM; this._clMRest = true; this._clMDone = false;
@@ -8958,13 +8934,13 @@ document.addEventListener('alpine:init', () => {
     _clMFlush() {
       const el = this.$refs.clMonth, h = this.clRowH;
       if (!el || !h || this._clMFinger) return;   // a RESTING finger stops the scroll and so trips the settle; its snap glided the grid out from under it
-      const to = Math.round((this._clMTo ?? el.scrollTop) / h) * h;   // our glide still under way lands where it is GOING: a starved frame past the settle's wait rounded a ↓ back to its start
+      const to = Math.round((this._clMTo ?? el.scrollTop) / h) * h;   // our glide still under way lands where it is GOING: a starved frame past the settle's wait rounds a ↓ back to its start
       if (Math.abs(to - el.scrollTop) < 1) return void (this._clMTo = null);   // landed: the target is spent here, not at scrollend (a glide can end short of it). 1px off still glides: a jump made in a glide's last frame rests there. A 0px glide would still fire scroll events
       this._clMGlide = performance.now() + motion.t(700);   // this glide is ours; clMonthScroll must not read it as a gesture
       el.scrollTo({ top: to, behavior: this.reduceMotion() ? 'auto' : 'smooth' });
     },
-    // …and the hand always wins: a smooth scrollTo keeps animating THROUGH new input, so it fought anyone who
-    // scrolled during the settle. Any real input aborts the glide (an instant scroll to where we
+    // …and the hand always wins: a smooth scrollTo keeps animating THROUGH new input, so it fights anyone who
+    // scrolls during the settle. Any real input aborts the glide (an instant scroll to where we
     // already are cancels the animation) and hands the scroll straight back.
     clMonthTake(e) {
       const ours = this._clMGlide || this._clMTo != null;   // a settle glide, or a step/↓ still gliding to its target
@@ -8977,8 +8953,8 @@ document.addEventListener('alpine:init', () => {
       const el = this.$refs.clMonth; if (!el) return;
       // A zero-height element SILENTLY IGNORES scrollTop, and the Plan surface can still be off-screen when a
       // view switch lands here (clSetView runs this in its after-callback). Nothing re-runs it, so the month
-      // stayed parked at row 0 while clVisStart pointed at the anchor — a grid rendered outside its own
-      // window, i.e. empty. Retry until layout exists; same guard _clScrollToPeriod already carries.
+      // would stay at row 0 while clVisStart points at the anchor: an empty grid. Retry until layout exists, as
+      // _clScrollToPeriod does.
       if (!el.clientHeight && tries > 0) return void requestAnimationFrame(() => this.clScrollToAnchor(tries - 1, row));
       if (!this.clRowH) this.clRecalc();
       const target = row ?? this._monthFirstIdx(this._clDate()), top = Math.round(target * this.clRowH);
@@ -8989,7 +8965,7 @@ document.addEventListener('alpine:init', () => {
       _clMTop = top; if (this._clMTo != null) this._clMTo = top;
       this._clScrollState(top);
       // seed the velocity sample FIRST: the jump's scroll event then reads v === 0 (ours), not a gesture that lights the chrome.
-      // A microtask, not $nextTick: that waits a setTimeout, so a resize painted one frame of new --rowh at the old scrollTop — blank.
+      // A microtask, not $nextTick: that waits a setTimeout, so a resize paints one frame of new --rowh at the old scrollTop — blank.
       queueMicrotask(() => { this._clMSy = top; el.scrollTop = top; this._clScrollState(top); this._clTabInView(); });
     },
     _clStepMonth() {
@@ -9072,7 +9048,7 @@ document.addEventListener('alpine:init', () => {
       });
     },
     clDayLabel(iso) { return this.dayNotes.find(d => d.date === iso)?.label || ''; },
-    // B·V3: the weekday slot IS the name field. An empty name deletes the row — a day with no name leaves no trace.
+    // The weekday slot IS the name field. An empty name deletes the row — a day with no name leaves no trace.
     // A failed write puts the field back to what's stored, so it never shows a name that isn't saved.
     async clSetDayLabel(iso, el) {
       const label = el.value.trim(), row = this.dayNotes.find(d => d.date === iso);
@@ -9091,7 +9067,7 @@ document.addEventListener('alpine:init', () => {
     _clMaxFrac() { const ph = this.clPeriodH(), port = this._clMetrics().port;
       if (!port || !ph) return 0;
       return Math.max(0, 1 - (port - this._clHeadH()) / ph) + (this.clView === 'week' ? CL_WEEK_BLEED / ph : 0); },
-    // toLocaleDateString is ~100us; three zone titles plus the heading asked for one on EVERY wheel event.
+    // toLocaleDateString is ~100us; three zone titles plus the heading ask for one on EVERY wheel event.
     // A period's label is a pure function of its key, so it is computed once and kept.
     _lbl(k, make) { if (_periodLabels.has(k)) return _periodLabels.get(k); const v = make(); if (_periodLabels.size > 500) { _periodLabels.clear(); _dayLabels.clear(); } _periodLabels.set(k, v); return v; },
     _periodLabelAt(idx) { return this._lbl(this.clView + '|' + idx, () => this._periodLabel(this._periodDate(idx))); },
@@ -9113,9 +9089,8 @@ document.addEventListener('alpine:init', () => {
     // pushed out by its own height; the bottom rail pins above the nav and rides up the same way, because a
     // deadline belongs to the END of its day. The NEXT week's pair arrives from the far side of that same
     // line, so at d=0 they already stand exactly where the outgoing pair was and the index flip moves nothing.
-    // Three properties on the WRAPPER, which Alpine never re-renders. Writing transforms onto the rails
-    // themselves lost them every time a rail's contents changed — the rail snapped back to the floor until
-    // the next wheel event, which is a teleport you can trigger just by editing a task.
+    // Three properties on the WRAPPER, which Alpine never re-renders: a transform on a rail itself is lost whenever
+    // its contents change, snapping it back to the floor until the next wheel event.
     _clAdPaint(tries = 6) {
       // the ref can be absent on the very first paint (the surface is still mounting) — and a rail that
       // misses that paint stays parked at its CSS default until you happen to scroll, which reads as the
@@ -9126,12 +9101,11 @@ document.addEventListener('alpine:init', () => {
       const d = (1 - this.clPos.frac) * this.clPeriodH(), h = this._clMetrics().port - this._clHeadH() - CL_FOOT;
       const pg = this.clAdPage();
       // The deadline rail's height is the ONE number the top rail can't derive: its rows are wrapped type, not
-      // a fixed grid. Measured when the week's contents change — never per frame. The `!_clAdH` arm is what
-      // makes it survive the real entry path: the first paint runs while the surface is still mounting, so the
-      // rail measures 0, and with only a page-identity guard that 0 stuck forever and the rails overlapped.
-      // Retry ONLY while this page actually wants a deadline rail: `r.style.display !== 'none'` is true for every week with
-      // no deadlines, and the measure (two forced layouts + a custom property on the wrapper that restyles every child)
-      // would run on EVERY frame; a dense week froze the renderer.
+      // a fixed grid. Measured when the week's contents change, never per frame. The `!_clAdH` arm covers the first
+      // paint, which runs while the surface is still mounting and measures 0; a page-identity guard alone keeps that 0
+      // and the rails overlap. Retry ONLY while this page wants a deadline rail: `r.style.display !== 'none'` is true
+      // for every week with no deadlines, and the measure (two forced layouts + a wrapper property that restyles every
+      // child) would run every frame, freezing a dense week.
       if (pg !== _clAdPg || (!_clAdH && this.clHasDeadlines(pg))) {
         _clAdPg = pg; this._clAdMeasure(w); requestAnimationFrame(() => this._clAdMeasure(w));
       }
@@ -9146,9 +9120,8 @@ document.addEventListener('alpine:init', () => {
     },
     _clAdMeasure(w) {
       const r = w.querySelector('.cl-dlrail'); _clAdH = r ? r.offsetHeight : 0; w.style.setProperty('--dlh', _clAdH + 'px');
-      // …and the same number for the INCOMING pair, which reserved nothing: both .nx rails hung off the same
-      // boundary line, so a week with a tall deadline rail (18 labels ≈ 119px) simply swallowed its own claims
-      // at the bottom of the screen — visible on arrival, no scrolling needed.
+      // …and the same number for the INCOMING pair: both .nx rails hang off the same boundary line, so without it a
+      // tall deadline rail (18 labels ≈ 119px) swallows its own week's claims at the bottom of the screen.
       const nx = w.querySelector('.cl-adrail.nx'), h = nx && nx.offsetParent ? nx.offsetHeight : 0;
       if (h !== _clAdNxH) { _clAdNxH = h; w.style.setProperty('--adh', h + 'px'); }   // writing it restyles every child — only on a real change
     },
@@ -9156,12 +9129,11 @@ document.addEventListener('alpine:init', () => {
     // measured. Nothing scrolls at that point, so the paint's own "did d change?" guard would skip it; the
     // caches are cleared so it re-measures and re-places. Safe to re-run: every value here is derived.
     _clAdSync() { _clAdPg = null; _clAdD = undefined; this._clAdPaint(); },
-    // THE one writer of clPos. Everything — wheel, touch, keys, jumps, tweens — arrives here in period-space.
-    // Reactive state is touched ONLY when it actually changes: clPos is MUTATED IN PLACE so that a scroll
-    // within a period (frac only) wakes nothing that reads .idx — clHeadCells rebuilds all seven week-header
-    // cells off .idx, and having that run per wheel event is what made this feel heavy.
     // the head is about to re-key or go: blur a focused day name so it saves (no browser blurs a REMOVED field)
     _clSaveName() { document.querySelector('.cl-wh-n:focus')?.blur(); },
+    // THE one writer of clPos. Everything (wheel, touch, keys, jumps, tweens) arrives here in period-space.
+    // Reactive state is touched ONLY when it changes: clPos is MUTATED IN PLACE so a scroll within a period (frac
+    // only) wakes nothing that reads .idx; clHeadCells rebuilds all seven week-header cells off .idx.
     _clSetPos(idx, frac) {
       const t = Math.max(0, Math.min(this._periodTotal() - 0.0001, idx + frac)), i = Math.floor(t);
       const crossed = i !== this.clPos.idx;
@@ -9206,8 +9178,8 @@ document.addEventListener('alpine:init', () => {
         return p < 1;
       });
     },
-    // The rendered window centres on the period on top; mid-motion only once a period on screen falls outside it, as
-    // building the next neighbour inside a turn's last frame is a 60-90ms hitch on a phone. True when it moved.
+    // The rendered window centers on the period on top; mid-motion only once a period on screen falls outside it, as
+    // building the next neighbor inside a turn's last frame is a 60-90ms hitch on a phone. True when it moved.
     _clRecenter() {
       const i = this.clPos.idx, s = this.clPVisStart, to = Math.max(0, i - 1), port = this._clMetrics().port;
       if (s === to) return false;
@@ -9257,7 +9229,7 @@ document.addEventListener('alpine:init', () => {
       if (!this.clHourH) this.clRecalcPages();
       const span = this._periodSpan(), todayIso = this._nowDay, ph = this.clPeriodH();
       // The rendered window is just "around where you are" — there is no spacer to live inside, so no origin
-      // to drift from, so nothing to recentre. It follows clPos for free.
+      // to drift from, so nothing to recenter. It follows clPos for free.
       const start = Math.max(0, this.clPVisStart), end = Math.min(this._periodTotal(), start + this.clPVisCount);
       if (end <= start) return [];
       // The view-switch/scroll settle re-fires this effect ~100× against unchanged inputs. Return the SAME array
@@ -9296,7 +9268,7 @@ document.addEventListener('alpine:init', () => {
       }
       _clBlocksSig = sig; _clBlocksCache = out; return out;
     },
-    // A date-only item is one of two different things, and treating them alike is what broke the old lane.
+    // A date-only item is one of two different things:
     // A BAND occupies the day (an all-day event, a task scheduled across days).
     // A MARK is a moment ABOUT the day (a due date, a deadline); it has no width.
     _clSplitDay(items) {
@@ -9322,7 +9294,7 @@ document.addEventListener('alpine:init', () => {
       return out;
     },
     // Hold to travel. The first CL_HOLD_MS of a held arrow keep nudging at the key's own repeat rate; past it
-    // the step becomes a whole PERIOD — a day, a week, a month — because by then you are travelling, not
+    // the step becomes a whole PERIOD — a day, a week, a month — because by then you are traveling, not
     // reading. Throttled once escalated, or a ~30/s key repeat would fly a year past you in a second.
     // `e.repeat` is what distinguishes a held key from a fresh press, so a re-press always restarts the clock.
     clArrow(dir, repeat) {
@@ -9335,12 +9307,11 @@ document.addEventListener('alpine:init', () => {
     // ↑/↓: one hour in week/day, one week row in month. Smooth, so the move reads as movement and you keep your
     // place; it goes through the same scroller the wheel uses, so the snap and the midnight gate still apply.
     clNudge(dir, repeat) {
-      // Month keeps the BROWSER's smooth scroll. It is a bounded grid with no zoom and no spacer — none of the
-      // reasons day/week needed taking over apply — and its own virtualization re-render legitimately shifts
-      // scrollTop, which a glide reads as someone else grabbing the wheel and gives up on.
+      // Month keeps the BROWSER's smooth scroll: a bounded grid with no zoom and no spacer, and its own virtualization
+      // re-render shifts scrollTop, which a glide of ours would read as someone else grabbing the wheel.
       // A fresh press steps from the PENDING target (cleared once the settle finds it reached, or by the hand): stepping from the
-      // live mid-glide scrollTop landed between rows, and the settle rounded two presses back to one. A key REPEAT
-      // steps from live — piled onto the target, a held key ran the grid on for dozens of rows after the release.
+      // live mid-glide scrollTop lands between rows, and the settle rounds two presses back to one. A key REPEAT
+      // steps from live: piled onto the target, a held key runs the grid on for dozens of rows after the release.
       const el = this.$refs.clMonth;
       if (this.clView === 'month') return el && el.scrollTo({ top: this._clMTo = Math.max(0, Math.min(el.scrollHeight - el.clientHeight, ((repeat ? null : this._clMTo) ?? el.scrollTop) + dir * this.clRowH)), behavior: this.reduceMotion() ? 'auto' : 'smooth' });
       const at = this.clPos.idx + this.clPos.frac + dir * (this.clHourH || 40) / this.clPeriodH();   // one hour, in periods
@@ -9350,8 +9321,8 @@ document.addEventListener('alpine:init', () => {
     // day's close; the moment deadlines carry a time, the same rule simply moves up to that hour.
     clDlPct(it) { return timeOf(it.start) ? this._clMin(it.start) / 14.4 : 100; },
     clDlWhen(it) { const t = timeOf(it.start); return t ? this.fmtTime(t) : 'by end of day'; },
-    // F2·P1: the label carries the time LEFT (the rule already says when it bites); a date-only deadline bites at the day's close
-    // A2·B: up to three opted-in events count down on the title's line, nearest first. --prox (0 a fortnight out → 1 today)
+    // The label carries the time LEFT (the rule already says when it bites); a date-only deadline bites at the day's close
+    // Up to three opted-in events count down on the title's line, nearest first. --prox (0 a fortnight out → 1 today)
     // grades size and warmth, so nearness is felt before it is read.
     clCountdowns() {
       const today = this._nowDay, t0 = new Date(today + 'T00:00'), now = new Date();
@@ -9381,11 +9352,10 @@ document.addEventListener('alpine:init', () => {
     clAdRailOn(p) { return p.bands.length > 0 || p.cols.some(c => c.marks.length); },
     clHasDeadlines(p) { return p.cols.some(c => c.deadlines.length); },
     // Chapter: a day's marks start below the bands standing over THAT day — not below the tallest stack
-    // anywhere in the week. A week-wide max meant one Tuesday claim reserved an empty row under all seven
-    // columns, so a single all-day task pushed every other day's marks down for no reason.
+    // anywhere in the week: a week-wide max would let one Tuesday claim reserve an empty row under all seven columns.
     clChRows(pg, i) { return this.clColBands(pg, i).reduce((m, b) => Math.max(m, b.row + 1), 0); },
     clColBands(pg, i) { return pg.bands.filter(b => b.c0 <= i && i < b.c0 + b.len); },
-    // F5: a day you actually finished. Real planned minutes, all of them done — never a count of tasks, which
+    // A day you actually finished. Real planned minutes, all of them done — never a count of tasks, which
     // is gameable the moment anyone notices (see "nothing fake" in ui-conventions).
     _clCleared(items) {
       const mine = items.filter(it => it.kind === 'task-block');
@@ -9405,10 +9375,10 @@ document.addEventListener('alpine:init', () => {
     // §H H-bleed: still running past its planned end, today. A method, not it.open: a memoized object's plain field registers no dep for :class.
     clBandOpen(it) { return it.live && this._clPastPlan(it); },
     // Open: down to the clock, not the memo's build time. Memo fields only: reading blockDays would run this :style before
-    // x-for hands it the new `p`, and Alpine never re-runs an effect twice in one flush (a moved band kept its old top).
+    // x-for hands it the new `p`, and Alpine never re-runs an effect twice in one flush (a moved band would keep its old top).
     clBandH(it, h) { return this.clBandOpen(it) ? Math.max(h, (this.clNowMin() - it._sm) / 14.4) : h; },
     _clPastPlan(it) { if (!it.planned) return false; void this._nowTickV; return localStamp(new Date()) > it.planned; },   // the tick last: only a running band re-renders each minute
-    // The band's grey tick (H-states-D1): "started 9:15am" while live, "didn't end" once its day passed, "✓ 9:15am – 10:40am" once stopped
+    // The band's gray tick: "started 9:15am" while live, "didn't end" once its day passed, "✓ 9:15am – 10:40am" once stopped
     clBlkTick(bd) {
       const l = loggedOf(bd), t = ts => this.fmtTime(timeOf(ts));
       return l ? '✓ ' + t(l[0]) + ' – ' + t(l[1])
@@ -9433,8 +9403,8 @@ document.addEventListener('alpine:init', () => {
         const lanes = [];
         for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; }
         // A cascade only reads while the covered item's TITLE still shows above the one stacked on it. Things
-        // starting at (or within a title of) the same time leave no such strip — the top one hid the other
-        // outright — so concurrent peers STACK: same lane, each stepped down-right so the one under it keeps a
+        // starting at (or within a title of) the same time leave no such strip (the top one hides the other
+        // outright), so concurrent peers STACK: same lane, each stepped down-right so the one under it keeps a
         // title strip, and only a genuinely later start steps a full cascade lane.
         const perMin = (this.clHourH || 60) / 60;
         let grp = [], gend = -1;
@@ -9473,12 +9443,11 @@ document.addEventListener('alpine:init', () => {
       return { 'is-running': p.it.live, 'is-done': st === 'done', 'is-missed': st === 'missed', 'is-skipped': st === 'skipped', 'is-open': this.clBandOpen(p.it), 'is-terrain': p.terrain, 'cl-stk': !!p.stk, 'cl-held': this.clHeld(p) }; },
     clBlkStyle(p) { return 'top:' + p.topPct + '%;height:' + this.clBandH(p.it, p.hPct) + '%;' + this.clEvBox(p) + 'z-index:' + (p.terrain ? 1 : 2 + p.lane) + ';--cc:' + (p.it.color || 'var(--accent)'); },
     clDlClass(m, mi) { return (mi === 0 ? 'lead' : '') + (m.start.length > 10 ? ' at' : '') + this.clTaskState(m); },
-    // C5: rows flow at a readable height; gaps become named free slots; proportion moves to the rail.
+    // Rows flow at a readable height; gaps become named free slots; proportion moves to the rail.
     _clAgenda(col) {
       const rows = [];
       let end = -1;
-      // A deadline is the sharpest thing on a day and it was invisible — a lane row that got clipped. Here it
-      // is a row of its own, at the top, before anything you could get lost in.
+      // A deadline is the sharpest thing on a day: a row of its own, at the top, before anything you could get lost in.
       for (const it of [...col.deadlines, ...col.marks]) rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 });
       // ...and an all-day item is simply a thing you are doing today, whether or not it also runs past today
       for (const it of col.bands) rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 });
@@ -9494,8 +9463,8 @@ document.addEventListener('alpine:init', () => {
       // Rows PACK from the top rather than stretching to fill 24h: an agenda's job is to be read, and a list
       // spaced by real proportion is mostly empty night. Scale stays on the rail, which is why it exists.
       // A packed day would outgrow its own block, and the block height is load-bearing (top = idx * periodH).
-      // Shed the subtitle before anything gets clipped — same idea as B1's density tiers.
-      // h: the full-tier height, "1h free" rows included (uncounted, a gappy day ran off its page). The template picks the tier
+      // Shed the subtitle before anything gets clipped.
+      // h: the full-tier height, "1h free" rows included (uncounted, a gappy day runs off its page). The template picks the tier
       // against the live page height, so a resize re-binds one class instead of rebuilding the day.
       // ceiling: a day too long even for compact still clips its tail unseen — what to drop is a design call, not made yet; revisit when a real day overflows compact
       const f = rows.filter(r => r.free).length;
@@ -9523,13 +9492,13 @@ document.addEventListener('alpine:init', () => {
       col = this._clColNow(key, col);
       const rows = col.agenda?.rows || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0, dot = raw(html`<span class="cl-ag-dot"></span>`);
       const parts = rows.map((r, ix) => {
-        const it = r.it, ask = !r.free && this.clAsks(it), mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
+        const it = r.it, ask = !r.free && this.clAsks(it), must = !r.free && String(it.id).startsWith('pc:') && it.going !== false && { on: this.pcMust(it.id) }, mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
           : it.kind === 'task-deadline' ? raw(html`<svg class="ico cl-dl-ico"><use href="#i-flag"/></svg>`) : dot;
         return { id: r.key, html: html`<div class="cl-ag-row ${r.free ? 'free' : it.kind + (r.mark ? ' mark' : '') + this.clTaskState(it)}${!r.allday && r.min + r.mins <= cut ? ' past' : ''}"`
           + html` data-id="${r.key}" tabindex="${r.free ? -1 : 0}"${raw(!r.free && this._dndKind(it.kind) ? ' draggable="true"' : '')}`
           + html` style="--i:${ix};--cc:${r.free ? 'var(--muted)' : this.clItemColor(it)}"><span class="cl-ag-t">${r.allday ? 'All day' : this.clAgTime(r.min)}`
           + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n"${raw(ask ? ' tabindex="-1"' : '')}>${r.free ? this.durFmt(r.mins) + ' free' : it.title}`
-          + html`</span><span class="cl-ag-d">${r.free ? '' : !ask ? this.clAgSub(r) : raw(html`<span class="cl-ag-s">${this.clAgSub(r)}</span><span class="cl-ag-ask"><button type="button" class="pri-chip tog" data-go="1">Going</button><button type="button" class="pri-chip tog" data-go="0">Not going</button></span>`)}</span></span></div>` };
+          + html`</span><span class="cl-ag-d">${r.free ? '' : !ask && !must ? this.clAgSub(r) : raw(html`<span class="cl-ag-s">${this.clAgSub(r)}</span><span class="cl-ag-ask">${raw(ask ? html`<button type="button" class="pri-chip tog" data-go="1">Going</button><button type="button" class="pri-chip tog" data-go="0">Not going</button>` : '')}${raw(must ? html`<button type="button" class="pri-chip ${must.on ? 'sel' : 'tog'}" style="${must.on ? '--pc:var(--p1)' : ''}" data-must aria-pressed="${must.on}"><svg class="ico"><use href="#i-prio"/></svg>Must</button>` : '')}</span>`)}</span></span></div>` };
       });
       if (!rows.length) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });
       if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });
@@ -9547,6 +9516,7 @@ document.addEventListener('alpine:init', () => {
       if (e.target.closest('.cl-ag-chk')) { e.stopPropagation(); return this.clToggleTask(r.it.id); }
       const go = e.target.closest('[data-go]');
       if (go) { e.stopPropagation(); return this.clSetGoing(go.dataset.go === '1', { id: r.it.id, day: this._nowDay }); }   // the row's ask answers today in one tap
+      if (e.target.closest('[data-must]')) { e.stopPropagation(); return this.clPcMust(r.it.id); }
       r.it.kind === 'task-block' ? this.clOpenTaskSide(r.it.id) : this.clItemClick(r.it);
     },
     clAgDrag(e, col) {
@@ -9558,10 +9528,10 @@ document.addEventListener('alpine:init', () => {
     clHours() { return CL_HOURS; },
     clHourLabel(h) { return h === 0 ? '' : h < 12 ? h + ' AM' : h === 12 ? 'Noon' : (h - 12) + ' PM'; },
     clNowPct() { return this.clNowMin() / 1440 * 100; },
-    clAsks(it) { return it.kind === 'event' && it.going === undefined && it.start.slice(0, 10) === this._nowDay && (it.end.slice(0, 10) > this._nowDay || this._clMin(it.end) > this.clNowMin()); },   // G1: an unanswered event asks on its day until it ends
+    clAsks(it) { return it.kind === 'event' && it.going === undefined && it.start.slice(0, 10) === this._nowDay && (it.end.slice(0, 10) > this._nowDay || this._clMin(it.end) > this.clNowMin()); },   // an unanswered event asks on its day until it ends
     clNowMin() { void this._nowTickV; const n = new Date(); return n.getHours() * 60 + n.getMinutes(); },
     // The clock marks read the tick only on today's column, and not while Plan is hidden (peek shows off-Plan): each
-    // tick restyled every column's hidden line. Showing Plan re-runs them off `surface`, so the line is never a minute late.
+    // tick would restyle every column's hidden line. Showing Plan re-runs them off `surface`, so the line is never a minute late.
     clNowAt(col, prop, peek) { return col?.today && (peek || !this._clHidden()) ? 'display:block;' + prop + ':' + this.clNowPct() + '%' : 'display:none'; },
     clNowLabel(col) { return col?.today && !this._clHidden() ? this._clHM(this.clNowMin()) : ''; },
     clNowCuts(h, col) { return !!col?.today && !this._clHidden() && Math.abs(this.clNowMin() - h * 60) * this.clHourH / 60 < 15.5; },   // px: the now pill (−8…+7.5) meets the hour label (−7…+7.5)
@@ -9569,7 +9539,7 @@ document.addEventListener('alpine:init', () => {
     _clHMA(m) { return this._clHM(m) + (m < 720 ? ' AM' : ' PM'); },   // a landing time: keeps :00
     _clClock(iso) { return this._clHM(this._clMin(iso)); },
     // A moment has no range to state: a TIMED due date/deadline carries end === start, and so does an event
-    // saved with no length. Both printed "3:00 – 3:00", which reads as a broken range rather than a moment.
+    // saved with no length. As a range both read "3:00 – 3:00", a broken range rather than a moment.
     clTimeLabel(it) { if (it.allDay) return ''; const a = this._clClock(it.start);
       if (this._clCross(it)) {   // every day's slice states the whole range, AM/PM so "2:00" can't read as afternoon; past the next day, with weekdays
         const day = iso => new Date(iso.slice(0, 10) + 'T00:00'), far = day(it.end) - day(it.start) > 1.5 * 864e5;
@@ -9582,7 +9552,7 @@ document.addEventListener('alpine:init', () => {
     _clHalt() { motion.stop('clTween'); motion.stop('clFling'); },
     // Park the anchor period under the chrome, opening at the waking hour — or at `frac`, the hour a keyboard step keeps.
     // clientHeight is 0 on first open, and _clMaxFrac needs it — retry until layout settles. One assignment; nothing to re-assert afterwards.
-    _clScrollToPeriod(tries = 8, frac, turn) {   // turn: Today and a picked date turn the page as the wheel does (decision #75)
+    _clScrollToPeriod(tries = 8, frac, turn) {   // turn: Today and a picked date turn the page as the wheel does
       this._clHalt(); const el = _staticEl('.cl-pages'); if (!el) return;   // not $refs: Alpine resolves it from the caller, and a week tile that opened its day is gone by now
       if (!el.clientHeight) { if (tries > 0) requestAnimationFrame(() => this._clScrollToPeriod(tries - 1, frac, turn)); return; }
       if (!this.clHourH) this.clRecalcPages();
@@ -9594,7 +9564,7 @@ document.addEventListener('alpine:init', () => {
       if (Math.abs(gap) > 1) this._clSetPos(idx - Math.sign(gap), to);   // from the period beside the target: months away is still one turn
       this._clTween(idx, to);
     },
-    // E3: a period ARRIVING (view switch, scroll settle, jump) stages its events in. Off-then-on so the
+    // A period ARRIVING (view switch, scroll settle, jump) stages its events in. Off-then-on so the
     // animation restarts; the class rides .calendar so every child replays together.
     _clSettle(at = performance.now()) {
       const arm = () => {
@@ -9664,12 +9634,12 @@ document.addEventListener('alpine:init', () => {
       const ph = this.clPeriodH(), maxF = this._clMaxFrac(), EDGE = 0.002;
       if (fresh) {
         // A boundary crossing — or a period that exactly fills the viewport, where there is nowhere to travel —
-        // is a PAGE TURN, and it must ANIMATE. Clamping to the neighbour instead jumped a whole viewport on the
-        // first pixel of scroll: that was the teleport, at the edges in week and everywhere in day.
+        // is a PAGE TURN, and it must ANIMATE: clamping to the neighbor instead jumps a whole viewport on the
+        // first pixel of scroll.
         const f = this.clPos.frac;
         const step = maxF < EDGE ? Math.sign(dy) : dy > 0 && f >= maxF - EDGE ? 1 : dy < 0 && f <= EDGE ? -1 : 0;
         this._clGate = { turned: !!step };
-        if (step) return this._clTween(this.clPos.idx + step, this._clHour());   // #64: lands at the hour on screen, as a keyboard step
+        if (step) return this._clTween(this.clPos.idx + step, this._clHour());   // lands at the hour on screen, as a keyboard step
       }
       if (this._clGate?.turned) return;   // the rest of this gesture is momentum for a turn already made
       motion.stop('clTween');   // a hand mid-flight outranks a tween, same rule as _glide
@@ -9736,8 +9706,8 @@ document.addEventListener('alpine:init', () => {
       this._clTween(i + next, next ? 0 : maxF);
     },
     // Time-based: v (px/ms) decays by CL_FLING per 16ms and travels its mean over dt, so a 120Hz screen coasts as
-    // far and as long as a 60Hz one (a per-frame decay ran it twice as fast for half the time; end-of-step speed
-    // alone still undershot 60Hz by ~3%). dt caps at 64ms so a stalled frame can't lurch. First step is SYNCHRONOUS.
+    // far and as long as a 60Hz one (a per-frame decay runs it twice as fast for half the time; end-of-step speed
+    // alone undershoots 60Hz by ~3%). dt caps at 64ms so a stalled frame can't lurch. First step is SYNCHRONOUS.
     _clFlingStep(v) {
       let last = performance.now() - 16;
       const step = now => { const dt = Math.min(64, Math.max(0, now - last)), v0 = v; last = now; v *= CL_FLING ** (dt / 16);
@@ -9745,7 +9715,7 @@ document.addEventListener('alpine:init', () => {
       if (step(last + 16)) motion.run('clFling', step); else motion.stop('clFling');
     },
     // Nothing has landed while a finger is still down (however long it holds still) or a spring-back is mid-flight —
-    // landing then anchored the day the timeline was merely passing through (T flashed mid-drag, or stuck after).
+    // landing then would anchor the day the timeline is merely passing through (T flashes mid-drag, or sticks after).
     _clScrolling() { if (!this.clScrolling) this.clScrolling = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => { if (this._clTouch || motion.running('clTween')) return this._clScrolling(); this.clScrolling = false; this._clLand(); }, motion.t(600)); },
     // Landing settles the anchor on whatever period is on top. No scrollend to wait for — we know when we stopped.
     _clLand() {
@@ -9774,16 +9744,16 @@ document.addEventListener('alpine:init', () => {
       this.clAnchor = this.clView === 'week' ? isoDate(this._clWeekStart(new Date(iso + 'T00:00'))) : iso;
       this.clRecalcPages(); this.$nextTick(() => this._clScrollToPeriod(8, undefined, true));
     },
-    _clHour() { return motion.running('clTween') ? this._clTo % 1 : this.clPos.frac; },   // #23: the hour you scrolled to (or are heading to), as the Mac
+    _clHour() { return motion.running('clTween') ? this._clTo % 1 : this.clPos.frac; },   // the hour you scrolled to (or are heading to), as the Mac
     clStep(dir, vt, at) {
       const mo = this.clView === 'month', hour = this._clHour();
       const set = () => { mo ? this._clMAnchor(dir) : (this.clAnchor = isoDate(this._clAt(dir))); }, after = () => mo ? this._clStepMonth() : this._clScrollToPeriod(8, hour);
       if (vt) this._withTransition(set, () => { after(); if (this.reduceMotion()) this._clSettle(at); }, false, true);   // Shift+↑/↓ — the same morph a view switch runs; without one the period fades in
-      else if (!mo) { set(); this._clTween(this._periodIdx(this._clDate()), hour); }   // a held arrow's period turns the page as a wheel does (decision #75); the next step retargets it
+      else if (!mo) { set(); this._clTween(this._periodIdx(this._clDate()), hour); }   // a held arrow's period turns the page as a wheel does; the next step retargets it
       else { set(); after(); if (this.reduceMotion()) this._clSettle(); }   // month glides as Today does; reduced, it lands and fades in
     },
     // The strip's "T" shows only while today is OUT of view (Android planShowToday) — the
-    // SETTLED day (clAnchor lands after a drag), never the live drag, which flashed it mid-gesture
+    // SETTLED day (clAnchor lands after a drag), never the live drag, which would flash it mid-gesture
     clShowToday() { const d = new Date(); return this.clView === 'month' ? this.clFocusYM !== d.getFullYear() * 12 + d.getMonth() : this.clAnchor !== isoDate(d); },
     jbDay() {   // the bar's Plan chip: Today until the view leaves it
       if (!this.clShowToday()) return 'Today';
@@ -9796,7 +9766,7 @@ document.addEventListener('alpine:init', () => {
       if (this.clView !== 'month') return queueMicrotask(() => this._clScrollToPeriod(8, undefined, turn));   // not $nextTick: a surface switch holds that two frames
       if (!turn || !gap) return this.clScrollToAnchor();   // already in today's month: no idle glide leaving its target behind
       if (this.reduceMotion()) { this.clScrollToAnchor(); return this._clSettle(); }   // lands at once; today's month fades in
-      // month turns on its arrows' glide (decision #75), from the month beside today's: months away is still one turn
+      // month turns on its arrows' glide, from the month beside today's: months away is still one turn
       if (Math.abs(gap) > 1) this.clScrollToAnchor(8, this._monthFirstIdx(new Date(now.getFullYear(), now.getMonth() - Math.sign(gap), 1)));
       queueMicrotask(() => this._clStepMonth());   // after the jump's own microtask writes scrollTop: that write cancels a glide
     },
@@ -9809,7 +9779,7 @@ document.addEventListener('alpine:init', () => {
       const e = this.events.find(x => x.id === id); if (!e) return;
       day = e.recurrence?.freq ? day : e.ends_at.slice(0, 10);   // a repeating event answers per occurrence (no day, no answer); a one-off until its last day
       const multi = e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10);
-      this.eventEdit = { draft: tile && !multi, viewIso: e.recurrence?.freq ? day : null, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [], day, going: day ? goingOn(e, day) ?? null : null };
+      this.eventEdit = { draft: tile && !multi, viewIso: e.recurrence?.freq ? day : null, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), ...this._clRep(e.recurrence), countdown: !!e.countdown, notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [], day, going: day ? goingOn(e, day) ?? null : null };
       this._loadFiles(this.eventEdit.attachments);
     },
     // applies on press, as a block's Skip today does: an editor closed unsaved keeps it
@@ -9819,7 +9789,15 @@ document.addEventListener('alpine:init', () => {
       const going = was.recurrence?.freq ? { ...was.going, [e.day]: v } : { [was.starts_at.slice(0, 10)]: v };
       if (await this._journalRowChange(v ? 'Going' : 'Not going', 'event', e.id, () => this.store.events.update(e.id, { going }))) e.going = v;
     },
-    // An Outlook meeting answers in Outlook, silently; Not going offers to tell the organizer (things-11-1)
+    // Must rings an Outlook meeting as an Alarm: on when Outlook marks it High, a tap sets it for the whole series
+    pcMust(id) { return this.pcMustSet[id.slice(3).split('#')[0]] ?? !!this.pcEvents.find(e => e.id === id)?.high; },
+    clPcMust(id) {
+      const series = id.slice(3).split('#')[0], on = !this.pcMust(id), { [series]: _, ...rest } = this.pcMustSet;
+      _calDataV++;
+      this.pcMustSet = on === !!this.pcEvents.find(e => e.id === id)?.high ? rest : { ...rest, [series]: on };   // back to Outlook's own flag: no override left
+      localStorage.setItem('adherod.must', JSON.stringify(this.pcMustSet));
+    },
+    // An Outlook meeting answers in Outlook, silently; Not going offers to tell the organizer
     async _clPcGoing(id, v, tell = false) {
       const done = await this.mailbox.respond(id, v, tell);
       if (!done) return this.notify('Not answered in Outlook');
@@ -9841,7 +9819,7 @@ document.addEventListener('alpine:init', () => {
     },
     clCheckHtml(it, cls = 'cl-chip-check') { const t = this.byId.get(it.id); return t ? checkHtml(this._chkArgs(t), 'button', cls) : ''; },   // calendar task checkboxes
     entryCheckHtml(c) { return checkHtml(this._chkArgs(c), 'button', 'sm'); },   // composer subtask rows — adds archived/blocked/paused not covered by inline :class
-    // The composer's type toggle (6th check site): tack = which layer. A new task has no row state, so only the draft's importance colours it.
+    // The composer's type toggle (6th check site): tack = which layer. A new task has no row state, so only the draft's importance colors it.
     compCheckHtml(tack) { const t = this.editingTask(), imp = this.draft.importance; return checkHtml({ ...(t ? this._chkArgs(t, imp) : { t: {}, pc: this.pc(imp) }), note: tack }, 'span'); },
     typeFront(tack) { return tack === inNotes(this.draft); },
     typeLabel(tack) { return !this.typeFront(tack) ? (tack ? 'Make it a note' : 'Make it a task') : tack ? 'Note' : !this.editing ? 'Task' : this.editingTask()?.content; },   // editing: a checkbox named by its task, as the row's
@@ -9860,7 +9838,7 @@ document.addEventListener('alpine:init', () => {
     },
     // [main, year, a named day's name]: the name takes the weekday's place (the week head's slot, in the title)
     clSplitTitle(n) {
-      const m = n.match(/^(.*?),?\s*(\d{4})$/), [main, year] = m ? [m[1], ' ' + m[2]] : [n, ''];   // trailing YEAR only — splitting on the first space mangled 'Jul 19 – Jul 25, 2026' down to 'Jul 19'
+      const m = n.match(/^(.*?),?\s*(\d{4})$/), [main, year] = m ? [m[1], ' ' + m[2]] : [n, ''];   // trailing YEAR only — splitting on the first space would mangle 'Jul 19 – Jul 25, 2026' down to 'Jul 19'
       const day = _dayLabels.get(n), name = day ? this.clDayLabel(day.iso) : '';
       return name && main.startsWith(day.wd) ? [main.slice(day.wd.length), year, name] : [main, year, ''];
     },
@@ -9905,7 +9883,7 @@ document.addEventListener('alpine:init', () => {
     // the grid (that click or ＋) is a draft: its band stays on the grid and its editor sits beside it with no backdrop. While a
     // draft is open a drag redraws it (a press inside it drags the nearer edge) and a click off it closes it.
     // A timed tile opens its item the same way: the ghost stands in for the tile (clHeld) until save or close.
-    // No drag creates without an editor (user 10-18): it fights the pan.
+    // No drag creates without an editor: it fights the pan.
     clDraft() { const e = this.eventEdit || this.blockEdit; return e?.draft ? e : null; },
     clHeld(p) { const d = this.clDraft(), at = p.it.src ?? p.it.start.slice(0, 10); return d?.id === p.it.id && (d.viewIso || at) === at; },
     _draftOn(d) { return d === this.eventEdit && d.viewIso || d.date; },   // a repeating event's ghost stands on the occurrence clicked; its date stays the series' start
@@ -9960,8 +9938,30 @@ document.addEventListener('alpine:init', () => {
     // and a weekly rule keeps its step, end and skipped days when its days change
     _clRule(e) {
       const rule = (e === this.eventEdit ? this.events : this.blocks).find(x => x.id === e.id)?.recurrence, wds = e.weekdays.slice().sort((a, b) => a - b);
-      if (rule && `${wds}` === `${this._clDays(rule)}`) return rule;
-      return !wds.length ? null : rule?.freq === 'week' ? { ...rule, weekdays: wds } : { freq: 'week', interval: 1, weekdays: wds };
+      const rep = { interval: e.interval || 1, ends: e.ends ?? null };
+      if (rule && `${wds}` === `${this._clDays(rule)}` && JSON.stringify(rep) === JSON.stringify(this._clRep(rule))) return rule;
+      if (!wds.length) return null;
+      const { ends, ...base } = rule?.freq === 'week' ? rule : { freq: 'week' };   // a cleared end leaves no key
+      return { ...base, weekdays: wds, interval: rep.interval, ...rep.ends && { ends: rep.ends } };
+    },
+    _clRep(rule) { return rule?.freq === 'week' ? { interval: rule.interval || 1, ends: rule.ends ?? null } : { interval: 1, ends: null }; },   // the sentence's every/times/ending, weekly only as the days
+    // the Usable pop: the block's length (the series' when opened on a day) and its All/¾/½/¼ to the 5 minutes; All stores null
+    clUsableLen(e) { const t = e.rule || e; return (this._hm(t.end) - this._hm(t.start) + 1440) % 1440 || 1440; },
+    clUsableParts(e) { const len = this.clUsableLen(e); return [['All', 1], ['¾', .75], ['½', .5], ['¼', .25]].map(([l, f]) => ({ l, min: f === 1 ? null : Math.max(5, Math.round(len * f / 5) * 5) })); },
+    clRepStep(e, key, delta) {
+      if (key === 'interval') return void (e.interval = Math.max(1, Math.min(99, (e.interval || 1) + delta)));
+      const n = Math.max(0, Math.min(99, (e.ends?.count || 0) + delta));
+      e.ends = n ? { count: n } : null;
+    },
+    // the Repeat pop's sentence under the weekday circles, the task When pop's (.zone) without "at" and "from completion"
+    clRepHtml(key) {
+      return html`<div class="zone cl-rep" x-show="${key}.weekdays.length" x-init="repCal = false"><p>every
+        <span class="st inline-flex items-center"><button type="button" aria-label="Fewer weeks" @click="clRepStep(${key}, 'interval', -1)">−</button><b x-text="${key}.interval || 1"></b><button type="button" aria-label="More weeks" @click="clRepStep(${key}, 'interval', 1)">+</button></span>
+        <span x-text="(${key}.interval || 1) > 1 ? 'weeks,' : 'week,'"></span>
+        <span class="st inline-flex items-center" :class="{ g: !${key}.ends?.count }"><button type="button" aria-label="Fewer times" @click="clRepStep(${key}, 'count', -1)">−</button><b x-text="${key}.ends?.count || '∞'"></b><button type="button" aria-label="More times" @click="clRepStep(${key}, 'count', 1)">+</button></span>
+        <span class="nowrap">times, ending <button type="button" class="c inline-flex items-center" :class="{ g: !${key}.ends?.date, on: repCal }" @click="repCal = !repCal; repCal && _calTo(${key}.ends?.date || ${key}.date)" x-text="${key}.ends?.date ? fmt(${key}.ends.date) : 'never'"></button></span></p></div>
+        <template x-if="repCal"><div class="ev-month"><div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
+          <div class="cal-grid"><template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><span class="cal-dow" x-text="w"></span></template><template x-for="c in evMonthCells({ date: ${key}.ends?.date || '' })" :key="c.iso"><button type="button" class="cal-day" :class="c.cls" :data-iso="c.iso" :aria-label="c.label" :disabled="c.iso < ${key}.date" @click="${key}.ends = c.cls.sel ? null : { date: c.iso }; repCal = false"><span x-text="c.d"></span></button></template></div></div></template>`;   // a picked end day again clears it back to never
     },
     // a weekly series starts on its first chosen weekday on/after date, so expansion is correct
     _clAnchor(rule, date) {
@@ -9971,7 +9971,7 @@ document.addEventListener('alpine:init', () => {
     },
     // a click off the card closes its pop alone: the card and its edits stay
     clPopAway(name, e, el) { if (this.pop !== name || !this.outside(e, el)) return; this.popAway(name, e); if (!this.pop && !e.target.closest('.event-editor, .block-editor')) e.stopPropagation(); },
-    // the editor wears its tile's colour; a draft's sits beside its ghost
+    // the editor wears its tile's color; a draft's sits beside its ghost
     clCardStyle(e) { return '--cc:' + (e.color || 'var(--accent)') + ';' + (e.draft ? this.clDraftPos() : ''); },
     // a new item's Event | Block: the same draft as the other kind, every field kept so switching back loses nothing
     clSetKind(kind) {
@@ -10012,13 +10012,13 @@ document.addEventListener('alpine:init', () => {
       const snap = y => Math.round((y - d.rect.top) / d.rect.height * 96) * 15, a = Math.max(0, Math.min(1425, snap(Math.min(d.y0, e.clientY))));
       this._setDraft(d.iso, a, Math.max(a + 15, Math.min(1440, a + 1425, snap(Math.max(d.y0, e.clientY)))));   // under a day: 00:00–24:00 would save zero-length
     },
-    // beside its day's column, on the side with room (narrowed to fit if neither has it); else flush right (day view), centred on a phone
+    // beside its day's column, on the side with room (narrowed to fit if neither has it); else flush right (day view), centered on a phone
     clDraftPos() {
       if (innerWidth < 760) return 'margin-inline:auto';
       const d = this.clDraft(), w = 480;   // .event-editor/.block-editor's width
       const dow = new Date(this._draftOn(d) + 'T00:00').getDay();   // every page lays its columns at the same x: its weekday's column on a rendered page stands in for a page _clFollow is still turning to
       const col = [...document.querySelectorAll('.cl-pcol')].find(c => { const r = c.getBoundingClientRect(); return (this.clView === 'day' || new Date(c.dataset.iso + 'T00:00').getDay() === dow) && r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
-      // room beside it: 2px from its column, almost touching (a wider gap showed the next day's bar, user 10-19), 8px from the window
+      // room beside it: 2px from its column, almost touching (a wider gap shows the next day's bar), 8px from the window
       const right = r ? innerWidth - r.right - 10 : 0, left = r ? r.left - 10 : 0, fit = Math.max(right, left);
       if (right >= w) return 'left:' + (r.right + 2) + 'px;--from:0 0';
       if (left >= w) return 'left:' + (r.left - 2 - w) + 'px;--from:100% 0';
@@ -10033,7 +10033,7 @@ document.addEventListener('alpine:init', () => {
       if (!d) return this.clNewBlock(iso, this._fmtMin(s), this._fmtMin((s + 60) % 1440), true);
       const span = this._draftSpan(iso);
       if (span && s >= span[0] && s < span[1]) return;   // a click on its own ghost keeps it
-      this.eventEdit = this.blockEdit = null;   // any other click closes it, as the composer's does: only a drag moves it (user 10-19)
+      this.eventEdit = this.blockEdit = null;   // any other click closes it, as the composer's does: only a drag moves it
     },
 
     // --- Drag-to-(re)schedule (HTML5 DnD) — wall-clock local strings, never toISOString (tz shift) ---
@@ -10057,9 +10057,9 @@ document.addEventListener('alpine:init', () => {
       if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(id)); }
     },
     clDragEndSchedule() { document.body.classList.remove('calendar-lift'); this._clDnd = null; this.clDropHint = null; this._clDropCell(null); this.clDropPreview = null; this._clLifted?.classList.remove('cl-lift'); this._clLifted = null; this._dndHold(null); dragImageEnd(); },
-    // The month cell under a drag, lit imperatively: a reactive hint re-ran every rendered cell's :class per dragenter.
+    // The month cell under a drag, lit imperatively: a reactive hint re-runs every rendered cell's :class per dragenter.
     _clDropCell(el) { if (el === this._clDropEl) return; this._clDropEl?.classList.remove('cl-drop'); (this._clDropEl = el)?.classList.add('cl-drop'); },
-    // F4: what you just placed settles into its slot, so the release reads as a landing and not a repaint
+    // What you just placed settles into its slot, so the release reads as a landing and not a repaint
     _clPlaced(id) { this.flash('clPlaced', '_clPlacedT', id, 420); },
     _dropMin(e, grab = 0, lead = 0) {   // the start's minutes-of-day (snapped 15; down to -lead: the day before) when dropped inside a week/day column; null on a month cell
       const col = e.target.closest?.('.cl-pcol'); if (!col) return null;
@@ -10190,10 +10190,10 @@ document.addEventListener('alpine:init', () => {
     },
     // DELIBERATE FORK, never merge: whenOf is the SELECTION fact (sort, filters, Reschedule), where a repeat stays its
     // anchor so a slipped one keeps surfacing; whenShown is what the ROW SAYS — today's occurrence, else the anchor
-    // while behind (user, tweak-7: "Last Mon"), else the next, at the rule's time. Asked from yesterday so today
+    // while behind ("Last Mon"), else the next, at the rule's time. Asked from yesterday so today
     // counts (`inclusive` admits only an anchor ≥ the from-day).
     // from_completion has no next until this one is done: it is the anchor, due today once slipped (counted from
-    // now, the row showed where completing lands, so completing never moved it).
+    // now, the row would show where completing lands, so completing would never move it).
     whenShown(t, pm) {
       const lead = this._follows(t, pm); if (lead) return this.whenShown(lead, pm);
       const placed = pm.get(t.id); if (placed || !t.recurrence || !t.recur_from) return placed || '';
@@ -10274,7 +10274,7 @@ document.addEventListener('alpine:init', () => {
       const side = e.currentTarget.parentElement;
       if (!e.target.closest('button')) this.sheetDown(e, side, (dy, v) => (dy > side.offsetHeight / 3 || v > 0.4 && dy > 8) && this.clSideToggle(false));
     },
-    // droid-18 R: the lists tray rises half up from the title tap; drag it up for every list, down to close. Release
+    // The lists tray rises half up from the title tap; drag it up for every list, down to close. Release
     // projects the flick 200ms on (Apple's momentum) and rests at the nearest of full, half and closed. At half the rows
     // drag it too; at full they scroll and the head drags.
     openListTray() {
@@ -10361,7 +10361,7 @@ document.addEventListener('alpine:init', () => {
       // the series' own times ride the Repeat row (rule) and move every day.
       const occ = b.recurrence && viewIso && !b.all_day ? { date: (bd?.planned_start || bd?.actual_start || viewIso).slice(0, 10), start: timeOf(p?.[0] || '', start), end: timeOf(p?.[1] || '', end) } : null;
       this.blockEdit = { id: b.id, title: b.title || '', date: b.starts_at.slice(0, 10), start, end, ...occ, occ, rule: { start, end }, all_day: !!b.all_day, span: this._adSpan(b),
-        weekdays: this._clDays(b.recurrence), location_id: b.location_id || null, areas: (b.areas || []).slice(), color: b.color || null, est_minutes: b.est_minutes ?? null,
+        weekdays: this._clDays(b.recurrence), ...this._clRep(b.recurrence), location_id: b.location_id || null, areas: (b.areas || []).slice(), color: b.color || null, est_minutes: b.est_minutes ?? null,
         viewIso: viewIso || null, draft: tile && !b.all_day && b.starts_at.slice(0, 10) === b.ends_at.slice(0, 10) };   // a day's tile alone: past midnight its ghost could sit off screen
     },
     // ONE day of a repeating block moves by an override keyed on its own day (src) — drag and editor alike, never the series.
@@ -10414,9 +10414,8 @@ document.addEventListener('alpine:init', () => {
     clRemoveAttached(itemId) { return this.perform('Detached task', { kind: 'remove', target: 'scheduleItem', id: itemId }); },
 
     // --- Block day (start-ask answered from the web; the phone writes the same rows) ---
-    // A repeating block draws one instance PER DAY, so the status has to be looked up for THAT day. Defaulting
-    // to today made Monday's run-state light up every Tuesday, next week and last week too — the block editor is
-    // the only caller that genuinely means "today", and it's the one that omits the date.
+    // A repeating block draws one instance PER DAY, so the status is looked up for THAT day (a today default lights
+    // Monday's run-state on every Tuesday). The block editor, the only caller meaning "today", omits the date.
     clBlockDay(blockId, iso) { const d = iso || isoDate(new Date()); return this.blockDays.find(x => x.block_id === blockId && x.date === d) || null; },
     async clSetBlockDay(blockId, fields, iso, label, ops) {
       iso ||= isoDate(new Date());   // callers pass blockEdit.viewIso, which is NULL outside a calendar chip — and a default only catches undefined
@@ -10469,7 +10468,7 @@ document.addEventListener('alpine:init', () => {
     // Stop records the stop moment itself — its own date too, so a Stop drawn before midnight and clicked after it never
     // ends before it started. Only offered while the day it lives is today: a passed day's end isn't today's clock.
     clStopBlock(blockId, iso) { return this.clSetBlockDay(blockId, { status: 'done', actual_end: localStamp(new Date()) }, iso); },
-    // Only a START clears actual_* (actual_end with it: orphaned, it stretched a 1-hour block down to midnight) —
+    // Only a START clears actual_* (actual_end with it: orphaned, it stretches a 1-hour block down to midnight) —
     // on a skipped day they can hold a legacy move, and a skip's undo must not erase it.
     // A DONE day's Undo takes back the stop only (as ⌘Z does), back to running.
     clUndoBlockDay(blockId, iso) {
@@ -10502,8 +10501,8 @@ document.addEventListener('alpine:init', () => {
       if (failed && !this._loadFailed && !quiet) this.toast('Couldn’t load, retrying');
       this._loadFailed = failed;
       // ALL awaits above, ONE synchronous block below: Alpine flushes effects during an await, so a reactive
-      // write followed by an awaited gap ran renders against the OLD memo keys — and the version bumps after
-      // the gap are module-scope, so nothing re-woke (month chips stayed stale after an event edit).
+      // write followed by an awaited gap runs renders against the OLD memo keys, and the version bumps after
+      // the gap are module-scope, so nothing re-wakes (month chips stay stale after an event edit).
       this._rowV++; _calDataV++;   // bust memos before the reactive writes so the flush sees fresh keys
       if (si.value) this.scheduleItems = si.value; if (bd.value) this.blockDays = bd.value; if (rem.value) this.reminders = rem.value;
       if (dn.value) this.dayNotes = dn.value;   // not in `failed`: a DB without the table must run, not retry every minute

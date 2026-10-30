@@ -85,7 +85,7 @@ export function dehydrateTask(task) {
       starts_at: task.starts_at ?? null, ends_at: task.ends_at ?? null, tz: task.tz ?? null,
       task_size: task.task_size ?? null, anchor: task.anchor ?? null, possible: task.possible ?? null,
     },
-    // task↔task edges live in one table now, discriminated by `type`.
+    // task↔task edges live in one table, discriminated by `type`.
     task_relations: [
       ...(task.blocked_by ?? []).map(related_id => ({ related_id, type: 'needs' })),
       ...(task.relates ?? []).map(related_id => ({ related_id, type: 'relates' })),
@@ -145,7 +145,7 @@ export function createSupabaseStore(client) {
   let _cacheV = 0, _bootGen = 0;   // _cacheV: bumped by every cache write/invalidation — a bootstrap answering after one must not write over it
   const _uf = makeFuzzy();
   let _cIdx = buildSearchDocs([], [], null), _idxDirty = false;
-  const rebuildIdx = () => { _idxDirty = true; _cacheV++; };   // U-18: mark dirty; built lazily in search()/runFilter()
+  const rebuildIdx = () => { _idxDirty = true; _cacheV++; };   // mark dirty; built lazily in search()/runFilter()
   let _idxLocs = [];   // the locations rows indexed: every write replaces the collection's array, so a rename re-indexes
   const ensureIdx = () => {
     const locs = COLL.locations.cached();   // a cold cache answers a fresh [] per call — empty-vs-empty isn't a change
@@ -157,10 +157,8 @@ export function createSupabaseStore(client) {
   let _retryDelay = 2000;
   const _pendRefetch = new Set(), _pendDrop = new Set();
   // ── Warm caches for the side lists ────────────────────────────────────────
-  // tasks and areas have had one since the start; these seven re-read the whole table on EVERY list(), which
-  // is why a "narrow" reload was still a round-trip. One collection gives them the same contract: the first
-  // list() fetches, every later one is free, our own writes patch the row and its DB timestamp
-  // (so the realtime bounce is a no-op), and a remote change patches from its payload — no refetch either way.
+  // As tasks and areas: the first list() fetches, every later one is free, our own writes patch the row and its
+  // DB timestamp (so the realtime bounce is a no-op), and a remote change patches from its payload — no refetch either way.
   function collection(table, { order, hydrate = r => r, boot = false } = {}) {   // boot: bootstrap primes it, so a refill under one must win over its answer
     let rows = null, gen = 0;   // null = cold · gen: bumped by invalidate or a write while cold, so a list answering after one is dropped
     const cmp = order ? (a, b) => { const x = a[order] ?? 0, y = b[order] ?? 0; return x < y ? -1 : x > y ? 1 : 0; } : null;
@@ -286,7 +284,7 @@ export function createSupabaseStore(client) {
     } catch { return false; }
   }
 
-  // task_relations is the only junction left; its two FKs to tasks need the FK hint to disambiguate.
+  // task_relations is the only junction; its two FKs to tasks need the FK hint to disambiguate.
   const TASK_SELECT = '*, task_relations!task_relations_task_id_fkey(related_id, type)';
 
   const URL_IDS = 150;   // ids per request URL: ~40 B each, and proxies cap near 8 KB ≈ 200
@@ -630,7 +628,7 @@ export function createSupabaseStore(client) {
           captureTz(fields);
           const curr = _cTasks.find(x => x.id === id);
           const upd = { ...pick(fields, ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'task_size', 'anchor', 'possible', 'starts_at', 'ends_at', 'tz', 'parent_id', 'color', 'favorite', 'place', 'position', 'completed_at', 'archived_at', 'overview', 'milestone', 'checklist_plain', 'task_type', 'attachments']) };
-          if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;   // one jsonb column now
+          if ('recurrence' in fields) upd.recurrence = fields.recurrence ?? null;   // one jsonb column
           if ('location' in fields) { upd.location_mode = fields.location?.mode ?? 'any'; upd.location_ids = fields.location?.ids ?? []; }
           if ('areas' in fields || 'area_ids' in fields) upd.area_ids = await resolveAreaIds(fields);
           if ('goal_ids' in fields) upd.goal_ids = fields.goal_ids ?? [];

@@ -1,15 +1,15 @@
 // Pure read-model (no DOM, no store): calendar recurrence, items, blocks, and locations.
 import { _d, _iso, recurStep } from './store.js';
 
-export const timeOf = (iso, fb = '') => iso.length > 10 ? iso.slice(11, 16) : fb;   // "HH:MM" or fb — the ONE date-vs-timed ISO decode (full-ISO round-trips once blanked Plan)
+export const timeOf = (iso, fb = '') => iso.length > 10 ? iso.slice(11, 16) : fb;   // "HH:MM" or fb — the ONE date-vs-timed ISO decode (a stored time can arrive as full ISO)
 const dateOf = iso => iso.slice(0, 10);
 
 // Occurrences within [from, to] inclusive; date-only from/to expand to start/end-of-day.
 export function occurrencesInRange(rule, startsAtIso, fromIso, toIso, max = 400) {
   const from = dateOf(fromIso), to = dateOf(toIso), clock = timeOf(startsAtIso);
   const at = d => _iso(d) + (clock ? 'T' + clock : '');
-  // Multiple rules (tasks already store an array; ICS files carry several RRULEs) — union them, de-duped and ordered.
-  // Without this an array falls through the `!rule.freq` guard below and the whole series renders as one occurrence.
+  // Multiple rules (tasks store an array; ICS files carry several RRULEs): union them, de-duped and ordered,
+  // else an array falls through the `!rule.freq` guard below and the series renders as one occurrence.
   if (Array.isArray(rule)) {
     const seen = new Set();
     for (const r of rule) for (const s of occurrencesInRange(r, startsAtIso, fromIso, toIso, max)) seen.add(s);
@@ -39,7 +39,7 @@ export function occurrencesInRange(rule, startsAtIso, fromIso, toIso, max = 400)
 
 // Wall-clock datetime math, parsed as UTC so it's timezone-agnostic (no DST drift) — matching _d/_iso.
 // Read the wall-clock DIGITS (like app.js _clMin) — a stored time can arrive as full ISO from a timestamptz
-// round-trip or an external import; appending ':00Z' to that made an Invalid Date that blanked the calendar.
+// round-trip or an external import; appending ':00Z' to that is an Invalid Date that blanks the calendar.
 const wall = iso => new Date(iso.slice(0, 10) + 'T' + timeOf(iso, '00:00') + ':00Z');
 export const minutesBetween = (a, b) => (wall(b) - wall(a)) / 60000;
 // dateOnly ⇒ a bare day (all-day spans end date-only); otherwise a timed "YYYY-MM-DDTHH:MM"
@@ -72,7 +72,7 @@ export function calendarItems(events, tasks, fromIso, toIso, placed) {
   for (const t of tasks || []) {
     if (!placeable(t) || !onCalendar(t, placed)) continue;
     // THE placement is the task's date-item (`placed`); never falls back to recur_from, which is only a
-    // recurrence anchor now and gets its own marker when the task has no placement.
+    // recurrence anchor and gets its own marker when the task has no placement.
     const at = placed?.get(t.id), daily = recursDaily(t.recurrence);
     if (at) {
       const ad = at.length <= 10;   // date-only placement ⇒ all-day block (dropped into the all-day row)
@@ -89,22 +89,21 @@ export function calendarItems(events, tasks, fromIso, toIso, placed) {
   return items.sort((a, b) => a.start < b.start ? -1 : a.start > b.start ? 1 : 0);
 }
 
-// A day overflowing a phone month cell shows tasks before what happens every day (decision #65); each group keeps its order.
+// A day overflowing a phone month cell shows tasks before what happens every day; each group keeps its order.
 export const tasksFirst = items => items.some(it => it.daily) ? [...items.filter(it => !it.daily), ...items.filter(it => it.daily)] : items;
 
 // ---- Blocks (condition-bearing spans) ----
 // blockDays: per-occurrence rows — { block_id, date, planned_start/end (the day's override), actual_start/end (what happened) }.
-// A DAY-move is the override pointed at another date: the row stays keyed on the occurrence's own day
-// (`src`), which is NOT the day it draws on. So the window scan drops what an override carried out, and each
-// inbound row is resolved on its OWN day — one day per row, never a widened scan, whose occurrence budget a
-// far-past source day would eat (leaving the block's own occurrences silently missing from the week).
-// The planned slot: planned_* (substrate §4), or where rows written before it existed keep it — actual_*, until Start
-// claims actual_start as the clock.
+// A DAY-move is the override pointed at another date: the row stays keyed on the occurrence's own day (`src`), not
+// the day it draws on. The window scan drops what an override carried out, and each inbound row resolves on its OWN
+// day, never via a widened scan: a far-past source day would eat its occurrence budget and drop the week's own.
+// The planned slot: planned_* (substrate §4), else actual_* on rows older than planned_*, until Start claims
+// actual_start as the clock.
 // ceiling: legacy branch — the DB is backfilled (db:backfill-planned), LocalStore rows aren't; delete once LocalStore migrates them
 // A stopped day's log: both ends recorded, else it has none and keeps its planned slot.
 export const loggedOf = bd => bd?.status === 'done' && bd.actual_start && bd.actual_end ? [bd.actual_start, bd.actual_end] : null;
 export const plannedOf = bd => bd?.planned_start ? [bd.planned_start, bd.planned_end] : bd?.actual_start && !['running', 'done'].includes(bd.status) ? [bd.actual_start, bd.actual_end] : null;
-// Running past the day it lives on = "didn't end" (user 2026-09-28); a block over midnight lives on to its planned end. Display only.
+// Running past the day it lives on = "didn't end"; a block over midnight lives on to its planned end. Display only.
 export function unended(bd, block, today) {
   if (bd?.status !== 'running') return false;
   const day = dateOf(bd.actual_start || bd.date), end = plannedOf(bd)?.[1] || blocksInRange(block ? [block] : [], day, day, [bd]).find(x => x.bd === bd)?.planned || day;
@@ -116,7 +115,7 @@ export function blocksInRange(blocks, fromIso, toIso, blockDays = [], now = null
     const dur = minutesBetween(b.starts_at, b.ends_at) || 0;   // one unparseable row degrades to a zero-length block, never an Invalid-Date span
     // all-day: ends_at is the INCLUSIVE last day (as events), so it covers — and is searched back over — every day of its span
     // ceiling: an inverted all-day row reads as one day, never repaired — a re-save fixes each; backfill if a DB scan finds many
-    // timed: yesterday's occurrence running past midnight draws its tail (decision 24, as the Mac's wSpans)
+    // timed: yesterday's occurrence running past midnight draws its tail (as the Mac's wSpans)
     // ceiling: one day of look-back — a timed block over a day long draws nothing from its third day; widen when one exists
     const allDay = !!b.all_day || b.starts_at.length <= 10, days = allDay ? Math.max(0, Math.round(dur / 1440)) : 1;
     const lo = addMinutes(from, -days * 1440, true), seen = d => d >= lo && d <= to;   // source days the look-back resolves

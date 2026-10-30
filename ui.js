@@ -23,7 +23,7 @@ const _tlink = (url, id, live) => {
   return live ? `<span class="dm-tok">${el}</span>` : el;
 };
 const _link = (url, text) => {
-  const u = _mdUrl(url), id = u.startsWith('adherod://task/') && u.slice(15);   // a labelled task link keeps its label and opens in the app
+  const u = _mdUrl(url), id = u.startsWith('adherod://task/') && u.slice(15);   // a labeled task link keeps its label and opens in the app
   if (id) return _taskTitle(id) == null ? `<span class="tlink gone">${esc(text)}</span>` : `<a class="tlink" href="${esc(u)}">${esc(text)}</a>`;
   return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text);
 };
@@ -151,7 +151,7 @@ export function chkVisible(cl, plain, open, held) {
   const view = cl.slice().sort((a, b) => isDone(a) - isDone(b)), done = view.filter(isDone).length, more = done > 2 ? done : 0;   // 1-2 done show: a fold row would take their room
   return { rows: !more || open ? view : view.slice(0, -done), hidden: open ? 0 : more, more };
 }
-// The fold row sits between the open and done items; its count is the done items', open or shut (46A).
+// The fold row sits between the open and done items; its count is the done items', open or shut.
 export const chkFoldHtml = (more, open, act = '') => `<button type="button" class="chk-row flex gap-8 chk-more"${act}><svg class="ico chk-more-ico"><use href="#i-chev-${open ? 'd' : 'r'}"/></svg><span class="chk-more-txt">${more} done</span></button>`;
 
 // Live editor for a composer checklist item: everything after the first "::" is its note, led by the "::" as a marker
@@ -222,7 +222,7 @@ export const checkHtml = (r, tag = 'button', extra = '', recArr = recList(r.t.re
 export const rowBodyHtml = (r, opts = {}) => {
   const t = r.t, done = !!t.completed_at, archived = !done && !!t.archived_at, nav = opts.navType || '';
   // Minimal mode: flat task-line (popup/palette/sweep/ghost). Inert span check + pick-name title + areas + proj.
-  // No wrappers, no badges, no chevron — same shape as the old taskRowHtml.
+  // No wrappers, no badges, no chevron.
   if (opts.minimal) {
     const check = checkHtml(r, 'span', 'sm');
     const chips = (r.areas || []).map(areaChipHtml).join('');
@@ -238,9 +238,7 @@ export const rowBodyHtml = (r, opts = {}) => {
     ? `<button type="button" class="row-chev${r.depth > 0 ? ' boxed' : ''}" data-act="collapse" aria-label="Fold" aria-expanded="${!r.collapsed}"${r.collapsed ? ' style="transform:rotate(-90deg)"' : ''}><svg class="ico"><use href="#i-chev-d"/></svg></button>` : '';
   const recArr = recList(t.recurrence), check = checkHtml(opts.tray && !r.step ? { ...r, hasProgress: false } : r, 'button', '', recArr);   // the tray drops the checklist ring, never a Steps pie; same builder the link picker uses, so both read the task's state identically
   const areas = r.areas.length ? `<span class="areas inline-flex items-center gap-6 flex-none"${r.areas.length === 1 ? ` style="--tc:${esc(r.areas[0].color)}"` : ''}>${r.areas.map(areaChipHtml).join('')}</span>` : '';
-  // Goals are DELIBERATELY not drawn in the list row — parked until the goals rework, and the dead
-  // `.goal`/`.goals-chips` chrome went with them (the empty-string placeholder and mkRow's per-row
-  // goalsForTask() went with them too — it was computed for every row of every render, consumed by nothing).
+  // Goals are not drawn in the list row (parked until the goals rework): no `.goal`/`.goals-chips` element.
   // `proj-inbox` marks the icon-only default-project chip: it is a bare glyph, so the overflow ladder is
   // forbidden from moving it to line 2 (an icon alone on its own line reads as a bug). → app.js _ladder
   const proj = showProj ? projChipHtml(r.projName, r.isDefaultProj) : '';
@@ -250,7 +248,7 @@ export const rowBodyHtml = (r, opts = {}) => {
     ? `<span class="m${cls ? ' ' + cls : ''} inline-flex items-center gap-4 muted-12"${attr}>${icon ? `<svg class="ico"><use href="#${icon}"/></svg>` : ''}${text ? `<span>${esc(text)}</span>` : ''}</span>`
     : '';
   // The tray's clock time (calendar side lists). It wears the clock GLYPH like every other badge here:
-  // bare text was the one exception to `icon + value` and read as a stray number beside the when badge.
+  // bare text reads as a stray number beside the when badge.
   const sched = m(opts.schedTime, 'i-clock', opts.schedTime, 'sched');
   // Size bucket, not a clock + "45m": the same four glyphs the composer's Size picker uses, so the row and the
   // control that sets it speak one vocabulary. Text-free — the duration rides along as the tooltip.
@@ -268,10 +266,10 @@ export const rowBodyHtml = (r, opts = {}) => {
   // next open step on the rail — its node ticks it (app.js onRowClick). It stands in for the task's description, which stays in the composer.
   const step = r.step && !done ? `<div class="step-block" style="--pc:${esc(r.pc)}"><div class="row-step"><span class="chk-txt">${chkMd(r.step.txt)}</span></div>${r.step.desc ? `<div class="step-desc truncate">${chkMd(r.step.desc)}</div>` : ''}${r.next
     ? `<div class="step-next flex items-center" data-ci="${r.next.ci}"><span class="chk-rect step-node" role="checkbox" aria-checked="false" aria-label="Tick the next step"></span><span class="step-next-txt truncate min-w-0">${chkMd(r.next.txt)}</span></div>` : ''}</div>` : '';
-  // Plan's tray: one flat line — check, title, project, when (a Steps row adds its step block). Nothing that unfolds, nests or ages (user, decision #79).
-  // 2C (wid-taste-1): its checklist, notes and relations ride as marks the ladder moves onto line 2 once one exists (app.js _ladder).
+  // Plan's tray: one flat line — check, title, project, when (a Steps row adds its step block). Nothing that unfolds, nests or ages.
+  // Its checklist, notes and relations ride as marks the ladder moves onto line 2 once one exists (app.js _ladder).
   if (opts.tray) {
-    if (step) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${step}</div>`;   // a Steps row leads with its step, as in the list (user 10-20)
+    if (step) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${step}</div>`;   // a Steps row leads with its step, as in the list
     const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;
     const fill = m(n, r.step ? 'i-steps' : 'i-list-check', cl.filter(c => c.done).length + '/' + n) + m(t.notes || plain && cl.length, 'i-edit', '') + m(r.rels.length, 'i-link', '');
     return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${fill ? `<span class="l2-fill flex items-center">${fill}</span>` : ''}</div>`;
@@ -279,9 +277,9 @@ export const rowBodyHtml = (r, opts = {}) => {
   // One chip per item, blockers then files; the ladder drops names one at a time and rolls a kind's >3 into its first chip's count (app.js _relIcon).
   const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map(rl =>
     `<button type="button" class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11" data-act="rel" data-kind="${rl.type}" data-rel="${esc(rl.id)}" aria-label="${esc(rl.label)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${rl.n ? `<span class="row-rel-n">${rl.n}</span>` : ''}</button>`).join('')}</div>` : '';
-  // Relations are a LINE-1 CITIZEN — the ladder sheds them like anything else, so a row with a relation is
-  // no longer two lines at every width. The DESCRIPTION is the deliberate exception: prose always owns its own line
-  // (user, 2026-08-17), so it never competes with the title and never joins the meta line. → app.js LADDER
+  // Relations are a LINE-1 CITIZEN — the ladder sheds them like anything else, so a row with a relation isn't
+  // two lines at every width. The DESCRIPTION is the deliberate exception: prose always owns its own line,
+  // so it never competes with the title and never joins the meta line. → app.js LADDER
   const head = t.notes ? t.notes.slice(0, mdCut(t.notes, 0, 1000)) : '';   // one line shows: the first 1000+ chars, never half a fence
   let lead = head;
   for (const m of _hasFence(head) ? head.matchAll(_fences) : []) if (m[1].includes('\n')) {   // a code block after prose would wrap below the one line, half clipped; a one-line fence stays inline
@@ -324,14 +322,15 @@ export const rollerBoxHtml = (it) => {
   return html`<div class="rl-box${cls}" data-ridx="${it.ridx}"${raw(indent)}>${raw(icon)}<span class="rl-nm">${it.label}</span>${raw(cnt)}${raw(mv)}${raw(more)}</div>`;
 };
 
-// The strip IS the navigation on a phone (the hamburger is gone), so every dot needs a name: cd-far wears
+// The strip IS the navigation on a phone, so every dot needs a name: cd-far wears
 // only its icon, and the current one carries a second job — pressing it opens the overview — that its visible
 // label doesn't say. aria-label wins over the label text, so it has to repeat the surface name.
 // A surface may fold its own sub-modes into its dot while it is current — Plan does, on a phone, where the
 // calendar's views join the app's one navigator instead of floating a second cluster over the grid
-// (calendar-mobile-controls-explorations #6). It is a SIBLING of the dot, never a child: a button inside a
-// button is invalid and the parser hoists it straight back out. Plan's actions follow the views (D5, Android
-// P4/P8): "T" only while today is out of view, the task panel, and ＋ new task (held: new event, D8) — `data-act`, dotStripClick.
+// (calendar-mobile-controls-explorations #6).
+// It is a SIBLING of the dot, never a child: a button inside a button is invalid and the parser hoists it
+// straight back out. Plan's actions follow the views: "T" only while today is out of view, the task panel,
+// and ＋ new task (held: new event) — `data-act`, dotStripClick.
 const segHtml = (seg) => !seg ? '' : `<span class="cd-seg">${seg.views.map(v =>
   `<button type="button" data-v="${esc(v)}" data-sk="Day / week / month" data-sk-key="${esc(v[0])}" class="cd-segb${v === seg.cur ? ' on' : ''}" aria-label="${esc(v)} view" aria-pressed="${v === seg.cur}">${esc(v[0].toUpperCase())}</button>`).join('')}</span>`
   + `<button type="button" data-act="today" class="cd-act cd-today" aria-label="Today">T</button>`
@@ -341,10 +340,10 @@ const segHtml = (seg) => !seg ? '' : `<span class="cd-seg">${seg.views.map(v =>
 export const dotStripHtml = (surfaces, idx) =>
   surfaces.map((s, i) => {
     const d = Math.abs(i - idx);
-    // Its own icon, on every dot — the pip it replaces named nothing, so a far surface was only reachable by
+    // Its own icon, on every dot: a bare pip names nothing, leaving a far surface reachable only by
     // counting positions. The icon is the constant; the label is what drops away with distance.
     const ico = raw(`<svg class="ico cd-ico" aria-hidden="true"><use href="#${esc(s.icon || 'i-all')}"/></svg>`);
-    const label = s.unread ? s.label + ', new messages' : s.label, cls = s.unread ? ' cd-new' : '';   // the quiet unread dot (soc-1b)
+    const label = s.unread ? s.label + ', new messages' : s.label, cls = s.unread ? ' cd-new' : '';   // the quiet unread dot
     if (i === idx) { const dot = html`<button type="button" data-idx="${i}" data-sk="Overview" class="cd cd-cur${cls}" aria-label="${label}, open menu" aria-haspopup="dialog">${ico}<span class="cd-lab">${s.label}</span></button>`;
       return s.seg ? `<span class="cd-plan">${dot}${segHtml(s.seg)}</span>` : dot; }
     if (d === 1)   return html`<button type="button" data-idx="${i}" data-sk="Go to ${s.label}" class="cd cd-near${cls}" aria-label="${label}">${ico}<span class="cd-lab">${s.label}</span></button>`;

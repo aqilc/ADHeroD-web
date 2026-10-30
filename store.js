@@ -287,11 +287,11 @@ export function completionPatches(rows, id, ts, defaultId, placed) {
 }
 // A placement is minted in a clock — stamp it (freeze §8 step 3) so day-boundary math survives travel. Explicit tz wins.
 export const captureTz = f => { if ((f.starts_at || f.ends_at) && !f.tz) f.tz = Intl.DateTimeFormat().resolvedOptions().timeZone; return f; };
-// Pause all rules in a recurrence (non-mutating).
 // An archive takes the open tasks under its root; an Unarchive brings back only those at the root's instant, never one archived on its own
 export const cascades = (root, t, val) => val ? !t.completed_at && !t.archived_at : Date.parse(t.archived_at) === Date.parse(root.archived_at);
+// Pause all rules in a recurrence (non-mutating).
 export const pauseRecurrence = rec => Array.isArray(rec) ? rec.map(x => ({ ...x, paused: true })) : { ...rec, paused: true };
-// A pause with a resume day ends on it (things-4): the rule runs again, and a due left behind restarts at its next date from today.
+// A pause with a resume day ends on it: the rule runs again, and a due left behind restarts at its next date from today.
 export function resumedRecurrence(t, ts) {
   const today = isoDate(new Date(ts)), ends = r => r.paused && r.resume && r.resume <= today;
   if (t.completed_at || !recRules(t.recurrence).some(ends)) return null;
@@ -309,7 +309,7 @@ export function seedRecurrenceDue(rec, ts) {
   return b.iso + (b.rule.at ? 'T' + b.rule.at : '');
 }
 // THE placement fact: task_id → the date-item's ISO ("YYYY-MM-DD" or "…THH:MM"). A date-item is a schedule
-// item with a date and no block. recur_from is NOT consulted — it survives only as a recurrence anchor.
+// item with a date and no block. recur_from is NOT consulted — it is only a recurrence anchor.
 export const placedMap = items => {
   const m = new Map();
   for (const x of items || []) if (!x.block_id && x.date) m.set(x.task_id, x.date + (x.start ? 'T' + x.start : ''));
@@ -447,7 +447,7 @@ export function createLocalStore(opts = {}) {
   const uf = makeFuzzy();
   let _search = { haystack: [], meta: [] }, _idxDirty = true;
   let _treeDirty = true;   // repairTree() only runs on list() after a parent_id-touching mutation (move/reparent/remove)
-  function reindex() { _idxDirty = true; }   // U-18: lazy; built on first search/filter after mutation
+  function reindex() { _idxDirty = true; }   // lazy; built on first search/filter after mutation
   function ensureIdx() { if (_idxDirty) { _search = buildSearchDocs(readTasks(), readAreas(), readMeta().default_project_id || null, readLocations()); _idxDirty = false; } }
 
   // Storage keeps no null task row (read drops it) nor an id-less one (it may hold data: it gets an id), before ensureBacklog adopts a root by id.
@@ -523,7 +523,7 @@ export function createLocalStore(opts = {}) {
       meta.default_filters_seeded = true; writeMeta(meta);
     }
     // "All tasks" is a removable default filter (a null filter — is:any → every task incl. completed/archived),
-    // seeded at the top of the Filters list. Deletable like any filter; the old special roller 'all' item is gone.
+    // seeded at the top of the Filters list. Deletable like any filter.
     if (!meta.all_tasks_filter_seeded) {
       const fs = readFilters();
       if (!fs.some(f => f.name === 'All tasks' && f.query === 'is:any')) {

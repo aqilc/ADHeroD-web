@@ -66,7 +66,7 @@ export async function createInvite(sb, uid) {
   return rows?.[0] ?? false;
 }
 
-// Unread: the newest message is someone else's and later than your own read mark (the nav's dot, soc-1b).
+// Unread: the newest message is someone else's and later than your own read mark (the nav's dot).
 export function unread(chat, uid) {
   const mine = chat.members.find(m => m.user_id === uid);
   return !!chat.last && chat.last.user_id !== uid && new Date(chat.last.created_at) > new Date(mine?.last_read_at ?? 0);

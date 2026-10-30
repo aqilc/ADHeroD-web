@@ -28,7 +28,7 @@ const dayDiff = (iso, now) => {
 };
 
 // Short relative label for a due date: weekdays within a week either side ("Last Mon", "Fri", "Next Mon"), then
-// weeks and months; both fall back to an absolute date beyond ~6 weeks. Never "missed" (user: tweak-7).
+// weeks and months; both fall back to an absolute date beyond ~6 weeks. Never "missed".
 const relDue = (d, diff, now) => {
   const ago = diff < 0, n = Math.abs(diff), day = () => d.toLocaleDateString([], { weekday: 'short' });
   if (n === 1)  return ago ? L.yest : L.tmr;
@@ -44,7 +44,7 @@ export function dueBadge(due, now = new Date(), done = false) {
   const { d, diff } = dayDiff(due, now);
   if (diff === 0) return { label: L.today, kind: 'today' };
   const kind = diff < 0 ? 'overdue' : diff <= 6 ? 'soon' : 'later';   // color band; labels themselves are relative
-  return { label: done && diff < 0 ? shortDate(d, now) : relDue(d, diff, now), kind };   // a done task's passed date reads as the date (user 10-05)
+  return { label: done && diff < 0 ? shortDate(d, now) : relDue(d, diff, now), kind };   // a done task's passed date reads as the date
 }
 
 export function deadlineLeft(deadline, now = new Date()) {
@@ -112,7 +112,7 @@ const WD_WORD = new RegExp(WD_LEAD + '\\b'), WD_WHOLE = new RegExp(WD_LEAD + '[.
 // a weekday beside an explicit date ("sat oct 3", "oct 3 sat") is absorbed; the date wins
 const WD_PRE = '(?:(?:' + WD_ALT + ')\\.?,?\\s+)', WD_SUF = '(?:,?\\s+(?:' + WD_ALT + ')\\b)?', ORD = '(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)';
 const MON_DAY = WD_PRE + '?' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?' + WD_SUF, DAY_MON = WD_PRE + '?(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?' + WD_SUF;
-// Every regex is built once: V8 drops a per-call RegExp's compiled code at each major GC, so the next typed space recompiled them all (~29ms at 6x CPU).
+// Every regex is built once: V8 drops a per-call RegExp's compiled code at each major GC, so the next typed space would recompile them all (~29ms at 6x CPU).
 const MON_DAY_ALL = new RegExp('^' + MON_DAY + '$'), DAY_MON_ALL = new RegExp('^' + DAY_MON + '$'), ORD_ALL = new RegExp('^' + WD_PRE + '?' + ORD + '$');
 // no year: rolls to next year if already past. A day the month lacks ("feb 30") rolls over in Date → null.
 function monthDayIso(mi, day, year, now) {
@@ -171,9 +171,9 @@ export function parseDate(s, now = new Date(), whole = false) {
 }
 
 const MERIDIEM = '([ap])(?:m\\b|\\.m\\b\\.?)';   // am · pm · a.m. · p.m. — captures a|p; no trailing \b, so "p.m." keeps its dot
-// sat/sun/wed are English words too ("I sat down", "the sun"): without on/this/next they pill only beside a time (#92)
+// sat/sun/wed are English words too ("I sat down", "the sun"): without on/this/next they pill only beside a time
 const WD_PROSE = /^(?:sat|sun|wed)$/i, TIME_RE = '(?:\\d{1,2}(?::\\d{2})?\\s*' + MERIDIEM + '|(?:[01]?\\d|2[0-3]):[0-5]\\d\\b)';
-// a bare "at 5" is the next 5 o'clock between 7am and 10pm (#103)
+// a bare "at 5" is the next 5 o'clock between 7am and 10pm
 const AT_HOUR = 'at\\s+(1[0-2]|[1-9])\\b(?![:.]\\d)';
 const TIME_AFTER = new RegExp('^\\.?\\s+(?:(?:at\\s+)?' + TIME_RE + '|' + AT_HOUR + ')', 'i'), TIME_BEFORE = new RegExp(TIME_RE + '\\s*$', 'i');
 const AT_HOUR_END = new RegExp('\\s' + AT_HOUR + '$', 'i'), AT_HOUR_ANY = new RegExp('\\s' + AT_HOUR, 'i');
@@ -370,7 +370,7 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   s = s.replace(/\s(?:(?:deadline|ddl|dl|by|due|until|till|before)\s+|\^\s*)(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
     dateStr = dateStr.replace(/\s*\u0001/, '');
     const at = dateStr.match(AT_HOUR_END);   // "by fri at 5"
-    const parsed = parseDateText(at ? dateStr.slice(0, at.index) : dateStr.trim(), now, true);   // "deadline fri 5pm" keeps the hour (F16)
+    const parsed = parseDateText(at ? dateStr.slice(0, at.index) : dateStr.trim(), now, true);   // "deadline fri 5pm" keeps the hour
     const iso = parsed.iso, time = at ? atHour(at[1], iso > isoDate(now), now) : parsed.time;
     if (!iso) return m;                 // not a date → leave the text untouched
     o.deadlineIso = iso + (time ? 'T' + time : ''); return ' ';
@@ -468,11 +468,11 @@ export function classifyToken(text, now = new Date(), locations = []) {
   return hits.length === 1 ? hits[0] : null;                          // none or ambiguous → null
 }
 
-// Longest recognisable token, in words: the When popover's full repeat sentence
+// Longest recognizable token, in words: the When popover's full repeat sentence
 // ("every 2 weeks on Mon Wed at 9am, 3 times, ending Sep 1"). Bounds both token scans.
 const TOK_MAX_WORDS = 13;
 
-const AFTER = /(^|\s)after\s+$/i;   // "after fri" stays prose (#103)
+const AFTER = /(^|\s)after\s+$/i;   // "after fri" stays prose
 export function tokenizeAll(text, now = new Date(), locations = []) {
   const parts = (text || '').match(/\s+|\S+/g) || [];      // alternating whitespace / word runs
   const isWord = p => /\S/.test(p);

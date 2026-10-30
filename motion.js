@@ -22,8 +22,8 @@ const clear = (el, tag) => { const s = css.get(el); if (s) { s.delete(tag); if (
 const running = () => document.getAnimations().filter(a => a.playState === 'running' && a.effect.getComputedTiming().iterations !== Infinity);
 // Ambient loops (spinners, breathing glows) never end — exclude them or idle() wedges forever.
 const ambient = e => {
-  // pass the pseudo (::before/::after) through — bare getComputedStyle(e.target) reads the PARENT's styles,
-  // which mis-classified .cl-now::after's infinite cl-breathe as non-ambient and wedged idle() on the calendar
+  // pass the pseudo (::before/::after) through: bare getComputedStyle(e.target) reads the PARENT's styles,
+  // so .cl-now::after's infinite cl-breathe would read as non-ambient and wedge idle() on the calendar
   const cs = getComputedStyle(e.target, e.pseudoElement || undefined), names = cs.animationName.split(', '), i = names.indexOf(e.animationName);
   const counts = cs.animationIterationCount.split(', ');
   return i >= 0 && counts[i % counts.length] === 'infinite';   // CSS repeats short lists cyclically
@@ -62,7 +62,7 @@ const soften = a => {
 
 export const motion = {
   // THE reduced-motion dial: 0 = JS movement jumps to its end state, 1 = animate. Every JS check routes through
-  // here so reduced motion is one trustworthy switch instead of 27 scattered matchMedia reads.
+  // here so reduced motion is one switch, never scattered matchMedia reads.
   get scale() { return forced ?? (osReduced().matches ? 0 : 1); },
   get gentle() { return forced == null && osReduced().matches; },   // the OS preference: drop movement, keep short fades
   force(v) { forced = v; zeroStyle(); },
@@ -97,11 +97,11 @@ export const motion = {
     return a;
   },
   // The primitives (docs/ui/motion.md): named moves the app composes, timed by tier (design.json motion).
-  // Fill: `el` grows down from its transform-origin (a line filling with colour). Set the origin in CSS.
+  // Fill: `el` grows down from its transform-origin (a line filling with color). Set the origin in CSS.
   fill(s, el, tier = 'daily') {
     return motion.go(s, el, { scale: ['1 0', '1 1'] }, { duration: DESIGN.motion[tier], easing: DESIGN.ease['in-out'] });
   },
-  // Light: `el` takes class `cls` (its colour, from CSS) and pops once.
+  // Light: `el` takes class `cls` (its color, from CSS) and pops once.
   light(s, el, cls = 'lit', tier = 'constant') {
     el?.classList.add(cls);
     return motion.go(s, el, { scale: [.6, 1] }, { duration: DESIGN.motion[tier], easing: DESIGN.ease.spring });
@@ -155,8 +155,8 @@ export const motion = {
     for (const t of ['transitionend', 'transitioncancel']) document.addEventListener(t, e => clear(e.target, 't:' + e.propertyName), true);
     document.addEventListener('animationstart', e => { if (!ambient(e)) mark(e.target, 'a:' + e.animationName); if (motion.scale !== 1) soften(animOf(e, a => a.animationName === e.animationName)); }, true);
     for (const t of ['animationend', 'animationcancel']) document.addEventListener(t, e => clear(e.target, 'a:' + e.animationName), true);
-    // A layout clamp or anchoring jump fires `scroll` and NEVER `scrollend` (that wedged idle() after Lists, parked deep,
-    // lost its height to Plan). A running scroll fires every frame — so one silent frame after the last event = stopped.
+    // A layout clamp or anchoring jump (Lists, parked deep, losing its height to Plan) fires `scroll` and NEVER `scrollend`.
+    // A running scroll fires every frame — so one silent frame after the last event = stopped.
     // (A rAF queued during dispatch runs this same frame; the nested one runs after the NEXT frame's scroll events.)
     document.addEventListener('scroll', e => {
       const el = e.target, n = (scrollers.get(el) || 0) + 1; scrollers.set(el, n);

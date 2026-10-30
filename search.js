@@ -180,7 +180,7 @@ export const queryStates = query => isVals(parseQuery(query));   // the is: valu
 export function matchQuery(query, tasks, ctx) {
   const ast = typeof query === 'string' ? parseQuery(query) : query;
   // `due:` asks about the date a task SITS on — its placement (ctx.placed, from the caller's date-items).
-  // recur_from is only a recurrence anchor now, so it answers for repeats and nothing else.
+  // recur_from is only a recurrence anchor, so it answers for repeats and nothing else.
   const when = t => ctx.placed?.get(t.id) || (t.recurrence ? t.recur_from : null) || '';
   const byId = new Map(tasks.map(t => [t.id, t]));
   const hasChild = new Set(tasks.map(t => t.parent_id).filter(Boolean));

@@ -19,7 +19,7 @@ export function edgeScrollStep(scrollEl, clientY, rm = false, inset = 0) {   // 
   if (!v) return carry = 0;
   const want = v * dt + carry, whole = Math.trunc(want);
   carry = want - whole; scrollEl.scrollTop += whole;
-  return v * dt;   // U-12: let scrollFrame know whether we're in the edge zone
+  return v * dt;   // let scrollFrame know whether we're in the edge zone
 }
 
 // The zone's px/ms at clientY, 0 outside it: no scroll, no clock
@@ -42,8 +42,8 @@ function scrollParent(el) {
 // Pure: original item centers (px, top→bottom) + the dragged item's current center → the target slot index.
 export function targetIndex(centers, from, draggedCenter) {
   let to = from;
-  while (to < centers.length - 1 && draggedCenter > centers[to + 1]) to++;   // moved down past a neighbour's center
-  while (to > 0 && draggedCenter < centers[to - 1]) to--;                     // moved up past a neighbour's center
+  while (to < centers.length - 1 && draggedCenter > centers[to + 1]) to++;   // moved down past a neighbor's center
+  while (to > 0 && draggedCenter < centers[to - 1]) to--;                     // moved up past a neighbor's center
   return to;
 }
 
@@ -62,7 +62,7 @@ const guarded = new WeakSet();
 // onHold(item) → true claims a held item let go unmoved (its click is swallowed); fixed() → nothing may reorder, but holds still count.
 // pinned(to, items, from, far) → true: the item keeps its place rather than take slot `to`; a dwell still nests. refused(): let go there.
 // redirect(to, items, from, far) → b: the gap opens right before items[b] instead (no span), `cut` true in preview and onCommit; null keeps `to`.
-// far(x) → true: the finger's x unindents (#97): pinned and redirect then judge the item's own slot too, and nothing nests.
+// far(x) → true: the finger's x unindents: pinned and redirect then judge the item's own slot too, and nothing nests.
 // dwell(item, false) → may nest: as the finger enters an item's middle (null: none); dwell(item, true) after DWELL there → true makes it `into`.
 export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnly, onCommit, enabled, fixed, pinned, refused, onHold, lift, span, above, redirect, preview, dwell, far }) {
   let st = null;
@@ -118,8 +118,8 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
     st.item.classList.add('sorting');
     st.item.style.transition = 'none';
     st.scrollEl = scrollParent(container);
-    st.startScrollTop = st.scrollEl?.scrollTop ?? 0; st.off = st.item.offsetTop;   // U-13: baseline for scroll-adjusted dy
-    st._rm = motion.scale === 0;                        // U-12: hoist the one dial (motion.js) out of the per-frame edgeScrollStep
+    st.startScrollTop = st.scrollEl?.scrollTop ?? 0; st.off = st.item.offsetTop;   // baseline for scroll-adjusted dy
+    st._rm = motion.scale === 0;                        // hoist the one dial (motion.js) out of the per-frame edgeScrollStep
     for (let i = 0; i < st.items.length; i++) if (i !== st.from) st.items[i].style.transition = st._rm ? 'none' : SHIFT;
     st.mo = new MutationObserver(recapture); st.mo.observe(st.item.parentElement, { childList: true });
   }
@@ -138,7 +138,7 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
     shift(); locate();
   }
 
-  // driver step: alive only while in the edge zone (U-12); every onMove re-arms via motion.run. The rows it scrolls move under a still
+  // driver step: alive only while in the edge zone; every onMove re-arms via motion.run. The rows it scrolls move under a still
   // finger, so the zone is no rest: dwellOn arms nothing while `scrolling`, and re-reads the row as the finger leaves.
   // ceiling: no row sits in a zone at a scroll end (header above, trailing space below) — gate on scrollTop's limit if one does
   const scrollFrame = () => {
@@ -166,7 +166,7 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
   // The finger's last point against the rows where they SETTLE, never as drawn (a 180ms shift slides them under a still finger).
   // Every change under the finger re-reads it here: a move, an edge-scroll step.
   function locate() {
-    const scrolled = (st.scrollEl?.scrollTop ?? 0) - st.startScrollTop, dy = st._cy - st.startY + scrolled;   // U-13: scroll-adjusted, for the visual and the commit
+    const scrolled = (st.scrollEl?.scrollTop ?? 0) - st.startScrollTop, dy = st._cy - st.startY + scrolled;   // scroll-adjusted, for the visual and the commit
     st.item.style.transform = `translateY(${dy}px)`;
     st.far = !!far?.(st._cx);
     let to = targetIndex(st.centers, st.from, st.centers[st.from] + dy);
@@ -178,7 +178,7 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
     else if (redirect && !own) { const b = redirect(to, st.items, st.from, st.far); if (b != null) st.cut = to = b > st.from ? b - 1 : b; }
     st.at = to;
     if (!st.into && (to !== st.to || was !== (st.cut === to))) { st.to = to; shift(); }   // `into` holds its gap
-    else if (!st.into && st.cut === to) preview?.(st.item, to, st.items, null, true);   // one redirected gap, another landing row (#70): drawn at its depth
+    else if (!st.into && st.cut === to) preview?.(st.item, to, st.items, null, true);   // one redirected gap, another landing row: drawn at its depth
     if (dwell) dwellOn(st._cy + scrolled);
   }
 

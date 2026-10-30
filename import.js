@@ -26,7 +26,7 @@ const icsUnescape = s => s.replace(/\\[nN]/g, '\n').replace(/\\([,;\\])/g, '$1')
 const icsDigits = v => v.replace(/[^0-9TZ]/g, '');
 
 // A DATE/DATE-TIME → { iso, allDay }. Wall-clock local text is what the whole app stores, so a `Z` or
-// TZID value is converted to local here — a full ISO reaching the calendar blanks it (calendar.js:33).
+// TZID value is converted to local here: the calendar reads a stored time's digits as local wall-clock.
 function icsWhen(value, params) {
   const v = icsDigits(value);
   if (params.VALUE === 'DATE' || !v.includes('T')) return { iso: `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`, allDay: true };
@@ -87,8 +87,7 @@ export function ruleFromRRULE(text, path) {
   if (parts.BYMONTH) r.months = parts.BYMONTH.split(',').map(Number).sort((a, b) => a - b);
   if (parts.COUNT) r.ends = { count: +parts.COUNT };
   // UNTIL is a DATE boundary compared against plain date strings, so read its digits directly. Converting
-  // its instant to local shifts the last day by one in any negative-offset zone (green under TZ=UTC, red at
-  // 20:00 EDT) — the same two-clocks trap the suite warns about.
+  // its instant to local shifts the last day by one in any negative-offset zone (green under TZ=UTC).
   else if (parts.UNTIL) { const u = icsDigits(parts.UNTIL); r.ends = { date: `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}` }; }
   return { rule: r };
 }
