@@ -8995,6 +8995,10 @@ document.addEventListener('alpine:init', () => {
       const el = this.$refs.clMonth; if (!el) return this.clScrollToAnchor();
       if (!this.clRowH) this.clRecalc();
       el.scrollTo({ top: this._clMTo = Math.min(el.scrollHeight - el.clientHeight, Math.max(0, this._monthFirstIdx(this._clDate()) * this.clRowH)), behavior: this.reduceMotion() ? 'auto' : 'smooth' });
+      // A focused day the landing will recycle hands the stop to the landing's first day now, not at the settle: an arrow keyed
+      // mid-glide walks from there, never back months to the day left behind. One the landing keeps drawn keeps the stop, as after it.
+      const at = Math.round(this._clMTo / this.clRowH), off = this._weekIdx(new Date(this._clStop() + 'T00:00')) - at + CL_BUFFER;   // rows into the landing's drawn window
+      if (el.querySelector('.cl-date:focus') && (off < 0 || off >= this.clVisCount)) this.clDayInView = isoDate(this._weekDate(at));
     },
     // A walk out of the rows in view scrolls the fewest whole rows, on clNudge's path, so the settle lands it flush.
     clWalkDay(n) {
