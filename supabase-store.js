@@ -153,7 +153,7 @@ export function createSupabaseStore(client) {
   };
 
   // Realtime: cached DB timestamps suppress own-write echoes and stale events.
-  let _channel = null, _onChange = null, _applyT = null, _needFull = false, _dropped = false;
+  let _channel = null, _onChange = null, _applyT = null, _needFull = false, _dropped = false, _bootAt = null;   // _bootAt: client ms the last bootstrap began
   let _retryDelay = 2000;
   const _pendRefetch = new Set(), _pendDrop = new Set();
   // ── Warm caches for the side lists ────────────────────────────────────────
@@ -423,6 +423,7 @@ export function createSupabaseStore(client) {
     // ceiling: a write landing mid-flight re-pulls; a write storm outlasting every round-trip keeps it pulling — cap re-pulls if an account pull passes ~1s
     async bootstrap() {
       const gen = ++_bootGen, v = _cacheV;
+      _bootAt = Date.now();
       const { data, error } = await client.rpc('bootstrap'); if (error) throw error;
       if (gen !== _bootGen) throw new Error('superseded');   // a newer bootstrap owns the caches (the app's reloadAll already bailed)
       if (v !== _cacheV) return this.bootstrap();             // a write or invalidation landed meanwhile: the server has it, this answer doesn't
@@ -899,7 +900,8 @@ export function createSupabaseStore(client) {
         const isDel = p => (p.eventType || p.type) === 'DELETE';
         const stamp = at => at?.replace('Z', '+00:00');   // DB stamps are UTC; keep microseconds (Date.parse truncates them).
         const current = (p, rows) => !isDel(p) && p.new?.updated_at && rows.some(r => r.id === p.new.id && stamp(r.updated_at) >= stamp(p.new.updated_at));
-        const on = (table, cb) => { _channel = _channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${uid}` }, cb); };
+        const handlers = {};
+        const on = (table, cb) => { handlers[table] = cb; _channel = _channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `user_id=eq.${uid}` }, cb); };
         _channel = client.channel('tasks-sync');
         let systemErrorLogged = false;
         _channel.on('system', {}, p => {
@@ -942,10 +944,19 @@ export function createSupabaseStore(client) {
             _onChange?.(kind);
           });
         }
+        // The first connect closes the handshake's gap: a write between the boot's pull and SUBSCRIBED reaches neither, so every
+        // table's rows stamped since the pull (set_updated_at stamps each insert and update; 5 min covers client clock skew) run through its handler.
+        // ceiling: a row deleted in that gap stays until the next re-pull; revisit if a deleted row is ever reported back after a boot.
+        const catchUp = () => {
+          if (_bootAt === null) return;
+          const since = new Date(_bootAt - 3e5).toISOString();
+          _bootAt = null;
+          for (const [table, cb] of Object.entries(handlers)) client.from(table).select('*').gt('updated_at', since).then(({ data, error }) => error ? repull() : data.forEach(row => cb({ new: row })));
+        };
         // Realtime never replays missed events: reconnects and browser returns share one re-pull.
         _channel.subscribe(status => {
           if (status === 'SUBSCRIBED') {
-            if (!_dropped) return;               // first connect — bootstrap already left us current
+            if (!_dropped) return catchUp();
             _dropped = false;
             repull();
           } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') _dropped = true;
