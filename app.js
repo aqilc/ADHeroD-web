@@ -21,7 +21,7 @@ const savedColorTheme = account => [localStorage.getItem('adherod.colorTheme'), 
 const savedAppearance = () => ['light', 'dark'].includes(localStorage.getItem('adherod.theme')) ? localStorage.getItem('adherod.theme') : 'system';
 // a critically damped spring (no overshoot) as a CSS linear(): ω 26.2 puts 50% at 64 ms and 90% at 148 ms
 const _spring = (w, ms) => `linear(${Array.from({ length: 31 }, (_, i) => { const u = w * ms / 1000 * i / 30; return i === 30 ? 1 : +(1 - (1 + u) * Math.exp(-u)).toFixed(4); }).join(', ')})`;
-const _openEase = _spring(26.2, 300), _closeEase = _spring(30, 260);
+const _closeW = 30, _openEase = _spring(26.2, 300), _closeEase = _spring(_closeW, 260);
 function applyTheme(mode, family) {
   const vars = scheme => _vars(themeVars(family, scheme));
   let el = document.getElementById('design-tokens');
@@ -385,6 +385,7 @@ const _touch = (v, skip) => { if (v && typeof v === 'object' && v !== skip) for 
 // the composer's grow: the list's entry texts (text → rect) at the tap, the card rows flown from them, the edited block's list rows, the running grow's undo
 let _morphFrom = new Map(), _morphMoved = [], _morphRows = [], _morphStop = null;
 // a list row folded shut: its padding too, or a phone's 44px row floors at 24 and the list below jumps when it hides
+const _inkTop = el => { const r = document.createRange(); r.selectNodeContents(el); return (r.getClientRects()[0] ?? el.getBoundingClientRect()).top; };   // its first line's text box, not its padding
 const _fold = r => { const s = getComputedStyle(r); return [{ height: r.offsetHeight + 'px', paddingTop: s.paddingTop, paddingBottom: s.paddingBottom, overflow: 'hidden' }, { height: '0px', paddingTop: '0px', paddingBottom: '0px', overflow: 'hidden' }]; };
 let _growGen = 0;   // _growOpen's generation ids: negative (a reactive {} would read back as a proxy), so never a live timer id
 let _dlAuto = '';   // the deadline a By time pick derived: while the draft's still equals it, the date isn't the user's. Off the draft, so it never dirties one.
@@ -3006,7 +3007,11 @@ document.addEventListener('alpine:init', () => {
         for (const e of card.querySelectorAll('.composer-entries .entry:not(.ghost)')) {
           const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = [..._morphFrom].find(([k]) => s.startsWith(k))?.[1]; if (!f) continue;   // a subtask's text runs on into its chips
           const r = txt.getBoundingClientRect(), d = `${f.left - r.left}px ${f.top - r.top}px`, k = f.fs / parseFloat(getComputedStyle(txt).fontSize);   // the list draws checklist text smaller
-          e.style.translate = d; txt.style.transformOrigin = '0 0'; txt.style.scale = k; _morphMoved.push([e, d, txt, k]);
+          e.style.translate = d; txt.style.transformOrigin = '0 0'; txt.style.scale = k;
+          // for the close: the list's text sits lower in its padded box (a checklist's), and its check is the list's size
+          const lift = f.ink - (_inkTop(txt) - txt.getBoundingClientRect().top), ck = e.querySelector('.entry-chk > *, .chk-rect'), c = ck?.getBoundingClientRect();
+          const fit = f.chk && c?.width ? [`${f.chk.x + f.chk.width / 2 - c.x - c.width / 2}px ${f.chk.y + f.chk.height / 2 - c.y - c.height / 2}px`, f.chk.width / c.width] : null;
+          _morphMoved.push([e, d, txt, k, lift, ck, fit]);
         }
         const fade = _morphMoved.length ? [...card.querySelectorAll('.desc, .entry.ghost, .entry-or')] : [];   // they sit where the flying rows start
         for (const el of fade) el.style.opacity = 0;
@@ -3048,43 +3053,61 @@ document.addEventListener('alpine:init', () => {
         this._t = setTimeout(() => { if (this._closingComposer) { this.clip = false; this.growH = null; done && done(); } }, motion.gentle ? 150 : 0);
         return;
       }
-      const dur = 260;   // styles.css .closing's --md
+      const dur = 260, hold = 120;   // styles.css .closing's --md and transition-delay
       // pins the live height, inline at once: .morph's size containment sizes an unpinned grow to 0 until the binding lands,
       // and a layout in that gap re-windows the list and scrolls it by the composer's height
       g.style.height = (this.growH = g.offsetHeight) + 'px'; this.clip = true; g.classList.add('morph');   // the card's box follows it again
       motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
-      const anims = [], fly = _morphMoved.length > 0;
+      const anims = [], fly = _morphMoved.length > 0, card = g.firstElementChild;
       const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); g.classList.remove('morph', 'closing'); };
-      // as in Things: the fill and everything but the title and the rows going home drop at once, the row's pills fade in
-      // a subtask's chips are the card's; its list row has its own, fading in
-      const fade = g.querySelectorAll('.composer-dock, .composer-opts, .composer-actions, .entry:not(.ghost) .entry-txt > *');
-      // what sits in the flying rows' path goes at once: a 60 ms fade still crosses the rows going home
-      for (const el of g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or')) anims.push(el.animate({ opacity: 0 }, { duration: 0, fill: 'forwards' }));
-      // the subtree rows unhide now, under a card that turns see-through
-      // nothing flying (a phone's card has no rows): only the title's row waits under the card, its subtree rides the shrinking edge up
-      const rows = _morphRows.filter(r => r.isConnected), sub = fly ? [] : rows.slice(1);
+      // the open run backwards: the parts fade first, as the open fades them in last, so the shrinking card never clips one
+      // still there (asst 10-30); then the card keeps its opaque box and shrinks with the grow to the row's, the rows go home,
+      // the title takes the row's color; what has no place in the row fades (his 10-30: "if elements disappear, they
+      // should be faded out, and text color should transition as well"). A subtask's chips are the card's: its row has its own.
+      // a desk's dock is display: contents, where opacity does nothing: its boxes fade instead
+      const boxes = el => getComputedStyle(el).display === 'contents' ? [...el.children].flatMap(boxes) : [el];
+      const fade = [...g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or, .composer-dock, .entry:not(.ghost) .entry-txt > *')].flatMap(boxes);
+      const rows = _morphRows.filter(r => r.isConnected), sub = rows.slice(1);
       for (const r of fly ? rows : rows.slice(0, 1)) r.classList.add('morph-hide', ...fly ? [] : ['morph-solo']);
       requestAnimationFrame(() => {
         // growH null: a starved frame landed past the settle below, and collapsing now would re-pin the closed grow
         if (!this._closingComposer || this.growH === null) return;
-        const o = { duration: dur, easing: _closeEase };
+        const o = { duration: dur, delay: hold, easing: _closeEase, fill: 'backwards' }, of = { ...o, fill: 'both' }, h = g.offsetHeight;
+        // the subtree unfolds under the shrinking grow, on its spring: flying rows land on it, a phone's ride its edge down
         if (sub.length) end = this.startH;
-        for (const r of sub) { r.classList.remove('edit-hidden'); anims.push(r.animate(_fold(r).reverse(), o)); }
+        for (const r of sub) { r.classList.remove('edit-hidden'); anims.push(r.animate(fly ? _fold(r).reverse() : _fold(r).map((k, i) => ({ ...k, opacity: 1 - i })).reverse(), o)); }
         this.growH = end; this.grown = false;
         g.classList.add('closing');
-        anims.push(g.firstElementChild.animate({ backgroundColor: 'transparent', boxShadow: 'none' }, { duration: 90, easing: 'ease-out', fill: 'forwards' }));
-        for (const r of rows) anims.push(r.animate({ opacity: [0, 1] }, { duration: 120, delay: 50, easing: 'ease-out', fill: 'backwards' }));
-        // back to the list's places: the un-grown layout is where the offsets were measured
-        for (const [e, d, txt, k] of _morphMoved) if (e.isConnected) anims.push(
-          e.animate({ translate: ['0px 0px', d], backgroundColor: 'transparent' }, { ...o, fill: 'forwards' }),
-          txt.animate({ scale: [1, k] }, { ...o, fill: 'forwards' }));
-        for (const el of fade) anims.push(el.animate({ opacity: [1, 0] }, { duration: 60, easing: 'ease-out', fill: 'forwards' }));
+        // once the collapse has under 8 px to go, the card turns see-through over the list's rows, which fade in; its fill
+        // turns to the row's tint first, over at least 140 ms (its ease-out is within 1% by 120), or a short collapse
+        // switches it (asst 10-30)
+        let u = 0; while ((1 + u) * Math.exp(-u) * (h - end) > 8) u += .25;
+        const tail = Math.min(Math.max(u / _closeW * 1000, 140), dur - 60), late = { delay: hold + tail, duration: dur - tail, easing: 'ease' };
+        const from = parseFloat(card.style.getPropertyValue('--from')) || end, cs = getComputedStyle(card);
+        // its own height on the grow's spring, not the grow's less --room: the rows going home never cross its edge
+        anims.push(card.animate({ height: [card.offsetHeight + 'px', from + 'px'] }, of),
+          card.animate([{ backgroundColor: cs.backgroundColor, easing: 'ease-out' }, { backgroundColor: cs.getPropertyValue('--from-bg'), offset: tail / dur }, { backgroundColor: 'transparent' }], { duration: dur, delay: hold, fill: 'both' }));   // linear: the offset is a time
+        for (const r of fly ? rows : []) anims.push(r.animate({ opacity: [0, 1] }, { ...late, fill: 'backwards' }));
+        const rt = rows[0]?.querySelector('.title'), ts = rt && getComputedStyle(rt);
+        // over the whole ride, not on the spring, which turns most of it in the first 50 ms and reads as a snap
+        if (ts) anims.push(card.querySelector('.composer-title .content').animate({ color: ts.color, opacity: ts.opacity,
+          ...ts.textDecorationLine.includes('line-through') && { textDecorationLine: ['line-through', 'line-through'], textDecorationColor: ['transparent', ts.textDecorationColor] } }, { duration: hold + dur, easing: 'ease-in-out', fill: 'forwards' }));
+        // back to the list's places: the un-grown layout is where the offsets were measured; text onto the list's line,
+        // each check to the list's (his 10-30: "sizes of the subtasks checkboxes should be transitioned")
+        for (const [e, d, txt, k, lift, ck, fit] of _morphMoved) if (e.isConnected) {
+          anims.push(e.animate({ translate: ['0px 0px', d], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], translate: ['0px 0px', `0px ${lift}px`] }, of));
+          if (fit) anims.push(ck.animate({ translate: ['0px 0px', fit[0]], scale: [1, fit[1]] }, of));
+        }
+        for (const el of fade) anims.push(el.animate({ opacity: [1, 0] }, { duration: hold + 30, fill: 'forwards' }));   // linear: a fifth left when the clip starts
+        // a phone's checklist stays put under the card: its box masks back up to the title's line, the open's unmask reversed
+        const chk = !fly && rows[0]?.querySelector('.chk-list'), cut = chk && g.getBoundingClientRect().top + from - chk.getBoundingClientRect().top;
+        if (cut > 0) anims.push(card.animate({ clipPath: [`inset(0 0 0 0 round ${cs.borderRadius})`, `inset(0 0 ${cut}px 0 round ${cs.borderRadius})`] }, of));
       });
       this._t = setTimeout(() => {
         if (!this._closingComposer) return;
         this.clip = false; this.growH = null; stop(); done && done();   // done's applyEditDom drops the rows' morph-hide
         _morphMoved = []; _morphRows = []; _morphFrom = new Map();
-      }, dur + 20);
+      }, hold + dur + 20);
     },
     openComposer() {
       this._releaseCloseRange(true);
@@ -3802,7 +3825,10 @@ document.addEventListener('alpine:init', () => {
       _morphFrom = new Map(); _morphRows = [];   // where the list draws each subtask and checklist item: the card's rows fly from there
       for (let r = row; r && r !== el; r = r.nextElementSibling) {
         _morphRows.push(r);
-        for (const x of r.querySelectorAll(r === row ? '.chk-txt' : '.title')) _morphFrom.set(x.textContent.trim(), { ...x.getBoundingClientRect().toJSON(), fs: parseFloat(getComputedStyle(x).fontSize) });
+        for (const x of r.querySelectorAll(r === row ? '.chk-txt' : '.title')) {
+          const b = x.getBoundingClientRect(), chk = (r === row ? x.closest('.chk-row') : r)?.querySelector('.chk-rect, .check')?.getBoundingClientRect();   // a Steps row's step text sits in no .chk-row
+          _morphFrom.set(x.textContent.trim(), { ...b.toJSON(), fs: parseFloat(getComputedStyle(x).fontSize), ink: _inkTop(x) - b.top, chk });   // the close lands the card's text and check on these
+        }
       }
       this._endDraft();   // a composer already open (another row, a subtask's chevron) keeps its draft under its own key
       // the ghost rows are shared DOM, and focusing one mirrors its text back into subGhost before subGhostSync runs

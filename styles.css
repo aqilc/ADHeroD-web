@@ -865,19 +865,20 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
    bar rides the grow's bottom edge, under the card until there's room for it. */
 .composer-grow.morph { position: relative; opacity: 1; overflow: visible; container-type: size;   /* its height is pinned (growH) while .morph is on; cqh = the grow's live height */
   --md: 300ms; --me: var(--ease-grow-open); &.closing { --md: 260ms; --me: var(--ease-grow-close); }   /* app.js _growOpen/_growClose's dur */
+  &.closing, &.closing .composer-card { transition-delay: 120ms; }   /* _growClose's hold: its parts fade before the collapse */
   transition: height var(--md) var(--me); --room: calc(var(--sp-8) + var(--sp-12));
   &::before { opacity: 0; transition: opacity var(--md) ease; }
   &.grown::before { opacity: 1; }
   .composer-card, .composer-body { position: static; }
   .composer-card { overflow: hidden; height: max(var(--from), calc(100% - var(--room)));
     transition: padding var(--md) var(--me), margin var(--md) var(--me), gap var(--md) var(--me), background-color var(--md) var(--me), box-shadow var(--md) var(--me); }
-  &.closing .composer-card { overflow: visible; }   /* see-through by now: the rows going home aren't cut by its shrinking box */
   &:not(.grown) .composer-card { gap: var(--sp-10); padding-left: calc(var(--gut) + var(--indent, 0px)); padding-top: calc(var(--sp-8) + var(--lift, 0px)); background-color: var(--from-bg); box-shadow: none; }
 }
 :where(html:not(.touch)) .composer-grow.morph { --room: calc(var(--sp-8) + var(--sp-24) * 2);
   .composer-actions { top: auto; bottom: var(--sp-12); left: calc(var(--gut) - var(--sp-2)); right: calc(14px - var(--sp-6)); z-index: -1;
-    clip-path: inset(max(0px, calc(var(--from) + var(--sp-12) + 28px - 100cqh)) -100vmax -100vmax); } }   /* shown only below the card's first box: early on it would sit over the row above (28 = the row) */
-.item.morph-hide:not(.morph-solo) .chk-list, .item.morph-hide :is(.check, .title) { visibility: hidden; }
+    clip-path: inset(max(0px, calc(var(--from) + var(--sp-12) + 28px - 100cqh)) -100vmax -100vmax); }   /* shown only below the card's first box: early on it would sit over the row above (28 = the row) */
+  &.closing .composer-actions { z-index: auto; clip-path: none; } }   /* a close fades it out before the collapse: the go, above the clip and over the card, fades with its row */
+.item.morph-hide:not(.morph-solo) .chk-list > *, .item.morph-hide :is(.check, .title) { visibility: hidden; }   /* the list's guide rule stays: it fades in with the row */
 .composer-card {
   /* left pad = the row's --gut check rail (app.js sets `padding-left:calc(var(--gut) + depth*22px)` per row), so the
      composer's checkbox lands exactly on the list's — the edit flow crossfades the two and any offset jumps */
