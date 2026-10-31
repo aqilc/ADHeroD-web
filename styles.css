@@ -2671,9 +2671,10 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   /* A FIXED band (Android NavBarM.tap 44): content-sized, Plan's taller segment lifts every dot. Centered on the
      band RIGHT of the gear (Android BottomNav: from edge + gearBox), so Plan's wide strip clears it. */
   .canvas-dots { --nav-shift: calc((var(--sp-12) + var(--gear)) / 2); height: 44px; padding: 0; left: calc(50% + var(--nav-shift)); }   /* padding paints nothing: dropping it is room */
-  /* Full-width cards; nothing else floats over the bottom band, so the nav reserve is all they clear. */
+  /* Full-width cards standing on whatever holds the bottom: the nav, a keyboard or a docked pop, an open sheet. */
   #notif-stack { left: var(--sp-12); right: var(--sp-12); max-width: none; align-items: stretch;
-    bottom: calc(anchor(--sheet top, var(--foot)) + var(--sp-6)); }   /* on an open composer sheet, never over its controls */
+    bottom: calc(anchor(--sheet top, var(--foot)) + var(--sp-6));   /* on an open composer sheet, never over its controls */
+    .kb & { --foot: calc(var(--kb) + var(--dock)); } }   /* and above the composer's dock riding it */
   .cl-mband, .cl-mtitle { font-size: var(--fs-22); left: 10px; }
   .touch .cl-dnum { font-size: var(--fs-13); }
   /* a day's name under the number, in sentence case, wrapping to two lines: beside it a 50px cell holds one letter */

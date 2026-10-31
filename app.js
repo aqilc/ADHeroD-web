@@ -489,6 +489,7 @@ document.addEventListener('alpine:init', () => {
     dragOverRegion: null,   // region currently hovered as a drop target
     events: [],             // calendar events, loaded from store
     pcEvents: [],           // the work PC's Outlook calendar (Windows app only), drawn beside events, never stored or edited
+    pcEdit: JSON.parse(localStorage.getItem('adherod.pcEdit') || '{}'),   // series → his {title, notes, color, countdown} over an Outlook meeting. ceiling: this PC only, as Must
     pcMustSet: JSON.parse(localStorage.getItem('adherod.must') || '{}'),   // series → Must, where it differs from Outlook's High. ceiling: this PC only; revisit if Outlook meetings show on another device
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
     scheduleItems: [],      // task↔block attachments; [] before migration is applied
@@ -588,7 +589,7 @@ document.addEventListener('alpine:init', () => {
     mailQ: '',
     mailShut: false,
     mailOpened: null,  // the mail opened in its row: {id, from, to, cc, files, body, html, high, flagged, at} (html empty for plain text), or {id, error} when Outlook refused
-    mailDraft: null,   // his answer to it: {id, kind: reply | all | forward, text, to}
+    mailDraft: null,   // his answer to it: {id, kind: reply | all | forward | answer (an invite's Going or Not going, going), text, to}
     mailPics: false,   // pictures from the web, shown for the open mail
     editing: null,
     confirm: null,
@@ -761,22 +762,31 @@ document.addEventListener('alpine:init', () => {
         // Work mail: the classic Outlook open on this PC (desktop/main.cpp § Outlook); null = none installed. A failed read keeps the last list.
         this.mailbox = { setRead: (id, read) => desktopWindow('mail', 'read', id, read), archive: id => desktopWindow('mail', 'archive', id), remove: id => desktopWindow('mail', 'delete', id),
           open: id => desktopWindow('mail', 'open', id), show: id => desktopWindow('mail', 'display', id), reply: (id, kind, text, to) => desktopWindow('mail', 'reply', id, kind, text, to),
-          respond: (id, going, tell) => desktopWindow('mail', 'respond', id, going, tell), calendar: () => loadCalendar() };
+          respond: (id, going) => desktopWindow('mail', 'respond', id, going), answer: (id, going, note) => desktopWindow('mail', 'answer', id, going, note),
+          invite: id => desktopWindow('mail', 'invite', id), showEvent: id => desktopWindow('mail', 'showEvent', id), calendar: () => loadCalendar(), redraw: () => showCalendar() };
         const loadMail = async () => {
           const got = await desktopWindow('mail', 'list');
           this.mailError = got?.error ? (got.error === 'closed' ? 'Open classic Outlook to see new mail.' : `Can't read Outlook (${got.error}).`) : '';
           if (Array.isArray(got)) this.mail = got;
         };
         // Outlook's own all-day end is the next midnight; ours is the last day. going: Outlook's answer; none asks on its day.
+        // His title, notes, color and countdown lie over each series (pcEdit); a countdown counts to the series' next one.
         const pcDay = (iso, back = 0) => { const d = new Date(iso.slice(0, 10) + 'T00:00'); d.setDate(d.getDate() - back); return isoDate(d); };
+        let read = [];
+        const showCalendar = () => {
+          _calDataV++;
+          const counted = new Set(), mine = e => this.pcEdit[e.id.split('#')[0]] || {};
+          this.pcEvents = read.map(e => ({ id: 'pc:' + e.id, title: mine(e).title || e.title, sent: e.title, notes: mine(e).notes || '', location: e.location, join: e.join, remind: e.remind, high: !!e.high, going: e.going == null ? {} : { pc: e.going }, recurrence: null,
+            color: mine(e).color || null, countdown: !!mine(e).countdown && !counted.has(e.id.split('#')[0]) && !!counted.add(e.id.split('#')[0]), all_day: e.allDay,
+            starts_at: e.allDay ? pcDay(e.start) : e.start.slice(0, 16), ends_at: e.allDay ? pcDay(e.end, 1) : e.end.slice(0, 16) }));
+          outlook = read.filter(e => e.going !== false).map(e => ({ ...e, title: mine(e).title || e.title }));   // Not going rings nothing
+        };
         const loadCalendar = async () => {
           const got = await desktopWindow('mail', 'calendar');
           this.calError = got?.error && got.error !== 'closed' ? `Can't read Outlook's calendar (${got.error}).` : '';   // closed: the mail line says so
           if (!Array.isArray(got)) return;
-          _calDataV++;
-          this.pcEvents = got.map(e => ({ id: 'pc:' + e.id, title: e.title, location: e.location, join: e.join, remind: e.remind, high: !!e.high, going: e.going == null ? {} : { pc: e.going }, recurrence: null, color: null, all_day: e.allDay,
-            starts_at: e.allDay ? pcDay(e.start) : e.start.slice(0, 16), ends_at: e.allDay ? pcDay(e.end, 1) : e.end.slice(0, 16) }));
-          outlook = got.filter(e => e.going !== false);   // Not going rings nothing
+          read = got;
+          showCalendar();
           ring();
         };
         // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one late if the app was closed, until its
@@ -2106,11 +2116,16 @@ document.addEventListener('alpine:init', () => {
       this.mailPics = false;
       if (!m.read && !got.error) this.mailRead(m);
     },
-    mailWrite(kind) { this.mailDraft = { id: this.mailOpened.id, kind, text: this.mailDraft?.id === this.mailOpened.id ? this.mailDraft.text : '', to: '' }; },
+    mailWrite(kind, going = null) { this.mailDraft = { id: this.mailOpened.id, kind, going, text: this.mailDraft?.id === this.mailOpened.id ? this.mailDraft.text : '', to: '' }; },
     async mailSend() {
-      const draft = this.mailDraft, got = await this.mailbox.reply(draft.id, draft.kind, draft.text, draft.to.trim());
+      const draft = this.mailDraft, answer = draft.kind === 'answer';
+      const got = answer ? await this.mailbox.answer(draft.id, draft.going, draft.text.trim()) : await this.mailbox.reply(draft.id, draft.kind, draft.text, draft.to.trim());
       if (!got) return this.toast("Couldn't send");   // the draft stays, text and all
       this.mailDraft = null;
+      if (answer) {
+        this.mailOpened.invite.going = draft.going;
+        this.mailbox.calendar();
+      }
       this.toast(got === 'sent' ? 'Sent' : 'Opened in Outlook');
     },
     mailWho(people) { return people.filter(Boolean).map(p => p.name && p.name !== p.address ? html`<b>${p.name}</b> <i>&lt;${p.address}&gt;</i>` : html`<b>${p.address || p.name}</b>`).join(', '); },
@@ -4693,7 +4708,7 @@ document.addEventListener('alpine:init', () => {
       const ev = key === 'eventEdit', del = ev ? 'clDeleteEvent' : 'clDeleteBlock', save = ev ? 'clSaveEvent' : 'clSaveBlock';
       return `<div class="dialog-actions cl-card-foot flex items-center gap-8"><template x-if="!${key}.id"><div class="seg cl-kind"><button type="button" :class="{ on: ${ev} }" :aria-pressed="${ev}" @click="clSetKind('event')">Event</button><button type="button" :class="{ on: ${!ev} }" :aria-pressed="${!ev}" @click="clSetKind('block')">Block</button></div></template>
         <template x-if="${ev} && eventEdit.id && eventEdit.day >= _nowDay"><div class="cl-going flex items-center gap-8"><span>Going?</span><div class="seg"><button type="button" :class="{ on: eventEdit.going === true }" :aria-pressed="eventEdit.going === true" @click="clSetGoing(true)">Going</button><button type="button" :class="{ on: eventEdit.going === false }" :aria-pressed="eventEdit.going === false" @click="clSetGoing(false)">Not going</button></div></div></template>
-        <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id" @click="${del}()" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
+        <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id && !${key}.pc" @click="${del}()" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
         <button type="button" class="primary cl-go" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
     },
     calCells() {
@@ -9379,7 +9394,7 @@ document.addEventListener('alpine:init', () => {
     // grades size and warmth, so nearness is felt before it is read.
     clCountdowns() {
       const today = this._nowDay, t0 = new Date(today + 'T00:00'), now = new Date();
-      return this.events.filter(e => e.countdown && e.starts_at?.slice(0, 10) >= today && goingOn(e, e.starts_at.slice(0, 10)) !== false).sort((a, b) => a.starts_at < b.starts_at ? -1 : 1).slice(0, 3)
+      return this.events.concat(this.pcEvents).filter(e => e.countdown && e.starts_at?.slice(0, 10) >= today && goingOn(e, e.starts_at.slice(0, 10)) !== false).sort((a, b) => a.starts_at < b.starts_at ? -1 : 1).slice(0, 3)
         .map(e => { const iso = e.starts_at.slice(0, 10);
           return { id: e.id, title: e.title, n: deadlineLeft(iso, now).label.split(' ')[0], prox: Math.max(0, 1 - (new Date(iso + 'T00:00') - t0) / 864e5 / 14) }; });
     },
@@ -9837,7 +9852,7 @@ document.addEventListener('alpine:init', () => {
     },
     // applies on press, as a block's Skip today does: an editor closed unsaved keeps it
     async clSetGoing(v, e = this.eventEdit) {
-      if (String(e.id).startsWith('pc:')) return this._clPcGoing(e.id.slice(3), v);
+      if (String(e.id).startsWith('pc:')) { if (await this._clPcGoing(e.id.slice(3), v)) e.going = v; return; }
       const was = this.events.find(x => x.id === e.id); if (!was || e.going === v) return;
       const going = was.recurrence?.freq ? { ...was.going, [e.day]: v } : { [was.starts_at.slice(0, 10)]: v };
       if (await this._journalRowChange(v ? 'Going' : 'Not going', 'event', e.id, () => this.store.events.update(e.id, { going }))) e.going = v;
@@ -9850,15 +9865,40 @@ document.addEventListener('alpine:init', () => {
       this.pcMustSet = on === !!this.pcEvents.find(e => e.id === id)?.high ? rest : { ...rest, [series]: on };   // back to Outlook's own flag: no override left
       localStorage.setItem('adherod.must', JSON.stringify(this.pcMustSet));
     },
-    // An Outlook meeting answers in Outlook, silently; Not going offers to tell the organizer
-    async _clPcGoing(id, v, tell = false) {
-      const done = await this.mailbox.respond(id, v, tell);
-      if (!done) return this.notify('Not answered in Outlook');
+    // An Outlook meeting answers in Outlook, silently; Tell organizer opens its invite's reply box for a note
+    async _clPcGoing(id, v) {
+      if (!await this.mailbox.respond(id, v)) return void this.notify('Not answered in Outlook');
       await this.mailbox.calendar();
-      if (tell) return this.notify(done === 'shown' ? 'Reply opened in Outlook' : 'Organizer told');
-      this.notify(v ? 'Going' : 'Not going', { actions: v ? [] : [{ label: 'Tell organizer', fn: () => this._clPcGoing(id, v, true) }] });
+      this.notify(v ? 'Going' : 'Not going', { actions: [{ label: 'Tell organizer', fn: () => this.clPcInvite(id, v) }] });
+      return true;
     },
-    clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clAsks(it) ? this.clOpenDay(it.start.slice(0, 10)) : it.join && desktopWindow('open', it.join); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
+    // A meeting's invite opens in its mail row (with the reply box when answering); an invite not in the list opens in Outlook, the meeting itself when none is left
+    async clPcInvite(id, going = null) {
+      const mail = await this.mailbox.invite(id), m = mail && this.mail?.find(x => x.id === mail);
+      if (!m) return void (await (mail ? this.mailbox.show(mail) : this.mailbox.showEvent(id)) || this.toast("Couldn't open the invite"));
+      this.eventEdit = null;
+      this.setNav(['all', 'backlog'].includes(this.navSel.type) ? this.navSel.type : 'all');
+      this.mailShut = false;
+      this.mailQ = '';
+      if (this.mailOpened?.id !== m.id) await this.mailToggle(m);
+      if (going != null && this.mailOpened?.invite) this.mailWrite('answer', going);
+      queueMicrotask(() => document.querySelector('.mail-open')?.scrollIntoView({ block: 'nearest' }));
+    },
+    // An Outlook meeting edits here only, for its whole series: his title, notes, color and countdown; Outlook's copy stays as sent
+    clEditPc(it) {
+      const e = this.pcEvents.find(x => x.id === it.id); if (!e) return;
+      this.eventEdit = { pc: e, id: e.id, title: e.title, notes: e.notes, date: e.starts_at.slice(0, 10), span: 0, start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi: false, all_day: !!e.all_day,
+        color: e.color, location_id: null, weekdays: [], countdown: e.countdown, importance: 'none', ticket: '', attachments: [], files: [], day: e.starts_at.slice(0, 10), going: e.going.pc ?? null };
+    },
+    clSavePc(e) {
+      const series = e.id.slice(3).split('#')[0], title = e.title.trim(), { [series]: _, ...rest } = this.pcEdit;
+      const mine = Object.fromEntries(Object.entries({ title: title !== e.pc.sent && title, notes: e.notes.trim(), color: e.color, countdown: e.countdown }).filter(([, v]) => v));   // an emptied title is Outlook's again
+      this.pcEdit = Object.keys(mine).length ? { ...rest, [series]: mine } : rest;
+      localStorage.setItem('adherod.pcEdit', JSON.stringify(this.pcEdit));
+      this.mailbox.redraw();
+      this.eventEdit = null;
+    },
+    clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clEditPc(it); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
     clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
     // ONE state class for every calendar mark of a task (and a Not going event) — chip, timeline event, agenda row, chapter band,
@@ -9908,6 +9948,7 @@ document.addEventListener('alpine:init', () => {
     _toggleIn(arr, v) { const i = arr.indexOf(v); i < 0 ? arr.push(v) : arr.splice(i, 1); },
     async clSaveEvent() {
       const e = this.eventEdit; if (!e) return;
+      if (e.pc) return this.clSavePc(e);
       if (!e.files.every(f => f.row)) return this.toast(e.files.some(f => f.failed) ? 'A file didn’t upload. Retry or remove it' : 'Files are still uploading');
       const recurrence = this._clRule(e), fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, importance: e.importance, recurrence, ...this._evRange(e, this._clAnchor(recurrence, e.date)),
         ticket: e.ticket.trim() || null, attachments: [...new Set([...e.attachments, ...e.files.map(f => f.row.id)])],

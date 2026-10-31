@@ -400,6 +400,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <template x-if="mailOpened.error"><div class="flex items-center gap-10"><span class="muted" x-text="`Can't read this mail (${mailOpened.error}).`"></span><button type="button" class="ghost" @click="mailbox.show(m.id)">Open in Outlook</button></div></template>
                   <template x-if="!mailOpened.error"><div class="mail-read-in flex-col">
                     <div class="mail-bar flex items-center gap-4">
+                      <template x-if="mailOpened.invite"><div class="cl-going flex items-center gap-8"><span>Going?</span><div class="seg"><template x-for="g in [true, false]"><button type="button" :class="{ on: (mailDraft?.id === m.id && mailDraft.kind === 'answer' ? mailDraft.going : mailOpened.invite.going) === g }" :aria-pressed="(mailDraft?.id === m.id && mailDraft.kind === 'answer' ? mailDraft.going : mailOpened.invite.going) === g" @click="mailWrite('answer', g)" x-text="g ? 'Going' : 'Not going'"></button></template></div></div></template>
                       <button type="button" class="ghost" @click="mailWrite('reply')"><svg class="ico"><use href="#i-reply"/></svg>Reply</button>
                       <button type="button" class="ghost" @click="mailWrite('all')"><svg class="ico"><use href="#i-reply-all"/></svg>Reply all</button>
                       <button type="button" class="ghost" @click="mailWrite('forward')"><svg class="ico"><use href="#i-forward"/></svg>Forward</button>
@@ -420,10 +421,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                     </div></template>
                     <div class="mail-text" x-show="!mailOpened.html"><template x-for="para in mailOpened.body.split(/\r?\n\s*\r?\n/).filter(t => t.trim())"><p x-text="para"></p></template></div>
                     <template x-if="mailDraft?.id === m.id"><div class="mail-reply flex-col">
-                      <div class="mail-to" x-show="mailDraft.kind !== 'forward'" x-html="(mailDraft.kind === 'all' ? 'Reply all to ' : 'Reply to ') + mailWho(mailDraft.kind === 'all' ? [mailOpened.from, ...mailOpened.to, ...mailOpened.cc] : [mailOpened.from])"></div>
+                      <div class="mail-to" x-show="mailDraft.kind !== 'forward'" x-html="(mailDraft.kind === 'answer' ? (mailDraft.going ? 'Going' : 'Not going') + ', with a note to ' : mailDraft.kind === 'all' ? 'Reply all to ' : 'Reply to ') + mailWho(mailDraft.kind === 'all' ? [mailOpened.from, ...mailOpened.to, ...mailOpened.cc] : [mailOpened.from])"></div>
                       <label class="mail-to flex items-center gap-8" x-show="mailDraft.kind === 'forward'">Forward to<input type="email" class="inp grow" x-model="mailDraft.to" placeholder="Email address"></label>
-                      <textarea class="inp" x-model="mailDraft.text" :placeholder="mailDraft.kind === 'forward' ? 'Add a note' : 'Write a reply'" x-init="$el.focus()"></textarea>
-                      <div class="mail-send flex gap-8"><button type="button" class="ghost" @click="mailDraft = null">Discard</button><button type="button" class="primary inline-flex items-center gap-6" :disabled="mailDraft.kind === 'forward' ? !mailDraft.to.trim() : !mailDraft.text.trim()" @click="mailSend()"><svg class="ico"><use href="#i-send"/></svg>Send</button></div>
+                      <textarea class="inp" x-model="mailDraft.text" :placeholder="mailDraft.kind === 'forward' || mailDraft.kind === 'answer' ? 'Add a note' : 'Write a reply'" x-init="$el.focus()"></textarea>
+                      <div class="mail-send flex gap-8"><button type="button" class="ghost" @click="mailDraft = null">Discard</button><button type="button" class="primary inline-flex items-center gap-6" :disabled="mailDraft.kind === 'forward' ? !mailDraft.to.trim() : mailDraft.kind !== 'answer' && !mailDraft.text.trim()" @click="mailSend()"><svg class="ico"><use href="#i-send"/></svg>Send</button></div>
                     </div></template>
                   </div></template>
                 </div></template>
@@ -1906,23 +1907,28 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
-          <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
+          <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" :aria-disabled="!!eventEdit.pc" @click="eventEdit.pc || togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
           <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('eventEdit')"></div></template></template>
         </div>
-        <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
+        <template x-if="eventEdit.pc"><div class="contents">   <!-- an Outlook meeting: its room, call and invite as Outlook has them; a field each, so a narrow row wraps chip by chip -->
+          <div class="field" x-show="eventEdit.pc.location"><span class="chip chip-loc set inline-flex items-center" title="Room"><svg class="ico"><use href="#i-pin-fill"/></svg><span x-text="eventEdit.pc.location"></span></span></div>
+          <div class="field" x-show="eventEdit.pc.join"><button type="button" class="chip set inline-flex items-center" title="Join the call" @click="desktopWindow('open', eventEdit.pc.join)"><svg class="ico"><use href="#i-external"/></svg><span>Join</span></button></div>
+          <div class="field"><button type="button" class="chip set inline-flex items-center" title="Open the invite" @click="clPcInvite(eventEdit.id.slice(3))"><svg class="ico"><use href="#i-mail"/></svg><span>Invite</span></button></div>
+        </div></template>
+        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clPlace', $event, $el)">
           <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(eventEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(eventEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(eventEdit.location_id) || 'Place'"></span></button>
           <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :style="popStyle()">
             <button type="button" class="pop-item" :class="{ on: !eventEdit.location_id }" @click="eventEdit.location_id = null; pop = null">Anywhere</button>
             <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: eventEdit.location_id === l.id }" @click="eventEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
           </div></template></template>
         </div>
-        <div class="field" @click.document.capture="clPopAway('clRepeat', $event, $el)">
+        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clRepeat', $event, $el)">
           <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(eventEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(eventEdit) || 'Repeat'"></span></button>
           <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
             <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
           </div><div x-html="clRepHtml('eventEdit')"></div></div></template></template>
         </div>
-        <div class="field" @click.document.capture="clPopAway('clImp', $event, $el)">
+        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clImp', $event, $el)">
           <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: eventEdit.importance !== 'none' }" :style="'--cc:' + pc(eventEdit.importance)" :title="impName(eventEdit.importance, 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'clImp'" @click="togglePop('clImp', $el)"><svg class="ico"><use :href="eventEdit.importance !== 'none' ? '#i-prio-fill' : '#i-prio'"/></svg><span x-text="impName(eventEdit.importance, 'Importance')"></span></button>
           <template x-if="pop === 'clImp'"><template x-teleport="body"><div class="pop cl-pop pri-pop" :style="popStyle()">
             <template x-for="o in [['none','None','No special handling'],['focus','Focus','Holds other pings while it runs'],['must','Must','Rings until it starts']]" :key="o[0]">
@@ -1930,7 +1936,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </template>
           </div></template></template>
         </div>
-        <div class="field" @click.document.capture="clPopAway('clTicket', $event, $el)">
+        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clTicket', $event, $el)">
           <button type="button" class="chip chip-ticket inline-flex items-center" :class="{ set: eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length }" title="Ticket" aria-haspopup="dialog" :aria-expanded="pop === 'clTicket'" @click="togglePop('clTicket', $el)"><svg class="ico"><use href="#i-clip"/></svg><span x-show="eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length">Ticket</span></button>
           <template x-if="pop === 'clTicket'"><template x-teleport="body"><div class="pop cl-pop ev-ticket" :style="popStyle()">
             <textarea class="ev-field" rows="1" placeholder="Link or code" aria-label="Link or code" :value="eventEdit.ticket" @input="eventEdit.ticket = $event.target.value" @keydown.enter.prevent="pop = null"></textarea>
