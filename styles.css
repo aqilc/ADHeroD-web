@@ -1837,9 +1837,6 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .sel-bar { flex-wrap: wrap; padding: 0 0 var(--sp-20); }
 .sel-count { flex: none; font-size: var(--fs-13); font-weight: 700; color: var(--accent); }
 .sel-count b { font-variant-numeric: tabular-nums; }
-.sel-x { width: 24px; height: 24px; border: none; background: none; color: var(--faint); cursor: pointer; transition: background-color .15s var(--ease-out), color .15s var(--ease-out); }
-.sel-x:hover { background: var(--hover); color: var(--ink); }
-.sel-x .ico { width: 13px; height: 13px; flex: none; }
 .sel-acts { flex-wrap: wrap; margin-left: var(--sp-6); padding-left: var(--sp-8); border-left: 1px solid var(--hair); }
 .sel-field { position: relative; flex: none; }
 /* the app's .ghost and .icon-btn; Delete is the composer's trash look, its own class (a .del-btn here would shadow the composer's for querySelector) */
@@ -2589,7 +2586,6 @@ textarea.inp { resize: vertical; }
 .blk-field .entry-del { opacity: .6; }   /* an attached task has no text to Backspace out of: the x is its only detach, shown at rest (touch has no hover) */
 /* .ev-field appearance is the shared .inp rule; only ev-specific layout lives here */
 .ev-dash { color: var(--muted); }
-.ev-lab { color: var(--muted); font-size: var(--fs-13); flex: none; white-space: nowrap; }
 /* Block editor extras: weekday repeat toggles */
 .section-label { display: block; margin-bottom: var(--sp-6); }
 .blk-wd { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel); color: var(--ink); font-size: var(--fs-12); }

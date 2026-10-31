@@ -917,7 +917,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <!-- Picker rows: a click adds as Relates; a drag onto a well picks the kind -->
               <template x-if="pop === 'rel'"><template x-teleport="body"><div class="pop rel-pop" :class="{ dock: popDock }" :style="popStyle()">
                 <div class="relations-section">
-                  <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.stop="$event.key === 'Escape' && escape()">
+                  <input type="text" class="pop-input" placeholder="Link a task…" x-model="pickerQ" @keydown.enter.prevent="pickerQ.trim() && relationCandidates()[0] && addRelation(relationCandidates()[0].id, 'relates')" @keydown.stop="$event.key === 'Escape' && escape()">
                   <div class="rel-picker">
                     <template x-for="t in relationCandidates()" :key="t.id">
                       <div class="pop-item rel-row flex items-center gap-4" draggable="true" @click="addRelation(t.id, 'relates')" @dragstart="relDragId = t.id; $event.dataTransfer.setData('text/plain', t.id)" @dragend="relDragId = null" title="Drag to a well, or click to add as Relates">

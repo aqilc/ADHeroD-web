@@ -690,7 +690,7 @@ document.addEventListener('alpine:init', () => {
         if (top) !this.anyDialog() && this.composer.open && this.$refs.composer.contains(ed) ? ed.blur() : this.escape(true);   // a dialog the composer opened keeps the composer's focused button
         this._syncHist();
       });
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); });
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); else this._nowTickV++; });   // shown: the now-line and leave-by catch up on the minutes a hidden tab skipped
       // A trackpad PINCH arrives as ctrl/⌘+wheel. Left to the browser it page-zooms, which changes the row
       // height the virtualized calendar measures dates against — the same scrollTop then reads as a different
       // YEAR. Capture + stopPropagation so the calendar always claims it and no inner
@@ -749,7 +749,7 @@ document.addEventListener('alpine:init', () => {
       this.booted = true;   // the Windows app opens a launch's task link only now: byId is empty until here
       if (this.sticky) { this.startAdd(); this.$watch('draft.content', q => this.listQ = q || ''); }   // the title adds AND filters: its text, never its pills
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
-      setInterval(() => { this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) { this._nowDay = d; this._resumeDue(); } if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest; _nowDay busts visibleRows on midnight
+      setInterval(() => { if (!document.hidden) this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) { this._nowDay = d; this._resumeDue(); } if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest (a hidden tab skips the re-list it forces); _nowDay busts visibleRows on midnight
       if (window.desktopWindow) addEventListener('storage', e => {   // the sticky and composer windows follow the app window's theme live: its write reaches them as this event
         if (e.key === 'adherod.theme' || e.key === 'adherod.colorTheme') { this.colorTheme = savedColorTheme(this.store.theme()); this.setTheme(savedAppearance()); }
       });
@@ -760,19 +760,21 @@ document.addEventListener('alpine:init', () => {
         setInterval(checkUpdate, 6 * 3600e3);
         addEventListener('desktopshow', checkUpdate);   // reopened from the tray: a close only hides the app
         // Work mail: the classic Outlook open on this PC (desktop/main.cpp § Outlook); null = none installed. A failed read keeps the last list.
+        let away = 0, sent = false;   // when the window lost focus; sent: we opened something in Outlook, where he may answer it
         this.mailbox = { setRead: (id, read) => desktopWindow('mail', 'read', id, read), archive: id => desktopWindow('mail', 'archive', id), remove: id => desktopWindow('mail', 'delete', id),
-          open: id => desktopWindow('mail', 'open', id), show: id => desktopWindow('mail', 'display', id), reply: (id, kind, text, to) => desktopWindow('mail', 'reply', id, kind, text, to),
+          open: id => desktopWindow('mail', 'open', id), show: id => (sent = true, desktopWindow('mail', 'display', id)), reply: (id, kind, text, to) => desktopWindow('mail', 'reply', id, kind, text, to),
           respond: (id, going) => desktopWindow('mail', 'respond', id, going), answer: (id, going, note) => desktopWindow('mail', 'answer', id, going, note),
-          invite: id => desktopWindow('mail', 'invite', id), showEvent: id => desktopWindow('mail', 'showEvent', id), calendar: () => loadCalendar(), redraw: () => showCalendar() };
+          invite: id => desktopWindow('mail', 'invite', id), showEvent: id => (sent = true, desktopWindow('mail', 'showEvent', id)), calendar: () => loadCalendar(), redraw: () => showCalendar(),
+          going: (id, going) => { for (const e of read) if (e.id === id) e.going = going; readKey = ''; showCalendar(); } };   // an answer here patches the meeting: no rescan
         const loadMail = async () => {
           const got = await desktopWindow('mail', 'list');
           this.mailError = got?.error ? (got.error === 'closed' ? 'Open classic Outlook to see new mail.' : `Can't read Outlook (${got.error}).`) : '';
-          if (Array.isArray(got)) this.mail = got;
+          if (Array.isArray(got) && JSON.stringify(got) !== JSON.stringify(this.mail)) this.mail = got;   // the same again keeps the list as drawn
         };
         // Outlook's own all-day end is the next midnight; ours is the last day. going: Outlook's answer; none asks on its day.
         // His title, notes, color and countdown lie over each series (pcEdit); a countdown counts to the series' next one.
         const pcDay = (iso, back = 0) => { const d = new Date(iso.slice(0, 10) + 'T00:00'); d.setDate(d.getDate() - back); return isoDate(d); };
-        let read = [];
+        let read = [], readKey = '';
         const showCalendar = () => {
           _calDataV++;
           const counted = new Set(), mine = e => this.pcEdit[e.id.split('#')[0]] || {};
@@ -785,9 +787,9 @@ document.addEventListener('alpine:init', () => {
           const got = await desktopWindow('mail', 'calendar');
           this.calError = got?.error && got.error !== 'closed' ? `Can't read Outlook's calendar (${got.error}).` : '';   // closed: the mail line says so
           if (!Array.isArray(got)) return;
-          read = got;
-          showCalendar();
-          ring();
+          const key = JSON.stringify(got);
+          if (key !== readKey) { read = got; readKey = key; showCalendar(); }   // the same again keeps the calendar as drawn
+          ring();   // a refused alert rings again on the next read
         };
         // Each due reminder rings once, kept across restarts (desktop/main.cpp § Toast): an Outlook one late if the app was closed, until its
         // meeting ends, with its room and call, a Ping unless High or Must: an Alarm until its start, hushed there like ours;
@@ -798,7 +800,8 @@ document.addEventListener('alpine:init', () => {
         let outlook = [], ringTimer = 0, pinged = [];
         const ring = () => {   // synchronous, so a reload mid-ring can't ring twice
           clearTimeout(ringTimer);
-          const rung = new Set(JSON.parse(localStorage.getItem('adherod.rung') || '[]')), now = Date.now(), late = now - 10 * 60e3, nowAt = localStamp(new Date());
+          const now = Date.now(), late = now - 10 * 60e3, nowAt = localStamp(new Date());
+          const rung = new Map(JSON.parse(localStorage.getItem('adherod.rung') || '[]').map(r => Array.isArray(r) ? r : [r, now]));   // id -> until; a bare id is an older build's
           const due = [];
           for (const e of outlook.filter(e => e.remind != null)) {
             const start = +new Date(e.start), must = this.pcMustSet[e.id.split('#')[0]] ?? e.high, more = must ? ['', 'must:' + e.id] : [];   // the tag its hush replaces
@@ -831,24 +834,28 @@ document.addEventListener('alpine:init', () => {
             if (rung.has(item.id) || item.until <= now) continue;
             if (item.at > now) next = Math.min(next, item.at);
             else {
-              rung.add(item.id);
+              rung.set(item.id, item.until);
               if (item.sev === 'ping') pinged.unshift(item.title);
               // Windows refused it (notifications off for the app, a policy): not rung, so the next read rings it again, and the app says so
               desktopWindow(...item.sev === 'ping' ? ['ping', pinged[0], [item.body, ...pinged.slice(1)].filter(Boolean).join('\n')] : [item.sev, item.title, item.body], item.join, ...item.more ?? []).then(shown => {
                 if (shown) return;
-                localStorage.setItem('adherod.rung', JSON.stringify(JSON.parse(localStorage.getItem('adherod.rung') || '[]').filter(id => id !== item.id)));
+                localStorage.setItem('adherod.rung', JSON.stringify(JSON.parse(localStorage.getItem('adherod.rung') || '[]').filter(([id]) => id !== item.id)));
                 this.notify(`Windows didn't show the alert for ${item.title}`);
               });
             }
           }
-          localStorage.setItem('adherod.rung', JSON.stringify(due.map(item => item.id).filter(id => rung.has(id))));   // past ones drop out
+          for (const item of due) if (rung.has(item.id)) rung.set(item.id, item.until);   // a moved meeting keeps its own end
+          // a day past its until, never by absence: a boot rings before Outlook is read; a day keeps a Must's Alarm known for its hush
+          localStorage.setItem('adherod.rung', JSON.stringify([...rung].filter(([, until]) => until > now - 864e5)));
           if (next < Infinity) ringTimer = setTimeout(ring, Math.min(next - now, 2 ** 31 - 1));
         };
         Alpine.effect(ring);   // reads this.reminders, this.byId and this.events: an edit reschedules
         addEventListener('focus', () => { pinged = []; });   // seen: the next Ping starts a new notification
-        const loadOutlook = () => { loadMail(); loadCalendar(); };
-        loadOutlook();
-        addEventListener('focus', loadOutlook);
+        loadMail();
+        loadCalendar();
+        // Outlook's calendar read blocks the window (desktop/main.cpp calendarList reads bodies): a focus back from under a minute away keeps it
+        addEventListener('blur', () => { away = sent ? 0 : Date.now(); sent = false; });
+        addEventListener('focus', () => { loadMail(); if (Date.now() - away > 60e3) loadCalendar(); away = 0; });
         setInterval(loadCalendar, 5 * 60e3);   // a meeting booked while the app sits in the tray
       }
       document.addEventListener('selectionchange', () => this._chkSelTint());   // checklist cross-row selection tint
@@ -2124,7 +2131,7 @@ document.addEventListener('alpine:init', () => {
       this.mailDraft = null;
       if (answer) {
         this.mailOpened.invite.going = draft.going;
-        this.mailbox.calendar();
+        this.mailbox.calendar();   // ceiling: rescans, as the invite carries no meeting id; patch with mailbox.going once desktop/main.cpp sends it
       }
       this.toast(got === 'sent' ? 'Sent' : 'Opened in Outlook');
     },
@@ -9868,7 +9875,7 @@ document.addEventListener('alpine:init', () => {
     // An Outlook meeting answers in Outlook, silently; Tell organizer opens its invite's reply box for a note
     async _clPcGoing(id, v) {
       if (!await this.mailbox.respond(id, v)) return void this.notify('Not answered in Outlook');
-      await this.mailbox.calendar();
+      this.mailbox.going(id, v);
       this.notify(v ? 'Going' : 'Not going', { actions: [{ label: 'Tell organizer', fn: () => this.clPcInvite(id, v) }] });
       return true;
     },
