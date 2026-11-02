@@ -457,6 +457,7 @@ export function createSupabaseStore(client) {
     homeLocationId() { return _settings.home_location_id ?? null; },   // designated "home" place ("at home" NLP)
     setHomeLocation: id => patchSettings({ home_location_id: _settings.home_location_id === id ? null : id }),
     currentRegion() { return _settings.current_region ?? 'Home'; },
+    setDeskCheck: deskCheck => patchSettings({ desk_check: deskCheck }),
 
     // Trash restore: re-insert previously-deleted rows. Powers "Recently deleted". A row already live stays as it is (ON CONFLICT DO NOTHING):
     // the cache can miss one another device brought back and edited since, which the Bin's older copy must never overwrite.

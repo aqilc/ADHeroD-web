@@ -775,6 +775,11 @@ document.addEventListener('alpine:init', () => {
         // His title, notes, color and countdown lie over each series (pcEdit); a countdown counts to the series' next one.
         const pcDay = (iso, back = 0) => { const d = new Date(iso.slice(0, 10) + 'T00:00'); d.setDate(d.getDate() - back); return isoDate(d); };
         let read = [], readKey = '';
+        // Kept in his settings so we can read off the work PC whether alerts reach him, with no file or paste from him: the calendar's
+        // last read (a meeting count or why it failed) and the last ten alerts with Windows' answer, never a title. Rewritten once a day unchanged.
+        const build = await desktopWindow('build'), check = { build: build?.bundle || build?.tag || null, calendar: null, alerts: [] };
+        let checked = '';
+        const report = () => { const key = JSON.stringify(check) + isoDate(new Date()); if (key !== checked) this.store.setDeskCheck(check).then(ok => { if (ok) checked = key; }); };
         const showCalendar = () => {
           _calDataV++;
           const counted = new Set(), mine = e => this.pcEdit[e.id.split('#')[0]] || {};
@@ -786,6 +791,8 @@ document.addEventListener('alpine:init', () => {
         const loadCalendar = async () => {
           const got = await desktopWindow('mail', 'calendar');
           this.calError = got?.error && got.error !== 'closed' ? `Can't read Outlook's calendar (${got.error}).` : '';   // closed: the mail line says so
+          check.calendar = Array.isArray(got) ? got.length : got?.error || 'no Outlook';
+          report();
           if (!Array.isArray(got)) return;
           const key = JSON.stringify(got);
           if (key !== readKey) { read = got; readKey = key; showCalendar(); }   // the same again keeps the calendar as drawn
@@ -836,9 +843,12 @@ document.addEventListener('alpine:init', () => {
             else {
               rung.set(item.id, item.until);
               if (item.sev === 'ping') pinged.unshift(item.title);
-              // Windows refused it (notifications off for the app, a policy): not rung, so the next read rings it again, and the app says so
+              // Windows refused it (notifications off for the app, a policy): not rung, so the next read rings it again, and the app says so.
+              // shown: true, or why not (an older exe: false)
               desktopWindow(...item.sev === 'ping' ? ['ping', pinged[0], [item.body, ...pinged.slice(1)].filter(Boolean).join('\n')] : [item.sev, item.title, item.body], item.join, ...item.more ?? []).then(shown => {
-                if (shown) return;
+                check.alerts = [{ at: localStamp(new Date()), sev: item.sev, late: Math.round((Date.now() - item.at) / 6e4), join: !!item.join, shown }, ...check.alerts].slice(0, 10);
+                report();
+                if (shown === true) return;
                 localStorage.setItem('adherod.rung', JSON.stringify(JSON.parse(localStorage.getItem('adherod.rung') || '[]').filter(([id]) => id !== item.id)));
                 this.notify(`Windows didn't show the alert for ${item.title}`);
               });

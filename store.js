@@ -942,6 +942,7 @@ export function createLocalStore(opts = {}) {
     currentRegion() { return readMeta().current_region ?? 'Home'; },
     theme() { return readMeta().theme ?? null; },
     setTheme(theme) { return writeMeta({ ...readMeta(), theme }); },
+    async setDeskCheck(deskCheck) { return writeMeta({ ...readMeta(), desk_check: deskCheck }); },
 
   };
 }
