@@ -102,6 +102,7 @@ const CL_STACK_Y = CL_TITLE_PX;           // (28px in a week column); a stack ke
 // Day/week has NO SCROLLER. It is a transform viewport: clPos {idx, frac} is the position, and the timeline is
 // painted at translateY(-pf · --ph). No spacer means no origin to drift from.
 const GLIDE_YIELD = ['wheel', 'touchstart', 'pointerdown'];   // fresh wheel gestures, touches and presses outrank a glide; an existing tail doesn't
+const CL_DAY_HOUR = 14;                   // the least px an hour of Day draws: its 14px label line; more pushes an ordinary day past a small phone's page
 const CL_GESTURE_GAP = 140;               // ms of quiet that ends a scroll gesture (trackpad momentum fires continuously, so this only trips when the fingers are done)
 const CL_TURN_MS = 368;                   // page-turn / nudge tween
 const CL_FLING = 0.94;                    // per-frame decay of touch-release momentum
@@ -111,8 +112,6 @@ const CL_WEEK_BLEED = 64;                 // px the week may travel PAST its own
 const CL_MONTH_SLOW = 0.1;                // px/ms — a month scroll this slow is a crawl, and the out-of-month dim returns (tuned by feel)
 const CL_MONTH_WAKE = 4;                  // ×SLOW to lift it again mid-gesture — the gap is what stops a decaying glide strobing across one threshold
 const CL_MONTH_SETTLE = 260;              // ms a month scroll must stay stopped before the band/title text goes (a wheel's notches each fire scrollend)
-const CL_AG_ROW = 52, CL_AG_FREE = 34;   // full-tier agenda row heights ("1h free" rows too) = their CSS min-heights; the page fit sums both. Rows FLOW — proportion is the rail's job
-const CL_AG_GAP = 30;                     // a hole in the day big enough to be worth naming ("1h free")
 const CL_WALK = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };   // a focused month day's arrows, in days
 const CL_BAR = 90, CL_HEAD = 32;          // overlaid toolbar + weekday-header heights (must match --bar/--head in CSS)
 const CL_MNAMED = 62, CL_MCHIP = 14, CL_MMORE = 18;   // phone month cell, px: padding + number + two-line name + gap less a chip gap · a chip + its gap · what a "+N" adds (must match the phone .cl-cell/.cl-dn/.cl-chip/.cl-more)
@@ -133,6 +132,7 @@ let _clAdNxH = null;   // last written --adh (the incoming claims rail height)
 let _sheetDrag = null;   // sheetDown(): the finger dragging a phone sheet (the Plan panel, the lists tray)
 let _sideSlideT;   // clSideToggle(): ends the grid's slide
 const _clPgCache = new Map();   // day/week periods by index: scale-free days + bands, and their packed cols at one scale
+const _clNexts = new Map();   // _clNextFirst(): a day's next day's first timed item or block, cleared with _clPgCache
 const _clWkCache = new Map();   // month week rows by index, off the Alpine proxy (a reactive Map deep-proxies every cell)
 const _nextMemo = new Map();   // repeat rule + anchor + day → the occurrence its row shows (whenShown): one step-walk per repeat per day
 let _clBlocksSig = null, _clBlocksCache = [], _clWkOut = [], _clWkSig = null, _clPgSig = null;   // clBlocks() single-entry memo — a view switch/scroll settle re-fires it ~100×; returning the SAME array ref lets Alpine's x-for no-op instead of re-diffing 500+ nodes
@@ -9105,9 +9105,8 @@ document.addEventListener('alpine:init', () => {
       const e = new Date(d); e.setDate(e.getDate() + 6);
       return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' – ' + e.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
     },
-    // A WEEK block is its 24h body — its top border is the 12am rule. A DAY block is a PAGE: the agenda flows
-    // from the top, so a 24h-tall block would park the whole list above a viewport scrolled to waking hours.
-    // One day fills the scroller exactly, and the rail beside it carries the clock.
+    // A WEEK block is its 24h body — its top border is the 12am rule. A DAY block is a PAGE: its rows and waking hours
+    // fill the scroller exactly, and a day too full for it scrolls inside its page (_clAgScroll).
     clPeriodH() { return this.clView === 'day' ? this._clDayH() + CL_FOOT : 24 * (this.clHourH || 40); },   // a day also spans the nav band, so the NEXT day never parks under the nav
     // one page = the scroller's VISIBLE area: .cl-pages already reserves the chrome with padding-top, so a
     // parked day starts below the header without the agenda insetting itself a second time
@@ -9315,7 +9314,7 @@ document.addEventListener('alpine:init', () => {
       if (_clBlocksSig === sig) return _clBlocksCache;
       // Per period: a turn builds only the incoming one, and a zoom step only re-packs (scale), never re-reads a day.
       const dataSig = this._clDataSig(shelf);
-      if (_clPgSig !== dataSig || _clPgCache.size > 60) { _clPgSig = dataSig; _clPgCache.clear(); }   // size: a long travel would keep every period it passed
+      if (_clPgSig !== dataSig || _clPgCache.size > 60) { _clPgSig = dataSig; _clPgCache.clear(); _clNexts.clear(); }   // size: a long travel would keep every period it passed
       // grouped 8 periods at a time: calendarItems scans every task whatever the span, so a turn mostly hits the memo
       const base = start - start % 8, from = this._periodDate(base), toD = this._periodDate(base + 7 + this.clPVisCount); toD.setDate(toD.getDate() + span - 1);
       const out = [];
@@ -9328,6 +9327,7 @@ document.addEventListener('alpine:init', () => {
           byDay ||= this._clGroup(isoDate(from), isoDate(toD));
           const days = Array.from({ length: span }, (_, i) => {
             const d = new Date(ps); d.setDate(d.getDate() + i); const iso = isoDate(d);
+            if (span === 1) this._clNextFirst(iso, byDay);   // its night strip and next-day tile, from this pass
             return this._clColumn(iso, (byDay[iso] || []).filter(it => it.kind !== 'task-block' || !shelved.has(it.id)));
           });
           _clPgCache.set(idx, pg = { days, bands: this._clWeekBands(days) });
@@ -9335,8 +9335,8 @@ document.addEventListener('alpine:init', () => {
         if (pg.scale !== scale) {
           pg.scale = scale;
           pg.cols = pg.days.map(c => this._clPack(c));
-          // Day stops being a grid, so it has no band layer at all: the agenda gives every mark and every all-day
-          // item — including one that merely passes through today — a real row of its own.
+          // Day has no band layer: every mark and every all-day item (one merely passing through today too) gets a
+          // row of its own above the day's hours.
           if (span === 1) for (const c of pg.cols) c.agenda = this._clAgenda(c);
         }
         out.push({ key: idx, rel: idx - start, cols: pg.cols, bands: pg.bands });   // top comes from --ph in CSS so it cannot drift from the height
@@ -9518,32 +9518,16 @@ document.addEventListener('alpine:init', () => {
       return { 'is-running': p.it.live, 'is-done': st === 'done', 'is-missed': st === 'missed', 'is-skipped': st === 'skipped', 'is-open': this.clBandOpen(p.it), 'is-terrain': p.terrain, 'cl-stk': !!p.stk, 'cl-held': this.clHeld(p) }; },
     clBlkStyle(p) { return 'top:' + p.topPct + '%;height:' + this.clBandH(p.it, p.hPct) + '%;' + this.clEvBox(p) + 'z-index:' + (p.terrain ? 1 : 2 + p.lane) + ';--cc:' + (p.it.color || 'var(--accent)'); },
     clDlClass(m, mi) { return (mi === 0 ? 'lead' : '') + (m.start.length > 10 ? ' at' : '') + this.clTaskState(m); },
-    // Rows flow at a readable height; gaps become named free slots; proportion moves to the rail.
+    // A day's rows: the all-day ones (deadlines first: the sharpest thing on a day), then each timed item at its minute.
     _clAgenda(col) {
       const rows = [];
-      let end = -1;
-      // A deadline is the sharpest thing on a day: a row of its own, at the top, before anything you could get lost in.
       for (const it of [...col.deadlines, ...col.marks]) rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 });
-      // ...and an all-day item is simply a thing you are doing today, whether or not it also runs past today
       for (const it of col.bands) rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 });
       for (const p of [...col.timed].sort((a, b) => a.topPct - b.topPct || b.hPct - a.hPct)) {
-        const min = Math.round(p.topPct * 14.4), mins = Math.max(1, (p.it.end.slice(0, 10) > col.iso ? 1440 : this._clMin(p.it.end)) - min);   // the real end: hPct carries the grid's 20-minute floor
-        // a timed due/deadline is still a MOMENT: it keeps its time but never claims a duration, nor splits a free gap
-        if (this._clIsMark(p.it)) { rows.push({ key: p.it.kind + p.it.id + min, it: p.it, mark: true, min, mins: 0 }); continue; }
-        if (end >= 0 && min - end >= CL_AG_GAP) rows.push({ key: 'free' + end, free: true, min: end, mins: min - end });
-        rows.push({ key: p.it.kind + p.it.id + min, it: p.it, min, mins });
-        end = Math.max(end, min + mins);
+        const min = Math.round(p.topPct * 14.4), mark = this._clIsMark(p.it);   // a timed due/deadline is still a MOMENT: its time, no length
+        rows.push({ key: p.it.kind + p.it.id + min, it: p.it, mark, min, mins: mark ? 0 : Math.max(1, (p.it.end.slice(0, 10) > col.iso ? 1440 : this._clMin(p.it.end)) - min) });   // the real end: hPct carries the grid's 20-minute floor
       }
-      rows.sort((a, b) => a.min - b.min);   // stable: a gap's free row lands before a deadline inside it, all-day rows stay on top
-      // Rows PACK from the top rather than stretching to fill 24h: an agenda's job is to be read, and a list
-      // spaced by real proportion is mostly empty night. Scale stays on the rail, which is why it exists.
-      // A packed day would outgrow its own block, and the block height is load-bearing (top = idx * periodH).
-      // Shed the subtitle before anything gets clipped.
-      // h: the full-tier height, "1h free" rows included (uncounted, a gappy day runs off its page). The template picks the tier
-      // against the live page height, so a resize re-binds one class instead of rebuilding the day.
-      // ceiling: a day too long even for compact still clips its tail unseen — what to drop is a design call, not made yet; revisit when a real day overflows compact
-      const f = rows.filter(r => r.free).length;
-      return { rows, h: (rows.length - f) * CL_AG_ROW + f * CL_AG_FREE };
+      return rows;
     },
     // An agenda row is read on its own, so the time must be unambiguous — "2:00" beside "11:00" reads as 2am.
     clAgTime(m) { return (m % 60 ? this._clHM(m) : ((Math.floor(m / 60) + 11) % 12) + 1) + (m < 720 ? ' AM' : ' PM'); },
@@ -9565,30 +9549,117 @@ document.addEventListener('alpine:init', () => {
     // directive inits per page built. Reads the reactive state a binding would, so an edit still repaints its row.
     clAgParts(key, col) {
       col = this._clColNow(key, col);
-      const rows = col.agenda?.rows || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0, dot = raw(html`<span class="cl-ag-dot"></span>`);
-      const parts = rows.map((r, ix) => {
-        const it = r.it, ask = !r.free && this.clAsks(it), pc = !r.free && String(it.id).startsWith('pc:'), must = !r.free && it.going !== false && (pc ? { on: this.pcMust(it.id) } : it.importance === 'must'), mark = r.free ? dot : it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`)
-          : it.kind === 'task-deadline' ? raw(html`<svg class="ico cl-dl-ico"><use href="#i-flag"/></svg>`) : dot;
-        return { id: r.key, html: html`<div class="cl-ag-row ${r.free ? 'free' : it.kind + (r.mark ? ' mark' : '') + this.clTaskState(it)}${!r.allday && r.min + r.mins <= cut ? ' past' : ''}"`
-          + html` data-id="${r.key}" tabindex="${r.free ? -1 : 0}"${raw(!r.free && this._dndKind(it.kind) ? ' draggable="true"' : '')}`
-          + html` style="--i:${ix};--cc:${r.free ? 'var(--muted)' : this.clItemColor(it)}"><span class="cl-ag-t">${r.allday ? 'All day' : this.clAgTime(r.min)}`
-          + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n"${raw(ask ? ' tabindex="-1"' : '')}>${r.free ? this.durFmt(r.mins) + ' free' : it.title}`
-          + html`</span><span class="cl-ag-d">${r.free ? '' : !ask && !must ? this.clAgSub(r) : raw(html`<span class="cl-ag-s">${this.clAgSub(r)}</span><span class="cl-ag-ask">${raw(ask ? html`<button type="button" class="pri-chip tog" data-go="1">Going</button><button type="button" class="pri-chip tog" data-go="0">Not going</button>` : '')}${raw(!must ? '' : pc ? html`<button type="button" class="pri-chip ${must.on ? 'sel' : 'tog'}" style="${must.on ? '--pc:var(--p1)' : ''}" data-must aria-pressed="${must.on}"><svg class="ico"><use href="#i-prio"/></svg>Must</button>` : html`<span class="pri-chip sel" style="--pc:var(--p1)"><svg class="ico"><use href="#i-prio"/></svg>Must</span>`)}</span>`)}</span></span></div>` };   // ours shows Must, set in its editor; the row opens it
-      });
-      if (!rows.length) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });
+      const rows = col.agenda || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0;
+      const parts = rows.filter(r => r.allday).map((r, ix) => ({ id: r.key, html: this._clAgRowHtml(r, ix, cut) }));
+      if (!rows.length && !col.blocks.some(b => !b.allDay)) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });   // above the hours: inside them it reads as an entry at that hour
       if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });
       return parts;
     },
-    clRailHtml(key, col) {
-      col = this._clColNow(key, col);
-      return col.blocks.map(b => html`<div class="cl-rail-blk" style="top:${b.topPct}%;height:${this.clBandH(b, b.hPct)}%;--cc:${b.color || 'var(--accent)'}" title="${b.title}"></div>`).join('')
-        + col.timed.map(p => html`<div class="cl-rail-seg ${p.it.kind}" style="top:${p.topPct}%;height:${p.hPct}%;--cc:${this.clItemColor(p.it)}"></div>`).join('');
+    // at: a timed mark's place on the hours (it has no length to draw as a tile)
+    _clAgRowHtml(r, ix, cut, at = '') {
+      const it = r.it, ask = this.clAsks(it), chips = this._clAskHtml(it, ask), dot = raw(html`<span class="cl-ag-dot"></span>`);
+      const mark = it.kind === 'task-block' ? raw(html`<span class="cl-ag-chk">${raw(this.clCheckHtml(it, 'cl-evt-check'))}</span>`) : it.kind === 'task-deadline' ? raw(html`<svg class="ico cl-dl-ico"><use href="#i-flag"/></svg>`) : dot;
+      return html`<div class="cl-ag-row ${it.kind + (r.mark ? ' mark' : '') + this.clTaskState(it)}${!r.allday && r.min + r.mins <= cut ? ' past' : ''}${at ? ' cl-dmark' : ''}"`
+        + html` data-id="${r.key}" tabindex="0"${raw(this._dndKind(it.kind) ? ' draggable="true"' : '')}`
+        + html` style="${at}--i:${ix};--cc:${this.clItemColor(it)}"><span class="cl-ag-t">${r.allday ? (ix ? '' : 'All day') : this.clAgTime(r.min)}`
+        + html`</span><span class="cl-ag-m">${mark}</span><span class="cl-ag-b"><span class="cl-ag-n"${raw(ask ? ' tabindex="-1"' : '')}>${it.title}`
+        + html`</span><span class="cl-ag-d">${!chips ? this.clAgSub(r) : raw(html`<span class="cl-ag-s">${this.clAgSub(r)}</span>${raw(chips)}`)}</span></span></div>`;
     },
-    _clAgRow(e, col) { const el = e.target.closest('.cl-ag-row'); return el && col.agenda?.rows.find(r => r.key === el.dataset.id); },
+    // The one-tap answers: Going / Not going while an event asks, and Must (Outlook's toggles here; ours shows, set in
+    // its editor, the row opens it). tile: a tile already shows our Must as its icon.
+    _clAskHtml(it, ask, tile = false) {
+      const pc = String(it.id).startsWith('pc:'), must = it.going !== false && (pc ? { on: this.pcMust(it.id) } : !tile && it.importance === 'must');
+      if (!ask && !must) return '';
+      return html`<span class="cl-ag-ask">${raw(ask ? html`<button type="button" class="pri-chip tog" data-go="1">Going</button><button type="button" class="pri-chip tog" data-go="0">Not going</button>` : '')}`
+        + html`${raw(!must ? '' : pc ? html`<button type="button" class="pri-chip ${must.on ? 'sel' : 'tog'}" style="${must.on ? '--pc:var(--p1)' : ''}" data-must aria-pressed="${must.on}"><svg class="ico"><use href="#i-prio"/></svg>Must</button>` : html`<span class="pri-chip sel" style="--pc:var(--p1)"><svg class="ico"><use href="#i-prio"/></svg>Must</span>`)}</span>`;
+    },
+    // The next day's first timed item or block (a day that opens with Work shows Work), for the foot of a day page
+    _clNextFirst(iso, byDay) {   // byDay: the pages' grouping, which holds the next day; alone, a pass of its own
+      if (_clNexts.has(iso)) return _clNexts.get(iso);
+      const d = new Date(iso + 'T00:00'); d.setDate(d.getDate() + 1);
+      const n = isoDate(d), shelved = new Set(this._clShelf()), on = x => x.start.length > 10 && x.start.slice(0, 10) === n;   // starts that day: a slice of last night's item is not its first
+      const first = [...((byDay || this._clGroup(n, n))[n] || []).filter(it => !it.allDay && on(it) && (it.kind !== 'task-block' || !shelved.has(it.id))).map(it => ({ min: this._clMin(it.start), title: it.title, cc: this.clItemColor(it), it })),
+        ...this._dayBlocks(n).filter(b => !b.allDay && on(b)).map(b => ({ min: b._sm, title: b.title, cc: b.color || 'var(--accent)' }))].sort((a, b) => a.min - b.min)[0] || null;
+      _clNexts.set(iso, first);
+      return first;
+    },
+    // Day: the all-day rows, then the hours with the week's own tiles across the page, then the night and the next day's
+    // first item. Tiers and the cascade read px, so the hours are measured once the rows above and the night below are in.
+    clAgRender(el, key, col) {
+      const [top, grid, tail] = el.children;
+      this.renderRows(top, this.clAgParts(key, col));
+      col = this._clColNow(key, col);
+      const timed = (col.agenda || []).filter(r => !r.allday), blocks = col.blocks.filter(b => !b.allDay), H = m => this.clAgTime(m);
+      const now = col.past ? 1440 : col.today ? this.clNowMin() : 0, lbl = t => t.replace(/ (AM|PM)$/, '<i> $1</i>');   // <i>: the phone sets AM/PM small
+      let w0 = 420, w1 = 1320;   // ceiling: a fixed 7 AM to 10 PM window, widened to hold the day; per-user waking hours if it misfits
+      for (const r of timed) { w0 = Math.min(w0, r.min); w1 = Math.max(w1, r.min + r.mins); }
+      for (const b of blocks) { w0 = Math.min(w0, b._sm); w1 = Math.max(w1, b._em); }
+      w0 = Math.floor((col.today ? Math.min(w0, now) : w0) / 60) * 60;
+      w1 = Math.min(1440, Math.ceil((col.today ? Math.max(w1, now + 1) : w1) / 60) * 60);
+      // the night: the hours no one sees (the day's last line to the next day's first item) as a starfield, their count in the hour column
+      const d0 = new Date(col.iso + 'T00:00'), nd = new Date(d0);
+      nd.setDate(nd.getDate() + 1);
+      const next = this._clNextFirst(col.iso), night = () => {
+        const hid = next && Math.round((new Date(nd).setMinutes(next.min) - new Date(d0).setMinutes(w1)) / 60000);   // minutes that pass: a DST night is 9 or 11 hours
+        this.renderRows(tail, !next ? [] : [
+          { id: 'night', html: html`<div class="cl-night" data-id="night"><span class="cl-night-n">${raw(hid < 60 ? `<b>${hid}</b><i>m</i>` : `<b>${Math.floor(hid / 60)}</b><i>h</i>` + (hid % 60 ? `<small>${hid % 60}m</small>` : ''))}</span></div>` },
+          { id: 'head', html: html`<div class="cl-night-h" data-id="head">${nd.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</div>` },
+          { id: 'first', html: html`<div class="cl-dnext" data-id="first"><div class="cl-dhr"><span>${raw(lbl(H(next.min)))}</span></div><div class="cl-event event tier-full"${raw(next.it ? ' data-tail role="button" tabindex="0"' : '')} style="--cc:${next.cc}"><span class="cl-event-b"><span class="cl-event-t">${next.title}</span><span class="cl-event-tm"><span>${H(next.min)}</span></span></span></div></div>` }]);
+      };
+      night();
+      void this.clPeriodH();   // any resize, width alone too, reruns this: _clResized drops the metrics clPeriodH reads
+      // rows past the page push the hours down, never squash them (the page scrolls); a short tile draws 24px, so the day's
+      // last one moves the night down to clear it
+      const fit = () => { grid.style.minHeight = (w1 - w0) / 60 * CL_DAY_HOUR + 'px'; return grid.clientHeight / (w1 - w0) || 1; };
+      let k = fit();
+      const end = Math.max(...timed.filter(r => r.mins).map(r => r.min + 24 / k));
+      if (end > w1 && w1 < 1440) { w1 = Math.min(1440, Math.ceil(end / 60) * 60); k = fit(); night(); }
+      const span = w1 - w0, P = m => (m - w0) / span * 100;   // k: px a minute
+      const inBlk = blocks.filter(b => b._sm <= now && b._em > now).sort((a, b) => (a._em - a._sm) - (b._em - b._sm))[0];
+      const cuts = m => col.today && Math.abs(now - m) * k < 15.5, parts = [];   // the now pill covers the hour label it meets, as the week's clNowCuts
+      for (let m = w0; m <= w1; m += 60) if (m < w1 || !next) parts.push({ id: 'h' + m, html: html`<div class="cl-dhr" data-id="h${m}" style="top:${P(m)}%"><span>${raw(m % 1440 && !cuts(m) ? lbl(this.clHourLabel(m / 60)) : '')}</span></div>` });   // the night starts where the day's last line was
+      for (const b of blocks) {
+        const d = blocks.filter(o => o !== b && o._sm <= b._sm && o._em >= b._em).length, tall = (b._em - b._sm) * k, id = 'b' + b.id + b._sm;   // d: a block inside another insets, so both show
+        parts.push({ id, html: html`<div class="cl-dblk" data-id="${id}" style="top:${P(b._sm)}%;height:${P(b._em) - P(b._sm)}%;--d:${d};z-index:${d};--cc:${b.color || 'var(--accent)'}"><span class="cl-dblk-n">${b.title}</span>`
+          + (tall > 36 ? html`<span class="cl-dblk-d">${b === inBlk ? this.durFmt(b._em - now) + ' left' : 'Until ' + H(b._em)}</span>` : '') + (tall > 50 ? html`<span class="cl-dblk-v">${b.title}</span>` : '') + '</div>' });
+      }
+      // cascade, the week's rule at day width: a later tile steps right over the earlier one and runs to the edge, the
+      // earlier keeps its title line; two starting within a line of each other sit side by side
+      const len = r => Math.max(r.mins, 24 / k), hit = (a, b) => a.r.min < b.r.min + len(b.r) && a.r.min + len(a.r) > b.r.min;   // a short tile still draws 24px
+      const at = timed.filter(r => r.mins).map(r => ({ r, x0: 0, x1: 1, z: 0 }));
+      at.forEach((a, i) => {
+        const prev = at.slice(0, i).filter(b => hit(a, b)), near = prev.findLast(b => (a.r.min - b.r.min) * k < 16 && b.x1 - b.x0 >= .8);   // halves of 40% at least: a run of short tiles 15px apart cascades, never splits to slivers
+        if (near) { const mid = (near.x0 + near.x1) / 2; Object.assign(a, { x0: mid, x1: near.x1, z: near.z, ring: near.ring }); near.x1 = mid; }
+        else if (prev.length) Object.assign(a, { x0: Math.min(.6, Math.max(...prev.map(b => b.x0)) + .28), z: 1 + Math.max(...prev.map(b => b.z)), ring: true });   // never narrower than 40%
+      });
+      // the one-tap answers need a tile 40px tall and 200px wide whose answer line no later tile covers; else it asks as the
+      // week's tile does ("Going?", answered in the editor)
+      const tw = grid.clientWidth - parseFloat(getComputedStyle(el).getPropertyValue('--L'));
+      const room = a => a.r.mins * k >= 40 && tw * (a.x1 - a.x0) >= 200 && !at.some(b => b.z > a.z && b.r.min >= a.r.min && (b.r.min - a.r.min) * k < 40 && b.x0 < a.x0 + 200 / tw);
+      const wide = el.closest('.cl-agwrap').clientWidth >= 720;   // the 720px container query's line: a desk page has room for where and what
+      let evs, locs;   // by id, built once per render when a tall tile needs them
+      at.forEach(({ r, x0, x1, z, ring }, i) => {
+        const it = r.it, ht = Math.max(r.mins * k, 24), ev = wide && ht >= 58 && it.kind === 'event' && (evs ||= new Map(this.events.map(e => [e.id, e]))).get(it.id);
+        const more = ev ? [(ev.location?.ids || []).map(id => (locs ||= new Map(this.locations.map(x => [x.id, x]))).get(id)?.name).filter(Boolean).join(', '), ev.notes].filter(Boolean) : [];
+        const ask = this.clAsks(it), chips = room(at[i]) ? this._clAskHtml(it, ask, true) : '';
+        const cov = ht < 40 && at.some(b => b.z > z && hit(at[i], b));   // the week's .cl-cov: a later tile over a one-line tile's far end, so its time rides beside the title
+        const imp = it.importance === 'must' || it.importance === 'focus' ? html`<svg class="ico cl-event-imp" style="color:${this.pc(it.importance)}"><use href="#i-prio-fill"/></svg>` : '';
+        parts.push({ id: r.key, html: html`<div class="cl-event ${it.kind} tier-${ht >= 40 ? 'full' : 'compact'}${ring ? ' cl-casc' : ''}${cov ? ' cl-cov' : ''}${r.min + r.mins <= now ? ' past' : ''}${this.clTaskState(it)}" data-id="${r.key}" role="button" tabindex="0" draggable="true"`
+          + html` style="top:${P(r.min)}%;height:max(24px, ${P(r.min + r.mins) - P(r.min)}%);left:calc(var(--L) + (100% - var(--L)) * ${x0} + 2px);width:calc((100% - var(--L)) * ${x1 - x0} - 4px);z-index:${2 + z};--i:${i};--cc:${this.clItemColor(it)}">`
+          + (it.kind === 'task-block' ? this.clCheckHtml(it, 'cl-evt-check') : '')
+          + html`<span class="cl-event-b"><span class="cl-event-t"${raw(chips ? ' tabindex="-1"' : '')}>${raw(imp)}<span>${it.title}</span></span><span class="cl-event-tm"><span>${this.clTimeLabel(it)}</span>${raw(chips || (ask ? '<b class="cl-ask">Going?</b>' : ''))}</span>`
+          + more.map(t => html`<span class="cl-event-tm cl-event-x">${t}</span>`).join('') + '</span></div>' });
+      });
+      for (const r of timed.filter(r => !r.mins)) parts.push({ id: r.key, html: this._clAgRowHtml(r, 0, now, `top:calc(${P(r.min)}% - 12px);`) });
+      if (col.today) parts.push({ id: 'now', html: html`<div class="cl-dnow" data-id="now" style="top:${P(now)}%"><span>${this._clHMA(now)}</span></div>` });
+      this.renderRows(grid, parts);
+    },
+    _clAgRow(e, col) { const el = e.target.closest('.cl-ag-row, .cl-event'); return el && col.agenda?.find(r => r.key === el.dataset.id); },
     clAgClick(e, col) {
+      if (e.target.closest('[data-tail]')) return this.clItemClick(this._clNextFirst(col.iso)?.it);
       const r = this._clAgRow(e, col);
-      if (!r || r.free) return;
-      if (e.target.closest('.cl-ag-chk')) { e.stopPropagation(); return this.clToggleTask(r.it.id); }
+      if (!r) return;
+      if (e.target.closest('.cl-ag-chk, .cl-evt-check')) { e.stopPropagation(); return this.clToggleTask(r.it.id); }
       const go = e.target.closest('[data-go]');
       if (go) { e.stopPropagation(); return this.clSetGoing(go.dataset.go === '1', { id: r.it.id, day: this._nowDay }); }   // the row's ask answers today in one tap
       if (e.target.closest('[data-must]')) { e.stopPropagation(); return this.clPcMust(r.it.id); }
@@ -9598,7 +9669,7 @@ document.addEventListener('alpine:init', () => {
       const r = this._clAgRow(e, col);
       if (!r) return;
       e.stopPropagation();
-      if (!r.free) this.clDragStart(e, this._dndKind(r.it.kind), r.it.id, r.it.start);
+      this.clDragStart(e, this._dndKind(r.it.kind), r.it.id, r.it.start);
     },
     clHours() { return CL_HOURS; },
     clHourLabel(h) { return h === 0 ? '' : h < 12 ? h + ' AM' : h === 12 ? 'Noon' : (h - 12) + ' PM'; },
@@ -9745,7 +9816,10 @@ document.addEventListener('alpine:init', () => {
       if ((this.clView !== 'day' && this.clView !== 'week') || !e.cancelable) return;
       e.preventDefault();
       const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * e.currentTarget.clientHeight : e.deltaY;
-      this._clTravel(dy, this._clGestureFresh(dy, e.timeStamp));
+      const fresh = this._clGestureFresh(dy, e.timeStamp), ag = e.target.closest('.cl-agenda');
+      // a Day page fuller than the screen scrolls first: a gesture begun on it stops at its end, the next one turns the page
+      if (ag && (fresh || this._clGate?.ag || !this._clGate?.turned) && this._clAgScroll(ag, dy)) return void (this._clGate = { turned: true, ag: true });
+      this._clTravel(dy, fresh);
       this._clScrolling();
     },
     // Touch. There is no scroller to pan, so the finger drives clPos itself. Under a finger a period is a PAGE:
@@ -9757,7 +9831,7 @@ document.addEventListener('alpine:init', () => {
       if (e.type === 'pointerdown') {
         if (this._clTouch || e.pointerType !== 'touch') return;
         motion.stop('clFling'); motion.stop('clTween');
-        this._clTouch = { id: e.pointerId, x: e.clientX, y0: e.clientY, y: e.clientY, p0: this.clPos.idx + this.clPos.frac, v: 0, t: e.timeStamp, on: false };
+        this._clTouch = { id: e.pointerId, x: e.clientX, y0: e.clientY, y: e.clientY, p0: this.clPos.idx + this.clPos.frac, v: 0, t: e.timeStamp, on: false, ag: e.target.closest('.cl-agenda') };
         return;
       }
       const d = this._clTouch; if (!d || e.pointerId !== d.id) return;
@@ -9765,7 +9839,13 @@ document.addEventListener('alpine:init', () => {
       // an interruption lands on the NEAREST page (the Android pager does the same)
       if (e.type === 'pointerup' || e.type === 'pointercancel') { this._clTouch = null; return this._clRelease(e.type === 'pointercancel' || e.timeStamp - d.t > 64 ? 0 : d.v); }
       const dy = d.y0 - e.clientY;
-      if (!d.on) { if (Math.abs(dy) < 6 || Math.abs(dy) <= Math.abs(e.clientX - d.x)) return; d.on = true; this._clGate = null; }
+      if (!d.on) {
+        if (Math.abs(dy) < 6 || Math.abs(dy) <= Math.abs(e.clientX - d.x)) return;
+        d.on = true; this._clGate = null;
+        d.s0 = d.ag?.scrollTop;
+        d.ag = d.ag && this._clAgScroll(d.ag, dy) ? d.ag : null;   // a drag that can scroll a full Day page scrolls it, to its end and no further
+      } else if (d.ag) d.ag.scrollTop = d.s0 + dy;   // from where it began: per-move steps under half a pixel would round away
+      if (d.ag) return;   // ceiling: no fling inside a Day page (v stays 0); add one if a long day feels stuck
       const i0 = Math.floor(d.p0), p = Math.max(i0 - 1 + this._clMaxFrac(), Math.min(i0 + 1, d.p0 + dy / this.clPeriodH()));
       this._clSetPos(Math.floor(p), p - Math.floor(p));
       d.v = (d.y - e.clientY) / Math.max(1, e.timeStamp - d.t); d.y = e.clientY; d.t = e.timeStamp;
@@ -9791,6 +9871,7 @@ document.addEventListener('alpine:init', () => {
     },
     // Nothing has landed while a finger is still down (however long it holds still) or a spring-back is mid-flight —
     // landing then would anchor the day the timeline is merely passing through (T flashes mid-drag, or sticks after).
+    _clAgScroll(ag, dy) { const room = dy > 0 ? ag.scrollHeight - ag.clientHeight - ag.scrollTop > .5 : dy < 0 && ag.scrollTop > .5; ag.scrollTop += dy; return room; },   // false at its end in dy's direction, though a sub-pixel dy moves nothing
     _clScrolling() { if (!this.clScrolling) this.clScrolling = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => { if (this._clTouch || motion.running('clTween')) return this._clScrolling(); this.clScrolling = false; this._clLand(); }, motion.t(600)); },
     // Landing settles the anchor on whatever period is on top. No scrollend to wait for — we know when we stopped.
     _clLand() {
@@ -9866,6 +9947,8 @@ document.addEventListener('alpine:init', () => {
     },
     // Must rings an Outlook meeting as an Alarm: on when Outlook marks it High, a tap sets it for the whole series
     pcMust(id) { return this.pcMustSet[id.slice(3).split('#')[0]] ?? !!this.pcEvents.find(e => e.id === id)?.high; },
+    evImp(e) { return !e?.pc ? e?.importance : this.pcMust(e.id) ? 'must' : 'none'; },   // an Outlook meeting carries Must or nothing: Focus has no ring of its own there
+    evSetImp(v) { const e = this.eventEdit; if (!e.pc) e.importance = v; else if ((v === 'must') !== this.pcMust(e.id)) this.clPcMust(e.id); },   // a meeting's Must sets at once, for the series, as its tile chip does
     clPcMust(id) {
       const series = id.slice(3).split('#')[0], on = !this.pcMust(id), { [series]: _, ...rest } = this.pcMustSet;
       _calDataV++;

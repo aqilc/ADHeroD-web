@@ -1124,7 +1124,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-if="w.day"><input class="cl-wh-n" spellcheck="false" autocomplete="off" :placeholder="w.name" :aria-label="'Name ' + w.name + ' ' + w.day"
               x-effect="document.activeElement !== $el && ($el.value = clDayLabel(w.key))" @keydown.enter.prevent="$el.blur()"
               @keydown.escape.prevent.stop="$el.value = clDayLabel(w.key); $el.blur()" @change="clSetDayLabel(w.key, $el)"></template>
-            <span class="cl-wh-d" x-show="w.day" x-text="w.day"></span></div>
+            <span class="cl-wh-d" x-show="w.day" x-text="w.day" role="button" tabindex="0" :aria-label="'Open ' + w.name + ' ' + w.day"
+              @click="clOpenDay(w.key)" @keydown="clKeyActivate($event)"></span></div>
         </template>
       </div>
 
@@ -1210,21 +1211,16 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="cl-pages-inner" x-ref="clInner">
         <template x-for="pg in clBlocks()" :key="pg.key">
           <div class="cl-period-block" :style="'top:calc(var(--ph) * ' + pg.rel + ');height:var(--ph)' + (clVT && clView === 'week' && pg.key === clAnchorIdx() ? ';view-transition-name:cl-active-week' : '')">
-            <!-- DAY: the day stops being a grid. The rail keeps duration and gaps felt; the agenda gives
-                 every item a real line — title, how long, which area — instead of a cell you measure by eye. -->
+            <!-- DAY: the all-day rows, then the hours across the page with the week's own tiles, then the night
+                 and the next day's first item (clAgRender). -->
             <template x-if="clView === 'day'">
               <div class="cl-agbody">
                 <template x-for="col in pg.cols" :key="'ag'+col.iso">
                   <div class="cl-agwrap" :data-iso="col.iso" @dragover.prevent="clDropOver($event, col.iso)" @drop="clDropOn($event, col.iso)">
-                    <div class="cl-rail">
-                      <div x-html="clRailHtml(pg.key, col)"></div>
-                      <div class="cl-elapsed" :style="col.past ? 'height:100%' : clNowAt(col, 'height')"></div>
-                      <div class="cl-now" :style="clNowAt(col, 'top')"></div>
-                    </div>
-                    <!-- rows are html parts (clAgParts), their events delegated here: per-row bindings cost most of a page build -->
+                    <!-- rows and tiles are html parts (clAgRender), their events delegated here: per-row bindings cost most of a page build -->
                     <!-- x-if flips a frame before clBlocks() recomputes on a view switch, so never assume agenda -->
-                    <div class="cl-agenda" :class="'tier-' + (col.agenda?.h > _clDayH() - 20 ? 'compact' : 'full')" x-effect="renderRows($el, clAgParts(pg.key, col))"
-                         @click="clAgClick($event, col)" @dragstart="clAgDrag($event, col)" @dragend="$event.target.closest('.cl-ag-row') && clDragEndSchedule()" @keydown="clKeyActivate($event, $event.target.closest('button') ? null : $event.target.closest('.cl-ag-row'))"></div>
+                    <div class="cl-agenda" x-effect="clAgRender($el, pg.key, col)"
+                         @click="clAgClick($event, col)" @dragstart="clAgDrag($event, col)" @dragend="$event.target.closest('.cl-ag-row, .cl-event') && clDragEndSchedule()" @keydown="clKeyActivate($event, $event.target.closest('button') ? null : $event.target.closest('.cl-ag-row, .cl-event'))"><div class="cl-ag-top"></div><div class="cl-dgrid"></div><div class="cl-ag-tail"></div></div>
                   </div>
                 </template>
               </div>
@@ -1928,11 +1924,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
           </div><div x-html="clRepHtml('eventEdit')"></div></div></template></template>
         </div>
-        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clImp', $event, $el)">
-          <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: eventEdit.importance !== 'none' }" :style="'--cc:' + pc(eventEdit.importance)" :title="impName(eventEdit.importance, 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'clImp'" @click="togglePop('clImp', $el)"><svg class="ico"><use :href="eventEdit.importance !== 'none' ? '#i-prio-fill' : '#i-prio'"/></svg><span x-text="impName(eventEdit.importance, 'Importance')"></span></button>
+        <div class="field" @click.document.capture="clPopAway('clImp', $event, $el)">
+          <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: evImp(eventEdit) !== 'none' }" :style="'--cc:' + pc(evImp(eventEdit))" :title="impName(evImp(eventEdit), 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'clImp'" @click="togglePop('clImp', $el)"><svg class="ico"><use :href="evImp(eventEdit) !== 'none' ? '#i-prio-fill' : '#i-prio'"/></svg><span x-text="impName(evImp(eventEdit), 'Importance')"></span></button>
           <template x-if="pop === 'clImp'"><template x-teleport="body"><div class="pop cl-pop pri-pop" :style="popStyle()">
-            <template x-for="o in [['none','None','No special handling'],['focus','Focus','Holds other pings while it runs'],['must','Must','Rings until it starts']]" :key="o[0]">
-              <button type="button" class="pri-chip" :class="{ sel: eventEdit.importance === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="eventEdit.importance = o[0]; pop = null"><svg class="ico"><use href="#i-prio"/></svg><span x-text="o[1]"></span></button>
+            <template x-for="o in [['none','None','No special handling'],['focus','Focus','Holds other pings while it runs'],['must','Must','Rings until it starts']].filter(o => !eventEdit.pc || o[0] !== 'focus')" :key="o[0]">
+              <button type="button" class="pri-chip" :class="{ sel: evImp(eventEdit) === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="evSetImp(o[0]); pop = null"><svg class="ico"><use href="#i-prio"/></svg><span x-text="o[1]"></span></button>
             </template>
           </div></template></template>
         </div>

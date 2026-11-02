@@ -1,5 +1,7 @@
 // Pure date + quick-add-tokenizer helpers. No DOM — shared by index.html and unit-tested in tests/.
 // `now` is injectable so all relative-date logic is deterministic under test.
+// The composer mints a chip per Space: a phrase whose head is itself a token ("every month", "sunday") gets a
+// per-key title test on every shell (web press() loop, Android performTextInput per char, Mac h.type per key).
 import DESIGN from './design.json' with { type: 'json' };
 const L = DESIGN.lang.labels;
 const V = DESIGN.lang.nlp;

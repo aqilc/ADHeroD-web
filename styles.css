@@ -1145,7 +1145,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   font-size: var(--fs-13); font-weight: 600; display: flex; align-items: center; justify-content: center; line-height: 1; padding-top: 1px;   /* optical center: digits carry no descender, so ink rides ~1px high of the metric center — nudge down or the today ring reads low */
   &:hover:not(:disabled) { background: var(--hover); }
   &.out { color: var(--muted); font-weight: 500; }
-  &:disabled { color: var(--faint); font-weight: 500; cursor: default; }   /* a day that can't be picked reads as set back, not as a target */
+  &:disabled { color: var(--faint); font-weight: 500; cursor: default; opacity: .45; }   /* a day that can't be picked reads as set back, not as a target, fainter than next month's days you can pick (.out) */
   /* today = Plan's circle, one size in every state; layers stack on it and stay inside the brackets */
   &.today { --disc: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 7px), transparent calc(100% - 6.5px));
     background: var(--disc); color: var(--today-ink); font-weight: 700; }
@@ -1871,15 +1871,19 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .loc-row { border-radius: var(--r-6); padding: var(--sp-2) var(--sp-6); transition: background-color .1s; }
 .loc-row:hover { background: var(--hover); }
 .loc-row .inp { flex: 1; min-width: 0; border: none; background: none; border-radius: 0; min-height: 0; padding: var(--sp-4) 0; }
-.loc-row .inp:focus { outline: none; box-shadow: none; }
+.loc-row .inp:focus { outline: none; box-shadow: inset 0 -1.5px var(--accent); }   /* Tab onto a place: the line marks which name types */
 .loc-del, .loc-home { border: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); opacity: 0; transition: opacity .1s, color .1s; }
 .loc-row:hover .loc-del { opacity: .6; }
+:where(html:not(.touch)) .loc-row:focus-within :is(.loc-del, .loc-home:not(.on)) { opacity: .6; }   /* a keyboard reaches them without hover */
 /* designate-home toggle: quiet until hover, solid accent when this place IS home */
 .loc-home .ico { width: 15px; height: 15px; }
 .loc-row:hover .loc-home { opacity: .55; }
 .loc-home.on { opacity: 1; color: var(--accent); }
 .loc-del:hover { opacity: 1; color: var(--p1); }
 .loc-del .ico { width: 14px; height: 14px; flex: none; display: block; }
+:where(.touch) .loc-row { gap: 0; padding-block: 0; }   /* no hover on a phone: shown, 44px taps whose hits meet */
+:where(.touch) :is(.loc-del, .loc-home) { width: 44px; height: 44px; justify-content: center; padding: 0; opacity: .8; }
+:where(.touch) .loc-home.on { opacity: 1; }
 .loc-help { font-size: var(--fs-12); color: var(--muted); line-height: 1.5; margin: 0 0 var(--sp-12); }
 .loc-region { margin-bottom: var(--sp-12); border-radius: var(--r-6); }
 .loc-region.drop-into { background: color-mix(in srgb, var(--accent) 8%, transparent); outline: 1.5px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; }
@@ -1922,7 +1926,7 @@ textarea.inp { resize: vertical; }
 /* --foot (declared on html) reserves the bottom nav strip (.canvas-dots, bottom:10px + its padding) plus a
    little air, so no hour ever sits under the dots or in the --bg-foot wash, where the day's last hours
    (midnight especially) are legible only as much as the wash allows. */
-.calendar { --bar: 90px; --head: 32px; --side: 412px; --ag-rail: 12px; --ag-w: 620px; --cl-act-w: 272px; --cl-fade: 26px; --cl-top: calc(var(--bar) + var(--head)); position: relative; height: 100%; overflow: hidden; }   /* fill the Plan surface (canvas minus the time strip). Nothing here paints a surface tint — the page's --bg-wash runs unbroken from the header down through the days (see .cl-cell). */
+.calendar { --bar: 90px; --head: 32px; --side: 412px; --cl-act-w: 272px; --cl-fade: 26px; --cl-top: calc(var(--bar) + var(--head)); position: relative; height: 100%; overflow: hidden; }   /* fill the Plan surface (canvas minus the time strip). Nothing here paints a surface tint — the page's --bg-wash runs unbroken from the header down through the days (see .cl-cell). */
 /* The dissolve at the top lives on this STATIC overlay, not a mask ON the scroller (a mask on a scroll container forces
    Blink to re-rasterize the whole timeline every frame instead of just translating it: 504 hour-lines + events, dropped
    frames). It is the same wash the content dissolved into, painted over the top
@@ -2021,6 +2025,11 @@ textarea.inp { resize: vertical; }
 @media (any-hover: hover) { .cl-wh-n:hover:where(:not(.touch *)) { text-decoration: underline dotted color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; } }
 .cl-wh:not(.today) > .cl-wh-n:not(:placeholder-shown) { color: var(--warm-ink); }
 .cl-wh-d { flex: none; font-size: var(--fs-11); font-weight: 600; letter-spacing: .07em; color: var(--ink); font-variant-numeric: tabular-nums; }   /* same metric as the weekday beside it — only ink separates them, so week and month heads read identically */
+/* a week head's date opens that day (the weekday beside it stays the name field): underlined at rest, a fill on hover */
+.cl-wh-week .cl-wh-d { position: relative; cursor: pointer; padding: 1px var(--sp-5); margin: -1px calc(-1 * var(--sp-5)); border-radius: var(--r-pill); text-decoration: underline color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; transition: background-color .15s var(--ease-out); }
+.cl-wh-week .cl-wh-d::after { content: ""; position: absolute; inset: -4px -2px; }   /* 24px target */
+@media (any-hover: hover) { .cl-wh-week .cl-wh-d:hover:where(:not(.touch *)) { background: var(--hover); }
+  .cl-wh-week .cl-wh.today .cl-wh-d:hover:where(:not(.touch *)) { background: color-mix(in srgb, currentColor 22%, transparent); } }
 /* Today is a FILLED plate carrying the whole cell — weekday and date together, text inverted onto it. An
    accent numeral alone competes with every other accent on the surface; a solid ground doesn't compete,
    it just is. `width: fit-content` keeps it hugging the type, and the padding is pulled back out so the
@@ -2072,7 +2081,7 @@ textarea.inp { resize: vertical; }
 /* Normalized thread ramp: hue comes from the item's --cc, lightness+chroma are FIXED per theme, so every
    color lands at the same perceived weight with guaranteed text contrast (raw color-mix makes blue read
    twice as heavy as gold). Derived per-element because --cc is set inline. */
-.cl-chip, .cl-event, .cl-block, .event-editor, .block-editor, .cl-rail-seg, .cl-rail-blk, .cl-ag-row, .cl-ch, .cl-dl, .cl-dl-t { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
+.cl-chip, .cl-event, .cl-block, .event-editor, .block-editor, .cl-dblk, .cl-ag-row, .cl-ch, .cl-dl, .cl-dl-t { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h); }
 /* THE MARK — an inset, fully-rounded capsule. NOT a border-left: a stripe on a rounded box inherits the
    corner curve and reads as a bright sliver welded to the side. This floats inside the padding instead. */
 .cl-chip::before, .cl-event::before { content: ""; position: absolute; left: 3px; top: 2px; bottom: 2px; width: 3px; border-radius: var(--r-pill); background: var(--mark); }
@@ -2369,7 +2378,7 @@ textarea.inp { resize: vertical; }
 .cl-event-b { display: block; min-width: 0; overflow: hidden; }
 .cl-event-imp { display: inline-block; width: 9px; height: 9px; margin-right: var(--sp-2); vertical-align: -1px; }   /* leads the title: the time line's .75 opacity drops Must's red under 3:1 */
 .cl-event-tm { display: block; font-size: var(--fs-10); line-height: 1.3; opacity: .75; font-variant-numeric: tabular-nums; }
-.cl-event-tm:has(.cl-ask) { opacity: 1; > span { opacity: .75; } }   /* the label dims, the Going? ask keeps its contrast */
+.cl-event-tm:has(.cl-ask, .cl-ag-ask) { opacity: 1; > span { opacity: .75; } }   /* the label dims, the Going? ask keeps its contrast */
 /* .cl-cov = something is drawn OVER this one, so only its top strip shows: the time joins the title on that
    surviving line instead of sitting on a second line under the cascade. Same layout the compact tier uses. */
 .cl-event.tier-compact, .cl-event.cl-cov { display: flex; align-items: baseline; gap: var(--sp-4); }
@@ -2403,22 +2412,16 @@ textarea.inp { resize: vertical; }
    rules, events, the elapsed wash — is bounded by the same edge with nothing to keep in
    sync. (Insetting the contents instead leaves the washes running past the rules, a seam down the day.) */
 
-/* ── The day is a schedule, not a spreadsheet ─────────────────────────────────
-   The grid was the spreadsheet: one day across ~870px made every event a thin bar of 11px type pinned to the
-   far left. So proportion moves to a 26px rail — duration and gaps stay FELT, which is the one thing a list
-   can't say — and the day itself becomes an ordered agenda where each item gets a real title, its length and
-   its area. Rows FLOW at a readable height, so a 15-minute call is as legible as a 3-hour block. */
+/* ── DAY: the hours across the page, the week's own tiles on them, then the night and the next day's first item ──
+   All-day rows sit above the hours (.cl-ag-row); a timed mark rides the hours as a short row (.cl-dmark). */
 .cl-agbody { height: 100%; }
-.cl-agwrap { position: relative; display: grid; grid-template-columns: var(--ag-rail) minmax(0, var(--ag-w)); gap: var(--sp-12); height: 100%; padding: var(--sp-10) 0 calc(var(--sp-10) + var(--foot)) var(--sp-16); }   /* a day spans the nav band (clPeriodH): its own empty foot sits there, never the next day */
-/* the rail is a 24h GAUGE, not an axis for the rows: where the day's mass sits, how much of it is untouched,
-   and how far through it you are. That is the one thing an ordered list cannot say, which is why it's here. */
-.cl-rail { position: relative; border-radius: var(--r-pill); background: var(--hover); overflow: hidden; }
-.cl-rail-seg, .cl-rail-blk { position: absolute; left: 0; right: 0; min-height: 2px; border-radius: var(--r-pill); }
-.cl-rail-seg { background: var(--mark); }
-.cl-rail-blk { background: var(--tint); }                                                   /* block tint, a step behind events */
-.cl-rail-seg.task-block { background: none; box-shadow: inset 0 0 0 1.5px var(--mark); }    /* tasks ring, never fill */
-.cl-agenda { position: relative; display: flex; flex-direction: column; min-width: 0; }
-.cl-ag-row { display: grid; grid-template-columns: 62px 15px minmax(0, 1fr); align-items: baseline; gap: var(--sp-10); min-height: 52px; padding: var(--sp-8) var(--sp-10); border-radius: var(--r-8); cursor: pointer; flex: 0 0 auto; transition: background 140ms ease, transform 160ms var(--ease-out); }
+.cl-agwrap { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); height: 100%; padding: var(--sp-10) 0 calc(var(--sp-10) + var(--foot)) var(--sp-16); container-type: inline-size; }   /* a day spans the nav band (clPeriodH): its own empty foot sits there, never the next day */
+/* --g: the hour column · --L: where tiles start (past the blocks' lane, or their named column on a 720px+ day) */
+.cl-agenda { --g: 66px; --L: 98px; position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; margin: var(--sp-8) var(--sp-12) var(--sp-8) 0; overflow: hidden;
+  --night: light-dark(color-mix(in srgb, var(--ink) 6%, transparent), rgb(0 0 0 / .32)); --star: color-mix(in srgb, var(--ink) 34%, transparent); --star-f: color-mix(in srgb, var(--ink) 22%, transparent); }
+@container (min-width: 720px) { .cl-agenda { --L: 222px; } }
+.cl-ag-top, .cl-ag-tail { display: contents; }
+.cl-ag-row { display: grid; grid-template-columns: 62px 15px minmax(0, 1fr); align-items: baseline; align-content: start; gap: var(--sp-10); min-height: 52px; padding: var(--sp-8) var(--sp-10); border-radius: var(--r-8); cursor: pointer; flex: 0 0 auto; transition: background 140ms ease, transform 160ms var(--ease-out); }
 .cl-ag-t { font-size: var(--fs-12); font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
 .cl-ag-m { display: flex; align-items: center; justify-content: center; align-self: center; }
 .cl-ag-m .cl-evt-check { width: 15px; height: 15px; margin-top: 0; }
@@ -2429,32 +2432,74 @@ textarea.inp { resize: vertical; }
 .cl-ag-m .cl-dl-ico { width: 13px; height: 13px; flex: none; color: var(--mark); }
 .cl-ag-b { min-width: 0; }
 .cl-ag-n { display: block; font-size: var(--fs-15); line-height: 1.3; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cl-ag-d { display: block; font-size: var(--fs-11); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* one line: 52 is a row's MAX, the page fit counts on it */
-/* The Going ask, compact Include toggles beside the sub line; the 52px row keeps its height */
-.cl-ag-d:has(.cl-ag-ask) { display: flex; align-items: center; gap: var(--sp-10); height: 1lh; overflow: visible; }   /* 1lh: the 18px chips overhang the line, the row stays 52 */
+.cl-ag-d { display: block; font-size: var(--fs-11); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The Going ask, compact Include toggles beside the sub line; the row keeps its height */
+.cl-ag-d:has(.cl-ag-ask) { display: flex; align-items: center; gap: var(--sp-10); height: 1lh; overflow: visible; }   /* 1lh: the 18px chips overhang the line */
 .cl-ag-s { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .cl-ag-ask { display: inline-flex; gap: var(--sp-6); flex: none;
   .pri-chip { flex: none; position: relative; height: 18px; padding: 0 var(--sp-8); font-size: var(--fs-11); color: var(--ink); }   /* ink: muted fails contrast at 11px */
   .pri-chip::after { content: ""; position: absolute; inset: 0 -3px -8px; } }   /* touch slop into the row's foot, never up into the title (a tap there opens the event) */
 .cl-ag-none { padding: var(--sp-16) var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
+@media (min-width: 641px) {   /* a page-wide row: the sub line sits at its right end */
+  .cl-ag-b { display: flex; align-items: baseline; gap: var(--sp-16); }
+  .cl-ag-n { flex: 0 1 auto; min-width: 0; }
+  .cl-ag-d { flex: none; margin-left: auto; max-width: 45%; } }
 /* rows light on hover, exactly like the panel's pill rows — never filled at rest */
-@media (any-hover: hover) and (any-pointer: fine) { .cl-ag-row:not(.free):hover:where(:not(.touch *)) { background: var(--hover); } }
-.cl-ag-row:not(.free):active { transform: scale(.985); }                                    /* press */
+@media (any-hover: hover) and (any-pointer: fine) { .cl-ag-row:hover:where(:not(.touch *)) { background: var(--hover); } }
+.cl-ag-row:active { transform: scale(.985); }                                    /* press */
 .cl-ag-row.done .cl-ag-n { text-decoration: line-through; color: var(--muted); }
-/* an empty afternoon is information, so the holes are named — but quietly, they are not events */
-.cl-ag-row.free { min-height: 34px; cursor: default; }   /* 34, 52: CL_AG_FREE, CL_AG_ROW */
-.cl-ag-row.free .cl-ag-dot { background: none; }
-.cl-ag-row.free .cl-ag-n { font-size: var(--fs-12); color: var(--muted); }
-.cl-ag-row.free .cl-ag-t { color: var(--muted); font-weight: 400; }
-/* What has already happened recedes, in the list as well as on the rail */
-.cl-ag-row.past { opacity: .45; }
+/* What has already happened recedes */
+.cl-ag-row.past, :where(.cl-agenda) .cl-event.past { opacity: .45; }   /* :where: no more specific than .cl-lift, so a dragged past tile dims to .4 */
+:where(.cl-agenda) .cl-event.past.cl-casc:not(.cl-lift) { opacity: 1; background: color-mix(in srgb, var(--tint) 45%, var(--bg)); }   /* over an earlier tile: the box stays opaque, so that tile's text never shows through */
+:where(.cl-agenda) .cl-event.past.cl-casc:not(.cl-lift) > *, :where(.cl-agenda) .cl-event.past.cl-casc:not(.cl-lift)::before { opacity: .45; }
 /* The source dims in place while the drag image moves, as a dragged list row does (.item.dragging). It sits after
    :active's press scale (the button is still down) and the state fades (.cl-block.is-done, .cl-ag-row.past), so it wins at equal specificity. */
-:is(.cl-event, .cl-chip, .cl-block, .item, .cl-ch, .cl-ag-row:not(.free)).cl-lift { transform: translateZ(0); opacity: .4; }
-/* a packed day sheds the subtitle before anything gets clipped (the rail's tiers, applied to the list) */
-.cl-agenda.tier-compact .cl-ag-row { min-height: 32px; padding-top: var(--sp-4); padding-bottom: var(--sp-4); }
-.cl-agenda.tier-compact .cl-ag-d { display: none; }
-.cl-agenda.tier-compact .cl-ag-n { font-size: var(--fs-13); }
+:is(.cl-event, .cl-chip, .cl-block, .item, .cl-ch, .cl-ag-row).cl-lift { transform: translateZ(0); opacity: .4; }
+.cl-dgrid { position: relative; flex: 1; margin: var(--sp-8) var(--sp-12) var(--sp-8) 0; }
+.cl-dhr { position: absolute; left: var(--g); right: 0; height: 0; border-top: 1px solid var(--hair); }
+.cl-dhr span, .cl-night-n { position: absolute; left: calc(-1 * var(--g)); width: calc(var(--g) - 4px); padding-right: var(--sp-10); text-align: right; color: var(--muted); white-space: nowrap; }   /* the night's numeral on the hour labels' right edge */
+.cl-dhr span { top: -7px; font-size: var(--fs-11); line-height: 14px; }
+.cl-dhr i { font-style: normal; }
+/* blocks: a 12px lane left of the tiles, its title on its side; a 720px+ day gives them a named column */
+.cl-dblk { position: absolute; left: 82px; width: 12px; min-height: 2px; border-radius: var(--r-pill); background: var(--tint); }   /* block tint, a step behind events */
+.cl-dblk-n, .cl-dblk-d { display: none; padding: var(--sp-6) var(--sp-8) 0; font-size: var(--fs-12); font-weight: 650; color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-dblk-d { padding-top: 0; font-weight: 500; font-size: var(--fs-11); color: var(--muted); }
+.cl-dblk-v { position: absolute; left: 1px; bottom: 6px; writing-mode: vertical-rl; font-size: var(--fs-10); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; line-height: 1; color: var(--txt); white-space: nowrap; overflow: hidden; max-height: calc(100% - 12px); }
+@container (min-width: 720px) {
+  .cl-dblk { left: calc(74px + var(--d) * 10px); width: calc(132px - var(--d) * 20px); border-radius: var(--r-8); }
+  .cl-dblk-n, .cl-dblk-d { display: block; }
+  .cl-dblk-v { display: none; } }
+/* tiles: the week's own chip at a day page's reading size, its time line the chip's fs-10 */
+.cl-agenda .cl-event { right: auto; font-size: var(--fs-13); }
+.cl-event-x { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-agenda .cl-event-tm:has(.cl-ag-ask) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-6); }   /* the one-tap answers where the week's tile says "Going?" */
+.cl-event .cl-ag-ask .pri-chip { height: 16px; padding: 0 var(--sp-6); font-size: var(--fs-10); }   /* the time line's size */
+.cl-event-tm:has(.cl-ag-ask):last-child { padding-bottom: var(--sp-8); }   /* room for the chips' touch slop: .cl-event-b clips it */
+.cl-dmark { position: absolute; z-index: 1; left: calc(var(--L) + 2px); right: 2px; height: 24px; min-height: 0; padding-top: 0; padding-bottom: 0; grid-template-columns: 0 15px minmax(0, 1fr); gap: var(--sp-6); align-items: center; overflow: hidden; background: color-mix(in srgb, var(--tint) 70%, transparent); }
+.cl-dmark .cl-ag-t { visibility: hidden; }
+.cl-dmark .cl-ag-d { display: none; }
+.cl-dmark .cl-ag-n { font-size: var(--fs-13); }
+.cl-dnow { position: absolute; left: 0; right: 0; z-index: 1; border-top: 2px solid var(--accent); pointer-events: none; }   /* under the tiles: over them it struck through the times of the event it crossed */
+.cl-dnow span { position: absolute; left: 0; top: -10px; padding: 1px var(--sp-5); border-radius: var(--r-4); background: var(--accent); color: var(--on-accent); font-size: var(--fs-11); font-weight: 700; line-height: 1.5; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* the night: the hours no one sees between this day's last line and the next day's first item, a starfield, never a lone hour line */
+.cl-night { position: relative; flex: none; height: 44px; margin: calc(-1 * var(--sp-8)) var(--sp-12) 0 0; border-radius: var(--r-8); background: var(--night); }   /* starts where the day's last line was */
+.cl-night::before { content: ''; position: absolute; inset: 0 var(--sp-8) 0 var(--g); border-radius: inherit;   /* 3 tiles at prime widths, 3 stars each, no vertical repeat: scattered, no rows or columns */
+  background: radial-gradient(circle 1.3px at 9px 8px, var(--star) 55%, transparent) 0 0 / 59px 44px repeat-x, radial-gradient(circle 0.9px at 31px 27px, var(--star-f) 55%, transparent) 0 0 / 59px 44px repeat-x, radial-gradient(circle 1.1px at 47px 15px, var(--star) 55%, transparent) 0 0 / 59px 44px repeat-x, radial-gradient(circle 1.2px at 20px 34px, var(--star) 55%, transparent) 0 0 / 83px 44px repeat-x, radial-gradient(circle 0.8px at 52px 6px, var(--star-f) 55%, transparent) 0 0 / 83px 44px repeat-x, radial-gradient(circle 1.4px at 71px 22px, var(--star) 55%, transparent) 0 0 / 83px 44px repeat-x, radial-gradient(circle 0.9px at 13px 19px, var(--star-f) 55%, transparent) 0 0 / 107px 44px repeat-x, radial-gradient(circle 1.2px at 44px 38px, var(--star) 55%, transparent) 0 0 / 107px 44px repeat-x, radial-gradient(circle 1px at 88px 11px, var(--star-f) 55%, transparent) 0 0 / 107px 44px repeat-x; }
+.cl-night-n { left: 0; top: 50%; translate: 0 -50%; line-height: 1; }   /* the countdown's numeral in muted ink: gold stays the countdown's */
+.cl-night-n b { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; font-size: var(--fs-13); }
+.cl-night-n i { font-style: normal; font-size: var(--fs-11); font-weight: 600; margin-left: 1px; }
+.cl-night-n small { display: block; margin-top: var(--sp-2); font-size: var(--fs-10); }
+.cl-night-h { flex: none; margin-top: var(--sp-12); padding-left: calc(var(--L) + var(--sp-4) + var(--sp-8)); font-size: var(--fs-13); font-weight: 650; color: var(--txt); line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* on the tiles' title x */
+.cl-dnext { position: relative; flex: none; height: 36px; margin: var(--sp-6) var(--sp-12) var(--sp-8) 0; }   /* the next day's first item on the hours' own columns */
+.cl-dnext .cl-dhr { top: 0; border-top: 0; }
+.cl-dnext .cl-event { top: 0; height: 36px; left: calc(var(--L) + 2px); right: 2px; }
+@media (max-width: 640px) {   /* phone: a tight hour column, AM/PM set small */
+  .cl-agenda { --g: 44px; --L: 64px; }
+  .cl-dblk { left: 48px; }
+  .cl-dhr span, .cl-night-n { padding-right: var(--sp-6); }
+  .cl-dhr span { font-size: var(--fs-10); }
+  .cl-dhr i { font-size: var(--fs-10); letter-spacing: .02em; }
+  .cl-dnow span { padding: 1px var(--sp-4); font-size: var(--fs-10); } }
 
 /* DAY agenda — a side panel that slides in over the right edge in day view, listing the day's items */
 /* Side panel: scheduled (this view) + unscheduled + the relocated composer. Slides in from the right. */
