@@ -395,6 +395,31 @@ let _wiping = false;   // resetLocalData is reloading: the page-hide flush must 
 let _chkQ = null, _chkFuzzy = null, _chkTinted = false;   // ghost-find memo (query+len → id→ranges) + its uFuzzy instance; any row carries .chk-sel
 let _chkSeed = '';   // the finder's query editTask put in the ghost: a search, so Save doesn't add it as an item
 const _chkHtml = new Map();   // item text → chkLive html: paintChk re-derives every row's html on each checklist change
+// Ghost find → item id → match ranges (null = hit without range info). uFuzzy's in-order regex backtracks
+// exponentially on a near miss past 3 terms (5 long words ~100 ms; a copied item plus one more word froze the page),
+// so a longer query matches its words in order, exactly: by then it reads as a new item, not a search.
+function chkHits(items, q) {
+  const texts = items.map(c => c.text), terms = (_chkFuzzy ??= makeFuzzy()).split(q), map = new Map();
+  if (terms.length > 3) {
+    const needles = terms.map(t => t.toLowerCase());
+    for (const [i, text] of texts.entries()) {
+      const low = text.toLowerCase(), ranges = [];
+      for (const n of needles) {
+        const at = low.indexOf(n, ranges.at(-1) ?? 0);
+        if (at < 0) break;
+        ranges.push(at, at + n.length);
+      }
+      if (ranges.length === 2 * needles.length) map.set(items[i].id, ranges);
+    }
+    return map;
+  }
+  // outOfOrder=0: this uFuzzy build returns NO info/ranges for multi-term needles when ooo=1,
+  // and the sub-match <mark>s need ranges — ordered terms is the right trade for find-as-you-type.
+  const [idxs, info, order] = _chkFuzzy.search(texts, q, 0, 1e4);
+  if (idxs && info && order) for (const o of order) map.set(items[info.idx[o]].id, info.ranges[o]);
+  else if (idxs) for (const i of idxs) map.set(items[i].id, null);
+  return map;
+}
 const DESC_BLOCK = 4000;   // chars per block of a huge description (_descHtml): about a screen of it
 let _liveOn = [];   // the live field's tokens showing their markers (liveReveal)
 const _canon = document.createElement('template');
@@ -1881,10 +1906,10 @@ document.addEventListener('alpine:init', () => {
       _qfToday = this._nowDay; const _t0 = new Date(_qfToday + 'T00:00'); _qfTmr = isoDate(new Date(_t0.getTime() + 864e5)); _qfWk = isoDate(new Date(_t0.getTime() + 6 * 864e5));   // once per recompute; relative to _nowDay for DST safety
       const filtering = this.filtering(), cmp = this.sibCmp();
       const fold = !this.sticky && !filtering && this.navSel.type !== 'filter';   // search, quick filters and saved filters show every match: no fold, no chevron
-      // Subproject sections: only INSIDE a container view. All/area scope by something other than containment,
-      // where a project is a legitimate row rather than the thing the list is about. Inside a project, grouping by
-      // project IS its subproject sections — the same view as grouping off.
-      const inProj = this.navSel.type === 'project', group = inProj && this.groupBy === 'project' ? 'none' : this.groupBy, subSec = (inProj || this.navSel.type === 'backlog') && group === 'none';
+      // Subproject sections: only INSIDE a container view (a project or Backlog). All/area scope by something other than
+      // containment, where a project is a legitimate row rather than the thing the list is about. Inside a container,
+      // grouping by project IS its subproject sections — the same view as grouping off.
+      const inProj = this.navSel.type === 'project', inBox = inProj || this.navSel.type === 'backlog', group = inBox && this.groupBy === 'project' ? 'none' : this.groupBy, subSec = inBox && group === 'none';
       const { mkRow: build, byParent, byId } = this._mkRowFn(true, cmp); _visBP = byParent;
       // t (a re-read hands in new objects), depth, ctx, fold and collapsed are this pass's (sections shift depth, a filter marks ctx); no other row field reads them
       const mkRow = (t, depth) => { let r = _rowCache.get(t.id); if (!r) _rowCache.set(t.id, r = build(t, depth)); r.t = t; r.depth = depth; r.ctx = false; r.fold = fold; r.collapsed = !!this.collapsed[t.id]; return r; };
@@ -2868,15 +2893,7 @@ document.addEventListener('alpine:init', () => {
       const q = this.chkGhost.trim();
       if (!q) return null;
       const key = q + '|' + this.draft.checklist.length;
-      if (_chkQ?.key !== key) {
-        // outOfOrder=0: this uFuzzy build returns NO info/ranges for multi-term needles when ooo=1,
-        // and the sub-match <mark>s need ranges — ordered terms is the right trade for find-as-you-type.
-        const [idxs, info, order] = (_chkFuzzy ??= makeFuzzy()).search(this.draft.checklist.map(c => c.text), q, 0, 1e4);
-        const map = new Map();
-        if (idxs && info && order) for (const o of order) map.set(this.draft.checklist[info.idx[o]].id, info.ranges[o]);
-        else if (idxs) for (const i of idxs) map.set(this.draft.checklist[i].id, null);
-        _chkQ = { key, map };
-      }
+      if (_chkQ?.key !== key) _chkQ = { key, map: chkHits(this.draft.checklist, q) };
       return _chkQ.map;
     },
     // Row HTML while finding: raw text + <mark> sub-matches (md/:: styling pauses for the transient
@@ -3867,7 +3884,7 @@ document.addEventListener('alpine:init', () => {
       this._endDraft();   // a composer already open (another row, a subtask's chevron) keeps its draft under its own key
       // the ghost rows are shared DOM, and focusing one mirrors its text back into subGhost before subGhostSync runs
       this.draft = this.taskToDraft(t); _dlAuto = ''; this.subGhost = this.chkGhost = ''; this.entryKind = ''; this._clearEditor(this._ghostEl('sub'));
-      if (ghost && !this.chkSteps() && (_chkFuzzy ??= makeFuzzy()).search(this.draft.checklist.map(c => c.text), ghost, 0, 1e4)[0]?.length) this.chkGhost = ghost;
+      if (ghost && !this.chkSteps() && chkHits(this.draft.checklist, ghost).size) this.chkGhost = ghost;
       _chkSeed = this.chkGhost;
       this.editing = t.id; _editPin = t.id;
       this.pop = null;
@@ -5226,6 +5243,29 @@ document.addEventListener('alpine:init', () => {
       this.commitPill(kind, value);
       this.syncTitle();
     },
+    _wordPicker() {
+      const s = getSelection(), n = s?.anchorNode; if (n?.nodeType !== 3) return;
+      const txt = n.textContent.slice(0, s.anchorOffset);
+      for (const t in PICKERS) { const sp = PICKERS[t];
+        if (sp.word && new RegExp('(?:^|\\s)' + sp.word + '\\s$', 'i').test(txt)) return this.openPicker(t, n, s.anchorOffset - sp.char.length);
+      }
+    },
+    // A soft keyboard's keys are 229 keydowns (dropped at the document), so the space arrives only as inserted text: chip the word
+    // it ended as the keydown does, the chip owning no space. A hardware space the keydown already handled (_spaceKeyed) is skipped.
+    pillAfterSpace() {
+      if (this._spaceKeyed) return void (this._spaceKeyed = false);
+      const skip = this._noPillOnce; this._noPillOnce = false;
+      const sel = getSelection(), node = sel.anchorNode, off = sel.anchorOffset;
+      if (!sel.isCollapsed || node?.nodeType !== 3 || !/\s/.test(node.data[off - 1] ?? '')) return;
+      if (!skip) {
+        node.deleteData(off - 1, 1);
+        this._caret(node, off - 1);
+        if (this.pillifyTrailing()) return;
+        node.insertData(off - 1, ' ');
+        this._caret(node, off);
+      }
+      this._wordPicker();
+    },
     // Pill the token ENDING AT THE CARET (not the node's end) — so editing/re-typing a word mid-title
     // re-recognizes just like typing at the end. `off` is the caret offset; text after it is preserved.
     pillifyTrailing() {
@@ -5369,6 +5409,7 @@ document.addEventListener('alpine:init', () => {
       // ⌘Z is nlpHistory: the Edit menu / context menu land here, keys in _pillKeydown
       // Unfocused: Chrome aims Edit ▸ Undo at the last-edited editor even after focus left it — words typed since would go.
       if (type.startsWith('history')) { e.preventDefault(); return e.target === document.activeElement && this.nlpHistory(type === 'historyUndo' ? -1 : 1, e.target); }
+      if (type === 'insertParagraph') { e.preventDefault(); return e.target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); }   // a soft keyboard's Enter (keydown 229, dropped at the document) acts as the hardware key
       this._tKind = type === 'insertText' && /\s/.test(e.data) ? 'space' : type; this._tCaret = this._caretOffset(this._nlpEl());
       if (!type.startsWith('delete')) return;
       const sel = getSelection(); if (!sel.rangeCount) return;
@@ -5494,13 +5535,8 @@ document.addEventListener('alpine:init', () => {
       // space that ends the word.
       if (e.key === ' ') {
         if (!this._noPillOnce && this.pillifyTrailing()) e.preventDefault();
-        else this.$nextTick(() => {
-          const s = getSelection(), n = s?.anchorNode; if (n?.nodeType !== 3) return;
-          const txt = n.textContent.slice(0, s.anchorOffset);
-          for (const t in PICKERS) { const sp = PICKERS[t];
-            if (sp.word && new RegExp('(?:^|\\s)' + sp.word + '\\s$', 'i').test(txt)) return this.openPicker(t, n, s.anchorOffset - sp.char.length);
-          }
-        });
+        else this.$nextTick(() => this._wordPicker());
+        this._spaceKeyed = !e.defaultPrevented;   // an unprevented space inserts and fires input: pillAfterSpace must not run it again
         this._noPillOnce = false;
       }
       else if (e.key.length === 1) { this._noPillOnce = false; }   // typing fresh content re-enables space→pill (Backspace/Delete → onEditorBeforeInput)
@@ -5522,7 +5558,7 @@ document.addEventListener('alpine:init', () => {
     // An add owns its slot. Edits queue their captured drafts; repeated presses of the same draft save once.
     async submitComposer(extra, close, lead) {
       if (this.pop === 'rem') this.remKeep();   // ⌘⏎ with the setter open
-      if (!this.editing) return !this._closingComposer && this._submit(extra, close);   // closing: ⌘⏎ handed this draft on at its press
+      if (!this.editing) return !this._closingComposer && this._submit(extra, close);   // ⌘⏎ handed this draft on at its press, the bar's Send cleared it: a 2nd press finds nothing to add
       const sid = this._draftSid;
       if (_submitting.has(sid)) return false;
       _submitting.set(sid, { base: _saveBase });
@@ -7017,14 +7053,14 @@ document.addEventListener('alpine:init', () => {
 
     async addTask(close) {
       const chat = this.fromChat; close ||= !!chat;   // a chat's task closes back to the chat
-      const d = this.draft, sid = this._draftSid, fields = this.draftFields(d), key = 'save:' + sid, jot = !close && this._inBar();   // held: the press hands the composer on below
+      const d = this.draft, sid = this._draftSid, fields = this.draftFields(d), key = 'save:' + sid, jot = !close && this._inBar();   // the bar clears at the press like a rapid add, and hands on to the task below
       // One save = one slot: the draft moves to save:<sid> before the composer lets go of it. Refused (storage full: toasted),
       // the add still runs and the in-memory slot carries a failure back — only a reload mid-save loses it
       const slot = JSON.parse(JSON.stringify({ ...this._draftEntry(), acct: this._acct() })), m = this._pendingMap();
       m[key] = slot; delete m[this._newKey()];
       this._writePending(m);
       clearTimeout(_draftT);
-      if (close || jot) { this._draftSid = crypto.randomUUID(); this._draftBase = this._draftSig(); if (close) this.closeComposer(true); }   // clean under a new identity: the collapse (or the bar's hand-on to the task) shows A and files nothing
+      if (close) { this._draftSid = crypto.randomUUID(); this._draftBase = this._draftSig(); this.closeComposer(true); }   // clean under a new identity: the collapse shows A and files nothing
       else {
         this.resetDraft(); this._draftBase = this._draftSig();
         this.setEditorText(''); this.setDescText('');   // now, not next tick: the next key is the next draft's
@@ -7445,6 +7481,9 @@ document.addEventListener('alpine:init', () => {
       } else {
         el._focusFrom = null;   // typing proves the focus was the user's, so a later Undo is in-field (input can run ahead of markFocus's timer)
         this.syncTitle(e.isComposing);
+        if (!e.isComposing && /\s$/.test(e.data ?? '')) this.pillAfterSpace();
+        else if (e.data && !e.isComposing) this._noPillOnce = false;   // fresh content re-enables space→pill, as a keydown does
+        if (/^[@#]$/.test(e.data) && (e.data === '@' || !_nlpFocus)) _trigKey = e.data;   // a soft keyboard's '@' has no keydown to arm it
       }
       this.refreshPickers();
     },

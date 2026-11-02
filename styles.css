@@ -1060,7 +1060,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 /* empty state: up to three ghosts with an OR between each */
 .entry-empty { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
   .entry { flex: 0 1 auto; min-width: 0; padding: 0; }   /* together from the left at their own width; shrinks so a long typed line wraps */
-  .entry:not(:has(> .type-pick)) > .entry-txt { align-self: baseline; }   /* the entry's baseline is its text's, not the icon box's: the ORs sit on it. A phone's picker row centers */
+  .entry:not(:has(> .type-pick)) > .entry-txt { align-self: baseline; }   /* the entry's baseline is its text's, not the icon box's: the ORs sit on it. A phone's picker row puts its box and picker on the first line */
   .entry-or { font-size: var(--fs-11); font-weight: 600; color: var(--muted); letter-spacing: .04em; flex: none; }
 }
 /* three ghosts can't share a phone-width line (a wrap strands an OR at a line's end): they stack, each OR centered between */
@@ -1070,7 +1070,9 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .chk-rect, .check { --pc: currentColor; border-color: currentColor; pointer-events: none; }
   .chk-rect { border: 2px solid currentColor; background: none; box-shadow: none; &::before, &::after { display: none; } }   /* outlined: the steps list's ring styling must not reach it */
   .check.steps { border-color: transparent; } }
-@media (max-width: 640px) { .touch .composer-entries .entry.ghost:has(> .type-pick) { flex: 1 1 100%; align-items: center; } }
+@media (max-width: 640px) { .touch .composer-entries .entry.ghost:has(> .type-pick) { flex: 1 1 100%; --pick-h: 36px; --box: 16px;   /* the 32px buttons in the seg's 2px padding */
+  > .entry-txt { padding-top: calc((var(--pick-h) - 1lh) / 2); }   /* the box, the first line and the picker share one middle, however many lines the words wrap to */
+  > .ghost-check { margin-top: calc((var(--pick-h) - var(--box)) / 2); } } }
 @container (width < 400px) { .entry-empty:has(> .entry:not(.chk)) { flex-direction: column; align-items: stretch; .entry { flex: none; } .entry-or { align-self: center; } } }
 .ico { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* Popover shell — floating panel of rows. .nav-pop is the same shell anchored to a nav row. */
@@ -3009,7 +3011,11 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
       .ico { flex: none; color: var(--faint); width: 15px; height: 15px; } .pring { width: 15px; height: 15px; } }
     .proj-pick span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ka-notes { flex: none; margin-left: var(--sp-6); }
-    .composer-opts .field:has(> .chip-notes.set) { display: none; } }   /* the subline carries it */
+    .composer-opts .field:has(> .chip-notes.set) { display: none; }   /* the subline carries it */
+    /* the chips' and actions' first icons on the 16px edge of the title's ring and the project icon */
+    .composer-opts { --inset: calc((38px - 19px) / 2); margin-left: calc(var(--sp-16) - var(--sp-10) - var(--inset));   /* a 38px icon chip's 19px icon */
+      .chip.set:not(.chip-imp, .chip-dur, .bare) { padding-left: var(--inset); } }   /* a value's icon on the same edge */
+    .acts.edit { --out: calc((44px - 18px) / 2 - var(--sp-16) + var(--sp-10)); flex-basis: calc(100% + var(--out)); margin-left: calc(-1 * var(--out)); } }   /* the 44px button's 18px icon; its right end stays */
   .bar-on .jb-host .composer-actions .field.loc { order: -2; align-self: flex-start; max-width: 150px; margin: var(--sp-5) var(--sp-10) 0 0; }   /* on the title's first line, not its middle */
   .bar-on .jb-host .proj-pick { height: 34px; padding: 0 var(--sp-10) 0 var(--sp-8); border-radius: var(--r); font-size: var(--fs-14); font-weight: 600; color: var(--ink); gap: var(--sp-6);
     .proj-pick-ico { width: 15px; } }
