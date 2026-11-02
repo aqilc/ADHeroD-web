@@ -859,7 +859,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighte
 .composer-grow.grown .composer-card { padding-top: 14px; padding-bottom: var(--sp-12); margin: var(--sp-8) 0 var(--sp-12); }
 :where(html:not(.touch)) .composer-grow.grown .composer-card { padding-bottom: var(--sp-8); margin-bottom: calc(var(--sp-24) * 2); }   /* the bar's icons sit as far from the foot as the checkbox from the top; room for the action row under the card (8 gap + 28 row + 12) */
 /* the page dims a little while the composer is open; it fades with the grow's opacity */
-.composer-grow::before { content: ""; position: fixed; inset: -100vmax; z-index: -1; pointer-events: none; background: light-dark(rgb(0 0 0 / .03), rgb(0 0 0 / .16)); }
+.composer-grow { --dim: light-dark(rgb(0 0 0 / .03), rgb(0 0 0 / .16)); &::before { content: ""; position: fixed; inset: -100vmax; z-index: -1; pointer-events: none; background: var(--dim); } }
 /* the grow (_growOpen/_growClose): the row's own box becomes the card. Opaque from the first frame, its fill
    going from the row's to the panel's; the card's box (not the whole grow) is what's revealed, and on a desktop the
    bar rides the grow's bottom edge, under the card until there's room for it. */
@@ -1070,9 +1070,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .chk-rect, .check { --pc: currentColor; border-color: currentColor; pointer-events: none; }
   .chk-rect { border: 2px solid currentColor; background: none; box-shadow: none; &::before, &::after { display: none; } }   /* outlined: the steps list's ring styling must not reach it */
   .check.steps { border-color: transparent; } }
-@media (max-width: 640px) { .touch .composer-entries {
-  .entry.ghost:has(> .type-pick) { flex: 1 1 100%; align-items: center; }
-  .entry-list > .entry.ghost { order: 9; } } }   /* ghost last, right above send; desktop keeps it first */
+@media (max-width: 640px) { .touch .composer-entries .entry.ghost:has(> .type-pick) { flex: 1 1 100%; align-items: center; } }
 @container (width < 400px) { .entry-empty:has(> .entry:not(.chk)) { flex-direction: column; align-items: stretch; .entry { flex: none; } .entry-or { align-self: center; } } }
 .ico { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* Popover shell — floating panel of rows. .nav-pop is the same shell anchored to a nav row. */
@@ -2862,7 +2860,9 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   /* a pop from the dock opens in the keyboard's place (app.js popDock), so the dock rides it as it rides the keyboard */
   .dialog-backdrop.docked { padding-bottom: calc(var(--keys) + var(--when)); place-items: end center; }   /* the editor's card rests on its docked When (a class: an <html>:has() re-matches on every DOM write) */
   .touch .pop.dock { position: fixed; inset: auto 0 var(--keys); width: auto; min-width: 0; max-width: none; max-height: min(45vh, 70vh - var(--keys)); overflow-y: auto;   /* a keyboard's height */
-    border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + var(--safe-b)); }
+    border-width: 1px 0 0; border-radius: var(--r-lg) var(--r-lg) 0 0; padding: var(--sp-12) var(--sp-12) calc(var(--sp-12) + var(--safe-b));
+    .ev-field { width: 100%; } .blk-parts > button { flex: 1; } }   /* a field and segments span the dock */
+  .pop.area-autocomplete.strip { position: fixed; width: 100vw; max-width: none; max-height: 40vh; transform: translateY(-100%); border-radius: var(--r-lg) var(--r-lg) 0 0; }   /* typed lists: across the screen on the composer's top edge (app.js _positionPicker) */
   /* The browser's caret reveal knows neither the keyboard nor the dock: pad them out, and give the list room to lift its end. */
   .touch.kb .app { scroll-padding-bottom: calc(var(--kb) + var(--dock)); &::after { content: ''; display: block; height: var(--kb); } }
 }
@@ -2914,7 +2914,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .lsw-scrim { position: fixed; inset: 0; z-index: 62; background: rgba(0,0,0,.35); opacity: 0; transition: opacity .28s var(--ease-drawer), visibility 0s .28s;
   visibility: hidden;   /* not pointer-events: Chrome's compositor still hit-tests a shown layer, so every touch under it goes unblockable and a row's hold-drag pans (mobile.e2e) */
   &.on { opacity: 1; visibility: visible; transition: opacity .28s var(--ease-drawer); } }
-.lsw { position: fixed; inset: auto 0 0; z-index: 63; min-width: 0; max-width: none; display: flex; flex-direction: column; max-height: 88dvh; box-sizing: border-box;
+.lsw, :is(.pop, .nav-pop).sheet { position: fixed; inset: auto 0 0; z-index: 63; width: auto; min-width: 0; max-width: none; display: flex; flex-direction: column; max-height: 88dvh; box-sizing: border-box;
   padding: 0 var(--sp-12) calc(var(--sp-12) + env(safe-area-inset-bottom)); background: var(--panel); border-radius: var(--r-lg) var(--r-lg) 0 0;
   box-shadow: 0 -1px 0 var(--hair), 0 -10px 28px rgb(0 0 0 / .1);
   transform: translateY(100%); visibility: hidden; transition: transform .28s var(--ease-drawer), visibility 0s .28s;
@@ -2924,8 +2924,15 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .pop-item { min-height: 44px; gap: var(--sp-12); padding: 0 var(--sp-10); font-size: var(--fs-15); &.on { color: var(--accent); } }
   .pop-item .ico { width: 18px; height: 18px; }
   .more { margin-top: var(--sp-6); border-top: 1px solid var(--hair); border-radius: 0; color: var(--muted); } }
-.lsw-top { position: relative; flex: none; padding: var(--sp-20) var(--sp-10) var(--sp-8); font-family: var(--font-display); font-size: var(--fs-17); color: var(--ink); touch-action: none;
+:is(.lsw-top, .sheet-top) { position: relative; flex: none; padding: var(--sp-20) var(--sp-10) var(--sp-8); font-family: var(--font-display); font-size: var(--fs-17); color: var(--ink); touch-action: none;
   &::before { content: ""; position: absolute; top: var(--sp-6); left: calc(50% - 18px); width: 36px; height: 4px; border-radius: var(--r-4); background: var(--hair); } }   /* the grabber, as the Plan panel's */
+/* A phone's menu opened from the page (Filter, Sort, Go to a day, a list's ···) is this sheet, never a float (mobile-design-baseline.md §No floating menus).
+   Filter and Sort sit inside the surfaces' track, their containing block and stacking context (Lists is its first surface): the track lifts over the page dots while one is open or sliding away. */
+:is(.pop, .nav-pop).sheet { overflow-y: auto; overscroll-behavior: contain;
+  &.full { @starting-style { transform: translateY(100%); opacity: 0; } }
+  &.lc-hide { transform: translateY(100%); opacity: 1; } }   /* Filter and Sort leave by sliding down, not .lc-hide's fade and shrink */
+:not(.sheet) > .sheet-top { display: none; }
+.canvas-track.lift { position: relative; z-index: 62; }   /* only then: positioned at rest, it lost a focused month day to body under load (a11y.e2e "wheeled out") */
 .lsw-rows { overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
 .lsw.half .lsw-rows { overflow: hidden; touch-action: none; }   /* at half a swipe on the rows pulls the tray, not the list */
 .title-chev { display: none; }
@@ -2935,8 +2942,9 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 }
 @media (min-width: 641px) { .lsw, .lsw-scrim { display: none; } }
 @media (prefers-reduced-motion: reduce) {   /* fades in place at half; half to full snaps */
-  .lsw { transform: translateY(max(0px, 100% - 50dvh)); opacity: 0; transition: opacity .18s var(--ease-out), visibility 0s .18s;
-    &.half, &.full { opacity: 1; transition: opacity .18s var(--ease-out); } } }
+  .lsw, :is(.pop, .nav-pop).sheet { transform: translateY(max(0px, 100% - 50dvh)); opacity: 0; transition: opacity .18s var(--ease-out), visibility 0s .18s;
+    &.half, &.full { opacity: 1; transition: opacity .18s var(--ease-out); }
+    &.lc-hide { transform: none; opacity: 0; } } }
 /* In a thread the field is the composer: in flow, so a long message grows it up; a 22 radius stays a pill at one line */
 .jb-el:has(> .jb-chat) { height: auto; border-radius: var(--r-field); }
 .jb-chat { position: relative; height: auto; min-height: 44px; gap: var(--sp-6); padding: var(--sp-6);
@@ -2980,12 +2988,15 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host:not(.editing) .type-tog, .bar-on .jb-host .attach { display: none; }   /* a jotted task, on for its steps, keeps its done check */
   .bar-on .jb-host .composer-body { flex-flow: row wrap; align-items: center; gap: 0;
     &::before { content: ""; flex-basis: 100%; }   /* the break under the title line */
-    > .composer-titlerow { order: -1; flex: 1; min-width: 0; --bar-h: 44px; min-height: var(--bar-h); align-self: flex-start; line-height: 18px; padding: calc((var(--bar-h) - 1lh) / 2) var(--sp-6) calc((var(--bar-h) - 1lh) / 2) 0; }   /* the first line holds the 44px line's middle; more lines grow down */ > :is(.desc, .composer-rels, .composer-entries) { flex-basis: 100%; }
+    > .composer-titlerow { order: -1; flex: 1; min-width: 0; --bar-h: 44px; min-height: var(--bar-h); align-self: flex-start; line-height: 18px; padding: calc((var(--bar-h) - 1lh) / 2) var(--sp-6) calc((var(--bar-h) - 1lh) / 2) 0; }   /* the first line holds the 44px line's middle; more lines grow down */ > :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% + 2 * var(--bleed, 0px)); }
     .content, .content-hint { font-size: var(--fs-16); } }
   .bar-on .jb-host .composer-dock { display: contents; }
+  /* The entries scroll under their ghost (fitEntries caps them), which sticks above them, a Steps list's below; the bleed pads the rows' hover inset inside the scroller */
+  .bar-on .jb-host .composer-entries { --bleed: var(--sp-6); overflow-y: auto; overscroll-behavior: contain; padding-inline: var(--bleed); margin-inline: calc(-1 * var(--bleed));
+    .entry.ghost { position: sticky; top: 0; bottom: 0; z-index: 1; background: linear-gradient(var(--dim), var(--dim)), var(--panel); } }   /* over the dim, as the sheet shows under it */
   .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
     .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
-    :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: var(--chk-col); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col)); } }
+    :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: calc(var(--chk-col) - var(--bleed, 0px)); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col) + 2 * var(--bleed, 0px)); } }
   /* Editing: the title alone on its line; one subline under it, from the ring's left edge: the list's path, what the notes hold, the relations */
   .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* the ring's center at 26, the title at 46 */
     .type-tog { left: var(--sp-16); }

@@ -576,6 +576,7 @@ document.addEventListener('alpine:init', () => {
     secShut: [],        // collapsed section keys (array so it persists + stays Alpine-reactive)
     groupBy: 'none',    // Lists sectioning: none|project|area|due|importance|place — sections come from this, order INSIDE one from sortBy; persisted
     listMenu: null,     // open toolbar dropdown: 'add'|'sort'|null (kept separate from the composer's `pop`)
+    listSheetOn: false,   // a phone's Filter or Sort still sliding away: the track stays lifted over the page dots
     listSearchOpen: false,   // Hearthsay search: icon at rest, input unfolds on click or `/`
     qfImp: [],          // quick-filter: importance values to keep (must/focus/none/someday); empty = all
     qfAreas: [],        // quick-filter: area ids to keep; empty = all
@@ -934,7 +935,7 @@ document.addEventListener('alpine:init', () => {
       const vars = sheet.cssRules[0].style;
       _keyboard = () => {
         const keys = Math.max(0, Math.round(innerHeight - visualViewport.offsetTop - visualViewport.height));   // a tap on a docked pop's field raises the keyboard under it
-        const dock = this.pop && this.popDock && document.querySelector('body > .pop.dock:not(.overflow-pop)'), when = dock && dock.matches('.ev-when') ? dock.offsetHeight : 0, h = keys + (when ? 0 : dock?.offsetHeight || 0);   // an editor's docked When lifts its card alone (--when on .dialog-backdrop), not the tray; ··· covers the composer, never lifts it
+        const dock = this.pop && this.popDock && document.querySelector('body > .pop.dock:not(.overflow-pop)'), when = dock && dock.matches('.cl-pop') ? dock.offsetHeight : 0, h = keys + (when ? 0 : dock?.offsetHeight || 0);   // an editor's docked pop lifts its card alone (--when on .dialog-backdrop), not the tray; ··· covers the composer, never lifts it
         if (h === _kb && keys === _keys && when === _when) return false;
         _kb = h; _keys = keys; _when = when; vars.setProperty('--kb', h + 'px'); vars.setProperty('--keys', keys + 'px'); vars.setProperty('--when', when + 'px');
         root.classList.toggle('kb', h > 0);
@@ -2780,6 +2781,7 @@ document.addEventListener('alpine:init', () => {
     },
     // Anchor the nav popover off a rail button in FIXED coords (escapes the roller's overflow clip), clamped so a 320px-tall pop never spills off screen.
     _navPopAt(r) { this.navPopXY = { x: popLeft(r.left, 230, 8), y: popTop(r.bottom + 6, 320) }; },
+    navPopStyle() { return this.navPopXY && !this.phoneDock() ? `left:${this.navPopXY.x}px;top:${this.navPopXY.y}px` : ''; },   // a phone's opens as a sheet
     // One step of nav ordering, for all three orderable kinds. Every one of them already stores a `position` and
     // exposes reorder(ids) — this only has to pick the right sibling list, swap two ids in it, and reload.
     // Projects order within their OWN parent, so an arrow never jumps a subproject out of its branch.
@@ -4172,9 +4174,17 @@ document.addEventListener('alpine:init', () => {
     },
 
     // The ONE owner of teleported-pop placement + outside-close (every teleported pop binds these; fix positioning here, once)
-    popStyle() { const { left, top, maxH, scroll } = this.popXY; return this.popDock ? '' : `position:fixed;left:${left}px;top:${top}px;bottom:auto` + (maxH ? `;max-height:${maxH}px` + (scroll ? ';overflow-y:auto' : '') : ''); },   // each sits in an x-if: shown = mounted
+    popStyle() { const { left, top, maxH, scroll } = this.popXY; return this.popDock || this.popSheet() ? '' : `position:fixed;left:${left}px;top:${top}px;bottom:auto` + (maxH ? `;max-height:${maxH}px` + (scroll ? ';overflow-y:auto' : '') : ''); },   // each sits in an x-if: shown = mounted
     // capture (index.html): a click that repaints its own target (a row's check) detaches it before bubbling, and Alpine's .outside skips detached targets
     // @click.outside reads every listener's offsetWidth on each click (a forced layout); gate on open state first, then this
+    // On a phone no menu floats (docs/ui/mobile-design-baseline.md §No floating menus): a composer's or an editor's docks in the keyboard's place, one opened from the page opens as a sheet
+    popSheet() { return this.pop === 'clnav' && this.phoneDock(); },
+    listSheet() { return ['add', 'sort'].includes(this.listMenu) && this.phoneDock(); },
+    liftWhileLeaving(el) {   // until x-show hides it; a :has(.sheet.lc-anim) on the track left a ticked Plan chip unrendered (plan-b "Needs a slot")
+      queueMicrotask(() => this.listSheetOn = true);   // set inside this x-effect's flush, the track's :class, already run, never reran (Alpine queueJob skips a job still in the queue)
+      const wait = () => el.style.display === 'none' || this.listSheet() ? this.listSheetOn = false : requestAnimationFrame(wait);
+      requestAnimationFrame(wait);
+    },
     outside(e, el) { return e.target.isConnected && !el.contains(e.target); },
     popAway(name, e) {
       if (this.pop !== name || e.target.closest('.pop')) return;
@@ -4216,7 +4226,7 @@ document.addEventListener('alpine:init', () => {
       this.calFocus = null;
       // Kill any live anchor tracker before opening a new pop
       if (this._popTrack) { this._popTrack(); this._popTrack = null; }
-      this.popDock = this.phoneDock() && (!!anchor?.closest('.composer-dock') || name === 'clWhen');   // a phone's composer pop, and an editor's When, opens in the keyboard's place
+      this.popDock = this.phoneDock() && (!!anchor?.closest('.composer-dock, .event-editor, .block-editor') || name === 'clWhen');   // a phone's composer and editor pops open in the keyboard's place
       if (!this.pop || !anchor) return _keyboard();
       const r = anchor.getBoundingClientRect(), m = 8, card = anchor.closest('.event-editor, .block-editor');   // an editor's pop hangs under its card, clear of Delete and Save
       this.popXY = { left: r.left, top: (card ?? anchor).getBoundingClientRect().bottom + 5 };
@@ -4433,7 +4443,7 @@ document.addEventListener('alpine:init', () => {
       this.repIdx = this.repRules().indexOf(r);
       const b = ev.currentTarget.getBoundingClientRect(), x = ev.detail ? ev.clientX : b.left;   // at the pointer
       const y = b.bottom + 184 <= innerHeight ? `top:${Math.round(b.bottom + 4)}px` : `top:auto; bottom:${Math.round(innerHeight - b.top + 4)}px`;   // under the control, above it near the window's foot: never over the value clicked
-      this.pzpop = { style: `left:${Math.round(popLeft(x, 200))}px; ${y};` };
+      this.pzpop = { style: this.popDock ? this._calHeight() : `left:${Math.round(popLeft(x, 200))}px; ${y};` };
     },
     // For a week / two weeks / a month: back on its first date on or after that day
     pausePicks() {
@@ -4572,13 +4582,14 @@ document.addEventListener('alpine:init', () => {
         wnd: drag ? ci >= Math.min(a, hh) && ci < Math.max(a, hh) : !!f && !!dl && c.iso >= f && c.iso < dl,
         gz: c.iso === this.draft.on && this.repRules().some(r => r.paused && r.gen_due) };
     },
+    _calHeight() { return `height:${document.querySelector('body > .pop.cal').offsetHeight}px`; },   // a docked pop that replaces the date pop keeps its height
     // --- time popover: opened only by a repeat statement's [at …] chip (index.html) — fixed to the viewport, not absolute inside the teleported `.pop` ---
     toggleTimePop(ev) {
       if (this.tpop) { this.tpop = false; return; }
       const b = ev.currentTarget.getBoundingClientRect();   // BOTTOM-anchored (it sits above its trigger) — the only one
-      this.tpopStyle = `left:${Math.round(popLeft(b.left, 218))}px; bottom:${Math.round(innerHeight - b.top + 6)}px;`;
+      this.tpopStyle = this.popDock ? this._calHeight() : `left:${Math.round(popLeft(b.left, 218))}px; bottom:${Math.round(innerHeight - b.top + 6)}px;`;
       this.tpop = true;
-      this.$nextTick(() => this.tpop && this.$refs.tpopIn?.focus());
+      this.$nextTick(() => this.tpop && !this.popDock && this.$refs.tpopIn?.focus());   // docked, it stands in for the keyboard, as the date pop
     },
     // the time the popover edits: the active statement's own `at`, else the By register's deadline time (never the On
     // time — By shows and clears only the deadline), else the On time
@@ -5444,9 +5455,11 @@ document.addEventListener('alpine:init', () => {
     _positionPicker(p, sel) {
       if (!p.node) return;
       const body = this.$refs.content.closest('.composer-body'); if (!body) return;
+      const base = body.getBoundingClientRect();
+      if (this.phoneDock()) { p.left = 0; p.top = body.closest('.composer').getBoundingClientRect().top; return; }   // a strip across the screen on the composer's top edge (.strip, fixed: the jot bar's host would clip it)
       const r = document.createRange();
       r.setStart(p.node, Math.min(p.at, p.node.textContent.length)); r.collapse(true);
-      const rect = r.getBoundingClientRect(), base = body.getBoundingClientRect();
+      const rect = r.getBoundingClientRect();
       p.left = rect.left - base.left; p.top = rect.bottom - base.top + 4;
       requestAnimationFrame(() => {
         const el = document.querySelector(sel);
@@ -5454,6 +5467,7 @@ document.addEventListener('alpine:init', () => {
         if (el?.dataset.pos === 'up') p.top = rect.top - base.top - 4 - el.offsetHeight;   // above its trigger, as a data-pos="up" pop opens
       });
     },
+    pickerStyle(p) { return p ? `display:flex;left:${p.left}px;top:${p.top}px` : 'display:none'; },
     // Re-derive the trigger position/fragment as the user types; close when the trigger text is gone.
     _refreshPicker(p, sp, sel) {
       if (!p.open || !p.node) return;
@@ -7096,10 +7110,11 @@ document.addEventListener('alpine:init', () => {
     _kidsOf(id) { return this.hasChildren(id) ? this._taskIdx().kids : _noKids; },   // a leaf's walk builds no index
     // every archived row and all under it: an archived project's subtree leaves Overview, the pickers and the Lists nav
     _shelved() { const ix = this._taskIdx(); return ix.shelved ??= new Set(ix.arch.flatMap(id => descendantIds(this.tasks, id, ix.kids))); },
-    addChecklistItem(text) {   // a checklist adds on top; steps, and a phone's (its ghost sits last), append in the order typed
+    addChecklistItem(text) {   // a checklist adds on top; steps append, in the order they're done
       if (!text.trim()) return;
-      const it = { id: crypto.randomUUID(), text: text.trim(), done: false }, cl = this.draft.checklist, at = this.chkSteps() || this.phoneDock() ? cl.length : 0;
+      const it = { id: crypto.randomUUID(), text: text.trim(), done: false }, cl = this.draft.checklist, at = this.chkSteps() ? cl.length : 0;
       cl.splice(at, 0, it); this._pushChkItem(it, at, null, it.text);
+      if (this.phoneDock()) queueMicrotask(() => { const box = this._ghostEl('chk')?.closest('.composer-entries'); if (box) box.scrollTop = at ? box.scrollHeight : 0; });   // after its paint: the new row in view beside the ghost, however far the list was scrolled
     },
     // Bucket only the display: unchecking restores the item's saved position. Steps keep stored order.
     // find (a ghost query) opens the fold: a done item it matches floats up like any other
@@ -7230,6 +7245,14 @@ document.addEventListener('alpine:init', () => {
     chkSteps() { return !this.draft.checklist_plain && this.draft.task_type === 'steps'; },
     phoneDock() { return this.narrow && (document.documentElement.classList.contains('touch') || this._inBar()); },   // the composer's one-row dock: the 640 block's .touch and jot-bar rules
     notesHidden() { return this.phoneDock() && !this.notesOpen; },
+    // The bar's sheet gives its entries the room the rest leaves, so they scroll under their ghost while the title and send stay put.
+    // rest excludes the entries, so a cap never changes it: one pass settles. Never under 120px (~4 rows): a taller rest scrolls the sheet.
+    fitEntries(sheet) {
+      const box = this.$refs.composer.querySelector('.composer-entries'), on = sheet.classList.contains('open') && sheet.contains(box);
+      const room = on && sheet.getBoundingClientRect().bottom - sheet.offsetParent.getBoundingClientRect().top - parseFloat(getComputedStyle(sheet).getPropertyValue('--sp-24')) - (sheet.scrollHeight - box.offsetHeight);
+      const cap = on && room < box.scrollHeight ? Math.max(room, 120) + 'px' : '';
+      if (box.style.maxHeight !== cap) box.style.maxHeight = cap;
+    },
     // A strip word types itself where the caret is and chips as a typed space would; # and @ open their picker
     kcType(word) {
       const r = getSelection().getRangeAt(0).cloneRange(); r.setStart(this.$refs.content, 0);
@@ -7431,7 +7454,7 @@ document.addEventListener('alpine:init', () => {
     },
     // A sub-draft → child task fields. A subtask's parent is the editing task (not a project); it has no checklist of its own.
     _subFields(d) { const f = this.draftFields(d); delete f.project; delete f.project_id; delete f.checklist; f.parent_id = this.editing; return f; },
-    // The ghost's typing → a new row next to the ghost: the draft's head, a phone's tail. Its own row, never merged into the
+    // The ghost's typing → a new row at the head of the draft (right under the ghost). Its own row, never merged into the
     // ghost, or "sub1 30m" + "sub2 1h" becomes ONE task and drops the 30m.
     commitSubGhost() {
       const el = this._ghostEl('sub');
@@ -7445,7 +7468,7 @@ document.addEventListener('alpine:init', () => {
       // element fires no focus event, so nothing else re-points it and the typing would land in the task title.
       this._clearEditor(el); this._resetSubDraft();
       if (el && document.activeElement === el) this.focusSubEditor(el, null); else _nlpFocus = null;
-      if (this.editing && s.text) { const before = this._subsSnap(); this.phoneDock() ? this.draft.subs.push(s) : this.draft.subs.unshift(s); this._pushSubs('Added subtask', before); }   // as addChecklistItem
+      if (this.editing && s.text) { const before = this._subsSnap(); this.draft.subs.unshift(s); this._pushSubs('Added subtask', before); }
     },
     // Fill an existing child row's editor with its content text + a pill per stored field (inverse of the parser).
     // Fields come from the pills, exactly like the title: a throwaway draft during the build gives each pill a correct
@@ -7613,7 +7636,7 @@ document.addEventListener('alpine:init', () => {
       e.preventDefault();
       const items = trimmed.map(t => ({ id: crypto.randomUUID(), text: t, done: false }));
       // ghost paste lands where addChecklistItem adds; pasting onto an item inserts right after it
-      const at = item ? this.draft.checklist.indexOf(item) + 1 : this.chkSteps() || this.phoneDock() ? this.draft.checklist.length : 0;
+      const at = item ? this.draft.checklist.indexOf(item) + 1 : this.chkSteps() ? this.draft.checklist.length : 0;
       const before = JSON.parse(JSON.stringify(this.draft.checklist));
       this.draft.checklist.splice(at, 0, ...items);
       this._pushDraftEdit('Pasted checklist items', 'chk-multi', { before, after: JSON.parse(JSON.stringify(this.draft.checklist)) });   // ONE ⌘Z step for the whole paste, not one per item
