@@ -2587,10 +2587,10 @@ textarea.inp { resize: vertical; }
 .block-editor .cl-kind button.on { border-radius: 0; background: color-mix(in srgb, var(--tint) calc(var(--cal-blk) * 2), var(--panel)); box-shadow: inset 4px 0 0 color-mix(in srgb, var(--mark) 35%, transparent), var(--shadow-sm); }
 .touch :is(.cl-kind, .cl-going .seg) button { height: 36px; padding: 0 var(--sp-16); }
 .touch .cl-card-foot { min-height: 40px; .cl-go { width: 40px; height: 40px; border-radius: var(--r-pill); .ico { width: 20px; height: 20px; } } }
-/* title, notes and chip bar: the composer card's (.composer-card .content / .desc, .composer-opts) */
+/* title, notes and chip bar: the composer card's (.composer-card .content / .desc, .composer-opts); the title 2 steps up, over the notes' 13 */
 .ev-title, .ev-notes { display: block; width: 100%; border: none; background: none; padding: 0; outline: none; color: var(--ink); font: inherit;
   &::placeholder { color: var(--muted); } }
-.ev-title { font-size: var(--fs-15); line-height: 18px; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
+.ev-title { font-size: var(--fs-17); line-height: 22px; font-weight: 500; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text;
   &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; } }
 .ev-files { margin-top: var(--sp-6); .truncate:is(button) { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; } }
 .ev-notes { margin-top: var(--sp-4); font-size: var(--fs-13); line-height: 1.4; field-sizing: content; resize: vertical; max-height: calc(8lh); }   /* ceiling: field-sizing as .entry-txt (Safari 26.2); below it the notes keep one visible line */
