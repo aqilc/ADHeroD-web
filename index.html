@@ -1214,7 +1214,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
              main-thread work per frame that is felt as lag. -->
         <div class="cl-pages-inner" x-ref="clInner">
         <template x-for="pg in clBlocks()" :key="pg.key">
-          <div class="cl-period-block" :style="'top:calc(var(--ph) * ' + pg.rel + ');height:var(--ph)' + (clVT && clView === 'week' && pg.key === clAnchorIdx() ? ';view-transition-name:cl-active-week' : '')">
+          <div class="cl-period-block" :style="'top:calc(var(--ph) * ' + pg.rel + ');height:var(--ph)' + (clVT && clView === 'week' && pg.key === clAnchorIdx() ? ';view-transition-name:cl-active-week' : '')" :inert="clView === 'day' && pg.key !== _periodIdx(_clDate())">   <!-- inert: a Day page beside today is only clipped off (its tail sits under the header), so Tab and taps skip it -->
             <!-- DAY: the all-day rows, then the hours across the page with the week's own tiles, then the night
                  and the next day's first item (clAgRender). -->
             <template x-if="clView === 'day'">
