@@ -209,7 +209,7 @@ export function parseDateText(s, now = new Date(), whole = false) {
 // It mirrors the When popover's sentence — "every N unit [on <days>] at <time>, <n> times, ending <date>" —
 // so every word that surface RENDERS is typeable, including its empty-value glyphs (`–`, `∞`, `never`).
 const REC_DAY_RE = '(?:sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|urday)?\\b';
-const REC_DAYS = '(?:(?:' + REC_DAY_RE + ')(?:\\s*,\\s*|\\s+)?)+';
+const REC_DAYS = '(?:(?:' + REC_DAY_RE + ')(?:(?:\\s*,\\s*|\\s+)(?:and\\s+(?=' + REC_DAY_RE + '))?)?)+';   // "mon, wed and fri": a dropped "and" turned the last day into a one-off date
 // An nth weekday ("first sunday", store `nth`) and the month's last day (month_day 31, clamped to month-end) name a monthly day.
 const REC_NTH = '(?:first|second|third|fourth|fifth|last|[1-5](?:st|nd|rd|th))', REC_NTH_N = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, last: -1 };
 const REC_NTH_DAY = REC_NTH + '\\s+' + REC_DAY_RE, REC_OF_MONTH = '(?:\\s+of\\s+(?:the|every)\\s+month)?';

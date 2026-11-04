@@ -494,7 +494,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 /* mdLive(): markers faded (.dm-mark), styled text is real DOM (no overlay) — caret tracks it exactly */
 .dm-mark { color: var(--faint); }
 mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 2px; }   /* fuzzy sub-match — palette + ghost-find share it (UA yellow is not calm) */
-mark.hl { background: var(--hl); color: var(--ink); }   /* ::x:: is a highlighter pen, so it reads at a glance; search hits keep the accent */
+mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighter pen, so it reads at a glance; search hits keep the accent */
 .desc strong { font-weight: 600; color: var(--ink); }
 .desc em { font-style: italic; }
 .desc code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-2); }
@@ -1218,7 +1218,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .zone.act { border-color: var(--edge-hi); }   /* the active statement (spatial controls act on it) */
 .addrep { margin-top: var(--sp-2); }
 .zbtn.on, .zbtn.on:hover, .zone .c.pz { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); }
-.zbtn.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }   /* Pick a day: the next calendar tap is the comeback */
+.zbtn.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) var(--pick-ring), transparent); }   /* Pick a day: the next calendar tap is the comeback */
 .pz-pop { position: fixed; width: 200px; z-index: 40; }
 /* sentence chips (.c) + always-visible steppers (.st): own line-height — they must NOT inherit the sentence's tall wrap rhythm */
 .c {
@@ -1231,7 +1231,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   &:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   &.g { background: var(--hover); color: var(--muted); font-weight: 400;
     @media (any-hover: hover) and (any-pointer: fine) { &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); } } }
-  &.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); }
+  &.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) var(--pick-ring), transparent); margin-inline: var(--sp-2); }   /* the chip the next calendar tap fills; the margin keeps the ring off its words */
   &.ghosty { background: none; border: 1px dashed var(--faint); color: var(--muted);
     @media (any-hover: hover) and (any-pointer: fine) { &:hover:where(:not(.touch *)) { color: var(--warm-ink); border-color: var(--warm-ink); } } }
 }
@@ -2027,7 +2027,9 @@ textarea.inp { resize: vertical; }
 .cl-wh-d { flex: none; font-size: var(--fs-11); font-weight: 600; letter-spacing: .07em; color: var(--ink); font-variant-numeric: tabular-nums; }   /* same metric as the weekday beside it — only ink separates them, so week and month heads read identically */
 /* a week head's date opens that day (the weekday beside it stays the name field): underlined at rest, a fill on hover */
 .cl-wh-week .cl-wh-d { position: relative; cursor: pointer; padding: 1px var(--sp-5); margin: -1px calc(-1 * var(--sp-5)); border-radius: var(--r-pill); text-decoration: underline color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 3px; transition: background-color .15s var(--ease-out); }
-.cl-wh-week .cl-wh-d::after { content: ""; position: absolute; inset: -4px -2px; }   /* 24px target */
+.cl-wh-week .cl-wh-d::after { content: ""; position: absolute; inset: -4px; }   /* 24px target */
+.cl-wh-week .cl-wh-n { padding: 1px; margin: -1px; max-width: calc(100% + 2px); }   /* the date's box height beside it (its 1px pill pad), nothing moves */
+.cl-wh-week .cl-wh-n:focus-visible { outline-offset: 1px; }   /* the ring stays where it was before the pad */
 @media (any-hover: hover) { .cl-wh-week .cl-wh-d:hover:where(:not(.touch *)) { background: var(--hover); }
   .cl-wh-week .cl-wh.today .cl-wh-d:hover:where(:not(.touch *)) { background: color-mix(in srgb, currentColor 22%, transparent); } }
 /* Today is a FILLED plate carrying the whole cell — weekday and date together, text inverted onto it. An
@@ -2369,7 +2371,7 @@ textarea.inp { resize: vertical; }
    Depth is carried by transparency, and the stack NEVER MOVES — hover only raises. The peek is also the
    item's sole hit area (::after; the body is inert), so a raised item cannot swallow a peer's hover zone:
    every item keeps one fixed place that always brings it forward. */
-.cl-event.cl-casc { box-shadow: -3px 0 9px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.1); }
+.cl-event.cl-casc:not(.task-block) { box-shadow: -3px 0 9px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.1); }   /* a task has no box to cast it (tweak-40) */
 .cl-stk { pointer-events: none; box-shadow: var(--blk-edge, 0 0 transparent), -3px 0 9px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.1);
   background: color-mix(in srgb, var(--tint) calc(100% - var(--stk) * 12%), transparent); transition: background 140ms var(--ease-out); }
 .cl-stk::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: var(--peek); pointer-events: auto; }

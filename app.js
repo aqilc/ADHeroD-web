@@ -4416,8 +4416,8 @@ document.addEventListener('alpine:init', () => {
     endPicking: false, tpop: false, pzpop: null, pausePicking: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
     // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (placement, amber,
     // saved as a schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). Derived from
-    // the draft on every open, so the pop always reads back what the task already holds.
-    dreg: 'by',
+    // nothing: every open starts in 'on'.
+    dreg: 'on',
     repRules() { return recRules(this.draft.recurrence); },
     // the statement the spatial controls act on (headers, ordinals, time popover) — last-touched zone
     curRule() { const rs = this.repRules(); return rs[Math.min(this.repIdx, rs.length - 1)] || null; },
@@ -4429,10 +4429,9 @@ document.addEventListener('alpine:init', () => {
     openDate(name, anchor) {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
-      const phone = this.narrow && document.documentElement.classList.contains('touch'), d = this.draft;
-      this.dreg = !this.repRules().length && (d.on || phone && !d.deadline_at && !d.available_from) ? 'on' : 'by';   // hydrate: a placed task opens in On, and a dateless one on a phone (as Android)
+      this.dreg = 'on';   // the pop always opens in Do on; a deadline still shows as its red day (calDayClass paints both registers)
       this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._typedN = 1;
-      this._calTo(this.draft[this._dateKey()] || this.draft.on || isoDate(new Date()));
+      this._calTo(this.draft.on || this.draft.deadline_at || isoDate(new Date()));
       this.$nextTick(() => this.pop === name && !this.popDock && !document.activeElement?.closest('.pop.cal') && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it. A held tick lands late: a Tab already in the pop keeps its place
     },
     // Pause asks when it comes back first, in a pop on press; the line goes in after.
@@ -4845,7 +4844,7 @@ document.addEventListener('alpine:init', () => {
       if (on || d.recurrence || d.available_from) return [bar ? 'i-cal' : 'i-cal-fill', 'var(--muted)'];
       return d.deadline_at ? ['i-flag-fill', 'var(--p1)'] : ['i-cal', 'var(--muted)'];
     },
-    calSugApply(iso) { this.draft.on = iso; this.dreg = 'on'; this.pop = null; },
+    calSugApply(iso) { this.draft.on = iso; this.pop = null; },
     barFit(opts) {   // the jot bar's values show their word whole or only the icon, the last first; the date tries "Tmr" before its icon
       const fit = new ResizeObserver(() => {
         const chips = [...opts.querySelectorAll(':scope > .field > .chip.set:not(.chip-notes)')];
@@ -5277,7 +5276,8 @@ document.addEventListener('alpine:init', () => {
       if (node.parentNode !== this._nlpEl()) { if (node.parentNode !== this.$refs.content) return false; this.focusTitle(); }
       const pending = node.textContent.slice(0, off);
       const tok = matchTrailingToken(pending, new Date(), this.locNames());
-      if (this.absorbIntoRule(node, off, pending.slice(0, tok ? tok.start : off))) return true;   // "first and third [Tmr] of every month"
+      const cut = tok ? tok.start + (tok.kind === 'date' ? /^on\s+/i.exec(pending.slice(tok.start))?.[0].length ?? 0 : 0) : off;   // a date's filler "on" reads as rule words: [Every week] "on mon"
+      if (this.absorbIntoRule(node, off, pending.slice(0, cut))) return true;   // "first and third [Tmr] of every month"
       const start = tok ? tok.start : pending.search(/\S+$/);   // a non-token word may still fold: [Fri 4:00] + "PM"
       if ((!tok || tok.kind === 'date') && start >= 0 && this.swallowIntoPrevDate(node, start, pending.slice(start), off)) return true;   // [next week] + "sun" → [next week sunday]
       if (!tok || !this._nlpTakes(tok)) return false;
@@ -5936,7 +5936,7 @@ document.addEventListener('alpine:init', () => {
           ['<b>every 2 weeks on mon wed at 9am</b>','Choose repeat days and time'],['<b>every day, 3 times</b>','End after a count'],
           ['<b>every week ending sep 1</b>','End on a date']]},
         {l:'Description Markdown',r:[
-          ['<b>**bold**</b> or <b>*italic*</b> or <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],['<b>::highlight::</b>','Highlight'],
+          ['<b>**bold**</b> or <b>*italic*</b> or <b>~~strike~~</b>','Bold / italic / strike'],['<b>`code`</b>','Inline code'],['<b>==highlight==</b>','Highlight'],
           ['<b>```code```</b>','Code block'],['<b>\\*</b>','Show a mark as typed'],['<b>[label](https://example.com)</b>','Link'],['<b># Heading</b> or <b>- Item</b>','Heading / bullet']]}
       ];
     },
@@ -8929,6 +8929,11 @@ document.addEventListener('alpine:init', () => {
         }
         out.push(row);
       }
+      // our glide is drawing back to the stop's row: a scroll frame still in flight (a wheel's, a fling's) doesn't recycle it, or its focused
+      // day falls to body until the glide lands and a key typed meanwhile turns the surface. Untracked: a wheel clearing the glide re-runs nothing.
+      const held = _appRaw._clMTo != null && _clWkCache.get(this._weekIdx(new Date(_appRaw._clStop() + 'T00:00')));
+      if (held && held.key < this.clVisStart) out.unshift(held);   // in key order: x-for MOVES a row out of order, and a moved node drops its focus too
+      else if (held && held.key >= end) out.push(held);
       return _clWkOut = out;
     },
     // Thursday's month = dominant; shared by scroll handler + jumps for consistent label
@@ -8987,7 +8992,8 @@ document.addEventListener('alpine:init', () => {
     // a rAF identity-check invalidates the zero so the next call re-measures once the DOM has laid out.
     _clMetrics() {
       if (this._clM) return this._clM;
-      const el = _staticEl('.cl-pages'), m = { vh: document.documentElement.clientHeight || window.innerHeight || 800, port: el ? el.clientHeight : 0 };
+      const el = _staticEl('.cl-pages'), side = PHONE_MQ.matches && this.clSideVisible() && _staticEl('.cl-side');
+      const m = { vh: document.documentElement.clientHeight || window.innerHeight || 800, port: el ? el.clientHeight : 0, tray: side ? side.offsetHeight : 0 };   // tray: the phone's task sheet covers the scroller's foot
       this._clM = m;
       if (!m.port) { const snap = this._clM; requestAnimationFrame(() => { if (this._clM === snap) this._clM = null; }); }
       return this._clM;
@@ -9210,9 +9216,10 @@ document.addEventListener('alpine:init', () => {
     // the period exactly fills the viewport, so there is nowhere to go and the next push is a page turn.
     // The week gets a little BLEED past its own end so the next week's first hours peek in before the page
     // turns — stopping dead the instant the last hour touches the bottom edge reads as a wall.
-    _clMaxFrac() { const ph = this.clPeriodH(), port = this._clMetrics().port;
+    // An up phone tray insets the floor by its height, so a period's last hours and the now line travel above it.
+    _clMaxFrac() { const ph = this.clPeriodH(), { port, tray } = this._clMetrics();
       if (!port || !ph) return 0;
-      return Math.max(0, 1 - (port - this._clHeadH()) / ph) + (this.clView === 'week' ? CL_WEEK_BLEED / ph : 0); },
+      return Math.max(0, 1 - (port - this._clHeadH() - tray) / ph) + (this.clView === 'week' ? CL_WEEK_BLEED / ph : 0); },
     // toLocaleDateString is ~100us; three zone titles plus the heading ask for one on EVERY wheel event.
     // A period's label is a pure function of its key, so it is computed once and kept.
     _lbl(k, make) { if (_periodLabels.has(k)) return _periodLabels.get(k); const v = make(); if (_periodLabels.size > 500) { _periodLabels.clear(); _dayLabels.clear(); } _periodLabels.set(k, v); return v; },
@@ -10549,6 +10556,8 @@ document.addEventListener('alpine:init', () => {
     },
     clSideToggle(open = !this.clSideOpen) {   // every way to shut the panel closes the composer it hosted, else the edit stays open off-screen
       const hosted = this.composer.open && this._inPanel(); this.clSideOpen = open;
+      this._clM = null;   // the tray's inset on the floor (_clMaxFrac)
+      if (this.clView !== 'month' && this.clPos.frac > this._clMaxFrac()) this._clTween(this.clPos.idx, this._clMaxFrac());   // a closing tray takes its inset along: the day settles back to its floor
       this._clSideSlide();
       if (hosted && !this._inPanel()) this.closeComposer();
     },

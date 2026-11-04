@@ -814,7 +814,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <input type="text" class="cal-type" x-show="pop === 'due'" placeholder="Date or repeat (every 2 weeks)" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
           <!-- due: scheduling suggestions + clear chip -->
           <div class="cal-quick" x-show="pop === 'due'">
-            <!-- Suggestions are safe in BOTH registers: calSugApply writes On and flips dreg — it can never mint a deadline -->
+            <!-- Suggestions are safe in BOTH registers: calSugApply writes On only, it can never mint a deadline -->
             <!-- the rows are ONE Tab stop (the first); ↑/↓ walk them, Enter is the button's own click -->
             <template x-for="(s, si) in calSuggestions()" :key="s.iso">
               <button type="button" class="pop-item sug" :tabindex="si ? -1 : 0" :style="`--sug: var(--q-${s.key})`" @click="calSugApply(s.iso)" @keydown.down.prevent="$el.nextElementSibling?.closest('.sug')?.focus()" @keydown.up.prevent="$el.previousElementSibling?.closest('.sug')?.focus()"><svg class="ico"><use :href="'#i-' + s.icon"/></svg><span x-text="s.label"></span><span class="rt" x-text="s.hint"></span></button>
@@ -848,6 +848,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="c inline-flex items-center" @click="repIdx = ri; cycleRepeatFreq()" x-text="repeatUnitLabel(r)"></button>
                 <template x-if="repDaysLabel(r)"><span>on <button type="button" class="c inline-flex items-center" @click="repIdx = ri; pulseWeekdays()" x-text="repDaysLabel(r)"></button></span></template>
                 <span class="nowrap"><button type="button" class="c inline-flex items-center" :class="{ g: !r.at }" @click.stop="repIdx = ri; toggleTimePop($event)" x-text="r.at ? 'at ' + fmtTime(r.at) : 'at –'"></button><span>,</span></span>
+                <span class="nowrap">starting <button type="button" class="c inline-flex items-center" :class="{ g: !draft.on, ring: !endPicking && !pausePicking }" title="tap a day on the calendar above" @click="repIdx = ri; endPicking = false; pausePicking = false; pulseCal()" x-text="draft.on ? fmt(draft.on.slice(0, 10)) : '–'"></button>,</span>
                 <span class="st inline-flex items-center" :class="{ g: !r.ends?.count }"><button type="button" @click="repIdx = ri; setRepeatCount(-1)">−</button><b x-text="r.ends?.count || '∞'"></b><button type="button" @click="repIdx = ri; setRepeatCount(1)">+</button></span>
                 <span class="nowrap">times, ending <button type="button" class="c inline-flex items-center" :class="{ g: !r.ends?.date, ring: endPicking && repIdx === ri }" @click="repIdx = ri; toggleEndPicking()" x-text="r.ends?.date ? fmt(r.ends.date) : 'never'"></button></span>
                 <template x-if="r.paused"><span class="nowrap pzl">paused until <button type="button" class="c pz inline-flex items-center" @click.stop="togglePausePop($event, r)" x-text="pauseLabel(r)"></button></span></template>

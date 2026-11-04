@@ -51,10 +51,10 @@ const _codeBlock = (src, info, compact) => { const key = String(info || '').toLo
 const _fences = /```([\s\S]*?)(```|$)/g;
 const _hasFence = src => String(src ?? '').includes('```');
 // One left-to-right scan for a backslash escape of a mark or a code span: an escaped backtick opens no span, a backslash inside one is literal.
-const _escOrCode = /\\([\\`*_~[\]()#:-])|`([^`\n]+)`/g;
-const _hl = /::(?!\s)([^\n]+?)(?<!\s)::/g;   // ::highlight::, touching both pairs, so a spaced "a :: b" stays a note's separator
-const _chkMask = new RegExp(_fences.source + '|' + _escOrCode.source + '|' + _hl.source, 'g');   // blanks what can't hold a note's "::"
-const _chkSep = src => { const s = String(src ?? ''); return (/[`\\]/.test(s) || s.indexOf('::') !== s.lastIndexOf('::') ? s.replace(_chkMask, m => ' '.repeat(m.length)) : s).indexOf('::'); };   // the test first: replace() alone costs ~2x per row
+const _escOrCode = /\\([\\`*_~[\]()#:=-])|`([^`\n]+)`/g;
+const _hl = /==(?!\s)([^\n]+?)(?<!\s)==/g;   // ==highlight== (Monoform's too), touching both pairs, so a spaced "a == b" stays prose
+const _chkMask = new RegExp(_fences.source + '|' + _escOrCode.source, 'g');   // blanks what can't hold a note's "::"
+const _chkSep = src => { const s = String(src ?? ''); return (/[`\\]/.test(s) ? s.replace(_chkMask, m => ' '.repeat(m.length)) : s).indexOf('::'); };   // the test first: replace() alone costs ~2x per row
 export const chkParts = (c, ci) => { const sep = _chkSep(c.text); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; };
 const _sentinel = (src, mark) => { while (src.includes(mark)) mark += mark[0]; return mark; };
 // XSS-safe markdown for task descriptions (headings, bold, italic, code, links, bullets). Inline-styled spans, not a document renderer.
@@ -132,7 +132,7 @@ const _dLine = (line, literal) => {   // literal: a title's, where # and - stay 
   t = esc(t);
   t = t.replace(/\*\*([^*\n]+)\*\*/g, (_, x) => _tok('**', `<strong>${x}</strong>`, '**'));
   t = t.replace(/~~([^~\n]+)~~/g, (_, x) => _tok('~~', `<s>${x}</s>`, '~~'));
-  t = t.replace(_hl, (_, x) => _tok('::', `<mark class="hl">${x}</mark>`, '::'));
+  t = t.replace(_hl, (_, x) => _tok('==', `<mark class="hl">${x}</mark>`, '=='));
   t = t.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, (_, pre, x) => pre + _tok('*', `<em>${x}</em>`, '*'));
   t = t.replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_/g, (_, pre, x) => pre + _tok('_', `<em>${x}</em>`, '_'));
   const li = !literal && t.match(/^([-*] )|^(\d+\. )/), h = !literal && !li && t.match(/^(#{1,3})(\s[\s\S]*)?$/);
