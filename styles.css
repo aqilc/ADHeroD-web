@@ -307,6 +307,42 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 /* full-width padding (not max-width+margin) so margin-area wheel events scroll natively, not via JS */
 :root { --surface-top: 64px; }   /* where a surface's title starts (Lists, Social) */
 .app { flex: 1; min-width: 0; padding: var(--surface-top) max(var(--sp-24), calc((100% - var(--list-w)) / 2)) 120px; height: 100%; overflow-y: auto; overflow-x: hidden; }
+/* The sheet (ds-3 Card 3): the list column on a work sheet over the canvas, a box the list scrolls inside, as Mac's
+   panel is: top corners --r-lg, 28px down, to the window bottom. .app stays the full-width scroller (margin-area wheels
+   scroll natively, above), so the sheet is its unscrolled background and the sticky ::before repaints the canvas over
+   rows passing under the sheet's top edge and corners. Never `local` layers: they re-raster the list on every height change. */
+.app { --sheet-w: min(var(--list-w) + 2 * var(--sp-24), 100% + 2 * var(--sp-24)); --sheet-y: 28px; --canvas: transparent;   /* 100%: the content box, so a classic scrollbar never shifts the sheet off the rows */
+  background: linear-gradient(var(--sheet), var(--sheet)) center calc(var(--sheet-y) - var(--surface-top)) / var(--sheet-w) 100vh no-repeat content-box border-box var(--canvas);
+  &::before { content: ""; display: block; position: sticky; top: calc(-1 * var(--surface-top)); pointer-events: none;   /* a sticky inset counts inside the scroller padding */
+    z-index: 6;   /* over a row's check (1) and a sorting row (5), under the composer (7) whose pops it would cover */
+    width: var(--sheet-w); height: calc(var(--sheet-y) + var(--r-lg)); margin: calc(-1 * var(--surface-top)) 0 calc(var(--surface-top) - var(--sheet-y) - var(--r-lg)) calc(50% - var(--sheet-w) / 2);
+    /* the body's wash, placed as the viewport paints it: the list's .app spans the viewport and centers the cap (not
+       `fixed`: .canvas-track's will-change makes it scroll). ceiling: drifts while a swipe moves the surface, as .peek-panel's. */
+    background: var(--bg-wash) 50% 0 / 100vw 100vh no-repeat, var(--bg);
+    mask: linear-gradient(#000, #000) 0 0 / 100% var(--sheet-y) no-repeat,
+      radial-gradient(circle at 100% 100%, transparent calc(var(--r-lg) - .5px), #000 var(--r-lg)) 0 100% / var(--r-lg) var(--r-lg) no-repeat,
+      radial-gradient(circle at 0 100%, transparent calc(var(--r-lg) - .5px), #000 var(--r-lg)) 100% 100% / var(--r-lg) var(--r-lg) no-repeat; } }
+.app.tinted { --canvas: color-mix(in srgb, var(--list-tint) 5%, var(--bg)); &::before { background: var(--canvas); } }   /* a colored list's tint replaces the wash */
+@media (max-width: 640px) { .app { background: var(--sheet); &::before { display: none; } }   /* phone: full bleed */
+  .app.tinted { background: color-mix(in srgb, var(--list-tint) 5%, var(--sheet)); } }
+html:is(.composer-win, .sticky) .app { background: none; &::before { display: none; } }   /* the desktop's card and note windows (desktop/composer.js, sticky.js) draw no sheet */
+.topbar-title { display: flex; align-items: center; gap: var(--sp-12); }
+.title-glyph { font-size: calc(var(--fs-44) * .78); color: var(--accent);
+  .ico { width: 1em; height: 1em; } .pring { width: .95em; height: .95em; } }   /* a project's pie at .74 of the title */
+.title-glyph:empty { display: none; }
+/* Today's plan atop All: Things' events box with Apple Calendar's blocks; desk three to a row */
+.plan-box { display: grid; gap: var(--sp-4); margin: 0 0 var(--sp-10); padding: var(--sp-8); border-radius: var(--r-12); background: color-mix(in srgb, var(--faint) 8%, transparent); }
+.plan-box:empty { display: none; }
+@media (min-width: 641px) { .plan-box { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .pbt { min-width: 4.6em; } }   /* one column: the names line up */
+.pb { position: relative; display: flex; align-items: center; gap: var(--sp-10); min-width: 0; padding: var(--sp-5) var(--sp-10) var(--sp-5) var(--sp-16); border-radius: var(--r-4); font-size: var(--fs-13);   /* concentric in the box: --r-12 less its 8px inset */
+  background: color-mix(in srgb, var(--tc) 14%, transparent); color: color-mix(in oklab, var(--tc) 55%, var(--ink));
+  &::before { content: ""; position: absolute; left: var(--sp-5); top: var(--sp-5); bottom: var(--sp-5); width: 3.5px; border-radius: var(--r-pill); background: var(--tc); } }
+.pb.pt { background: none; color: var(--ink); padding-left: var(--sp-6); gap: var(--sp-8); &::before { display: none; } }
+.pb-ring { width: calc(var(--fs-13) + 1px); height: calc(var(--fs-13) + 1px); flex: none; box-shadow: inset 0 0 0 1.5px var(--pc); border-radius: 50%; }   /* a border rounds 1.5px down to 1px */
+.pbt { flex: none; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pbn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.pbc { width: 1.05em; height: 1.05em; flex: none; margin-left: auto; color: var(--tc); }
 .topbar {
   align-items: flex-start;
   h1 { margin: 0; font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
@@ -461,29 +497,15 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
    strikethrough to the underline (accent, 1px) so the two lines read as one, same as the <s>:has(a) case above */
 .item.done .title:has(a) { text-decoration-color: var(--accent); text-decoration-thickness: 1px; }
 .r1r { flex: 0 1 auto; }   /* shrinkable so the loc chip (below) yields space to the title before the title truncates */
-/* Badge rules cover BOTH lines: _fit's ladder moves a badge to .row2.meta, and scoped to .r1r alone a
-   moved badge loses its icon size (no viewBox → the 300×150 replaced-element default) and its flex contract. */
-:is(.r1r, .row2.meta) .m { .ico { width: 12px; height: 12px; } }
-:is(.r1r, .row2.meta) .m.dl.over { color: var(--deadline); font-weight: 600; }
-:is(.r1r, .row2.meta) .m:not(.loc) { flex: none; }   /* every badge except the location chip holds its size */
-:is(.r1r, .row2.meta) .m.loc { min-width: 0; flex: 0 1 auto; }
-:is(.r1r, .row2.meta) .m.loc > span { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* loc text shrinks first, down to a ~3-4 letter floor, then the title truncates */
+.r1r .m { .ico { width: 12px; height: 12px; } }
+.r1r .m.dl.over { color: var(--deadline); font-weight: 600; }
+.r1r .m:not(.loc) { flex: none; }   /* every badge except the location chip holds its size */
+.r1r .m.loc { min-width: 0; flex: 0 1 auto; }
+.r1r .m.loc > span { max-width: 6rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* loc text shrinks first, down to a ~3-4 letter floor, then the title truncates */
 .row2 { margin-top: var(--sp-2); overflow: hidden; }
-/* Line 2 of the overflow ladder (built imperatively by _fit). It MAY WRAP to a third line and beyond:
-   growing costs height, but collapsing chip names costs the fact itself, so the meta
-   line grows rather than hides. The shrink steps below therefore only fire for an item too wide for a
-   WHOLE line (a long project name in a narrow row) — wrapping handles the ordinary case on its own.
-   `icons-only`/`rolled` are authored as `.icons-only .area`, so line 2 reuses them as-is; the project is
-   the only thing needing a rule, because it is flex:none at 7rem and would win space here exactly as it
-   does on line 1. → docs/ui/task-list.md §Row overflow */
-.row2.meta { flex-wrap: wrap; row-gap: var(--sp-2); }
-.row2.meta:not(.l2-shrink) .proj { width: 7rem; max-width: max-content; flex: 1000 0 auto; }   /* packs at line 1's cap, so it never opens a row, then takes its row's slack before the marks, never cut off with the line free */
-.row2.meta.l2-shrink .proj { flex: 0 1 auto; min-width: 0; }
-/* Marks (tray): they take what line 2's last row has left and clip whole marks past it, never opening or wrapping
-   a line. Basis 0 keeps the box on that row; its negative margin cancels the line's gap (which would wrap it), so each mark carries its own. */
-.body > .l2-fill { display: none; }
-.row2.meta > .l2-fill { flex: 1 1 0; min-width: 0; flex-wrap: wrap; height: 1lh; overflow: hidden; margin-left: calc(-1 * var(--sp-8)); > * { margin-left: var(--sp-8); } }
-.row2.meta.l2-shrink .m.loc > span { max-width: 3.5rem; }
+/* Marks (tray): line 2 never wraps there; they take what the project leaves and clip whole marks past it. */
+.cl-side-list .typed .row-sub { flex-wrap: nowrap; > .m { flex: none; } }
+.row-sub > .l2-fill { flex: 1 1 0; min-width: 0; flex-wrap: wrap; column-gap: var(--sp-8); height: 1lh; overflow: hidden; }
 .desc-line { font-size: var(--fs-12); color: var(--muted); }   /* prose ALWAYS owns its own line — never a ladder candidate, never on the meta line */
 .desc-line a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 /* bold stays in the faded family — one step above the desc's own text, never jumping to title-level ink */
@@ -617,7 +639,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   .md-code:not(.md-code-inline)::after { content: '…'; color: var(--faint); } }
 /* every chip stays on the 13px title line, a type size down with it (15:12 → 13:11); past the title's floor they
    hide behind a "…" pill (app.js _shed) — a pill, so it never reads as the title's own ellipsis. */
-.item > .body:has(> .step-block) .row1 { .m, .proj { font-size: var(--fs-11); } .m .ico { width: 11px; height: 11px; } .area { line-height: 13px; } .badge { padding: 0 var(--sp-6); } }
+.item > .body:has(> .step-block) .row1 { .m, .proj { font-size: var(--fs-11); } .m .ico { width: 11px; height: 11px; } .area { font-size: var(--fs-11); line-height: 13px; } .icons-only .areas { height: 13px; } .badge:not(.w) { padding: 0 var(--sp-6); } }   /* the date word keeps the plain row's 0 */
 .shed-hid { display: none !important; }
 .hid-more { flex: none; font-size: var(--fs-11); line-height: 13px; color: var(--muted); padding: 0 var(--sp-6); border-radius: var(--r-pill); background: var(--hover); }
 @property --p { syntax: '<number>'; inherits: true; initial-value: 0; }   /* typed, so the pie sweeps */
@@ -782,7 +804,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
    Transparent 1px border matches bordered chips height (no row-height jump). */
 .icons-only .area .nm { display: none; }
 .icons-only .area .ico-default { display: inline-flex; }
-.icons-only .areas { background: color-mix(in srgb, var(--tc, var(--muted)) 14%, transparent); border: 1px solid color-mix(in srgb, var(--tc, var(--muted)) 28%, transparent); border-radius: var(--r-pill); padding: 0 var(--sp-6); gap: var(--sp-6); flex: none; height: 17px; }
+.icons-only .areas { background: color-mix(in srgb, var(--tc, var(--muted)) 13%, transparent); border: 1px solid color-mix(in srgb, var(--tc, var(--muted)) 28%, transparent); border-radius: var(--r-pill); padding: 0 var(--sp-6); gap: var(--sp-6); flex: none; height: 17px; }
 .icons-only .area { padding: 0; gap: 0; border: none; background: none; line-height: 15px; }
 /* >3 chips collapsed: show the first 3 icons, then a "…". (Combinator counts only chips; Alpine leaves the x-for <template> in the group.) */
 .rolled .areas .area ~ .area ~ .area ~ .area { display: none; }
@@ -815,6 +837,34 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   outline: 1px dashed light-dark(transparent, var(--accent)); outline-offset: -1px; }
 .badge.soon { color: var(--soon-ink); background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .badge.missed { background: none; color: var(--danger); box-shadow: inset 0 0 0 1px var(--danger); }
+/* The typed row (ds-3 Card 3, his 11-05 "different types of elements and data aren't distinct"): each kind differs from
+   its neighbors in shape, color, weight or place. Full list rows only (.body.typed); the tray and pickers keep the rules above. */
+.typed {
+  .r1r { gap: var(--sp-8); }
+  .r1r .m:is(.est, .rep) { color: var(--faint); .ico { width: 1.1em; height: 1.1em; } }
+  .badge.missed { box-shadow: none; background: color-mix(in srgb, var(--danger) 13%, transparent); }   /* the still's tinted chip (his 10-24) */
+  .badge { font-size: var(--fs-12); }   /* the overdue and missed chips at the date word's size */
+  .badge.w { padding: 0; background: none; outline: none; box-shadow: none; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .badge.w[style] { color: color-mix(in oklab, var(--tc) 50%, var(--ink)); }   /* the day's hue, half ink so the word reads */
+  .item.done & .badge { color: var(--faint); background: none; padding-inline: 0; }   /* a done row's date: a faint word, no chip */
+  .row-sub { flex-wrap: wrap; gap: calc(var(--sp-2) + 1px) calc(var(--sp-10) + 1px); margin-top: var(--sp-2); font-size: var(--fs-12); line-height: 18px;
+    .m .ico { width: 1.1em; height: 1.1em; flex: none; }
+    .m.dl { color: var(--deadline); font-weight: 600; }
+    .m.loc { color: var(--faint); min-width: 0; > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+    .row-rel { font-size: inherit; }
+    :is(.areas, .row-rels) { flex-wrap: wrap; flex-shrink: 1; row-gap: calc(var(--sp-2) + 1px); }   /* a run longer than the row wraps with line 2 */
+    .proj { max-width: 100%; gap: var(--sp-5); font-size: var(--fs-12); color: var(--ink); font-weight: 500; flex: 0 1 auto; margin-left: auto;   /* the far right, on whichever line it wraps to */
+      .pring { width: 1em; height: 1em; } > .ico { width: 1.1em; height: 1.1em; flex: none; color: var(--faint); } }
+  }
+  :is(.row-sub, .r1l) {   /* line 2's areas, and a Steps row's on line 1 */
+    .area { border: 0; padding: 0 calc(var(--sp-6) + 1px) 0 var(--sp-5); font-size: var(--fs-12); font-weight: 400; line-height: 1.5;
+      color: color-mix(in oklab, var(--tc) 50%, var(--ink)); background: color-mix(in srgb, var(--tc) 13%, transparent); }
+    .area svg.ico { width: 1em; height: 1em; }
+    &.icons-only { .areas { border: 0; height: 1.5em; } .area { background: none; padding: 0; } }   /* past 3 areas: one tinted capsule of glyphs, a capsule's line-height tall */
+  }
+  > .row2:not(.meta) { margin-top: var(--sp-5); padding-left: calc(var(--sp-8) + 1px); border-left: 2px solid var(--edge); }   /* notes behind a bar */
+}
+.touch .surface-lists .typed :is(.badge, .row-sub, .row-sub :is(.area, .proj, .m)) { font-size: var(--fs-13); }   /* the phone's 17px title */
 /* No fill ⇒ no chip: the inline padding goes with the background, else the date reads as text inset by an
    invisible box. (`.later` needs no rule of its own — the base .badge above IS its appearance.) */
 .item.done .badge { color: var(--faint); background: none; padding-inline: 0; box-shadow: none; outline: none; }
@@ -1060,26 +1110,24 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 :is(.entry-list.steps > .ghost .chk-rect, .entry.step-ghost:not(.active) .ghost-check)::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
   background: repeating-conic-gradient(color-mix(in srgb, var(--faint) 70%, transparent) 0 36deg, transparent 0 60deg);
   mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); }   /* six dashes: a border:dashed draws a "C" this small */
-/* First step beside the subtask ring: the rail in small, two nodes joined by a line; a phone's type-picker row keeps the six dashes */
-.entry.step-ghost:not(.active, :has(> .type-pick)) .ghost-check::after { --ghost-ink: color-mix(in srgb, var(--faint) 70%, transparent); inset: -3px; mask: none; background:
+/* First step beside the subtask ring: the rail in small, two nodes joined by a line */
+.entry.step-ghost:not(.active) .ghost-check::after { --ghost-ink: color-mix(in srgb, var(--faint) 70%, transparent); inset: -3px; mask: none; background:
   radial-gradient(circle at 50% 3.5px, transparent 1.6px, var(--ghost-ink) 1.9px 3.3px, transparent 3.6px), radial-gradient(circle at 50% 12.5px, transparent 1.6px, var(--ghost-ink) 1.9px 3.3px, transparent 3.6px),
   linear-gradient(var(--ghost-ink), var(--ghost-ink)) 50% 50% / 2px 3px no-repeat; }
 /* empty state: up to three ghosts with an OR between each */
 .entry-empty { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-4) var(--sp-12); padding: var(--sp-4) 0;
   .entry { flex: 0 1 auto; min-width: 0; padding: 0; }   /* together from the left at their own width; shrinks so a long typed line wraps */
-  .entry:not(:has(> .type-pick)) > .entry-txt { align-self: baseline; }   /* the entry's baseline is its text's, not the icon box's: the ORs sit on it. A phone's picker row puts its box and picker on the first line */
+  .entry > .entry-txt { align-self: baseline; }   /* the entry's baseline is its text's, not the icon box's: the ORs sit on it */
   .entry-or { font-size: var(--fs-11); font-weight: 600; color: var(--muted); letter-spacing: .04em; flex: none; }
 }
 /* three ghosts can't share a phone-width line (a wrap strands an OR at a line's end): they stack, each OR centered between */
 .composer-entries { container-type: inline-size; }
-.composer-entries .seg.type-pick { margin: 0; flex: none; gap: 1px;   /* the phone's ghost row picks its kind (entryPick) */
-  button { flex: none; width: 44px; height: 32px; padding: 0; display: grid; place-items: center; position: relative; &::before { content: ''; position: absolute; inset: -6px 0; } &:disabled { opacity: .35; } }   /* 44px tall target */
-  .chk-rect, .check { --pc: currentColor; border-color: currentColor; pointer-events: none; }
-  .chk-rect { border: 2px solid currentColor; background: none; box-shadow: none; &::before, &::after { display: none; } }   /* outlined: the steps list's ring styling must not reach it */
-  .check.steps { border-color: transparent; } }
-@media (max-width: 640px) { .touch .composer-entries .entry.ghost:has(> .type-pick) { flex: 1 1 100%; --pick-h: 36px; --box: 16px;   /* the 32px buttons in the seg's 2px padding */
-  > .entry-txt { padding-top: calc((var(--pick-h) - 1lh) / 2); }   /* the box, the first line and the picker share one middle, however many lines the words wrap to */
-  > .ghost-check { margin-top: calc((var(--pick-h) - var(--box)) / 2); } } }
+.kind-pop .pop-item { &:disabled { opacity: .35; background: none; }
+  > :is(.chk-rect, .check) { color: var(--muted); --pc: currentColor; border-color: currentColor; pointer-events: none; }
+  > .chk-rect { border: 2px solid currentColor; background: none; box-shadow: none; }   /* outlined, the steps list's ring styling can't reach a body-level pop */
+  > .check.steps { --p: 0; border-color: transparent; } }
+@media (max-width: 640px) { .touch .composer-entries .ghost { &:has(> textarea) { line-height: 1.35; }   /* the row's 1lh = the textarea's line: .entry centers the box on its first line */
+  > .ghost-check { position: relative; &::before { content: ''; position: absolute; inset: -11px -6px -11px -11px; } } } }   /* a 38px tap on the 16px box (kindBox), short of the text */
 @container (width < 400px) { .entry-empty:has(> .entry:not(.chk)) { flex-direction: column; align-items: stretch; .entry { flex: none; } .entry-or { align-self: center; } } }
 .ico { display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* Popover shell — floating panel of rows. .nav-pop is the same shell anchored to a nav row. */
@@ -1805,6 +1853,16 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 /* the rule runs out from AFTER the count to the right edge — shared by the section heads and the Done head,
    so both stop at the same x (the list bleeds 10px right, hence the section row's own right padding) */
 .head-rule { flex: 1 1 auto; height: 1px; background: var(--hair); margin-left: var(--sp-8); }
+/* A list's subproject head (ds-3 Card 3, Things 3): its pie, the bold name a step over the row title, a hairline under
+   it from the check's column, the fold chevron at the right end. Mail's head is a button.sec-row and keeps the eyebrow.
+   Spacing is the still's: .9 title size (1em - 1px) above and 7 to the hairline, the line box hugging the name so its ink
+   sits 7.5 over the line as there. No gap under it: the row's own top padding already sets the first row lower than the still's. */
+li.sec-row { gap: var(--sp-8); padding: calc((1em - 1px) * .9) var(--sp-10) var(--sp-8) var(--gut); font-size: calc(var(--fs-15) + 1px); line-height: 1.1; text-transform: none; letter-spacing: 0; color: var(--ink);
+  background: linear-gradient(var(--edge), var(--edge)) var(--gut) 100% / calc(100% - var(--gut) - var(--sp-10)) 1px no-repeat;
+  .sec-pie { width: .85em; height: .85em; margin: 0; }
+  .sec-ct { margin: 0 auto 0 0; font-size: var(--fs-12); }
+  .sec-chev { width: .8em; height: .8em; margin: 0; } }
+.touch .surface-lists li.sec-row { font-size: calc(var(--fs-17) + 1px); }
 /* space budget: with tokens present the row must NEVER wrap — chrome yields (words dropped → title attrs), then
    the shed ladder below. */
 .list-controls.crowded { flex-wrap: nowrap; }
