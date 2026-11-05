@@ -143,8 +143,8 @@ export function parseDate(s, now = new Date(), whole = false) {
   if (V.nextWeek.includes(low)) return quickDate('nextweek', now);
   if (/^next\s+weekend$/.test(low)) return isoDate(nextWeekDate(6, now));
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const rel = low.match(/^(?:in\s+)?(\d+)\s*d(?:ays?)?$/);
-  if (rel) { const d = midnight(now); d.setDate(d.getDate() + +rel[1]); return isoDate(d); }
+  const rel = low.match(/^(?:(?:in\s+)?(\d+)\s*|in\s+an?\s+)(d|days?|w|wks?|weeks?)$/);   // "in 2 weeks", the deadline pop's own hint; a bare "a week" stays prose
+  if (rel) { const d = midnight(now); d.setDate(d.getDate() + (+rel[1] || 1) * (rel[2][0] === 'w' ? 7 : 1)); return isoDate(d); }
   let mn = low.match(MON_DAY_ALL);
   if (mn) return monthDayIso(monthIdx(mn[1]), +mn[2], mn[3] && +mn[3], now);
   mn = low.match(DAY_MON_ALL);

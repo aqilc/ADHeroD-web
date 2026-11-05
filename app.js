@@ -383,9 +383,15 @@ const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', impo
 // subscribed to, minus the string it built each run). `skip` prunes one subtree that another effect owns.
 const _touch = (v, skip) => { if (v && typeof v === 'object' && v !== skip) for (const k in v) _touch(v[k], skip); };
 // the composer's grow: the list's entry texts (text → rect) at the tap, the card rows flown from them, the edited block's list rows, the running grow's undo
-let _morphFrom = new Map(), _morphMoved = [], _morphRows = [], _morphStop = null;
+let _morphFrom = new Map(), _morphMoved = [], _morphRows = [], _morphStop = null, _morphH = new Map();   // _morphH: the card's title and rows' heights where the open measured the offsets
 // a list row folded shut: its padding too, or a phone's 44px row floors at 24 and the list below jumps when it hides
 const _inkTop = el => { const r = document.createRange(); r.selectNodeContents(el); return (r.getClientRects()[0] ?? el.getBoundingClientRect()).top; };   // its first line's text box, not its padding
+// where its text's first line ends, and whether it runs onto a second: a Range has a rect per inline box per line
+const _line1 = el => {
+  const r = document.createRange(); r.selectNodeContents(el);
+  const qs = [...r.getClientRects()], first = qs.filter(q => q.top < qs[0]?.bottom - 2);   // none: an empty text or a textarea
+  return { right: Math.max(...first.map(q => q.right)), wraps: first.length < qs.length };
+};
 const _fold = r => { const s = getComputedStyle(r); return [{ height: r.offsetHeight + 'px', paddingTop: s.paddingTop, paddingBottom: s.paddingBottom, overflow: 'hidden' }, { height: '0px', paddingTop: '0px', paddingBottom: '0px', overflow: 'hidden' }]; };
 let _growGen = 0;   // _growOpen's generation ids: negative (a reactive {} would read back as a proxy), so never a live timer id
 let _dlAuto = '';   // the deadline a By time pick derived: while the draft's still equals it, the date isn't the user's. Off the draft, so it never dirties one.
@@ -3055,6 +3061,8 @@ document.addEventListener('alpine:init', () => {
         card.style.transition = 'none'; g.classList.add('morph'); card.offsetHeight; card.style.transition = '';   // the row's box at once, not a glide to it
         row?.classList.add('morph-hide');
         _morphMoved = [];
+        const ct1 = card.querySelector('.composer-title .content');
+        _morphH = new Map(ct1 ? [[ct1, ct1.getBoundingClientRect().height]] : []);
         for (const e of card.querySelectorAll('.composer-entries .entry:not(.ghost)')) {
           const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = [..._morphFrom].find(([k]) => s.startsWith(k))?.[1]; if (!f) continue;   // a subtask's text runs on into its chips
           const r = txt.getBoundingClientRect(), d = `${f.left - r.left}px ${f.top - r.top}px`, k = f.fs / parseFloat(getComputedStyle(txt).fontSize);   // the list draws checklist text smaller
@@ -3062,7 +3070,8 @@ document.addEventListener('alpine:init', () => {
           // for the close: the list's text sits lower in its padded box (a checklist's), and its check is the list's size
           const lift = f.ink - (_inkTop(txt) - txt.getBoundingClientRect().top), ck = e.querySelector('.entry-chk > *, .chk-rect'), c = ck?.getBoundingClientRect();
           const fit = f.chk && c?.width ? [`${f.chk.x + f.chk.width / 2 - c.x - c.width / 2}px ${f.chk.y + f.chk.height / 2 - c.y - c.height / 2}px`, f.chk.width / c.width] : null;
-          _morphMoved.push([e, d, txt, k, lift, ck, fit]);
+          _morphMoved.push([e, d, txt, k, lift, ck, fit, f.one && f.width / k]);   // the list's line in the card text's px, when the list draws it on one
+          _morphH.set(e, e.getBoundingClientRect().height);   // the un-grown card squeezes a wrapped row to one line
         }
         const fade = _morphMoved.length ? [...card.querySelectorAll('.desc, .entry.ghost, .entry-or')] : [];   // they sit where the flying rows start
         for (const el of fade) el.style.opacity = 0;
@@ -3109,8 +3118,8 @@ document.addEventListener('alpine:init', () => {
       // and a layout in that gap re-windows the list and scrolls it by the composer's height
       g.style.height = (this.growH = g.offsetHeight) + 'px'; this.clip = true; g.classList.add('morph');   // the card's box follows it again
       motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
-      const anims = [], fly = _morphMoved.length > 0, card = g.firstElementChild;
-      const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); g.classList.remove('morph', 'closing'); };
+      const anims = [], masked = [], fly = _morphMoved.length > 0, card = g.firstElementChild;
+      const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); for (const x of masked) x.style.mask = ''; g.classList.remove('morph', 'closing'); };
       // the open run backwards: the parts fade first, as the open fades them in last, so the shrinking card never clips one
       // still there (asst 10-30); then the card keeps its opaque box and shrinks with the grow to the row's, the rows go home,
       // the title takes the row's color; what has no place in the row fades (his 10-30: "if elements disappear, they
@@ -3124,6 +3133,16 @@ document.addEventListener('alpine:init', () => {
         // growH null: a starved frame landed past the settle below, and collapsing now would re-pin the closed grow
         if (!this._closingComposer || this.growH === null) return;
         const o = { duration: dur, delay: hold, easing: _closeEase, fill: 'backwards' }, of = { ...o, fill: 'both' }, h = g.offsetHeight;
+        // a text that wraps in the card shrinks to the list's one line before it moves (his 11-03: "shrink multi-line rows into
+        // one line before they like move into their place"): over the hold its first line stays, the rest fades as its box
+        // closes up to that line; then it is the row's line, and the row's tail (more words, or the ellipsis) fades in
+        const rt = rows[0]?.querySelector('.title'), ts = rt && getComputedStyle(rt), tt = card.querySelector('.composer-title .content');
+        const shrink = [[tt, rt?.getBoundingClientRect().width], ..._morphMoved.filter(m => m[0].isConnected).map(m => [m[2], m[7]])]
+          .map(([x, w]) => [x, w, _line1(x), x.offsetHeight, x.getBoundingClientRect().left, parseFloat(getComputedStyle(x).fontSize)]).filter(([, w, l]) => w && l.wraps);
+        const was = new Map([tt, ..._morphMoved.map(m => m[0])].map(x => [x, x?.getBoundingClientRect().height]));
+        for (const [x] of shrink) x.style.whiteSpace = 'nowrap';
+        const ones = shrink.map(([x]) => x.offsetHeight);   // its one line's box
+        for (const [x] of shrink) x.style.whiteSpace = '';
         // the subtree unfolds under the shrinking grow, on its spring: flying rows land on it, a phone's ride its edge down
         if (sub.length) end = this.startH;
         for (const r of sub) { r.classList.remove('edit-hidden'); anims.push(r.animate(fly ? _fold(r).reverse() : _fold(r).map((k, i) => ({ ...k, opacity: 1 - i })).reverse(), o)); }
@@ -3139,15 +3158,32 @@ document.addEventListener('alpine:init', () => {
         anims.push(card.animate({ height: [card.offsetHeight + 'px', from + 'px'] }, of),
           card.animate([{ backgroundColor: cs.backgroundColor, easing: 'ease-out' }, { backgroundColor: cs.getPropertyValue('--from-bg'), offset: tail / dur }, { backgroundColor: 'transparent' }], { duration: dur, delay: hold, fill: 'both' }));   // linear: the offset is a time
         for (const r of fly ? rows : []) anims.push(r.animate({ opacity: [0, 1] }, { ...late, fill: 'backwards' }));
-        const rt = rows[0]?.querySelector('.title'), ts = rt && getComputedStyle(rt);
         // over the whole ride, not on the spring, which turns most of it in the first 50 ms and reads as a snap
-        if (ts) anims.push(card.querySelector('.composer-title .content').animate({ color: ts.color, opacity: ts.opacity,
+        if (ts) anims.push(tt.animate({ color: ts.color, opacity: ts.opacity,
           ...ts.textDecorationLine.includes('line-through') && { textDecorationLine: ['line-through', 'line-through'], textDecorationColor: ['transparent', ts.textDecorationColor] } }, { duration: hold + dur, easing: 'ease-in-out', fill: 'forwards' }));
+        const rise = new Map(), at = t => t / (hold + dur);   // how far each text closes up: what's under it rises by that in the card
+        for (const [i, [x, w, l, high, left, em]] of shrink.entries()) {
+          // kept: the first line up to the list's ellipsis, its edge soft so no glyph is cut in half
+          const one = ones[i], keep = Math.min(l.right - left, w - 2 * em);
+          const mask = `linear-gradient(to right, #000 ${keep}px, transparent ${keep + em}px) 0 0 / 100% ${one}px no-repeat, linear-gradient(rgb(0 0 0 / var(--tail)) 0 0)`;
+          rise.set(x, high - one);
+          anims.push(x.animate({ height: [high + 'px', one + 'px'], overflow: ['hidden', 'hidden'] }, { duration: hold, easing: DESIGN.ease['in-out'], fill: 'forwards' }),
+            // the row's line, as wide as the list's: it cuts the text where the list does
+            x.animate({ whiteSpace: ['nowrap', 'nowrap'], textOverflow: ['ellipsis', 'ellipsis'], minWidth: [w + 'px', w + 'px'], maxWidth: [w + 'px', w + 'px'] }, { delay: hold, duration: dur, fill: 'forwards' }),
+            // the rest is gone before the closing box cuts through it, then the row's fades in
+            x.animate([{ '--tail': 1, easing: 'ease-out' }, { '--tail': 0, offset: at(hold * .6) }, { '--tail': 0, offset: at(hold), easing: 'ease-out' }, { '--tail': 1 }], { duration: hold + dur, fill: 'forwards' }));
+          x.style.mask = mask; masked.push(x);   // inline: a keyframe's var() resolves once, not per frame
+        }
         // back to the list's places: the un-grown layout is where the offsets were measured; text onto the list's line,
         // each check to the list's (his 10-30: "sizes of the subtasks checkboxes should be transitioned")
+        // how far what's under a box rises from where the open measured it
+        const drop = (box, txt) => (_morphH.get(box) ?? was.get(box)) - was.get(box) + (rise.get(txt) ?? 0);
+        let up = drop(tt, tt);
         for (const [e, d, txt, k, lift, ck, fit] of _morphMoved) if (e.isConnected) {
-          anims.push(e.animate({ translate: ['0px 0px', d], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], translate: ['0px 0px', `0px ${lift}px`] }, of));
+          const [dx, dy] = d.split(' ').map(parseFloat);
+          anims.push(e.animate({ translate: ['0px 0px', `${dx}px ${dy + up}px`], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], translate: ['0px 0px', `0px ${lift}px`] }, of));
           if (fit) anims.push(ck.animate({ translate: ['0px 0px', fit[0]], scale: [1, fit[1]] }, of));
+          up += drop(e, txt);
         }
         for (const el of fade) anims.push(el.animate({ opacity: [1, 0] }, { duration: hold + 30, fill: 'forwards' }));   // linear: a fifth left when the clip starts
         // a phone's checklist stays put under the card: its box masks back up to the title's line, the open's unmask reversed
@@ -3157,7 +3193,7 @@ document.addEventListener('alpine:init', () => {
       this._t = setTimeout(() => {
         if (!this._closingComposer) return;
         this.clip = false; this.growH = null; stop(); done && done();   // done's applyEditDom drops the rows' morph-hide
-        _morphMoved = []; _morphRows = []; _morphFrom = new Map();
+        _morphMoved = []; _morphRows = []; _morphFrom = new Map(); _morphH = new Map();
       }, hold + dur + 20);
     },
     openComposer() {
@@ -3166,8 +3202,8 @@ document.addEventListener('alpine:init', () => {
       this.notesOpen = !!this.editing && this.editing === this.jotted;   // a jotted task opens on its steps
       const focusBefore = document.activeElement, d = this.draft;
       // If the tapped task's TOP is in view, DON'T scroll — grow it in place (its bottom may extend below the
-      // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. Close never
-      // scrolls either, so an in-view edit leaves the list put.
+      // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. A close scrolls
+      // only for the list's end, so an in-view edit leaves the list put.
       if (!this.composer.open) {
         const sc = this.editing && this._editScroller(), r = sc && (this._inPanel() ? this._trayEl(this.editing) : this._rowEl(this.editing));
         const top = r ? r.getBoundingClientRect().top - sc.getBoundingClientRect().top : null;
@@ -3781,7 +3817,7 @@ document.addEventListener('alpine:init', () => {
       this._endDraft(saved);
       if (this.$refs.composer?.contains(document.activeElement)) document.activeElement.blur();   // a key during the collapse must not type into the closing draft
       this.draftRestored = false;
-      // A close never scrolls: the list stays exactly where the reader left it. Scroll anchoring sits the collapse
+      // A close scrolls only with its own shrink (below). Scroll anchoring sits the collapse
       // out: scrolled INTO a tall composer, the anchor is a row below it, so the list would ride the collapse and
       // the re-render, then glide back. Back on two frames after done: past the close's own layout, in time for the
       // next measure pass, whose estimate→real corrections it absorbs invisibly. openComposer restores it too.
@@ -3789,17 +3825,47 @@ document.addEventListener('alpine:init', () => {
       if (sc) sc.style.overflowAnchor = 'none';
       const grow = _staticEl('.composer-grow');   // $refs is empty in a popover's scope (its menu item is gone by the time an awaited action closes)
       const space = sc && grow && this.composer.open && !this._inPanel() ? Math.max(0, grow.offsetHeight - end) : 0;
-      if (space && sc.scrollTop > sc.scrollHeight - sc.clientHeight - space) {   // only a collapse that would clamp the reader up
+      const held = space && sc.scrollTop > sc.scrollHeight - sc.clientHeight - space;   // only a collapse that would clamp the reader up
+      if (held) {
         _closeRange = { sc, space, padding: sc.style.paddingBottom, view: _visKey.slice(_visKey.indexOf('|')) };
         sc.style.paddingBottom = (parseFloat(getComputedStyle(sc).paddingBottom) + space) + 'px';
       }
+      // an open then close leaves the row where it was (his 11-04 web-48-4: "it would end at the same place"): the list scrolls
+      // in step with the shrink only by what its end would take back, so the view never ends on empty space, and a card
+      // scrolled past brings its row to the view's top (his "if you scroll down after you open the composer too"). By deltas,
+      // so a reader pin's or a hand's own scroll stays; the held space keeps the browser from clamping under it
+      const ride = space ? this._rideClose(sc, grow, space, held) : null;
       if (this.composer.open && this.editing && sc) _viewHold = true;
       _editEnd = end; this._reflow();   // before any row rises into view — the collapse itself never re-windows
       return new Promise(done => this._growClose(() => grow, end, () => {
+        ride?.();   // the last step: all of it under reduced motion, whose collapse lands at once
         this.composer.open = false; this.editing = null; _editPin = _editEnd = null; this.resetDraft(); this._releaseView(); this.applyEditDom(); this._paintRows(); this.fitRows();   // windowed in the frame the subtree returns, fitted next
         requestAnimationFrame(() => requestAnimationFrame(() => sc?.style.removeProperty('overflow-anchor')));
         done();
       }));
+    },
+    // → a call that takes the last step and stops
+    _rideClose(sc, grow, space, held) {
+      const card = grow.getBoundingClientRect(), top = sc.getBoundingClientRect().top, g0 = card.height, end = g0 - space, extra = held ? space : 0;   // unrounded, as the open's glide leaves it mid-frame
+      const sub = _morphRows.slice(1);   // the subtree unfolds under the shrinking card: the list loses only the block's shrink
+      const room = card.bottom - top + Math.round(sc.scrollHeight - extra - sc.scrollTop - card.bottom + top) - sc.clientHeight;   // the list below the card is whole rows: scrollHeight drops the card's fraction (a 1px drop at the end)
+      const above = Math.max(0, top + this._seenTop(sc) - card.top);   // a card the reader scrolled past: the rows in view hold until its row reaches the view's top
+      let rode = 0, at = sc.scrollTop, peak = g0;   // unrounded: a write rounds to the device pixel
+      sc._growGlide?.finish();   // the open's hold, if still live, would pin the list where it was
+      motion.stop(sc);
+      const step = () => {
+        if (!this._closingComposer) return ride.disconnect();
+        const now = sub.reduce((h, r) => h + r.getBoundingClientRect().height, grow.getBoundingClientRect().height);
+        peak = Math.max(peak, now);   // an open still growing under the close's hold grows into room below
+        // the shrink's own (a row the save files elsewhere is not); a card scrolled past further than it shrinks moves the rows in view down, in step, so its row still lands at the top
+        const lost = peak - now, by = Math.max(Math.min(lost, above), lost * above / Math.max(peak - end, 1), lost - room - (peak - g0));
+        if (Math.abs(sc.scrollTop - at) >= 1) at = sc.scrollTop;   // another write (a reader pin) moved it: from there
+        sc.scrollTop = at -= by - rode;
+        rode = by;
+      };
+      const ride = new ResizeObserver(step);
+      if (!this.reduceMotion()) ride.observe(grow);   // its collapse lands at once: a step while the card still shows renders every description block it passes (14k restyles for a huge one)
+      return () => { step(); ride.disconnect(); };
     },
     _releaseView() {
       if (!_viewHold) return;
@@ -3878,7 +3944,7 @@ document.addEventListener('alpine:init', () => {
         _morphRows.push(r);
         for (const x of r.querySelectorAll(r === row ? '.chk-txt' : '.title')) {
           const b = x.getBoundingClientRect(), chk = (r === row ? x.closest('.chk-row') : r)?.querySelector('.chk-rect, .check')?.getBoundingClientRect();   // a Steps row's step text sits in no .chk-row
-          _morphFrom.set(x.textContent.trim(), { ...b.toJSON(), fs: parseFloat(getComputedStyle(x).fontSize), ink: _inkTop(x) - b.top, chk });   // the close lands the card's text and check on these
+          _morphFrom.set(x.textContent.trim(), { ...b.toJSON(), fs: parseFloat(getComputedStyle(x).fontSize), ink: _inkTop(x) - b.top, chk, one: !_line1(x).wraps });   // the close lands the card's text and check on these
         }
       }
       this._endDraft();   // a composer already open (another row, a subtask's chevron) keeps its draft under its own key
@@ -4415,23 +4481,23 @@ document.addEventListener('alpine:init', () => {
     },
     endPicking: false, tpop: false, pzpop: null, pausePicking: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
     // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (placement, amber,
-    // saved as a schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). Derived from
-    // nothing: every open starts in 'on'.
+    // saved as a schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). Set by the chip
+    // that opened it: the date chip opens 'on', the flag chip 'by'.
     dreg: 'on',
     repRules() { return recRules(this.draft.recurrence); },
     // the statement the spatial controls act on (headers, ordinals, time popover) — last-touched zone
-    curRule() { const rs = this.repRules(); return rs[Math.min(this.repIdx, rs.length - 1)] || null; },
+    curRule() { const rs = this.pop === 'due' && this.dreg === 'by' ? [] : this.repRules(); return rs[Math.min(this.repIdx, rs.length - 1)] || null; },
     _calTo(iso) { const d = new Date(iso.slice(0, 10) + 'T00:00'); this.cal = { y: d.getFullYear(), m: d.getMonth() }; },
     // draft.on is the ON register's date outside repeat mode (saved as a schedule-item, never as tasks.recur_from)
     // and the rule ANCHOR inside it; deadline_at is the BY register. The pop's type-a-date field follows suit.
-    _dateKey() { return this.repRules().length || this.dreg === 'on' ? 'on' : 'deadline_at'; },
-    setDreg(r) { this.dreg = r; },
-    openDate(name, anchor) {
+    _dateKey() { return this.dreg === 'by' ? 'deadline_at' : 'on'; },
+    openDate(name, anchor, reg = 'on') {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
-      this.dreg = 'on';   // the pop always opens in Do on; a deadline still shows as its red day (calDayClass paints both registers)
+      this.dreg = reg;   // a deadline still shows as its red day in the date pop (calDayClass paints both registers)
       this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._typedN = 1;
-      this._calTo(this.draft.on || this.draft.deadline_at || isoDate(new Date()));
+      this.draft.dateText = '';   // both pops share the field: what was typed in one never lands in the other
+      this._calTo((reg === 'by' && (this.draft.deadline_at || this.draft.available_from)) || this.draft.on || this.draft.deadline_at || isoDate(new Date()));
       this.$nextTick(() => this.pop === name && !this.popDock && !document.activeElement?.closest('.pop.cal') && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it. A held tick lands late: a Tab already in the pop keeps its place
     },
     // Pause asks when it comes back first, in a pop on press; the line goes in after.
@@ -4554,7 +4620,7 @@ document.addEventListener('alpine:init', () => {
         this.setRepeatUntil(c.iso === r.ends?.date ? '' : c.iso);
         this.endPicking = false; return;
       }
-      if (this.repRules().length) {
+      if (this.dreg === 'on' && this.repRules().length) {
         this.draft.on = c.iso;
         if ((this.draft.available_from || '').slice(0, 10) > c.iso) this.draft.available_from = '';
         this.repRules().forEach(x => { x.gen_due = false; });   // hand-set due: stays accent even while paused
@@ -4753,7 +4819,7 @@ document.addEventListener('alpine:init', () => {
       return `<div class="dialog-actions cl-card-foot flex items-center gap-8"><template x-if="!${key}.id"><div class="seg cl-kind"><button type="button" :class="{ on: ${ev} }" :aria-pressed="${ev}" @click="clSetKind('event')">Event</button><button type="button" :class="{ on: ${!ev} }" :aria-pressed="${!ev}" @click="clSetKind('block')">Block</button></div></template>
         <template x-if="${ev} && eventEdit.id && eventEdit.day >= _nowDay"><div class="cl-going flex items-center gap-8"><span>Going?</span><div class="seg"><button type="button" :class="{ on: eventEdit.going === true }" :aria-pressed="eventEdit.going === true" @click="clSetGoing(true)">Going</button><button type="button" :class="{ on: eventEdit.going === false }" :aria-pressed="eventEdit.going === false" @click="clSetGoing(false)">Not going</button></div></div></template>
         <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id && !${key}.pc" @click="${del}()" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
-        <button type="button" class="primary cl-go" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
+        <button type="button" class="primary cl-go" :style="${key}.color ? 'background: var(--mark)' : ''" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
     },
     calCells() {
       const { y, m } = this.cal, lead = new Date(y, m, 1).getDay(), todayIso = isoDate(new Date());
@@ -4795,23 +4861,25 @@ document.addEventListener('alpine:init', () => {
     calToday() { const n = new Date(); this.cal = { y: n.getFullYear(), m: n.getMonth() }; },
     applyDateText(close) {
       // a recurrence phrase ("every 10 days") sets the repeat rule rather than a one-off date (due popover only)
-      if (this.pop === 'due') {
-        const rec = parseRecurrence(this.draft.dateText);
-        if (rec) {
-          const { time } = parseDateText(this.draft.dateText);   // "every 2 days at 5pm" — the time rides along
-          const rules = [].concat(rec), arr = [...this.repRules()];   // "first and third sunday" is two rules
-          if (time) rules.forEach(r => { r.at = time; });
-          arr.splice(Math.min(this.repIdx, arr.length - 1), this._typedN, ...rules);   // the phrase replaces the statement(s) it set on the last keystroke
-          this._typedN = rules.length;
-          this.draft.recurrence = arr.length > 1 ? arr : arr[0];
-          this.refreshRecurrenceDue();
-          if (close) { this.draft.dateText = ''; this.pop = null; }
-          return;
-        }
+      const rec = this.pop === 'due' && parseRecurrence(this.draft.dateText);
+      if (rec && this.dreg === 'by') {   // a deadline doesn't repeat: "every fri 5pm" is no 5pm deadline
+        if (close) { this.draft.dateText = ''; this.pop = null; }
+        return;
+      }
+      if (rec) {
+        const { time } = parseDateText(this.draft.dateText);   // "every 2 days at 5pm" — the time rides along
+        const rules = [].concat(rec), arr = [...this.repRules()];   // "first and third sunday" is two rules
+        if (time) rules.forEach(r => { r.at = time; });
+        arr.splice(Math.min(this.repIdx, arr.length - 1), this._typedN, ...rules);   // the phrase replaces the statement(s) it set on the last keystroke
+        this._typedN = rules.length;
+        this.draft.recurrence = arr.length > 1 ? arr : arr[0];
+        this.refreshRecurrenceDue();
+        if (close) { this.draft.dateText = ''; this.pop = null; }
+        return;
       }
       const { iso, time, bare } = parseDateText(this.draft.dateText), byTime = bare && this._dateKey() === 'deadline_at';   // a bare By time is a time pick: no date of its own
       if (iso) {
-        if (!byTime) this.draft[this._dateKey()] = iso;
+        if (!byTime) this.draft[this._dateKey()] = this._dateKey() === 'deadline_at' ? iso + (this.draft.deadline_at || '').slice(10) : iso;   // a typed day keeps a set deadline time; a typed time replaces it below
         if (time && this.pop === 'due') this.timeSet(time);
         this._calTo(byTime ? this.draft.deadline_at : iso);
       }
@@ -4830,7 +4898,7 @@ document.addEventListener('alpine:init', () => {
       ];
     },
     calSuggestions() {
-      const on = (this.draft.on || '').slice(0, 10);
+      const on = (this.draft[this._dateKey()] || '').slice(0, 10);
       const seen = new Set();
       const hint = (iso, long) => new Date(iso + 'T00:00').toLocaleDateString([], long ? { weekday: 'short', month: 'short', day: 'numeric' } : { weekday: 'short' });
       return this._sugs().filter(s => { if (s.iso === on || seen.has(s.iso)) return false; seen.add(s.iso); return true; }).map(s => ({ ...s, hint: hint(s.iso, s.long) }));
@@ -4841,10 +4909,16 @@ document.addEventListener('alpine:init', () => {
       const d = this.draft, on = d.on?.slice(0, 10), s = on && this._sugs().find(s => s.iso === on);
       const bar = this._inBar();   // the jot bar's chip keeps the calendar outline, in the day's color
       if (s) return [bar ? 'i-cal' : 'i-' + s.icon + '-fill', `var(--q-${s.key})`];
-      if (on || d.recurrence || d.available_from) return [bar ? 'i-cal' : 'i-cal-fill', 'var(--muted)'];
-      return d.deadline_at ? ['i-flag-fill', 'var(--p1)'] : ['i-cal', 'var(--muted)'];
+      return on || d.recurrence ? [bar ? 'i-cal' : 'i-cal-fill', 'var(--muted)'] : ['i-cal', 'var(--muted)'];
     },
-    calSugApply(iso) { this.draft.on = iso; this.pop = null; },
+    calSugApply(iso) {
+      if (this.dreg === 'on') this.draft.on = iso;
+      else {
+        this.draft.deadline_at = iso + (this.draft.deadline_at || '').slice(10);   // keeps a set deadline time
+        if ((this.draft.available_from || '').slice(0, 10) >= iso) this.draft.available_from = '';   // a window can't end at or before its start
+      }
+      this.pop = null;
+    },
     barFit(opts) {   // the jot bar's values show their word whole or only the icon, the last first; the date tries "Tmr" before its icon
       const fit = new ResizeObserver(() => {
         const chips = [...opts.querySelectorAll(':scope > .field > .chip.set:not(.chip-notes)')];
@@ -4861,15 +4935,17 @@ document.addEventListener('alpine:init', () => {
         const lbl = r => this.recurrenceLabel(r) + (r.at ? ', ' + this.fmtTime(r.at) : '') + (r.ends?.date ? ', until ' + this.fmt(r.ends.date) : r.ends?.count ? ', ' + r.ends.count + '×' : '');
         return rs.map(lbl).join(' + ');
       }
-      // Both registers read on the one chip, each in its own voice: a placement is a plain date ("Fri 12"),
-      // a wall keeps "by"/the window. Never "by" for an intention.
-      const dl = this.draft.deadline_at, f = this.draft.available_from, parts = [];
+      // the do date alone: the deadline has its own chip (dlLabel)
       const on = this.draft.on?.slice(0, 10);   // the jot bar names the day as its title's pill does, tomorrow in full
-      if (on) parts.push(this.draft.part && !this.draft.dueTime ? this.partLabel(on, this.draft.part) : (!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') && !short ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : ''));
-      if (f && dl && f.slice(0, 10) === dl.slice(0, 10)) parts.push('only ' + this.fmt(dl.slice(0, 10)));   // one-day world-window — walled on both sides
-      else if (f && dl) parts.push(this.fmt(f.slice(0, 10)) + ' – ' + this.fmt(dl.slice(0, 10)));   // the window; its end IS the deadline
-      else if (dl) parts.push('by ' + this.fmt(dl.slice(0, 10)) + (timeOf(dl) ? ' ' + this.fmtTime(timeOf(dl)) : ''));
-      return parts.join(', ') || 'When';
+      if (!on) return 'When';
+      return this.draft.part && !this.draft.dueTime ? this.partLabel(on, this.draft.part) : (!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') && !short ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : '');
+    },
+    dlLabel() {   // the flag chip: the deadline, or the window that ends at it
+      const dl = this.draft.deadline_at, f = this.draft.available_from?.slice(0, 10), day = dl?.slice(0, 10);
+      if (f && day === f) return 'only ' + this.fmt(day);   // one-day world-window — walled on both sides
+      if (f && dl) return this.fmt(f) + ' – ' + this.fmt(day);
+      if (f) return 'from ' + this.fmt(f);
+      return dl ? this.fmt(day) + (timeOf(dl) ? ' ' + this.fmtTime(timeOf(dl)) : '') : '';
     },
     recurrenceLabel(rec) { return recurrenceLabel(rec); },
     // from→due range: drag directly on the due calendar (tap = due, unchanged); the fchip is a readout + hint
@@ -4878,7 +4954,7 @@ document.addEventListener('alpine:init', () => {
       const rowH = (gr.bottom - fr.top) / 6;   // dow header row sits above the 6 day rows
       const row = Math.max(0, Math.min(5, Math.floor((e.clientY - fr.top) / rowH)));
       return row * 7 + col; },
-    calDown(e) { if (this.pop !== 'due' || this._calDn != null || this.repRules().length || this.dreg === 'on') return; this._calDragged = false; this._calDn = this.calXi(e); this.calH = this._calDn; },   // no range-drag against a rule or in the On register — a placement is one day, and a drag there would silently write the other register
+    calDown(e) { if (this.pop !== 'due' || this._calDn != null || this.dreg === 'on') return; this._calDragged = false; this._calDn = this.calXi(e); this.calH = this._calDn; },   // no range-drag in the On register: a placement is one day, and a drag there would silently write the other register
     calMove(e) { if (this._calDn == null || this.pop !== 'due') return; const i = this.calXi(e); if (i === this.calH) return;
       this.calH = i; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} },
     calUp(e) { if (this._calDn == null) return; const cs = this.calCells(), a = this._calDn, z = this.calXi(e); this._calDn = null; this.calH = null;
@@ -4887,6 +4963,13 @@ document.addEventListener('alpine:init', () => {
       this._calDragged = true;   // eat the trailing click so calDayTap doesn't re-fire/close
       _dlAuto = '';   // a dragged range is a chosen date, even ending on the derived day
       this.draft.available_from = lo.iso; this.draft.deadline_at = hi.iso + (this.draft.deadline_at || '').slice(10); },
+    // the date pop's "from" belongs to the deadline: a tap there opens the deadline pop, where a drag sets it
+    calFromTap() {
+      if (this.dreg === 'by') return this.pulseCal();
+      this.pop = null;
+      document.activeElement?.blur();   // openDate keeps a focus already inside the pop, and this chip is in it
+      this.openDate('due', document.querySelector('.chip-dl'), 'by');
+    },
     pulseCal() { this.flash('calPulse', '_calPulseT', true, 800); },
     _nlpEl() { return _nlpFocus?.el || this.$refs.content; },
     _nlpDraft() { return _nlpFocus?.draft || this.draft; },

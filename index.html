@@ -661,13 +661,20 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </div></template></template>
           </div>
           <!-- Due date -->
-          <div class="field" @click.document.capture="pop === 'due' && outside($event, $el) && popAway('due', $event)">
-            <button type="button" class="chip chip-due inline-flex items-center" :class="{ set: draft.on || draft.recurrence || draft.deadline_at || draft.available_from, open: pop === 'due' }" :style="'--cc:' + dueLook()[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'due'" @click="openDate('due', $el)">
+          <div class="field" @click.document.capture="pop === 'due' && dreg === 'on' && outside($event, $el) && popAway('due', $event)">
+            <button type="button" class="chip chip-due inline-flex items-center" :class="{ set: draft.on || draft.recurrence, open: pop === 'due' && dreg === 'on' }" :style="'--cc:' + dueLook()[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'due' && dreg === 'on'" @click="openDate('due', $el)">
               <svg class="ico"><use :href="'#' + dueLook()[0]"/></svg>
               <span class="due-label" x-text="dueLabel()"></span><span class="due-short" :data-short="dueLabel(true)"></span>
               <svg class="ico rep-on" x-show="draft.recurrence" title="Repeats"><use :href="repRules().some(r => r.from_completion) ? '#i-repeat-done' : '#i-repeat'"/></svg>
             </button>
             <!-- unified calendar pop lives below (one instance, mode driven via `pop`) -->
+          </div>
+          <!-- Deadline: the same pop, opened in Due by; a repeat shows it only while one is set, so it can be cleared -->
+          <div class="field" x-show="!draft.recurrence || draft.deadline_at || draft.available_from" @click.document.capture="pop === 'due' && dreg === 'by' && outside($event, $el) && popAway('due', $event)">
+            <button type="button" class="chip chip-dl inline-flex items-center" :class="{ set: draft.deadline_at || draft.available_from, open: pop === 'due' && dreg === 'by' }" title="Deadline (or right-click a day in the date pop)" aria-haspopup="dialog" :aria-expanded="pop === 'due' && dreg === 'by'" @click="openDate('due', $el, 'by')">
+              <svg class="ico"><use :href="draft.deadline_at || draft.available_from ? '#i-flag-fill' : '#i-flag'"/></svg>
+              <span x-text="dlLabel()"></span>
+            </button>
           </div>
           <!-- the time popover, opened by a repeat statement's [at …] chip — fixed to the viewport so it can sit over the teleported .pop -->
           <template x-if="pzpop"><template x-teleport="body"><div class="pop pz-pop" :class="{ dock: popDock }" :style="pzpop.style" @click.stop @click.outside="pzpop = null">
@@ -811,28 +818,28 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" :class="{ 'cal-wk': pop === 'clnav' && clView === 'week', dock: popDock, 'sheet full': popSheet() }" :style="popStyle()">
           <div class="sheet-top">Go to a day</div>
           <!-- date-text input (not shown for clnav) -->
-          <input type="text" class="cal-type" x-show="pop === 'due'" placeholder="Date or repeat (every 2 weeks)" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
+          <input type="text" class="cal-type" x-show="pop === 'due'" :placeholder="dreg === 'by' ? 'Deadline (friday, in 2 weeks)' : 'Date or repeat (every 2 weeks)'" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
           <!-- due: scheduling suggestions + clear chip -->
           <div class="cal-quick" x-show="pop === 'due'">
-            <!-- Suggestions are safe in BOTH registers: calSugApply writes On only, it can never mint a deadline -->
+            <!-- each register's own suggestions: the date pop's write the do date, the deadline pop's the deadline -->
             <!-- the rows are ONE Tab stop (the first); ↑/↓ walk them, Enter is the button's own click -->
             <template x-for="(s, si) in calSuggestions()" :key="s.iso">
               <button type="button" class="pop-item sug" :tabindex="si ? -1 : 0" :style="`--sug: var(--q-${s.key})`" @click="calSugApply(s.iso)" @keydown.down.prevent="$el.nextElementSibling?.closest('.sug')?.focus()" @keydown.up.prevent="$el.previousElementSibling?.closest('.sug')?.focus()"><svg class="ico"><use :href="'#i-' + s.icon"/></svg><span x-text="s.label"></span><span class="rt" x-text="s.hint"></span></button>
             </template>
-            <button type="button" class="pop-item clear" x-show="draft.on || draft.recurrence || draft.deadline_at || draft.available_from" @click="draft.on = ''; draft.dueTime = ''; draft.part = ''; draft.recurrence = null; draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
+            <button type="button" class="pop-item clear" x-show="dreg === 'on' && (draft.on || draft.recurrence)" @click="draft.on = ''; draft.dueTime = ''; draft.part = ''; draft.recurrence = null; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
+            <button type="button" class="pop-item clear" x-show="dreg === 'by' && (draft.deadline_at || draft.available_from)" @click="draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No deadline</span></button>
           </div>
-          <!-- shared: calendar head + grid (in due mode the head carries the On|By register toggle) -->
-          <div class="dreg seg" :class="{ by: dreg === 'by' }" x-show="pop === 'due' && !repRules().length"><button type="button" data-reg="on" :class="{ on: dreg === 'on' }" :aria-pressed="dreg === 'on'" title="Tap a day to schedule it there (never red)" @click="setDreg('on')">Do on</button><button type="button" data-reg="by" :class="{ on: dreg === 'by' }" :aria-pressed="dreg === 'by'" title="Tap a day = the deadline; right-click does this from either mode" @click="setDreg('by')">Due by</button></div>
+          <!-- shared: calendar head + grid -->
           <div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
           <!-- the days are html (calPaint), their events delegated here: per-day bindings were half of the pop's open -->
           <div class="cal-grid" :class="{ hint: calPulse }" x-effect="calPaint($el)" @mouseleave="pop === 'clnav' && (clPopHoverWk = '')" @pointerdown="calDown($event)" @pointermove="calMove($event)" @pointerup="calUp($event)" @pointercancel="_calDn = null; calH = null" @click.capture="_calDragged && ($event.stopPropagation(), _calDragged = false)"
-            @focusin="calAt($event) && (calFocus = calAt($event).iso)" @keydown="calAt($event) && calKey($event, calAt($event))" @mouseover="calAt($event) && calDayMouseenterFor(calAt($event))" @click="calAt($event) && calDayClickFor(calAt($event))" @contextmenu="calAt($event) && ($event.preventDefault(), pop === 'due' && !repRules().length && calDayBy(calAt($event)))">
+            @focusin="calAt($event) && (calFocus = calAt($event).iso)" @keydown="calAt($event) && calKey($event, calAt($event))" @mouseover="calAt($event) && calDayMouseenterFor(calAt($event))" @click="calAt($event) && calDayClickFor(calAt($event))" @contextmenu="calAt($event) && ($event.preventDefault(), pop === 'due' && (dreg === 'by' || !repRules().length) && calDayBy(calAt($event)))">
             <!-- due: interactive weekday-toggle buttons; clnav: plain non-functional buttons -->
-            <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" tabindex="-1" :class="pop === 'due' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused || pausePicking, pulse: hdrPulse }" @click="pop === 'due' && toggleRepeatWeekday(i)" x-text="w"></button></template>
+            <template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><button type="button" class="cal-dow" tabindex="-1" :class="pop === 'due' && dreg === 'on' && { on: curRule()?.weekdays?.includes(i), pz: curRule()?.paused || pausePicking, pulse: hdrPulse }" @click="pop === 'due' && dreg === 'on' && toggleRepeatWeekday(i)" x-text="w"></button></template>
           </div>
           <!-- due: phrase-builder repeat zones -->
           <template x-for="(r, ri) in repRules()" :key="ri">
-            <div class="zone flex gap-6" x-show="pop === 'due'" :class="{ paused: r.paused || pausePicking && repIdx === ri, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
+            <div class="zone flex gap-6" x-show="pop === 'due' && dreg === 'on'" :class="{ paused: r.paused || pausePicking && repIdx === ri, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
               <div class="zrail flex-col flex-none">
                 <button type="button" class="icon-btn sm zbtn" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion - tap for fixed schedule' : 'Fixed schedule - tap to repeat after completion'" @click="repIdx = ri; toggleFromCompletion()">
                   <svg class="ico"><use :href="r.from_completion ? '#i-repeat-done' : '#i-repeat'"/></svg>
@@ -855,10 +862,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </p>
             </div>
           </template>
-          <div class="zone oneoff flex gap-6" x-show="pop === 'due' && !repRules().length">
-            <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="pulseCal()" title="drag across days on the calendar above">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="pulseCal()" title="drag across days on the calendar above" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''"><svg class="ico"><use href="#i-x"/></svg></button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !timeGet() }" @click.stop="toggleTimePop($event)" x-text="timeGet() ? fmtTime(timeGet()) : '–'"></button></p><button type="button" class="evrow" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
+          <div class="zone oneoff flex gap-6" x-show="pop === 'due' && (dreg === 'by' || !repRules().length)">
+            <p>from <template x-if="!draft.available_from"><button type="button" class="c g fchip inline-flex items-center" @click.stop="calFromTap()" :title="dreg === 'by' ? 'drag across days on the calendar above' : 'Set in the deadline'">–</button></template><template x-if="draft.available_from"><span class="c poss-band fchip inline-flex items-center"><button type="button" @click.stop="calFromTap()" :title="dreg === 'by' ? 'drag across days on the calendar above' : 'Set in the deadline'" x-text="fmt(draft.available_from.slice(0,10)) + (draft.deadline_at ? ' – ' + fmt(draft.deadline_at.slice(0,10)) : '')"></button><button type="button" class="bx" title="remove" @click.stop="draft.available_from = ''"><svg class="ico"><use href="#i-x"/></svg></button></span></template>, at <button type="button" class="c inline-flex items-center" :class="{ g: !timeGet() }" @click.stop="toggleTimePop($event)" x-text="timeGet() ? fmtTime(timeGet()) : '–'"></button></p><button type="button" class="evrow" x-show="dreg === 'on'" @click="setRepeatFreq('day')"><span class="c ghosty">every…</span><span class="zhint">tap M T W, or type</span></button>
           </div>
-          <div class="addrep flex" x-show="pop === 'due' && repRules().length"><button type="button" class="c ghosty" @click="addRepeat()">+ repeat</button></div>
+          <div class="addrep flex" x-show="pop === 'due' && dreg === 'on' && repRules().length"><button type="button" class="c ghosty" @click="addRepeat()">+ repeat</button></div>
         </div></template></template>
         <!-- A rolled chip's list (.row-rels), its kind only: each opens, or goes (Undo restores). The blocking task or the file itself stays. -->
         <template x-if="pop === 'rels'"><template x-teleport="body"><div class="pop rels-pop" :class="{ dock: popDock }" :style="popStyle()" @click.outside.capture="popAway('rels', $event)">

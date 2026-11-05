@@ -878,6 +878,12 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   .composer-actions { top: auto; bottom: var(--sp-12); left: calc(var(--gut) - var(--sp-2)); right: calc(14px - var(--sp-6)); z-index: -1;
     clip-path: inset(max(0px, calc(var(--from) + var(--sp-12) + 28px - 100cqh)) -100vmax -100vmax); }   /* shown only below the card's first box: early on it would sit over the row above (28 = the row) */
   &.closing .composer-actions { z-index: auto; clip-path: none; } }   /* a close fades it out before the collapse: the go, above the clip and over the card, fades with its row */
+@property --tail { syntax: '<number>'; inherits: false; initial-value: 1; }   /* app.js _growClose: a wrapped text's mask, typed so it fades */
+/* the edited row's indent guide, which its .editing-row drops until the close is done: it fades in on the closing card
+   as it travels, so the card's box never sits over it and it never pops in (his 11-03 web-48-2) */
+.composer-grow.morph .composer-card::after { content: ""; position: absolute; left: calc(var(--gut) - 1px); top: 0; width: var(--indent, 0px); height: var(--from); opacity: 0; pointer-events: none;
+  background: repeating-linear-gradient(to right, transparent 0 9px, color-mix(in srgb, var(--faint) 55%, transparent) 9px 11px, transparent 11px 22px); }
+.composer-grow.morph.closing .composer-card::after { opacity: 1; transition: opacity var(--md) var(--ease-out) 120ms; }
 .item.morph-hide:not(.morph-solo) .chk-list > *, .item.morph-hide :is(.check, .title) { visibility: hidden; }   /* the list's guide rule stays: it fades in with the row */
 .composer-card {
   /* left pad = the row's --gut check rail (app.js sets `padding-left:calc(var(--gut) + depth*22px)` per row), so the
@@ -929,6 +935,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   .chip-rem { --cc: var(--accent); }   /* the light accent on a dark card reads at 2.4:1 */
   .chip-loc { --cc: var(--hue-location); }
   .chip-dur { --cc: var(--hue-duration); }
+  .chip-dl { --cc: var(--p1); }   /* the red the date chip wore for a deadline */
   .discs { flex: none; }
   .disc { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: var(--dc); color: var(--on-accent);
     --ring: 1.5px; box-shadow: 0 0 0 var(--ring) var(--panel);   /* cut out of the disc behind */
@@ -1126,7 +1133,6 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .sug .ico { color: var(--sug); }
 }
 
-.dreg { margin: var(--sp-4) var(--sp-4) var(--sp-6); button { padding: var(--sp-2) 0; } &.by button.on { color: color-mix(in srgb, var(--deadline) 68%, var(--ink)); } }   /* the active Due by reads in the deadline red */
 .cal-head {
   padding: 1px var(--sp-4) var(--sp-6);
   font-size: var(--fs-15); font-weight: 700;   /* the month reads at its 15px nav glyphs' size */
