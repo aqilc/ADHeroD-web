@@ -2457,9 +2457,10 @@ textarea.inp { resize: vertical; }
 .cl-ag-row:active { transform: scale(.985); }                                    /* press */
 .cl-ag-row.done .cl-ag-n { text-decoration: line-through; color: var(--muted); }
 /* What has already happened recedes */
-.cl-ag-row.past, :where(.cl-agenda) .cl-event.past { opacity: .45; }   /* :where: no more specific than .cl-lift, so a dragged past tile dims to .4 */
-:where(.cl-agenda) .cl-event.past.cl-casc:not(.cl-lift) { opacity: 1; background: color-mix(in srgb, var(--tint) 45%, var(--bg)); }   /* over an earlier tile: the box stays opaque, so that tile's text never shows through */
-:where(.cl-agenda) .cl-event.past.cl-casc:not(.cl-lift) > *, :where(.cl-agenda) .cl-event.past.cl-casc:not(.cl-lift)::before { opacity: .45; }
+.cl-ag-row.past { opacity: .45; }
+/* A past tile dims its box, not its text (tweak-39: faded text fell to 2.4:1), so a task (no box) stays whole; the box stays opaque, so a tile under it never shows through */
+:where(.cl-agenda) .cl-event.past:not(.cl-lift, .task-block) { background: color-mix(in srgb, var(--tint) 45%, var(--bg)); }
+:where(.cl-agenda) .cl-event.past:not(.cl-lift)::before { opacity: .45; }
 /* The source dims in place while the drag image moves, as a dragged list row does (.item.dragging). It sits after
    :active's press scale (the button is still down) and the state fades (.cl-block.is-done, .cl-ag-row.past), so it wins at equal specificity. */
 :is(.cl-event, .cl-chip, .cl-block, .item, .cl-ch, .cl-ag-row).cl-lift { transform: translateZ(0); opacity: .4; }
