@@ -38,13 +38,13 @@ import { guardedFields, trashView, pruneJournal, sameRow, jRead, jWrite, jWipe, 
 import { inNotes, openBlockers } from './predicates.js';
 import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, sevOf, userReminders, offsetLabel, fireAt } from './reminders.js';
 const REM_LIST = new Intl.ListFormat('en');   // "9am and 6pm"
-import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS, DAY_PARTS, partOf } from './nlp.js';
+import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, dueQuick, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS, DAY_PARTS, partOf } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, queryStates, bodyText } from './search.js';
 import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE, BACKUP_KINDS, isBackup, restorePlan } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
-import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, chkFoldHtml, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
+import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, chkFoldHtml, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, showsProj, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
 import { makeSortable, edgeScrollStep, edgeSpeed, sorting, DWELL } from './sortable.js';
 import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
@@ -192,6 +192,8 @@ let _addSlot = 0;   // the Add task row's height + margin, measured while shown:
 let _kb = 0;   // the soft keyboard's height (init's keyboard()): pops sit above it
 let _keys = 0, _when = 0, _keyboard = () => false;   // the keyboard alone, and init's keyboard(): a docked pop re-reads it as it opens, resizes and closes
 let _field;   // init's ResizeObserver for the jot bar's chat field (watchField)
+const _pies = new Map();   // _projPie's memo
+let _planBox = {};   // planBoxHtml's memo: { key, html }
 let _goRows = [];   // Go to's last rows, held while it folds away (goRows)
 let _editPin = null, _editEnd = null;   // mirror `editing` / the collapse's target height OUTSIDE Alpine (listHtml reads both; a reactive read there would make composer open/close rebuild the list)
 let _listW = -1, _fitV = 0;         // list width + the generation every row's fit is stamped with (see _fit)
@@ -203,13 +205,15 @@ const _fitMemo = new Map();         // id → { sig, lad, shed, r1, l2, ri }: th
 // The overflow ladder: what leaves line 1, in order, while the title is still truncated. Everything after
 // this list is what a row keeps longest — project 3rd-to-last, size 2nd-to-last, and the scheduled-time
 // badge never at all. `.m.dl` is skipped when there is no scheduled time (the deadline holds that slot).
-// Line 2 then degrades in place with L2_STEPS rather than wrapping. → docs/ui/task-list.md §Row overflow
+// Line 2 then degrades in place with L2_STEPS rather than wrapping; a phone's typed row never sheds (its line 2 is its
+// markup's), a Steps row hides behind a "…". → docs/ui/task-list.md §Row overflow
 const LADDER = ['.row-rels', '.m.loc', '.areas', '.m.dl', '.proj', '.m.est'];
 // Line 2 reads in a FIXED order, not the order things happened to shed — otherwise the same two items
 // swap places depending on which width you arrived from. Badges, then chips, then relations, then prose.
 const L2_ORDER = ['.areas', '.proj', '.m.dl', '.m.loc', '.m.est', '.row-rels'];
 const L2_STEPS = ['l2-shrink', 'icons-only', 'rolled'];
-const L2_ROW_H = 17, L2_PAD = 4;    // one wrapped meta row + the line's own margin (layout-lists.e2e "ladder")
+const META_ROW_H = 17, META_PAD = 4;    // one wrapped meta row + the line's own margin (layout-lists.e2e "ladder")
+const L2_ROW_H = 18, L2_PAD = 2, L2_GAP = 4;    // a phone's line-2 line, its margin above and the gap between its wrapped lines (styles.css .typed .row-sub)
 const STEP_FLOOR = 160;   // a Steps row's title gives way first, down to this; then chips hide (see _shed)
 // WINDOWED LIST. Only the rows within WIN_MARGIN of the viewport EXIST as <li>s; the rest are two spacer
 // <li>s holding their summed height, so the scrollbar stays honest — and every list-wide pass (fitRows, paintSel,
@@ -639,7 +643,7 @@ document.addEventListener('alpine:init', () => {
     startH: 0,          // drives crossfade overlap
     blockH: 0,
     subGhost: '',
-    entryKind: '',   // the phone picker's segment on a draft with no rows yet ('' = steps lead)
+    entryKind: '',   // the phone kind menu's pick on a draft with no rows yet ('' = steps lead)
     chkGhost: '',
     focusId: null,      // keyboard-focused list row (j/k/↑↓); Enter/e opens it, x completes it
     sel: [],            // multi-select: ids of selected task rows (drives the edit bar; the row .selected class is painted imperatively, never a per-row reactive :class — list-perf)
@@ -1179,6 +1183,7 @@ document.addEventListener('alpine:init', () => {
     // Share eligibility with the writer: a rung that cannot move anything needs no title measurement.
     _shedNode(el, sel) {
       if (sel === '.m.dl' && (!el.querySelector('.badge') || el.querySelector('.step-block'))) return null;   // the sole time badge and Steps' deadline stay on line 1
+      if (el.querySelector('.typed') && !el.querySelector('.step-block')) return null;   // a typed row's line 2 is its markup's: the title truncates
       return el.querySelector(sel === '.proj' ? '.proj:not(.proj-inbox)' : sel);   // a lone inbox glyph cannot earn a second line
     },
     // Pure writes in L2_ORDER, also replayed by _fit without measuring.
@@ -1232,7 +1237,7 @@ document.addEventListener('alpine:init', () => {
       const fill = el.querySelector('.row2.meta > .l2-fill'); if (fill) el.querySelector('.body').append(fill);
       el.querySelector('.row2.meta')?.remove(); el.querySelector('.hid-more')?.remove();
       el.querySelector('.r1l')?.classList.remove('icons-only', 'rolled');
-      const rels = el.querySelector('.row-rels'); if (rels) this._relNames(rels);
+      const rels = el.querySelector('.r1l .row-rels'); if (rels) this._relNames(rels);   // a typed row's line-2 rolls are its markup's
     },
     // A chip rung's READ: the widest line-1 chip still named (a tie: the later one), -1 when none is.
     _relWidest(el) {
@@ -1728,6 +1733,35 @@ document.addEventListener('alpine:init', () => {
         social.classList.remove('back');   // the thread may be gone (‹ Chats mid-slide)
       });
     },
+    // Today's placed items, the Day view's timed set: an event a tinted block with its calendar glyph, a time block the
+    // same box bare, a task its ring. No shelf: on Lists the calendar's panel isn't up to hold this week's tasks.
+    // Memoized on the calendar's data version (blocks and block days bump it too) and _nowDay, so a tick of an undated
+    // row (which leaves _calDataV) groups nothing and midnight rolls the box to the new day.
+    planBoxHtml() {
+      void this.events; void this.pcEvents; void this.tasks; void this.scheduleItems; void this.blocks; void this.blockDays; void this._rowV;   // the deps of _clGroup and _dayBlocks, read before the memo can skip them
+      const day = this._nowDay, key = day + '|' + _calDataV;
+      if (_planBox.key === key) return _planBox.html;
+      const timed = it => !it.allDay && it.start.length > 10 && it.start.slice(0, 10) === day;
+      const items = [...(this._clGroup(day, day)[day] || []).filter(it => timed(it) && it.kind !== 'task-deadline'), ...this._dayBlocks(day).filter(timed).map(b => ({ ...b, kind: 'block' }))]
+        .sort((a, b) => a.start.localeCompare(b.start));
+      _planBox = { key, html: items.map(it => {
+        const time = html`<span class="pbt">${this._clTime(it.start)}</span><span class="pbn">${it.title}</span>`;
+        if (it.kind === 'event') return html`<div class="pb" style="--tc:${this.clItemColor(it)}">${raw(time)}<svg class="ico pbc"><use href="#i-cal"/></svg></div>`;
+        if (it.kind === 'block') return html`<div class="pb" style="--tc:${it.color || 'var(--accent)'}">${raw(time)}</div>`;
+        return html`<div class="pb pt"><span class="pb-ring" style="--pc:${this.pc(this.byId.get(it.id)?.importance)}"></span>${raw(time)}</div>`;
+      }).join('') };
+      return _planBox.html;
+    },
+    // The glyph before the list title: the one its nav row shows (a project its pie, uncolored in --faint).
+    navGlyph() {
+      const { type, id } = this.navSel;
+      if (type === 'all') return html`<svg class="ico" style="color:var(--accent)"><use href="#i-overview"/></svg>`;
+      const p = type === 'project' && this.byId.get(id), l = type === 'area' && this.areas.find(x => x.id === id), f = type === 'filter' && this.activeFilter();
+      const it = p ? { kind: 'proj', id, p } : l ? { kind: 'area', l } : f ? { kind: 'filter', f } : type === 'backlog' ? { kind: 'backlog' } : null;
+      if (!it) return '';
+      const { icon, color = '', progress } = this.navLook(it), c = color || 'var(--faint)';
+      return icon === 'prog' ? html`<span class="pring" style="--p:${progress};--pc:${c}"></span>` : html`<svg class="ico" style="color:${c}"><use href="#${icon}"/></svg>`;
+    },
     navHeading() {
       if (this.navSel.type === 'all') return 'All';
       if (this.navSel.type === 'backlog') return 'Backlog';
@@ -2140,12 +2174,19 @@ document.addEventListener('alpine:init', () => {
     // Section head: the Done head's own type + count, plus a chevron on the row-chevron column.
     _secLi(g) {
       const up = g.up ? html`<span class="sec-up"><span>${g.up}</span></span>` : '';
-      // the pie sits AFTER the count, never before the label: the chevron/label column is aligned to the row chevron and the
+      const li = html`<li class="sec-row flex items-center" data-id="${this._secKey(g)}" data-sec="${g.key}" style="order:${g.at * 2 - 1}">`;
+      // Desktop: the pie sits AFTER the count, never before the label: the chevron/label column is aligned to the row chevron and the
       // Done head by deliberate convention (layout-lists asserts it), and a leading pie shifts the label 18px.
-      const pie = g.pct == null ? '' : html`<span class="pring sec-pie" style="--p:${g.pct};--pc:${g.pieColor || 'var(--muted)'}"></span>`;
-      return html`<li class="sec-row flex items-center" data-id="${this._secKey(g)}" data-sec="${g.key}" style="order:${g.at * 2 - 1}">`
-        + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg>`
-        + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>${raw(pie)}<span class="head-rule"></span></li>`;
+      if (!document.documentElement.classList.contains('touch')) {
+        const pie = g.pct == null ? '' : html`<span class="pring sec-pie" style="--p:${g.pct};--pc:${g.pieColor || 'var(--muted)'}"></span>`;
+        return li + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg>`
+          + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>${raw(pie)}<span class="head-rule"></span></li>`;
+      }
+      // A phone's head (Things 3): the project's pie, its bold name over a hairline, the fold chevron at the right end.
+      const pie = g.pct == null ? '' : html`<span class="pring sec-pie" style="--p:${g.pct};--pc:${g.pieColor || 'var(--faint)'}"></span>`;
+      return li + pie
+        + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>`
+        + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg></li>`;
     },
     // All's and Backlog's Mail panel: search matches subject, sender and preview. Each action lands only once the mailbox says it did.
     mailRows() { const q = this.mailQ.trim().toLowerCase(); return q ? this.mail.filter(m => (m.subject + ' ' + m.from + ' ' + m.preview).toLowerCase().includes(q)) : this.mail; },
@@ -2246,27 +2287,25 @@ document.addEventListener('alpine:init', () => {
     // Height estimate for a row that has NEVER been rendered (once one has, _hCache holds its real height).
     // One flat guess against real 34/46/54+ rows makes the scrollbar lurch on the way down, so this
     // tracks the same content the row builder renders.
-    _rowEst(r, after) {   // after: a phone's group gap opens this row (styles.css .item.after)
+    _rowEst(r, after, cx = this._rowCx()) {   // after: a phone's group gap opens this row (styles.css .item.after)
       // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
       const step = r.step && !r.t.completed_at ? 14 + (r.step.desc ? 15 : 0) + (r.next ? 20 : 0) : 0;
-      if (this.sticky) return 24 + step;   // the note draws one line a task, padded 3px not 8 (sticky.js): no checklist, notes or meta line
+      if (cx.sticky) return 24 + step;   // the note draws one line a task, padded 3px not 8 (sticky.js): no checklist, notes or meta line
       const chk = this._rowChk(r);
       const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id), _chkHeld?.key === r.t.id ? _chkHeld.done : null) : null;
-      const touch = document.documentElement.classList.contains('touch');   // styles.css :where(.touch): 44px rows (a phone's 50), 28px checklist pitch
-      // Relations ride line 1 until the ladder sheds them onto the shared meta line. A DESCRIPTION always owns its
-      // (prose never joins the meta line), so they add their own 17.
-      const ml = this._metaLines(r);
-      return (touch ? (this.narrow ? 50 + (after ? 28 : 0) : 44) : 34) + step + (ml ? L2_PAD + ml * L2_ROW_H : 0) + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
+      const touch = cx.touch, ml = step ? 0 : touch ? this._metaLines(r, cx) : this._shedLines(r);   // a Steps row keeps its chips on line 1
+      const meta = !ml ? 0 : touch ? L2_PAD + ml * L2_ROW_H + (ml - 1) * L2_GAP : META_PAD + ml * META_ROW_H;
+      return (touch ? (cx.narrow ? 50 + (after ? 28 : 0) : 44) : 34) + step + meta + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
     },
     _rowChk(r) { return r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []); },   // folded or Steps → no checklist drawn
-    // How many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
+    // Desktop: how many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
     // but a row that has never rendered has no measurement — and guessing one line for a taller row
     // makes the scrollbar lurch. Approximate from the same inputs the row builder has: title length
     // against the width left over after the metadata, then how many rows that metadata needs. Deliberately
     // cheap and slightly eager; _measure overwrites it with the real height the instant the row renders,
     // so this only has to keep the scrollbar honest while the reader scrolls past.
-    _metaLines(r) {
-      if (_listW < 0 || (r.step && !r.t.completed_at)) return 0;   // an open Steps row hides, never sheds
+    _shedLines(r) {
+      if (_listW < 0) return 0;
       const meta = (r.areas?.length ? 8 + r.areas.length * 46 : 0) + (r.projName && !r.depth ? 92 : 0) + (r.estSize ? 20 : 0)
         + (r.dl ? 42 : 0) + (r.loc ? 62 : 0) + (r.due ? 56 : 0)
         + (r.rels?.length ? r.rels.length * 72 : 0);
@@ -2274,19 +2313,32 @@ document.addEventListener('alpine:init', () => {
       if (!meta || r.t.content.length * 7.2 + meta <= avail) return 0;       // everything still fits line 1
       return Math.max(1, Math.min(3, Math.ceil(meta / avail)));              // the meta line wraps as needed
     },
+    // A phone's typed row: how many lines its line 2 takes (0 = none): the items rowBodyHtml puts there, at a rough width each, wrapped
+    // whole against the list's as flex-wrap does (the areas are one run). Cheap; _measure overwrites it the instant the row renders.
+    _metaLines(r, cx = this._rowCx()) {
+      const areas = (r.areas || []).reduce((s, l) => s + 32 + l.name.length * 7, -6);   // capsules 6px apart
+      const items = [r.dl && !r.dlSame ? 70 : 0, areas > 0 ? areas : 0, r.loc ? 26 + r.loc.length * 7 : 0, (r.rels?.length || 0) * 72,
+        showsProj(r, this._rowOpts(r, cx)) ? 26 + (r.isDefaultProj ? 7 : r.projName.length) * 7 : 0].filter(Boolean);
+      if (!items.length) return 0;
+      if (_listW < 0) return 1;
+      const room = _listW - 46 - r.depth * 22;   // 46 = gutter + check + gaps
+      let lines = 1, x = -11;
+      for (const w of items) { x += 11 + w; if (x > room && x > w) { lines++; x = w; } }   // items 11px apart (styles.css .typed .row-sub)
+      return Math.min(3, lines);
+    },
     // Rows → ENTRIES: one per <li>, carrying its flex `order`, its HEIGHT and a builder. The height is why
     // this shape exists — the render window and its two spacers are computed from these numbers, so a scroll
     // frame never walks the DOM. Measured beats estimated: an estimate is only ever used for a row that has
     // never rendered. Section heads interleave by their `at`; shut sections at the end still show their head.
     _entries(rows, drag = '', secs = null) {
-      const ent = []; let si = 0;
+      const ent = [], cx = this._rowCx(); let si = 0;
       const head = () => { const g = secs[si++], id = this._secKey(g); ent.push({ id, order: g.at * 2 - 1, h: _hCache.get(id) ?? SEC_H, html: '', mk: () => this._secLi(g) }); };
       for (let i = 0; i < rows.length; i++) {
         while (secs && si < secs.length && secs[si].at === i) head();
         const r = rows[i], prev = rows[i - 1];
         // a top-level row after a subtree or a checklist opens a new group: a phone spaces it (styles.css .item.after); a section head already does
         const after = !r.depth && !!prev && ent.at(-1).r === prev && (prev.depth > 0 || this._rowChk(prev).length > 0);
-        ent.push({ id: r.t.id, order: i * 2, d: r.depth, r, after, h: _hCache.get(r.t.id) ?? this._rowEst(r, after), html: '', mk: () => this._itemLi(r, { order: i * 2, drag, after }) });
+        ent.push({ id: r.t.id, order: i * 2, d: r.depth, r, after, h: _hCache.get(r.t.id) ?? this._rowEst(r, after, cx), html: '', mk: () => this._itemLi(r, { order: i * 2, drag, after }) });
       }
       while (secs && si < secs.length) head();
       return ent;
@@ -2322,7 +2374,7 @@ document.addEventListener('alpine:init', () => {
     // A width reading moves only the estimates: a row's html is width-free, so every built row keeps it.
     // ceiling: O(active + Done) per width change, i.e. every frame of a window-resize drag — 20k Done: 11.7 vs 7.8 est-ms a frame
     // with Done hidden. Re-estimate only the rows a window reaches if a resize drag stutters.
-    _reEstimate() { for (const m of [_model, _doneModel]) if (m) { m.total = 0; for (const e of m.ent) m.total += e.h = _hCache.get(e.id) ?? (e.r ? this._rowEst(e.r, e.after) : SEC_H); } },
+    _reEstimate() { const cx = this._rowCx(); for (const m of [_model, _doneModel]) if (m) { m.total = 0; for (const e of m.ent) m.total += e.h = _hCache.get(e.id) ?? (e.r ? this._rowEst(e.r, e.after, cx) : SEC_H); } },
     // The list's first-entry position in scroll coordinates, READ off the DOM (the top spacer's own top)
     // rather than computed: everything above the window that can change height — the controls, an open
     // composer pulled up over its row, the whole active list above the Done one — is absorbed instead of guessed at.
@@ -2611,6 +2663,8 @@ document.addEventListener('alpine:init', () => {
       const when = this.whenShown(t, pm);
       let dueB = when ? windowBadge({ available_from: t.available_from, recur_from: when, completed_at: t.completed_at }, now) : null;
       if (dueB?.kind === 'overdue') dueB = { ...dueB, kind: 'missed' };
+      const dueTime = when.length > 10 && ['today', 'soon'].includes(dueB?.kind) ? this._clTime(when) : null;   // a clock time on a near date
+      const dl = t.deadline_at ? deadlineLeft(t.deadline_at, now) : null;
       return {
         t, depth, pc: this.pc(t.importance), collapsed: !!this.collapsed[t.id],
         note: inNotes(t),   // note → inert dot instead of the checkbox
@@ -2623,14 +2677,16 @@ document.addEventListener('alpine:init', () => {
         // the row carries the scheduling decision at a glance and the exact number is still one hover away.
         est: em ? this.durFmt(em) : '', estSize: sizeFromMinutes(em), estRollup: !t.est_minutes && em > 0,
         // specific clock time on the date — only for near dates (today/tomorrow/weekday badges)
-        dueTime: when.length > 10 && ['today', 'soon'].includes(dueB?.kind) ? this._clTime(when) : null,
+        dueTime,
         loc: this.rowLoc(t),
         locX: t.location?.mode === 'except',   // away-from → negated pin
 
         rels,
         due: dueB,
-        dl: t.deadline_at ? deadlineLeft(t.deadline_at, now) : null,
+        dueQ: dueB ? dueQuick(when, now) : '',   // the date word's color bucket
+        dl, dlSame: !!dl && !!dueB && dl.label === dueB.label + (dueTime ? ' ' + dueTime : ''),   // a deadline in the date's own word adds nothing (r3gen `dl != due`)
         projName: parent ? parent.content : '',
+        projColor: parent?.color || '', projPie: parent && !depth && parent.id !== def ? this._projPie(parent.id) : 0,   // line 2's pie
         isDefaultProj: !!t.parent_id && t.parent_id === def,
         areas: this.areaObjs(t.area_ids).map(l => ({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })),
         childCount: kids.length,
@@ -2855,15 +2911,19 @@ document.addEventListener('alpine:init', () => {
       return '';
     },
     rollerData(it, ri, ix) {   // enrich a roller item with the icon/color/count/progress the box needs
-      const d = { ...it, ridx: ri, count: this.rollerCount(it, ix) };
-      if (it.kind === 'proj') { d.color = it.p.color || ''; d.icon = 'prog'; d.progress = this.projectProgress(it.id, ix?.kids) / 100; }
-      else if (it.kind === 'area') { d.icon = it.l.icon || 'i-tag-tag'; d.color = it.l.color || this.areaDefault; }
-      else if (it.kind === 'filter') { d.icon = it.f.query === 'is:any' ? 'i-all' : 'i-search'; d.color = it.f.color || ''; }   // the 'All tasks' null filter keeps its original glyph; filters aren't otherwise icon-configurable
-      else if (it.kind === 'backlog') d.icon = 'i-backlog';
-      else if (it.kind === 'loc') { d.icon = 'i-tag-map'; d.count = ''; }
-      else if (it.kind === 'arch') { d.icon = 'i-archive'; d.count = it.n; }
+      const d = { ...it, ridx: ri, count: this.rollerCount(it, ix), ...this.navLook(it, ix) };
+      if (it.kind === 'loc') d.count = '';
+      else if (it.kind === 'arch') d.count = it.n;
       if (it.archived) d.count = '';   // nothing in it is open
       return d;
+    },
+    // A nav row's glyph and its color (the list title's glyph is the same, navGlyph).
+    navLook(it, ix) {
+      if (it.kind === 'proj') return { color: it.p.color || '', icon: 'prog', progress: ix ? this.projectProgress(it.id, ix.kids) / 100 : this._projPie(it.id) };
+      if (it.kind === 'area') return { icon: it.l.icon || 'i-tag-tag', color: it.l.color || this.areaDefault };
+      if (it.kind === 'filter') return { icon: it.f.query === 'is:any' ? 'i-all' : 'i-search', color: it.f.color || '' };   // the 'All tasks' null filter keeps its original glyph; filters aren't otherwise icon-configurable
+      const icon = { backlog: 'i-backlog', loc: 'i-tag-map', arch: 'i-archive' }[it.kind];
+      return icon ? { icon } : {};
     },
     rollerRows() {   // rollerItems with section headers kept inline; non-sec rows carry a running focus index (ridx)
       let ri = -1; const out = [], ix = this._rollerIdx();
@@ -2878,6 +2938,8 @@ document.addEventListener('alpine:init', () => {
       return Math.round(ids.filter(x => this.byId.get(x)?.completed_at).length / ids.length * 100);
     },
     ringVars(p) { return { '--p': this.projectProgress(p.id, this._kidsOf(p.id)) / 100, '--pc': p.color || 'var(--muted)' }; },   // an object: a :style string would wipe x-show's display:none
+    // A row's project pie: every row of one project shares its walk, rebuilt when a task changes.
+    _projPie(id) { return _memo(_pies, this._rowV + '|' + id, () => this.projectProgress(id, this._kidsOf(id)) / 100, 500); },   // every task write bumps _rowV
     projRing(p) { const v = this.ringVars(p); return html`<span class="pring" style="--p:${v['--p']};--pc:${v['--pc']}"></span>`; },
     startRename(id) { this.navRename = id; this.navPop = null; },   // the field focuses itself as it renders (index.html)
     async saveRename(p, name) {
@@ -3338,8 +3400,8 @@ document.addEventListener('alpine:init', () => {
       if (this.navSel.type === 'filter') return this.filters.find(x => x.id === this.navSel.id)?.color || null;
       return null;
     },
-    // page-wide wash + expose the tint so the filter chips can pick up the same color family (--list-tint)
-    listTintStyle() { const col = this.listTintCol(); return col ? `background:color-mix(in srgb,${col} 5%,var(--bg));--list-tint:${col}` : ''; },
+    // the list's color: styles.css .app.tinted paints the canvas (desk) or the sheet (phone) with it; the filter chips take it too
+    listTintStyle() { const col = this.listTintCol(); return col ? `--list-tint:${col}` : ''; },
     areaObjs(ids) { const areas = byIdIn(this.areas); return (ids || []).map(id => areas.get(id)).filter(Boolean); },
 
     // x-html; relation picker + cascade-complete use the same markup (ui.js)
@@ -3359,8 +3421,16 @@ document.addEventListener('alpine:init', () => {
     // Grouping by project already names it in the section head — repeating it on every row is noise.
     // A Done root from a subproject names it inside the project or Backlog view (even grouped); a row of the viewed project itself doesn't.
     rowBody(r, opts) {
-      const box = this.navSel.type === 'backlog' ? this._defId : this.navSel.type === 'project' && this.navSel.id, subDone = box && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== box;
-      return rowBodyHtml(r, { navType: this.navSel.type, chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...(subDone ? { proj: true } : this.groupBy === 'project' ? { proj: false } : {}), ...(this.sticky && { proj: false, checklist: false, desc: false }), ...opts });   // the note draws one line a task; a Steps row keeps its step
+      return rowBodyHtml(r, { ...this._rowOpts(r), chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...opts });
+    },
+    _rowOpts(r, cx = this._rowCx()) {
+      const subDone = cx.box && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== cx.box;
+      return { navType: cx.navType, ...(subDone ? { proj: true } : cx.groupBy === 'project' ? { proj: false } : {}), ...(!cx.touch && { typed: false }), ...(cx.sticky && { proj: false, checklist: false, desc: false }) };   // desktop rows are one line, their chips shed by the ladder (only a phone's are typed); the note draws one line a task; a Steps row keeps its step
+    },
+    // What every row's options and estimate read, read once a pass: through the proxy, per row, it was most of a 5k tick's estimate.
+    _rowCx() {
+      const type = this.navSel.type, box = type === 'backlog' ? this._defId : type === 'project' && this.navSel.id;
+      return { navType: type, box, groupBy: this.groupBy, sticky: this.sticky, narrow: this.narrow, touch: document.documentElement.classList.contains('touch') };   // styles.css :where(.touch): 44px rows (a phone's 50), 28px checklist pitch
     },
     // body is inert x-html — delegate here; editTask measures .item
     onRowClick(r, e) {
@@ -4328,7 +4398,7 @@ document.addEventListener('alpine:init', () => {
         if (dead) return;
         const el = document.querySelector('body > .pop');   // the teleported one: list menus are .pop too, drawn through their leave
         if (!el) return;
-        if (el.matches('.cl-pop, .rem-pop') && anchor.matches(':focus-visible')) (el.querySelector('.ev-when input') ?? el.querySelector('input, button'))?.focus();   // opened from the keyboard: its first field next, not 8 Tabs on. future-guard (Chrome puts a click's focus back on the chip): a tap must not raise a date field's keyboard
+        if (el.matches('.cl-pop, .rem-pop, .kind-pop') && anchor.matches(':focus-visible')) (el.querySelector('.ev-when input') ?? el.querySelector('input, button:enabled'))?.focus();   // opened from the keyboard: its first field next, not 8 Tabs on. future-guard (Chrome puts a click's focus back on the chip): a tap must not raise a date field's keyboard
         const scroll = getComputedStyle(el).overflowY === 'visible';   // a pop with its own scroller (the reminders') keeps it
         const _pos = (ar) => {
           // Vertically this one FLIPS rather than clamping — above the anchor (an editor's: its card) if the pop would
@@ -5918,7 +5988,10 @@ document.addEventListener('alpine:init', () => {
       const had = window.Alpine.raw(this.byId), changed = tasks.length === had.size && tasks.filter(t => { const o = had.get(t.id); return o !== t && JSON.stringify(o) !== JSON.stringify(t); });
       if (changed && (!changed.length || this._patchTask(changed))) return;
       _rowStale = changed && _visBP && changed.every(r => had.get(r.id) && had.get(r.id).parent_id === r.parent_id) ? this._rowsReading(changed.map(r => r.id), true) : null;   // a move or a row not seen before: rebuild all
-      this._rowV++; _calDataV++; this.tasks = tasks; this.byId = new Map(tasks.map(t => [t.id, t])); this.parentIds = new Set(tasks.map(t => t.parent_id).filter(Boolean));
+      const pm = this._placedMap(), cal = !changed || changed.some(r => !had.get(r.id) || onCalendar(r, pm) || onCalendar(had.get(r.id), pm));   // as _patchTask: an undated edit leaves every calendar memo standing (today's plan on Lists included)
+      this._rowV++;
+      if (cal) _calDataV++;
+      this.tasks = tasks; this.byId = new Map(tasks.map(t => [t.id, t])); this.parentIds = new Set(tasks.map(t => t.parent_id).filter(Boolean));
       if (this.navSel.type === 'project' && !this.byId.has(this.navSel.id)) this.setNav('all');   // its project went (another device's delete)
     },
     // Ids of the rows that read these tasks: their own, their subtrees' (project name, Notes), every row they block and,
@@ -5932,7 +6005,16 @@ document.addEventListener('alpine:init', () => {
       for (const t of this.tasks) if (links(t.notes) || t.checklist?.some(c => links(c.text))) out.add(t.id);
       for (const id of ids) {
         for (const b of inv.get(id) ?? []) out.add(b);
-        if (up) for (const a of this._chain(this.byId.get(id).parent_id)) out.add(a);
+        if (up) this._upRows(id, out);
+      }
+      return out;
+    },
+    // The rows reading a task's ancestors: each one's own (progress, rolled-up estimate) and every shown un-nested row
+    // whose line-2 pie counts the task (a nested row draws none).
+    _upRows(id, out) {
+      for (const a of this._chain(this.byId.get(id)?.parent_id)) {
+        out.add(a);
+        if (a !== this._defId) for (const c of _visBP.get(a) || []) if (!(_rowMap.get(c.id)?.depth > 0)) out.add(c.id);
       }
       return out;
     },
@@ -6857,7 +6939,7 @@ document.addEventListener('alpine:init', () => {
       const ids = this._rowsReading(edits.filter(([, , changed]) => changed.some(k => k !== 'position')).map(([t]) => t.id));   // a move alone renders nothing new
       let cal = false;
       for (const [t, row, changed, , counts] of edits) {
-        if (counts) ids.add(t.parent_id);
+        if (counts) this._upRows(t.id, ids);
         cal ||= onCalendar(t, this._placedMap());   // on the calendar before the edit…
         for (const k of changed) t[k] = row[k];   // changed fields only: an equal-but-new object still wakes every effect that read it
         cal ||= onCalendar(t, this._placedMap());   // …or after it
@@ -7404,20 +7486,26 @@ document.addEventListener('alpine:init', () => {
       else delete d.typeBeforeNote;   // absent = null on the way back, and keeps the draft equal to its base
       if (type) d.checklist_plain = false;
     },
-    // Phone: one ghost row whose picker (checklist · subtask · steps) replaces the desktop's ghost OR ghost trio
+    // Phone: one ghost row whose box opens a menu (checklist · subtask · steps) in place of the desktop's ghost OR ghost trio
     entryPick() {   // an empty draft leads with steps; a note has none
       if (this.shownSubs().length || this.subGhost.length) return 'sub';
       if (this.draft.checklist.length || this.chkGhost.length) return this.chkSteps() ? 'steps' : 'chk';
       return this.entryKind || (this.typeFront(true) ? 'chk' : 'steps');
     },
-    typePickHtml() {
-      const on = this.entryPick(), typing = this.subGhost.length, off = { chk: typing, sub: !this.editing || this.draft.checklist.length || this.chkGhost.length, steps: typing || this.typeFront(true) };
-      const seg = (t, label, glyph) => html`<button type="button" data-t="${t}" aria-label="${label}"${raw(t === on ? ' class="on"' : '')}${raw(off[t] ? ' disabled' : '')}>${raw(glyph)}</button>`;
-      return seg('chk', 'Checklist', html`<span class="chk-rect"></span>`) + seg('sub', 'Subtasks', html`<span class="check sm"></span>`)
-        + seg('steps', 'Steps', html`<span class="check sm steps" style="--p:0"><i class="ring"></i></span>`);
+    typeOff() { const typing = this.subGhost.length > 0; return { chk: typing, sub: !this.editing || this.draft.checklist.length > 0 || this.chkGhost.length > 0, steps: typing || !!this.typeFront(true) }; },   // booleans: :disabled sets on a 0
+    kindBox: {   // x-bind on each ghost box: a phone's opens the kind menu, by tap or Enter/Space; a desktop's stays a mark
+      ':role'() { return this.phoneDock() ? 'button' : null; },
+      ':tabindex'() { return this.phoneDock() ? 0 : null; },
+      ':aria-label'() { return this.phoneDock() ? 'Type' : null; },
+      ':aria-haspopup'() { return this.phoneDock() ? 'menu' : null; },
+      ':aria-expanded'() { return this.phoneDock() ? this.pop === 'kind' : null; },
+      '@pointerdown'(e) { this.phoneDock() && e.preventDefault(); },   // the text keeps its focus and the phone its keyboard
+      '@click'(e) { this.phoneDock() && this.togglePop('kind', e.currentTarget); },
+      '@keydown'(e) { if (!this.phoneDock() || (e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); e.stopPropagation(); this.togglePop('kind', e.currentTarget); },
     },
-    typePick(e) {   // typed rows retype in place: checklist ↔ steps or subtasks → items, through convertTo and its confirm
-      const t = e.target.closest('button[data-t]')?.dataset.t; if (!t || t === this.entryPick()) return;
+    typePick(t) {   // typed rows retype in place: checklist ↔ steps or subtasks → items, through convertTo and its confirm
+      this.pop = null;
+      if (t === this.entryPick()) return;
       this.entryKind = t;   // an empty draft only shows the picked ghost: typing into it sets the type, as on desktop
       if (t !== 'sub' && (this.shownSubs().length || this.draft.checklist.length)) this.convertTo(t);
       else if (this.chkGhost.length) this.setTaskType(t === 'steps' ? 'steps' : null);   // a half-typed first row follows the pick
@@ -8600,7 +8688,7 @@ document.addEventListener('alpine:init', () => {
       _celeHead?.remove();
       const title = document.querySelector('.surface-lists .topbar-title'), range = document.createRange();
       if (!title) return;
-      range.selectNodeContents(title.firstElementChild);
+      range.selectNodeContents(title.querySelector('h1'));   // the name, past the glyph before it
       const line = [...range.getClientRects()].at(-1), box = title.getBoundingClientRect();   // the name's last line: a wrapped title ends mid-box
       _celeHead = title.appendChild(document.createElement('span'));
       _celeHead.className = 'head-cele cele ' + this.celebrations;

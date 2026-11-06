@@ -88,6 +88,7 @@
   "light": {
     "bg": "oklch(.97 .005 58)",
     "panel": "oklch(.985 .006 65)",
+    "sheet": "var(--panel)",
     "ink": "oklch(.18 .012 55)",
     "ink-hi": "oklch(.13 .01 55)",
     "muted": "oklch(.46 .012 56)",
@@ -181,7 +182,7 @@
     "graphite-light": {
       "label": "Graphite Light", "family": "Graphite", "base": "light",
       "over": {
-        "deadline": "#9E3752", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#9D2B63",
+        "sheet": "#FFFFFF", "deadline": "#9E3752", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#9D2B63",
         "bg": "#E3E7ED", "panel": "#F7F9FC", "ink": "#20242B", "ink-hi": "var(--ink)", "muted": "#59616E", "faint": "#6A7381", "hover": "#D9DFE8",
         "accent": "#2054C5", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
         "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
