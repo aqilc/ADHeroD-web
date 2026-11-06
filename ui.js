@@ -219,11 +219,8 @@ export const checkHtml = (r, tag = 'button', extra = '', recArr = recList(r.t.re
 };
 
 // static body kills per-row x-for/x-show cost; shell bindings stay reactive; clicks via data-act/data-ci
-// Whether a row names its project (rowBodyHtml; app.js _metaLines counts line 2 from it). A nested row shares its parent's, which the top-level row already names.
-export const showsProj = (r, opts = {}) => !!(r.projName || r.isDefaultProj)
-  && (opts.proj === true || (opts.proj !== false && !r.depth && opts.navType !== 'project' && opts.navType !== 'backlog'));
 export const rowBodyHtml = (r, opts = {}) => {
-  const t = r.t, done = !!t.completed_at, archived = !done && !!t.archived_at;
+  const t = r.t, done = !!t.completed_at, archived = !done && !!t.archived_at, nav = opts.navType || '';
   // Minimal mode: flat task-line (popup/palette/sweep/ghost). Inert span check + pick-name title + areas + proj.
   // No wrappers, no badges, no chevron.
   if (opts.minimal) {
@@ -232,7 +229,8 @@ export const rowBodyHtml = (r, opts = {}) => {
     const titleHtml = r.titleHtml ?? mdTitle(t.content);
     return `${check}<span class="pick-name">${titleHtml}</span>${chips ? `<span class="areas inline-flex items-center gap-6 flex-none">${chips}</span>` : ''}${projChipHtml(r.projName, r.isDefaultProj)}`;
   }
-  const showProj = showsProj(r, opts);
+  // a nested row shares its parent's project, which the top-level row already names
+  const showProj = !!(r.projName || r.isDefaultProj) && (opts.proj === true || (opts.proj !== false && !r.depth && nav !== 'project' && nav !== 'backlog'));
   const badges = opts.badges !== false;
   // A checklist folds under the SAME chevron as subtasks — one gesture for "hide what's inside this row".
   const chkCount = (r.chk || t.checklist || []).length;
@@ -268,15 +266,17 @@ export const rowBodyHtml = (r, opts = {}) => {
   // next open step on the rail — its node ticks it (app.js onRowClick). It stands in for the task's description, which stays in the composer.
   const step = r.step && !done ? `<div class="step-block" style="--pc:${esc(r.pc)}"><div class="row-step"><span class="chk-txt">${chkMd(r.step.txt)}</span></div>${r.step.desc ? `<div class="step-desc truncate">${chkMd(r.step.desc)}</div>` : ''}${r.next
     ? `<div class="step-next flex items-center" data-ci="${r.next.ci}"><span class="chk-rect step-node" role="checkbox" aria-checked="false" aria-label="Tick the next step"></span><span class="step-next-txt truncate min-w-0">${chkMd(r.next.txt)}</span></div>` : ''}</div>` : '';
-  // Plan's tray: a Steps row leads with its step on one flat line, as in the list. Nothing that unfolds, nests or ages.
-  if (opts.tray && step) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${step}</div>`;
+  // Plan's tray: one flat line — check, title, project, when (a Steps row adds its step block). Nothing that unfolds, nests or ages.
+  // Its checklist, notes and relations ride as marks the ladder moves onto line 2 once one exists (app.js _ladder).
+  if (opts.tray) {
+    if (step) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${step}</div>`;   // a Steps row leads with its step, as in the list
+    const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;
+    const fill = m(n, r.step ? 'i-steps' : 'i-list-check', cl.filter(c => c.done).length + '/' + n) + m(t.notes || plain && cl.length, 'i-edit', '') + m(r.rels.length, 'i-link', '');
+    return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${fill ? `<span class="l2-fill flex items-center">${fill}</span>` : ''}</div>`;
+  }
   // One chip per item, blockers then files; the ladder drops names one at a time and rolls a kind's >3 into its first chip's count (app.js _relIcon).
-  // A typed row's line 2 has no width ladder, so 4+ of a kind roll on count as they render: the first chip stands for them (_relIcon's look).
-  const typed = opts.typed !== false, kinds = {}, seen = {};
-  for (const rl of r.rels) kinds[rl.type] = (kinds[rl.type] || 0) + 1;
-  const roll = rl => !typed || step || kinds[rl.type] < 4 ? '' : (seen[rl.type] = (seen[rl.type] || 0) + 1) === 1 ? ' icon-only rolled' : ' icon-only rel-hid';
   const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map(rl =>
-    `<button type="button" class="row-rel ${rl.type}${roll(rl)} inline-flex items-center gap-4 muted-11" data-act="rel" data-kind="${rl.type}" data-rel="${esc(rl.id)}" aria-label="${esc(rl.label)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${rl.n ? `<span class="row-rel-n">${rl.n}</span>` : ''}</button>`).join('')}</div>` : '';
+    `<button type="button" class="row-rel ${rl.type} inline-flex items-center gap-4 muted-11" data-act="rel" data-kind="${rl.type}" data-rel="${esc(rl.id)}" aria-label="${esc(rl.label)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${rl.n ? `<span class="row-rel-n">${rl.n}</span>` : ''}</button>`).join('')}</div>` : '';
   // Relations are a LINE-1 CITIZEN — the ladder sheds them like anything else, so a row with a relation isn't
   // two lines at every width. The DESCRIPTION is the deliberate exception: prose always owns its own line,
   // so it never competes with the title and never joins the meta line. → app.js LADDER
@@ -296,26 +296,7 @@ export const rowBodyHtml = (r, opts = {}) => {
   const renderRow = ({ ci, done, txt, desc }) =>
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
   const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.slice(0, openN).map(renderRow).join('')}${fold}${clRows.slice(openN).map(renderRow).join('')}</div>` : '';
-  // Each kind its own look and place (ds-3 Card 3): line 1 ends in size, repeat and the date as a word in its bucket's
-  // color (an overdue or missed date keeps its chip); line 2 reads deadline, areas, place, relations, then the project at the far right.
-  if (!typed) return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;   // a one-line row (the desk sticky)
-  const chip = ['overdue', 'missed'].includes(r.due?.kind), tint = !chip && r.dueQ ? ` style="--tc:var(--q-${r.dueQ})"` : '';
-  const when = badges && r.due ? `<span class="badge ${chip ? '' : 'w '}${esc(r.due.kind || '')} inline-flex items-center"${tint}><span>${esc(r.due.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
-  const repeat = m(badges && t.recurrence, repHref.slice(1), '', 'rep');
-  // A Steps row keeps every chip on its title line, so the step never reads as a task; its date and marks are the typed row's.
-  if (step) return chev + check + `<div class="body typed grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + repeat + when)}${step}</div>`;
-  const flag = r.dlSame ? '' : dl, pie = r.isDefaultProj ? '<svg class="ico"><use href="#i-backlog"/></svg><span>Backlog</span>'
-    : `<span class="pring" style="--p:${r.projPie ?? 0};--pc:${esc(r.projColor || 'var(--faint)')}"></span><span class="proj-nm">${mdTitle(r.projName)}</span>`;
-  const where = showProj ? `<span class="proj proj-at${r.isDefaultProj ? ' proj-inbox' : ''} inline-flex items-center min-w-0">${pie}</span>` : '';
-  // The tray's typed row keeps line 1 and the project; its checklist, notes and relations ride on line 2 as marks.
-  if (opts.tray) {
-    const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;
-    const fill = m(n, r.step ? 'i-steps' : 'i-list-check', cl.filter(c => c.done).length + '/' + n) + m(t.notes || plain && cl.length, 'i-edit', '') + m(r.rels.length, 'i-link', '');
-    const traySub = flag + (fill && `<span class="l2-fill flex items-center">${fill}</span>`) + (r.isDefaultProj ? '' : where);   // every undated task is in Backlog: its mark would sit on nearly every row
-    return check + `<div class="body typed grow min-w-0">${row1('', sched + repeat + when)}${traySub ? `<div class="row-sub flex items-center min-w-0">${traySub}</div>` : ''}</div>`;
-  }
-  const sub = flag + areas + loc + rels + where;
-  return chev + check + `<div class="body typed grow min-w-0">${row1('', sched + est + repeat + when)}${sub ? `<div class="row-sub${r.areas.length > 3 ? ' icons-only rolled' : ''} flex items-center min-w-0">${sub}</div>` : ''}${step || desc}${chk}</div>`;
+  return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;
 };
 
 // data-ridx on box = focus index; data-more="kind:id" on ··· button

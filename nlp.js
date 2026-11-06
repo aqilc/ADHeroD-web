@@ -91,14 +91,6 @@ export function quickRange(key, now = new Date()) {
   else if (key === 'weekend') { from.setDate(from.getDate() + (g ? 6 - g : 0)); to.setDate(to.getDate() + (7 - g) % 7); }   // on a Sunday, what's left of it
   return { from: isoDate(from), to: isoDate(to) };   // 'today' falls through: from===to===today
 }
-// The quick-date bucket a day falls in (design.json `quick`, the row's date word color); '' past next week or passed.
-// The ranges are kept per `now` object: a list build hands every row one, so 5k rows compute them once.
-let _dq = { now: null, rs: [] };
-export const dueQuick = (iso, now = new Date()) => {
-  if (_dq.now !== now) _dq = { now, rs: ['today', 'tomorrow', 'weekend', 'thisweek', 'nextweek'].map(k => [k, quickRange(k, now)]) };
-  const day = iso.slice(0, 10);
-  return _dq.rs.find(([, r]) => r.from <= day && day <= r.to)?.[0] || '';
-};
 // A phrase's single date IS its window's start — one set of offsets, two shapes.
 export const quickDate = (key, now = new Date()) => quickRange(key, now).from;
 
