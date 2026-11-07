@@ -4565,7 +4565,7 @@ document.addEventListener('alpine:init', () => {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
       this.dreg = reg;   // a deadline still shows as its red day in the date pop (calDayClass paints both registers)
-      this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._typedN = 1;
+      this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._typedN = 1; this._typedFrom = '';
       this.draft.dateText = '';   // both pops share the field: what was typed in one never lands in the other
       this._calTo((reg === 'by' && (this.draft.deadline_at || this.draft.available_from)) || this.draft.on || this.draft.deadline_at || isoDate(new Date()));
       this.$nextTick(() => this.pop === name && !this.popDock && !document.activeElement?.closest('.pop.cal') && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it. A held tick lands late: a Tab already in the pop keeps its place
@@ -4719,8 +4719,12 @@ document.addEventListener('alpine:init', () => {
       }
       const day = iso => new Date(iso + 'T00:00');
       if (dl && c.iso < dl && (!f || day(c.iso) - day(f) <= day(dl) - day(c.iso))) { this.draft.available_from = c.iso; return; }
-      this.draft.deadline_at = keepT(c.iso);
-      if (f && f >= c.iso) this.draft.available_from = '';   // an end at/before the start is nonsense — drop the from
+      this.setDeadlineDay(c.iso);
+    },
+    // the deadline moves to iso keeping its time; a window can't end at or before its start, so that start drops
+    setDeadlineDay(iso, from = this.draft.available_from) {
+      this.draft.deadline_at = iso + (this.draft.deadline_at || '').slice(10);
+      this.draft.available_from = (from || '').slice(0, 10) >= iso ? '' : from;
     },
     calDayClass(c, ci) {
       const f = (this.draft.available_from || '').slice(0, 10), dl = (this.draft.deadline_at || '').slice(0, 10);
@@ -4949,7 +4953,11 @@ document.addEventListener('alpine:init', () => {
       }
       const { iso, time, bare } = parseDateText(this.draft.dateText), byTime = bare && this._dateKey() === 'deadline_at';   // a bare By time is a time pick: no date of its own
       if (iso) {
-        if (!byTime) this.draft[this._dateKey()] = this._dateKey() === 'deadline_at' ? iso + (this.draft.deadline_at || '').slice(10) : iso;   // a typed day keeps a set deadline time; a typed time replaces it below
+        if (this.dreg !== 'by') this.draft.on = iso;
+        else if (!byTime) {   // a typed day keeps a set deadline time; a typed time replaces it below
+          if (this.draft.available_from) this._typedFrom = this.draft.available_from;   // "dec 1" on the way to "dec 15" drops a Dec 12 start, and the next key brings it back
+          this.setDeadlineDay(iso, this._typedFrom);
+        }
         if (time && this.pop === 'due') this.timeSet(time);
         this._calTo(byTime ? this.draft.deadline_at : iso);
       }
@@ -4983,10 +4991,7 @@ document.addEventListener('alpine:init', () => {
     },
     calSugApply(iso) {
       if (this.dreg === 'on') this.draft.on = iso;
-      else {
-        this.draft.deadline_at = iso + (this.draft.deadline_at || '').slice(10);   // keeps a set deadline time
-        if ((this.draft.available_from || '').slice(0, 10) >= iso) this.draft.available_from = '';   // a window can't end at or before its start
-      }
+      else this.setDeadlineDay(iso);
       this.pop = null;
     },
     barFit(opts) {   // the jot bar's values show their word whole or only the icon, the last first; the date tries "Tmr" before its icon
@@ -10381,6 +10386,7 @@ document.addEventListener('alpine:init', () => {
     },
     _clRep(rule) { return rule?.freq === 'week' ? { interval: rule.interval || 1, ends: rule.ends ?? null } : { interval: 1, ends: null }; },   // the sentence's every/times/ending, weekly only as the days
     // the Usable pop: the block's length (the series' when opened on a day) and its All/¾/½/¼ to the 5 minutes; All stores null
+    sliderAt(v, min, max) { return '--at:' + (max > min ? (v - min) / (max - min) : 1); },   // a .slider's WebKit fill: where its value sits, 0..1
     clUsableLen(e) { const t = e.rule || e; return (this._hm(t.end) - this._hm(t.start) + 1440) % 1440 || 1440; },
     clUsableParts(e) { const len = this.clUsableLen(e); return [['All', 1], ['¾', .75], ['½', .5], ['¼', .25]].map(([l, f]) => ({ l, min: f === 1 ? null : Math.max(5, Math.round(len * f / 5) * 5) })); },
     clRepStep(e, key, delta) {

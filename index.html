@@ -2014,7 +2014,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <div class="seg blk-parts">
               <template x-for="p in clUsableParts(blockEdit)" :key="p.l"><button type="button" :class="{ on: p.min === (+blockEdit.est_minutes < clUsableLen(blockEdit) ? +blockEdit.est_minutes || null : null) }" @click="blockEdit.est_minutes = p.min; pop = null"><b x-text="p.l"></b><em x-text="durFmt(p.min || clUsableLen(blockEdit))"></em></button></template>
             </div>
-            <input type="range" class="blk-range" aria-label="Usable time" min="5" step="5" :max="clUsableLen(blockEdit)" :value="+blockEdit.est_minutes || clUsableLen(blockEdit)" @input="blockEdit.est_minutes = +$el.value < clUsableLen(blockEdit) ? +$el.value : null">
+            <input type="range" class="slider" aria-label="Usable time" min="5" step="5" :max="clUsableLen(blockEdit)" :value="+blockEdit.est_minutes || clUsableLen(blockEdit)" :style="sliderAt(+blockEdit.est_minutes || clUsableLen(blockEdit), 5, clUsableLen(blockEdit))" @input="blockEdit.est_minutes = +$el.value < clUsableLen(blockEdit) ? +$el.value : null">
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
