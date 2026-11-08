@@ -241,8 +241,8 @@ export const rowBodyHtml = (r, opts = {}) => {
   const recArr = recList(t.recurrence), check = checkHtml(opts.tray && !r.step ? { ...r, hasProgress: false } : r, 'button', '', recArr);   // the tray drops the checklist ring, never a Steps pie; same builder the link picker uses, so both read the task's state identically
   const areas = r.areas.length ? `<span class="areas inline-flex items-center gap-6 flex-none"${r.areas.length === 1 ? ` style="--tc:${esc(r.areas[0].color)}"` : ''}>${r.areas.map(areaChipHtml).join('')}</span>` : '';
   // Goals are not drawn in the list row (parked until the goals rework): no `.goal`/`.goals-chips` element.
-  // `proj-inbox` marks the icon-only default-project chip: it is a bare glyph, so the overflow ladder is
-  // forbidden from moving it to line 2 (an icon alone on its own line reads as a bug). → app.js _ladder
+  // `proj-inbox` marks the default-project chip: a bare glyph on the phone (glyph plus "Backlog" on `.dsk`), so the
+  // overflow ladder is forbidden from moving it to line 2 (an icon alone on its own line reads as a bug). → app.js _ladder
   const proj = showProj ? projChipHtml(r.projName, r.isDefaultProj) : '';
   // Every badge in the row's right cluster is the same shape — muted icon + value. Only the modifier class,
   // the glyph and the text differ, so they are one builder rather than six near-identical template literals.
@@ -304,15 +304,18 @@ export const rowBodyHtml = (r, opts = {}) => {
   const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.slice(0, openN).map(renderRow).join('')}${fold}${clRows.slice(openN).map(renderRow).join('')}</div>` : '';
   // Each kind its own look and place (ds-3 Card 3): line 1 ends in size, repeat and the date as a word in its bucket's
   // color (an overdue or missed date keeps its chip); line 2 reads deadline, areas, place, relations, then the project at the far right.
-  if (!typed) return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;   // a one-line row (the desk sticky)
+  const desk = !typed && !step && opts.desc !== false;   // ds-3-3: the desktop list row; desc:false is the desk sticky, which keeps the row below
+  if (!typed && !desk) return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;   // a one-line row (the desk sticky, a desktop Steps row)
   const chip = ['overdue', 'missed'].includes(r.due?.kind), tint = !chip && r.dueQ ? ` style="--tc:var(--q-${r.dueQ})"` : '';
-  const when = badges && r.due ? `<span class="badge ${chip ? '' : 'w '}${esc(r.due.kind || '')} inline-flex items-center"${tint}><span>${esc(r.due.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
-  const repeat = m(badges && t.recurrence, repHref.slice(1), '', 'rep');
+  const when = desk ? due : badges && r.due ? `<span class="badge ${chip ? '' : 'w '}${esc(r.due.kind || '')} inline-flex items-center"${tint}><span>${esc(r.due.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
+  const repeat = m(badges && t.recurrence && !(desk && r.due), repHref.slice(1), '', 'rep');   // a desktop date's repeat glyph rides in its pill
   // A Steps row keeps every chip on its title line, so the step never reads as a task; its date and marks are the typed row's.
   if (step) return chev + check + `<div class="body typed grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + repeat + when)}${step}</div>`;
   const flag = r.dlSame ? '' : dl, pie = r.isDefaultProj ? '<svg class="ico"><use href="#i-backlog"/></svg><span>Backlog</span>'
     : `<span class="pring" style="--p:${r.projPie ?? 0};--pc:${esc(r.projColor || 'var(--faint)')}"></span><span class="proj-nm">${mdTitle(r.projName)}</span>`;
   const where = showProj ? `<span class="proj proj-at${r.isDefaultProj ? ' proj-inbox' : ''} inline-flex items-center min-w-0">${pie}</span>` : '';
+  // Areas and project by the title, the date last; with no date, today's order for size, deadline, place, repeat.
+  if (desk) return chev + check + `<div class="body dsk grow min-w-0">${row1(areas + where + rels, sched + (when ? flag + loc + est : est + flag + loc) + repeat + when)}${desc}${chk}</div>`;
   // The tray's typed row keeps line 1 and the project; its checklist, notes and relations ride on line 2 as marks.
   if (opts.tray) {
     const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;

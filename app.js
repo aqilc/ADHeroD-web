@@ -726,7 +726,11 @@ document.addEventListener('alpine:init', () => {
         if (top) !this.anyDialog() && this.composer.open && this.$refs.composer.contains(ed) ? ed.blur() : this.escape(true);   // a dialog the composer opened keeps the composer's focused button
         this._syncHist();
       });
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushAll(); else this._nowTickV++; });   // shown: the now-line and leave-by catch up on the minutes a hidden tab skipped
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushAll();
+        else this._nowTickV++;   // shown: the now-line and leave-by catch up on the minutes a hidden tab skipped
+        for (const id of _notifTimers.keys()) this._notifHold(id, 'hidden', document.hidden);   // a card waits out a hidden tab: its Undo is there on return
+      });
       // A trackpad PINCH arrives as ctrl/⌘+wheel. Left to the browser it page-zooms, which changes the row
       // height the virtualized calendar measures dates against — the same scrollTop then reads as a different
       // YEAR. Capture + stopPropagation so the calendar always claims it and no inner
@@ -1184,7 +1188,7 @@ document.addEventListener('alpine:init', () => {
     _shedNode(el, sel) {
       if (sel === '.m.dl' && (!el.querySelector('.badge') || el.querySelector('.step-block'))) return null;   // the sole time badge and Steps' deadline stay on line 1
       if (el.querySelector('.typed') && !el.querySelector('.step-block')) return null;   // a typed row's line 2 is its markup's: the title truncates
-      return el.querySelector(sel === '.proj' ? '.proj:not(.proj-inbox)' : sel);   // a lone inbox glyph cannot earn a second line
+      return el.querySelector(sel === '.proj' ? '.proj:not(.proj-inbox)' : sel);   // the default project's chip (a bare glyph on the phone) cannot earn a second line
     },
     // Pure writes in L2_ORDER, also replayed by _fit without measuring.
     _shed(el, sel, line2s) {
@@ -1229,10 +1233,10 @@ document.addEventListener('alpine:init', () => {
       if (chips && chips.querySelectorAll('.area').length > 3) r1l.classList.add('rolled');
       el._lad = 1;
     },
-    // Put every laddered node back where it came from and drop line 2. Ascending original index per home
-    // restores the exact sibling order (.r1r's is sched·est·dl·loc·due·rep, and the badges read as a run).
+    // Put every laddered node back where it came from and drop line 2. Newest shed first: each index was measured
+    // after the earlier sheds left, so only the reverse order undoes one shed per insert (areas and project both read 1).
     _unfit(el) {
-      for (const { n, home, i } of (el._moved || []).sort((a, b) => a.i - b.i)) { n.classList.remove('shed-hid'); home.insertBefore(n, home.children[i] || null); }
+      for (const { n, home, i } of [...(el._moved || [])].reverse()) { n.classList.remove('shed-hid'); home.insertBefore(n, home.children[i] || null); }
       el._moved = null; el._lad = 0;
       const fill = el.querySelector('.row2.meta > .l2-fill'); if (fill) el.querySelector('.body').append(fill);
       el.querySelector('.row2.meta')?.remove(); el.querySelector('.hid-more')?.remove();
@@ -5015,11 +5019,12 @@ document.addEventListener('alpine:init', () => {
       if (!on) return 'When';
       return this.draft.part && !this.draft.dueTime ? this.partLabel(on, this.draft.part) : (!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') && !short ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : '');
     },
+    dlSet() { const f = this.draft.available_from?.slice(0, 10); return !!this.draft.deadline_at || !!f && f !== this.draft.on?.slice(0, 10); },   // a typed day's "from" is that day itself: no window, the flag stays bare
     dlLabel() {   // the flag chip: the deadline, or the window that ends at it
       const dl = this.draft.deadline_at, f = this.draft.available_from?.slice(0, 10), day = dl?.slice(0, 10);
       if (f && day === f) return 'only ' + this.fmt(day);   // one-day world-window — walled on both sides
       if (f && dl) return this.fmt(f) + ' – ' + this.fmt(day);
-      if (f) return 'from ' + this.fmt(f);
+      if (f && this.dlSet()) return 'from ' + this.fmt(f);
       return dl ? this.fmt(day) + (timeOf(dl) ? ' ' + this.fmtTime(timeOf(dl)) : '') : '';
     },
     recurrenceLabel(rec) { return recurrenceLabel(rec); },
@@ -6138,12 +6143,12 @@ document.addEventListener('alpine:init', () => {
       // oldest older card without Undo/Redo first (plain, a tip), an Undo card only when all older ones carry one (⌘Z still reaches it)
       const older = this.notifs.filter(n => !n.leaving && n.id !== id);
       if (older.length > 2) this._dismissNotif((older.find(n => !n.actions.some(a => a.jid)) || older[0]).id);
-      _notifTimers.set(id, { left: timeout, holds: new Set() });
-      this._notifRun(id);
+      _notifTimers.set(id, { left: timeout, holds: new Set(document.hidden ? ['hidden'] : []) });
+      if (!document.hidden) this._notifRun(id);
       return id;
     },
     _notifRun(id) { const t = _notifTimers.get(id); t.at = Date.now(); t.timer = setTimeout(() => this._dismissNotif(id), t.left); },
-    // The pointer on a card or focus in it holds its timer: it must not vanish mid-reach and drop its focused Undo to the page.
+    // The pointer on a card, focus in it or a hidden tab holds its timer: it must not vanish mid-reach and drop its focused Undo to the page.
     _notifHold(id, why, on) {
       const t = _notifTimers.get(id); if (!t) return;
       if (on && !t.holds.size) { clearTimeout(t.timer); t.left -= Date.now() - t.at; }

@@ -677,9 +677,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <!-- unified calendar pop lives below (one instance, mode driven via `pop`) -->
           </div>
           <!-- Deadline: the same pop, opened in Due by; a repeat shows it only while one is set, so it can be cleared -->
-          <div class="field" x-show="!draft.recurrence || draft.deadline_at || draft.available_from" @click.document.capture="pop === 'due' && dreg === 'by' && outside($event, $el) && popAway('due', $event)">
-            <button type="button" class="chip chip-dl inline-flex items-center" :class="{ set: draft.deadline_at || draft.available_from, open: pop === 'due' && dreg === 'by' }" title="Deadline (or right-click a day in the date pop)" aria-haspopup="dialog" :aria-expanded="pop === 'due' && dreg === 'by'" @click="openDate('due', $el, 'by')">
-              <svg class="ico"><use :href="draft.deadline_at || draft.available_from ? '#i-flag-fill' : '#i-flag'"/></svg>
+          <div class="field" x-show="!draft.recurrence || dlSet()" @click.document.capture="pop === 'due' && dreg === 'by' && outside($event, $el) && popAway('due', $event)">
+            <button type="button" class="chip chip-dl inline-flex items-center" :class="{ set: dlSet(), open: pop === 'due' && dreg === 'by' }" title="Deadline (or right-click a day in the date pop)" aria-haspopup="dialog" :aria-expanded="pop === 'due' && dreg === 'by'" @click="openDate('due', $el, 'by')">
+              <svg class="ico"><use :href="dlSet() ? '#i-flag-fill' : '#i-flag'"/></svg>
               <span x-text="dlLabel()"></span>
             </button>
           </div>
@@ -834,7 +834,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <button type="button" class="pop-item sug" :tabindex="si ? -1 : 0" :style="`--sug: var(--q-${s.key})`" @click="calSugApply(s.iso)" @keydown.down.prevent="$el.nextElementSibling?.closest('.sug')?.focus()" @keydown.up.prevent="$el.previousElementSibling?.closest('.sug')?.focus()"><svg class="ico"><use :href="'#i-' + s.icon"/></svg><span x-text="s.label"></span><span class="rt" x-text="s.hint"></span></button>
             </template>
             <button type="button" class="pop-item clear" x-show="dreg === 'on' && (draft.on || draft.recurrence)" @click="draft.on = ''; draft.dueTime = ''; draft.part = ''; draft.recurrence = null; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
-            <button type="button" class="pop-item clear" x-show="dreg === 'by' && (draft.deadline_at || draft.available_from)" @click="draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No deadline</span></button>
+            <button type="button" class="pop-item clear" x-show="dreg === 'by' && dlSet()" @click="draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No deadline</span></button>
           </div>
           <!-- shared: calendar head + grid -->
           <div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
@@ -920,6 +920,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; filesUrl &amp;&amp; session" @click="pop = null; document.querySelector('.jb-host .attach input')?.click()"><svg class="ico"><use href="#i-clip"/></svg>Attach file</button>
                   <button type="button" class="pop-item" x-show="!editing && !durMinNow()" @click="togglePop('dur', document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-clock"/></svg>Size</button>
                   <button type="button" class="pop-item" x-show="!editing && locations.length && locPolarity() === 'any'" @click="openLoc(document.querySelector('.composer .more-btn'))"><svg class="ico"><use href="#i-pin"/></svg>Place</button>
+                  <button type="button" class="pop-item" x-show="_inBar() &amp;&amp; !draft.recurrence &amp;&amp; !dlSet()" @click="openDate('due', document.querySelector('.composer .more-btn'), 'by')"><svg class="ico"><use href="#i-flag"/></svg>Deadline</button>
                 </div></template>
                 <template x-if="editing"><div class="contents" x-data="{ conv: false }">
                 <button type="button" class="pop-item" x-show="editing" @click="duplicateEditing(); pop = null"><svg class="ico"><use href="#i-copy"/></svg>Duplicate task</button>

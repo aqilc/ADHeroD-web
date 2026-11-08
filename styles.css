@@ -85,9 +85,9 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .soc-list { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; overflow-y: auto; }
 .chat-row, .soc-invite { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-10); align-items: center; padding: var(--sp-8) var(--sp-10);
   border: 0; border-radius: var(--r-8); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.chat-row:hover, .soc-invite:hover { background: var(--hover); }
+.chat-row:hover:where(:not(.touch *)), .soc-invite:hover:where(:not(.touch *)) { background: var(--hover); }
 .chat-row.sel { background: color-mix(in srgb, var(--accent) 13%, transparent); }   /* the open chat: the open/selected tint (.chk-sel, .open), never the hover fill */
-.chat-row.sel:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }   /* a hover steps up one, as .item.selected's */
+.chat-row.sel:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 22%, transparent); }   /* a hover steps up one, as .item.selected's */
 :is(.chat-row, .soc-invite, .jb-chat) .av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-13); font-weight: 700;
   color: var(--warm-ink); background: color-mix(in srgb, var(--warm) 15%, transparent); }
 .chat-row b { font-size: var(--fs-15); font-weight: 600; }
@@ -120,7 +120,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .msg-acts { flex: none; opacity: 0; pointer-events: none; transition: opacity .12s var(--ease-out); }
 .msg-row:is(:hover, :focus-within) .msg-acts { opacity: 1; pointer-events: auto; }
 .msg-acts button, .chat-editing button { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: none; color: var(--muted); cursor: pointer; }
-.msg-acts button:hover, .chat-editing button:hover { background: var(--hover); color: var(--ink); }
+.msg-acts button:hover:where(:not(.touch *)), .chat-editing button:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
 .msg-acts .ico, .chat-editing .ico, .chat-comp .send .ico { width: 16px; height: 16px; }
 .chat-editing { justify-content: space-between; margin-bottom: var(--sp-4); padding-left: var(--sp-10); font-size: var(--fs-13); color: var(--muted); }
 .chat-comp { gap: var(--sp-6); padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-10); border: 1px solid var(--edge); border-radius: var(--r); background: var(--panel); }
@@ -151,7 +151,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .msg-file :is(.retry, .drop) { flex: none; display: grid; place-items: center; height: 22px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-6);
   background: none; color: inherit; font: inherit; cursor: pointer; }
 .msg-file .retry { font-weight: 600; }
-.msg-file :is(.retry, .drop):hover { background: var(--hover); }
+.msg-file :is(.retry, .drop):hover:where(:not(.touch *)) { background: var(--hover); }
 @media (max-width: 640px) {
   .social { grid-template-columns: minmax(0, 1fr); padding: var(--sp-16) var(--sp-12) 0; }
   .soc-list { padding-bottom: var(--list-end); }   /* scrolls under the nav */
@@ -238,7 +238,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
    competing with the items under it. Sized to the ⋯ so both trailing controls read as one column. */
 .rl-add { background: none; border: 0; color: var(--muted); cursor: pointer; margin-left: auto; padding: 0 var(--sp-4);
   font-size: var(--fs-17); line-height: 1; opacity: .5; transition: opacity .12s var(--ease-out), color .12s var(--ease-out); }
-.rl-add:hover { opacity: 1; color: var(--ink); }
+.rl-add:hover:where(:not(.touch *)) { opacity: 1; color: var(--ink); }
 .rl-wrap { position: relative; width: 100%; }
 .rl-box { width: 100%; display: flex; align-items: center; gap: var(--sp-10); padding: var(--sp-8) var(--sp-12);   /* −3px vs the 12/16 default (user-tuned) */
   background: var(--bg); border: 1px solid var(--edge); border-radius: var(--r); box-shadow: var(--shadow-sm); cursor: pointer;
@@ -257,20 +257,20 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .rl-wrap.rl-focus .rl-nm { color: color-mix(in srgb, var(--rlc, var(--accent)) 35%, var(--ink)); font-weight: 700; }
 .rl-cnt { font-size: var(--fs-13); color: var(--muted); font-variant-numeric: tabular-nums; }
 .rl-more { background: none; border: 0; color: var(--muted); cursor: pointer; font-weight: 700; letter-spacing: 1px; opacity: .5; padding: 0 var(--sp-2); font-size: var(--fs-15); }
-.rl-more:hover { opacity: 1; }
+.rl-more:hover:where(:not(.touch *)) { opacity: 1; }
 /* Overview's Archived row and the projects it opens: the box family, quieter (retired work); the chevron sits in the ⋯'s column */
 .rl-arch-row .rl-nm, .rl-arch .rl-nm { color: var(--muted); }
 .rl-chev { width: 16px; height: 16px; padding: 0 var(--sp-2); box-sizing: content-box; flex: none; color: var(--muted); opacity: .5;   /* the ⋯'s footprint and rest, so the count lines up with Backlog's */
   rotate: -90deg; transition: rotate .18s var(--ease-out), opacity .12s var(--ease-out); }
 .rl-chev.open { rotate: 0deg; }
-.rl-box:hover .rl-chev { opacity: 1; }
+.rl-box:hover:where(:not(.touch *)) .rl-chev { opacity: 1; }
 /* the two arrows stack INSIDE the ⋯'s line height, so they widen no row — a chevron each way, the
    down one as-drawn and the up one flipped. Same resting .5 as the ⋯: a control you can't see is a control
    nobody finds, and reordering has no other entry point on this rail. */
 .rl-mv { display: flex; flex-direction: column; flex: none; opacity: .5; transition: opacity .12s var(--ease-out); }
-.rl-box:hover .rl-mv, .rl-mv:focus-within { opacity: 1; }
+.rl-box:hover:where(:not(.touch *)) .rl-mv, .rl-mv:focus-within { opacity: 1; }
 .rl-mvb { background: none; border: 0; padding: 0; height: 9px; color: var(--faint); cursor: pointer; display: flex; }
-.rl-mvb:hover { color: var(--ink); }
+.rl-mvb:hover:where(:not(.touch *)) { color: var(--ink); }
 .rl-mvb .ico { width: 11px; height: 11px; flex: none; margin-top: -1px; }
 .rl-mvb:first-child .ico { transform: rotate(180deg); margin: -1px 0 0; }
 .nav-pop.rl-pop { position: fixed; }                      /* two classes → beats the later `.nav-pop{position:absolute}`; fixed = escapes the roller's overflow clip via navPopXY */
@@ -280,7 +280,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .swatch-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--sp-6); padding: var(--sp-4) var(--sp-8) var(--sp-6); place-items: center; }
 .swatch {
   width: 18px; height: 18px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; flex: none;
-  &:hover { opacity: .8; }
+  &:hover:where(:not(.touch *)) { opacity: .8; }
   &.sel { border-color: var(--ink); }
   /* "no color" option — outlined with a diagonal slash, not a gray fill */
   &.none { border-color: var(--edge);
@@ -291,7 +291,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .icon-pick-btn {   /* ceiling: own button, not an .icon-btn size variant; tweak-10 decides that variant */
   width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center;
   border: 1.5px solid transparent; border-radius: var(--r-6); background: none; cursor: pointer; color: var(--ink);
-  &:hover { background: var(--hover); }
+  &:hover:where(:not(.touch *)) { background: var(--hover); }
   &.sel { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); }
 }
 .icon-pick-btn .ico { width: 15px; height: 15px; flex: none; }
@@ -389,7 +389,7 @@ html:not(.touch) .plan-box { display: none; }
   /* inline-flex: an 18px box in ANY context — a bare span parent leaves display:inline, which ignores width/height */
   position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 2.25px solid var(--pc, var(--faint)); border-radius: 50%; flex: none;
   background: transparent; transition: background-color .12s ease;
-  &:hover { background: color-mix(in srgb, var(--pc) 15%, transparent); }
+  &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--pc) 15%, transparent); }
   &.done { background: var(--pc); border-color: var(--pc); --ck: 13.2px; --ck-y: 1px; }
 }
 .item > .check::before { content: ""; position: absolute; inset: -5px -8px -5px -2px; }   /* a 24px click target (WCAG 2.5.8), 6px into the gap, never onto the fold chevron left of it. Insets count from inside the border, which Chrome floors to 2px at DPR 1-3 */
@@ -421,10 +421,10 @@ html:not(.touch) .plan-box { display: none; }
 .check.paused { border-color: var(--gold); }
 .check.paused .pause-ico { position: absolute; inset: 0; margin: auto; width: 8px; height: 8px; color: var(--gold); fill: currentColor; stroke: none; pointer-events: none; }
 .check.prog { background: conic-gradient(var(--pc) calc(var(--p, 0) * 1%), transparent 0); border-color: var(--pc);
-  &:hover { background: conic-gradient(var(--pc) calc(var(--p, 0) * 1%), color-mix(in srgb, var(--pc) 15%, transparent) 0); } }
+  &:hover:where(:not(.touch *)) { background: conic-gradient(var(--pc) calc(var(--p, 0) * 1%), color-mix(in srgb, var(--pc) 15%, transparent) 0); } }
 /* Archived (can't be completed anymore): inert archive glyph instead of the circle/checkmark; no fill, no hover. */
 .check.archived, .cl-chip-check.archived, .cl-evt-check.archived { border-color: color-mix(in srgb, var(--muted) 45%, transparent); background: transparent; cursor: default; }
-.check.archived:hover, .cl-chip-check.archived:hover, .cl-evt-check.archived:hover { background: transparent; }
+.check.archived:hover:where(:not(.touch *)), .cl-chip-check.archived:hover:where(:not(.touch *)), .cl-evt-check.archived:hover:where(:not(.touch *)) { background: transparent; }
 /* archived = a dash-in-circle "set aside" mark (indeterminate-checkbox idiom), distinct from the done tick.
    Same mark everywhere a task shows a check — list row, composer, calendar chip (--dash scales it down there). */
 .check.archived::after, .cl-chip-check.archived::after, .cl-evt-check.archived::after { content: ''; position: absolute; inset: 0; margin: auto; width: var(--dash, 8px); height: 2px; border-radius: 1px; background: var(--muted); opacity: .7; pointer-events: none; }
@@ -486,7 +486,7 @@ html:not(.touch) .plan-box { display: none; }
 :is(.title, .row-step, .composer-title .content, .sub-ce) strong { font-weight: 600; }
 :is(.title, .row-step, .composer-title .content, .sub-ce) em { font-style: italic; }
 :is(.title, .row-step, .composer-title .content, .sub-ce) a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-.item a:is(:hover, :focus-visible) { background: var(--hover); border-radius: var(--r-4); color: var(--accent); text-decoration-thickness: 2px; cursor: pointer; }
+.item a:is(:hover:where(:not(.touch *)), :focus-visible) { background: var(--hover); border-radius: var(--r-4); color: var(--accent); text-decoration-thickness: 2px; cursor: pointer; }
 :is(.title, .row-step, .composer-title .content, .sub-ce) code { font: var(--fs-13) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); }
 /* strikethrough (~~) reads as "struck out" — dim it, in titles + descriptions (rows and the composer editor) */
 :is(.title, .row-step, .composer-title .content, .sub-ce) s, .desc-line s, .desc s { color: var(--muted); }
@@ -548,7 +548,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .md-code-num { color: var(--syntax-number); }
 .md-code-com { color: var(--muted); }
 .code-copy { display: flex; align-items: center; border: 0; color: var(--muted); cursor: pointer; user-select: none; max-height: 100%;
-  .ico { width: 14px; height: 14px; } &:hover, &:focus-visible { color: var(--ink); } }
+  .ico { width: 14px; height: 14px; } &:hover:where(:not(.touch *)), &:focus-visible { color: var(--ink); } }
 .desc .dm-h { font-weight: 600; color: var(--ink); }
 .desc .dm-h.h1 { font-size: var(--fs-22); }
 .desc .dm-h.h2 { font-size: var(--fs-17); }
@@ -623,7 +623,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .chk-list .chk-txt { box-sizing: content-box; padding: calc(3px + var(--chk-e)) 0 var(--chk-e); margin: -1px 0 -2px; }
 .chk-list .chk-txt:empty { margin-right: calc(-1 * var(--sp-8)); }   /* an item that is only a detail: the detail starts where text would (gap-8) */
 .chk-list .chk-txt:empty::before { content: "\200b"; }   /* …and still has a line: the row's baseline and height */
-.chk-row > .chk-rect:not(.plain, .done):is(:hover, :has(+ .chk-txt:hover)) { background-color: color-mix(in srgb, var(--faint) 60%, transparent); }   /* what a click ticks — the box OR its text — lights the open tile */
+.chk-row > .chk-rect:not(.plain, .done):is(:hover:where(:not(.touch *)), :has(+ .chk-txt:hover:where(:not(.touch *)))) { background-color: color-mix(in srgb, var(--faint) 60%, transparent); }   /* what a click ticks — the box OR its text — lights the open tile */
 /* uncheckable list: the box becomes a plain bullet — same footprint, no interaction */
 .chk-rect.plain { border-color: transparent; background: none; pointer-events: none; cursor: default; }
 .chk-rect.plain::after { content: ""; position: absolute; inset: 0; margin: auto; width: 10px; height: 2px; border-radius: 1px; background: var(--muted); }   /* DASH — encloses nothing, so nothing reads as fillable */
@@ -685,12 +685,12 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
    inset 2px clear of the dashes, the pie fills by steps done. */
 .check.steps { border-color: transparent; padding: var(--sp-2); background: conic-gradient(var(--pc) calc(var(--p) * 1%), transparent 0) content-box;
   &.done { --ck: 9.9px; --ck-y: .5px; }   /* the tick sits in the full pie, clear of the dashes */
-  &:hover { background: conic-gradient(var(--pc) calc(var(--p) * 1%), transparent 0) content-box, color-mix(in srgb, var(--pc) 15%, transparent) padding-box; }
+  &:hover:where(:not(.touch *)) { background: conic-gradient(var(--pc) calc(var(--p) * 1%), transparent 0) content-box, color-mix(in srgb, var(--pc) 15%, transparent) padding-box; }
   > .ring { position: absolute; inset: -2.25px; border-radius: 50%; pointer-events: none;
     background: conic-gradient(var(--pc) 0 186deg, transparent 0 198deg, var(--pc) 0 225deg, transparent 0 237deg, var(--pc) 0 264deg, transparent 0 276deg, var(--pc) 0 303deg, transparent 0 315deg, var(--pc) 0 342deg, transparent 0 354deg, var(--pc) 0);   /* solid runs past 12 and 6 o'clock so the rail lands on stroke */
     mask: radial-gradient(closest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); } }
 /* archived Steps: the Steps ring in the archived ink, no pie, the archived dash */
-.check.steps.archived { &, &:hover { background: transparent; } > .ring { --pc: color-mix(in srgb, var(--muted) 45%, transparent); } }
+.check.steps.archived { &, &:hover:where(:not(.touch *)) { background: transparent; } > .ring { --pc: color-mix(in srgb, var(--muted) 45%, transparent); } }
 /* clickable: reveals/re-hides the collapsed done items. Button reset — it inherits the row's box, not the UA's. */
 .chk-more { padding: 1px 0; border: 0; background: none; cursor: pointer; text-align: left; align-items: center; }
 .chk-list .chk-more { min-height: calc(20.85px + 2 * var(--chk-e)); }   /* an item's height: the same pitch as the items above it */
@@ -772,7 +772,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .peek-date { font-size: var(--fs-22); font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
 .peek-pin { border: none; background: none; cursor: pointer; padding: var(--sp-4); border-radius: var(--r-6); color: var(--faint);
   .ico { width: 13px; height: 13px; flex: none; }
-  &:hover { background: var(--hover); color: var(--ink); }
+  &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
   &.on { color: var(--accent); } }
 /* all-day lane mirrors the grid's gutter/column split so it reads as row 0 of the timeline */
 .peek-allday { flex: none; display: grid; grid-template-columns: 44px 1fr; align-items: stretch; margin: 0 var(--sp-8) var(--sp-6) 0; }
@@ -794,7 +794,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .peek-mgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
 .peek-mdow { text-align: center; font-size: var(--fs-10); color: var(--muted); padding-bottom: 2px; }
 .peek-mday { height: 26px; border-radius: var(--r-6); font-size: var(--fs-11); color: var(--ink); cursor: pointer;
-  &:hover { background: var(--hover); }
+  &:hover:where(:not(.touch *)) { background: var(--hover); }
   &.dim { color: var(--faint); }
   &.today { background: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 1.5px), transparent calc(100% - 1px)); color: var(--today-ink); font-weight: 700; }   /* today = a circle in every day grid */
   &.sel { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); font-weight: 700; }
@@ -884,6 +884,23 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   > .row2:not(.meta) { margin-top: var(--sp-5); padding-left: calc(var(--sp-8) + 1px); border-left: 2px solid var(--edge); }   /* notes behind a bar */
 }
 .touch .surface-lists .typed :is(.badge, .row-sub, .row-sub :is(.area, .proj, .m)) { font-size: var(--fs-13); }   /* the phone's 17px title */
+/* The desktop list row (ds-3-3, his 11-08 "ds-3-3 rec"): the typed row's kinds, keeping the desk row's sizes (date 11, areas 11 600, marks 12) and the date's shipped pill. */
+html:not(.touch) .dsk {
+  :is(.r1r, .r1l) { align-items: baseline; }   /* one text baseline for the cluster, and for the areas and project beside the title */
+  :is(.r1r, .r1l) > :is(.m, .proj-at), .row-rel { line-height: 15px; }   /* the capsule's line box: on that baseline each 12px word stays inside the date pill's 18.9 box, which sets the row's height */
+  :is(.m, .area, .proj-at, .badge, .row-rel) > span { align-self: baseline; }   /* an item's baseline is its word's, not its leading glyph's bottom */
+  .m:is(.est, .rep) { align-self: center; }   /* a glyph alone has no word to sit on */
+  .m.est { color: var(--faint); }
+  .m:not(.rep) .ico { width: 1.1em; height: 1.1em; flex: none; }   /* a bare repeat glyph keeps its shipped size */
+  .m.dl { color: var(--deadline); font-weight: 600; }
+  .m.loc { color: var(--faint); }
+  .area { border: 0; padding: 0 var(--sp-6); line-height: 15px;
+    color: color-mix(in oklab, var(--tc) 50%, var(--ink)); background: color-mix(in srgb, var(--tc) 13%, transparent); }
+  .icons-only { .areas { border: 0; height: 15px; background: color-mix(in srgb, var(--tc, var(--muted)) 13%, transparent); } .area { padding: 0; background: none; } }   /* the ladder's rolled-up pill: one capsule, a named chip's height */
+  .r1l > .proj-at { flex: none; }   /* the ladder moves it, the title takes the squeeze */
+  .proj-at { gap: var(--sp-5); font-size: var(--fs-12); color: var(--ink); font-weight: 500;
+    .pring { width: 1em; height: 1em; translate: 0 calc((1em - 1cap) / 2); } > .ico { width: 1.1em; height: 1.1em; flex: none; color: var(--faint); } }   /* the pie on its name's capitals */
+}
 /* No fill ⇒ no chip: the inline padding goes with the background, else the date reads as text inset by an
    invisible box. (`.later` needs no rule of its own — the base .badge above IS its appearance.) */
 .item.done .badge { color: var(--faint); background: none; padding-inline: 0; box-shadow: none; outline: none; }
@@ -913,9 +930,9 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   transition: background-color .12s ease;
   .ghost-check { width: 18px; height: 18px; flex: none; border-radius: 50%; border: 2.25px dashed var(--faint); transition: border-color .15s ease; }
   .ghost-title { font-size: var(--fs-15); line-height: 18px; color: var(--muted); transition: color .12s ease; }
-  &:hover { background: var(--hover); }
-  &:hover .ghost-check { border-color: var(--accent); }
-  &:hover .ghost-title { color: var(--ink); }
+  &:hover:where(:not(.touch *)) { background: var(--hover); }
+  &:hover:where(:not(.touch *)) .ghost-check { border-color: var(--accent); }
+  &:hover:where(:not(.touch *)) .ghost-title { color: var(--ink); }
 }
 .composer { display: block; position: relative; z-index: 7; }   /* above canvas-dots(z5) so its pops aren't trapped below the nav strip; also above the edited row's .check */
 .composer-grow { opacity: 0; overflow: visible; display: flow-root;   /* BFC: keep card margins inside measured height (else height drops at settle) */
@@ -980,7 +997,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 :is(.composer-opts, .blk-today) .chip { height: 28px; padding: 0 var(--sp-6); gap: var(--sp-8); border: none; border-radius: var(--r-6); background: none;
   font-size: var(--fs-13); color: var(--muted); font-weight: 500;
   :where(html:not(.touch)) & { gap: var(--sp-4); }   /* a value hugs its icon; touch keeps 8 */
-  &:hover { background: var(--hover); color: var(--ink); } }
+  &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); } }
 .composer-opts {
   flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-8) 0 0;
   :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-10)) 0 calc(-1 * var(--sp-6)); padding-right: calc(var(--sp-24) + var(--sp-10));   /* touch keeps its order. The right room is the go's 28px and a 6px gap */
@@ -1027,14 +1044,14 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   .entry-txt { flex: 1; min-width: 0; border: none; background: none; font: inherit;
     color: var(--ink); padding: 0; outline: none; &::placeholder { color: var(--muted); } }
   .entry-del { display: flex; align-items: center; height: 1lh; border: none; background: none; color: var(--muted);
-    padding: 0 var(--sp-2); cursor: pointer; opacity: 0; transition: opacity .1s; &:hover { color: var(--p1); }
+    padding: 0 var(--sp-2); cursor: pointer; opacity: 0; transition: opacity .1s; &:hover:where(:not(.touch *)) { color: var(--p1); }
     .ico { width: 14px; height: 14px; }
     &:focus { opacity: 1; color: var(--p1); } }   /* reveal + redden when tab-focused, like row-hover */
   &:hover .entry-del { opacity: .6; }
   &.done .entry-txt { color: var(--muted); text-decoration: line-through; }
   /* horizontal chevron → opens the subtask in the composer */
   .entry-kids { display: flex; align-items: center; height: 1lh; border: none; background: none; padding: 0 var(--sp-2); flex: none; color: var(--muted); cursor: pointer;
-    .ico { width: 13px; height: 13px; } &:hover { color: var(--ink); } }
+    .ico { width: 13px; height: 13px; } &:hover:where(:not(.touch *)) { color: var(--ink); } }
   /* subtask pill editor (contenteditable) — same live-NLP chips as the title, wrapping inline within the row */
   .entry-txt.sub-ce { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; min-height: 1lh; cursor: text; display: flow-root;
     &:empty::before { content: attr(data-placeholder); color: var(--muted); pointer-events: none; }
@@ -1159,7 +1176,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .pop-item .ico { width: 15px; height: 15px; flex: none; color: var(--muted); }   /* explicit sizing — an un-sized .ico has no viewBox height and inflates the row */
 .pop-item { display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left;
   padding: var(--sp-6) var(--sp-8); border: none; background: none; border-radius: var(--r-6); color: var(--ink); font-size: var(--fs-13);
-  &:hover, &.hot { background: var(--hover); }   /* .hot: the keyboard's row */
+  &:hover:where(:not(.touch *)), &.hot { background: var(--hover); }   /* .hot: the keyboard's row */
   &.clear { color: var(--muted); }
   &.del, &.del .ico { color: var(--p1); }
   .tick { margin-left: auto; color: var(--accent); }
@@ -1179,7 +1196,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   background: color-mix(in srgb, var(--pc) 15%, transparent);
   color: var(--ink);
   .ico { color: var(--pc); width: 13px; height: 13px; }
-  &:hover { background: color-mix(in srgb, var(--pc) 24%, transparent); }
+  &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--pc) 24%, transparent); }
   &.sel { background: color-mix(in srgb, var(--pc) 28%, transparent); box-shadow: inset 0 0 0 1.5px var(--pc); }
   &.tog { flex: 1; justify-content: center; --pc: var(--muted); color: var(--muted); &.sel { --pc: var(--accent); color: var(--ink-hi); box-shadow: none; } }   /* a toggle: grey off, an accent fill on */
   &:disabled { cursor: default; }
@@ -1208,7 +1225,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; touch-action: none;   /* drag on the due grid picks a from→due range */
   &.hint .cal-day { animation: req-pulse .35s ease 2; } }   /* fchip tap: "drag here" */
 .cal-dow { text-align: center; font-size: var(--fs-10); color: var(--muted); padding: 2px 0 3px; margin-bottom: 1px; border: none; background: none; cursor: pointer; border-radius: var(--r-pill);
-  &:hover { background: var(--hover); color: var(--ink); }
+  &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
   &.on { font-weight: 700; }
   &.on.pz { background: var(--hover); color: var(--muted); }
   &.pulse.on { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -1216,13 +1233,13 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .cal-day {
   position: relative; aspect-ratio: 1; border: none; background: none; border-radius: var(--r-6); color: var(--ink);
   font-size: var(--fs-13); font-weight: 600; display: flex; align-items: center; justify-content: center; line-height: 1; padding-top: 1px;   /* optical center: digits carry no descender, so ink rides ~1px high of the metric center — nudge down or the today ring reads low */
-  &:hover:not(:disabled) { background: var(--hover); }
+  &:hover:where(:not(.touch *)):not(:disabled) { background: var(--hover); }
   &.out { color: var(--muted); font-weight: 500; }
   &:disabled { color: var(--faint); font-weight: 500; cursor: default; opacity: .45; }   /* a day that can't be picked reads as set back, not as a target, fainter than next month's days you can pick (.out) */
   /* today = Plan's circle, one size in every state; layers stack on it and stay inside the brackets */
   &.today { --disc: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 7px), transparent calc(100% - 6.5px));
     background: var(--disc); color: var(--today-ink); font-weight: 700; }
-  &.today:is(:hover, .hot) { background: var(--disc), var(--hover); }
+  &.today:is(:hover:where(:not(.touch *)), .hot) { background: var(--disc), var(--hover); }
   /* recurrence preview vocabulary: solid = fixed occurrence · hollow = completion-dependent · grey = paused · tinted day + edge wall = end */
   &.occ::after { content: ""; position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%); width: 3px; height: 3px; border-radius: 50%; background: var(--accent); opacity: .55; }
   &.occ-h::after { content: ""; position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: transparent; box-shadow: inset 0 0 0 1.2px var(--accent); opacity: .75; }
@@ -1274,7 +1291,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .zone.oneoff { min-height: 0; flex-direction: column; }   /* constant-frame foot card: no rail; sentence, then the every… row */
 /* every… on its own line — the WHOLE line is the button */
 .evrow { display: flex; align-items: center; gap: var(--sp-8); width: 100%; border: none; background: none; padding: 2px 0; cursor: pointer; text-align: left; border-radius: var(--r-6);
-  &:hover { background: var(--hover);
+  &:hover:where(:not(.touch *)) { background: var(--hover);
     .c.ghosty { color: var(--warm-ink); border-color: var(--warm-ink); }
     .zhint { color: var(--muted); } } }
 /* a picked band in the sentence: label opens the picker, × removes just that band */
@@ -1282,7 +1299,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   button { border: none; background: none; padding: 0; font: inherit; color: inherit; cursor: pointer; }
   .bx { color: var(--faint); line-height: 1;
     .ico { width: 11px; height: 11px; }
-    &:hover { color: var(--p1); } } }
+    &:hover:where(:not(.touch *)) { color: var(--p1); } } }
 .zrail { gap: var(--sp-2); opacity: 1; transform: translateY(0); transition: opacity 150ms var(--ease-out), transform 150ms var(--ease-out);
   .zbtn .ico { width: 14px; height: 14px; }   /* a hair under .icon-btn.sm's 15: the rail sits beside 13px text */
   @starting-style { opacity: 0; transform: translateY(-4px); } }
@@ -1290,7 +1307,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .zone.paused .c, .zone.paused .st, .zone.paused .st button { background: var(--hover); color: var(--muted); }
 .zone.act { border-color: var(--edge-hi); }   /* the active statement (spatial controls act on it) */
 .addrep { margin-top: var(--sp-2); }
-.zbtn.on, .zbtn.on:hover, .zone .c.pz { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); }
+.zbtn.on, .zbtn.on:hover:where(:not(.touch *)), .zone .c.pz { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); }
 .zbtn.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) var(--pick-ring), transparent); }   /* Pick a day: the next calendar tap is the comeback */
 .pz-pop { position: fixed; width: 200px; z-index: 40; }
 /* sentence chips (.c) + always-visible steppers (.st): own line-height — they must NOT inherit the sentence's tall wrap rhythm */
@@ -1301,7 +1318,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   display: inline-flex; align-items: center;
   height: 19px; vertical-align: middle;
   white-space: nowrap; cursor: pointer; transition: background .15s var(--ease-out);
-  &:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+  &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
   &.g { background: var(--hover); color: var(--muted); font-weight: 400;
     @media (any-hover: hover) and (any-pointer: fine) { &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); } } }
   &.ring { box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) var(--pick-ring), transparent); margin-inline: var(--sp-2); }   /* the chip the next calendar tap fills; the margin keeps the ring off its words */
@@ -1314,7 +1331,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   button { width: 15px; height: 15px; border: none; border-radius: 50%; background: var(--panel); color: var(--warm-ink);
     font-size: var(--fs-11); line-height: 1; display: inline-flex; align-items: center; justify-content: center;
     box-shadow: 0 0 0 1px var(--edge); cursor: pointer; padding: 0;
-    &:hover { background: var(--hover); } }
+    &:hover:where(:not(.touch *)) { background: var(--hover); } }
   b { min-width: 10px; text-align: center; font-weight: 600; }
   &.g { background: var(--hover); color: var(--muted); b { color: var(--muted); } button { color: var(--muted); } }
 }
@@ -1329,12 +1346,12 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .th { height: 24px; border: none; background: none; border-radius: var(--r-6); font-size: var(--fs-11); font-weight: 600;
     color: var(--ink); display: flex; align-items: center; justify-content: center; cursor: pointer;
     em { font-style: normal; font-size: var(--fs-10); color: var(--muted); margin-left: 1px; }
-    &:hover { background: var(--hover); }
+    &:hover:where(:not(.touch *)) { background: var(--hover); }
     &.on em { color: var(--on-accent); } }
   .tq { display: flex; border: 1px solid var(--edge); border-radius: var(--r-pill); overflow: hidden; margin-top: var(--sp-4);
     button { flex: 1; border: none; background: none; font-size: var(--fs-11); padding: 3px 0; color: var(--muted); cursor: pointer;
       &:not(:last-child) { border-right: 1px solid var(--hair); }
-      &:hover { background: var(--hover); }
+      &:hover:where(:not(.touch *)) { background: var(--hover); }
       &.on { font-weight: 600; } } }
   .tx { margin-top: var(--sp-4); }
 }
@@ -1361,9 +1378,9 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   .rem-body { min-height: 0; overflow-y: auto; } }   /* a short window scrolls the setter under its pinned foot */
 .touch .pop.rem-pop.dock { height: min(45vh, 70vh - var(--keys)); padding-bottom: 0; }   /* one height on both screens: the title and the composer above hold still */
 .pop-item.rem-head { position: relative; flex: none; margin-bottom: var(--sp-8); font-weight: 600; color: var(--ink-hi); cursor: default;
-  &:hover { background: none; } .ico { color: var(--ink-hi); }
+  &:hover:where(:not(.touch *)) { background: none; } .ico { color: var(--ink-hi); }
   &::after { content: ''; position: absolute; inset: auto var(--sp-8) calc(-1 * var(--sp-4) - 1px); height: 1px; background: var(--hair); } }   /* the rule makes it the title, not a row */
-button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); } }
+button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { background: var(--hover); } }
 .rem-pop.dock .rem-head { position: sticky; top: 0; z-index: 1; background: var(--panel); }   /* the title holds while the setter scrolls under it */
 .rem-body { display: flex; flex-direction: column; }
 .rem-pop.dock .rem-body:not(.rem-ed) > :last-child { margin-bottom: calc(var(--sp-12) + var(--safe-b)); }
@@ -1377,7 +1394,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .rem-tag { margin-right: var(--sp-4); font-size: var(--fs-11); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); }
 /* ceiling: a tap-to-cycle button, not .seg; a second tap-to-cycle control makes it a primitive */
 .rem-sev { height: var(--sp-24); margin-left: auto; font-size: var(--fs-12); color: var(--muted); padding: 0 var(--sp-6); border-radius: var(--r-4); background: none; border: none; cursor: pointer;
-  &:hover { background: var(--hover); } &.alarm { color: var(--warm-ink); } }
+  &:hover:where(:not(.touch *)) { background: var(--hover); } &.alarm { color: var(--warm-ink); } }
 /* a paused reminder still reads as itself, just stood down — never deleted, never hidden */
 .rem-row.paused { .rem-lead, .rem-sev, .rem-seg { color: var(--faint); } }
 .rem-add, .rem-add .ico { color: var(--muted); }
@@ -1401,7 +1418,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
   .ico { width: 13px; height: 13px; flex: none; color: var(--muted); transform: translateY(2px); } }
 .rem-foot { position: sticky; bottom: 0; background: var(--panel); display: flex; align-items: center; gap: var(--sp-6);   /* the one pinned block: the action stays in reach while the setter scrolls */
   .primary { margin-left: auto; font-size: var(--fs-12); padding: var(--sp-2) var(--sp-12); }
-  .rem-delete { border: none; background: none; font: inherit; font-size: var(--fs-12); color: var(--muted); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); cursor: pointer; &:hover { background: var(--hover); color: var(--ink); } } }
+  .rem-delete { border: none; background: none; font: inherit; font-size: var(--fs-12); color: var(--muted); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); cursor: pointer; &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); } } }
 .rem-pop.dock .rem-ed { padding-bottom: 0; }
 .rem-pop.dock .rem-foot { padding-block: var(--sp-8) calc(var(--sp-12) + var(--safe-b)); }
 .pop.row-pop { position: fixed; }   /* rowMenuPlace: at the pointer */
@@ -1431,11 +1448,11 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
   background: color-mix(in srgb, var(--q-today) 7%, transparent);
   .heredot { width: 7px; height: 7px; border-radius: 50%; background: var(--q-today); box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-today) 20%, transparent); flex: none; }
   .sub { color: var(--muted); font-size: var(--fs-11); }   /* reserved slot: source/staleness text lands here later, no reflow */
-  &:hover { background: color-mix(in srgb, var(--q-today) 12%, transparent); }
+  &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--q-today) 12%, transparent); }
 }
 /* home row: amber tint + home glyph — distinct from the blue "here now" row */
 .lp-home-row { background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.lp-home-row:hover { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.lp-home-row:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .lp-home-row .hm-ico { color: var(--accent); }
 .lp-sec { padding: var(--sp-6) var(--sp-4) 2px; }
 .lp-row { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px var(--sp-4) var(--sp-2);
@@ -1454,7 +1471,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .primary:disabled { opacity: .45; cursor: default; }
 .danger { background: var(--p1); color: var(--on-accent); }
 :where(button).ghost { background: none; border-color: color-mix(in srgb, var(--muted) 55%, transparent); color: var(--ink); transition: border-color .15s ease, background-color .15s ease;
-  &:hover { background: var(--hover); border-color: var(--muted); } }
+  &:hover:where(:not(.touch *)) { background: var(--hover); border-color: var(--muted); } }
 /* Actions on their own compact row, divided from the pickers (Todoist-style) */
 .composer-actions {
   justify-content: flex-end; align-items: stretch;
@@ -1462,8 +1479,8 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
   /* opaque resting color (dark --muted is semi-transparent → stroke icons read translucent); hover keeps the accent */
   .del-btn, .overview-btn, .more-btn, .act-btn { color: color-mix(in oklab, var(--ink) 60%, var(--panel)); border-radius: var(--r-8); padding: var(--sp-6);
     .ico { width: 19px; height: 19px; }
-    &:hover { color: var(--accent); } }
-  .del-btn:hover { color: var(--p1); }
+    &:hover:where(:not(.touch *)) { color: var(--accent); } }
+  .del-btn:hover:where(:not(.touch *)) { color: var(--p1); }
   .more-wrap { position: relative; }
   .acts { display: contents; } .acts .ph { display: none; }   /* a phone's edit row */
   .more-btn .ico { width: 17px; height: 17px; fill: currentColor; stroke: none; }   /* solid dots — the global .ico fill:none would otherwise render them as outlines */
@@ -1481,9 +1498,9 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
     width: 28px; height: 28px; padding: 0; border: 0; transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out);
     > span { display: none; } .ico { display: block; width: 16px; height: 16px; stroke-width: 2.4; }
     &:active:not(:disabled) { transform: scale(.97); }
-    @media (hover: hover) { &:hover:not(:disabled) { background: color-mix(in oklab, var(--ink) 13%, var(--accent)); } } }
-  .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover { opacity: 1; color: var(--ink); } }
-  :is(.del-btn, .overview-btn, .more-btn, .act-btn) { color: var(--muted); padding: var(--sp-6); &:hover { background: var(--hover); } .ico { width: 16px; height: 16px; } }
+    @media (hover: hover) { &:hover:where(:not(.touch *)):not(:disabled) { background: color-mix(in oklab, var(--ink) 13%, var(--accent)); } } }
+  .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover:where(:not(.touch *)) { opacity: 1; color: var(--ink); } }
+  :is(.del-btn, .overview-btn, .more-btn, .act-btn) { color: var(--muted); padding: var(--sp-6); &:hover:where(:not(.touch *)) { background: var(--hover); } .ico { width: 16px; height: 16px; } }
   .act-btn.on { color: var(--accent); }   /* the tack: a note */
   .act-btn.by-go { position: absolute; right: calc(28px - var(--sp-4) + var(--sp-2)); bottom: calc(100% + var(--sp-8) * 2); }   /* a new task's, left of the go */
   :is(.proj-pick-ico, .proj-pick .pring) { width: 16px; height: 16px; }   /* the checkbox's size, on its x */
@@ -1507,7 +1524,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
   .ico { width: 13px; height: 13px; }
   /* nested parents: boxed background, nudged 4px left with 2px side padding so it lands on the indent guide */
   &.boxed { left: calc(18px + var(--d, 0) * 22px - 22px); width: 18px; padding: 0 var(--sp-2); background: var(--hover); }
-  &:hover { background: color-mix(in srgb, var(--faint) 55%, var(--hover)); color: var(--ink); }
+  &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--faint) 55%, var(--hover)); color: var(--ink); }
 }
 
 /* ---- Relations section (lives inside .pop.rel-pop) — unified task picker ---- */
@@ -1531,7 +1548,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .rel-chip-remove {
   border: none; background: none; color: var(--muted); font-size: var(--fs-14); line-height: 1;
   padding: 0; cursor: pointer; display: inline-flex; align-items: center;
-  &:hover { color: var(--p1); }
+  &:hover:where(:not(.touch *)) { color: var(--p1); }
 }
 .rel-chip .rel-chip-remove .ico { width: 11px; height: 11px; }   /* chip-scale, like the date band's .bx */
 /* Relations popup — display wells */
@@ -1606,7 +1623,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .sk-start strong { padding-inline-start: var(--sp-6); font-size: var(--fs-13); font-weight: 600; } /* optical alignment with keycap glyphs */
 .sk-tile:has(.sk-launch) .sk-key { padding-right: var(--sp-24); }
 .sk-launch { position: absolute; top: var(--sp-12); right: var(--sp-12); width: var(--sp-24); height: var(--sp-24); padding: 0; border: none; border-radius: var(--r-4); background: transparent; color: var(--muted); font-size: var(--fs-15); cursor: pointer; }
-.sk-launch:hover { background: var(--hover); color: var(--ink); }
+.sk-launch:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
 .sk-reference .sk { align-items: baseline; }
 .sk-reference .sk > span:first-child { flex-shrink: 0; }
 .sk-reference .sk > span:last-child { text-align: right; }
@@ -1621,7 +1638,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
   border: none; border-radius: var(--r-8);
   transition: background-color .12s ease, color .12s ease, transform .12s var(--ease-out);
   .ico { width: 15px; height: 15px; flex: none; }
-  &:hover { background: var(--hover); color: var(--ink); }
+  &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
   &:active { transform: scale(.97); } }
 @media (prefers-reduced-motion: reduce) { .sheet-x:active, .cl-add:active { transform: none; } .roller { scroll-behavior: auto; } }   /* motion.js soften() trims running motion; these are static states it cannot express */
 .sheet-grp { margin-bottom: var(--sp-12); }
@@ -1637,7 +1654,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .trash-day { padding: var(--sp-12) var(--sp-8) var(--sp-4); margin: 0; }
 .trash-list > :first-child .trash-day { padding-top: 0; }
 .trash-row { align-items: flex-start; padding: var(--sp-6) var(--sp-8); border-radius: var(--r-8); }
-.trash-row:hover { background: var(--hover); }
+.trash-row:hover:where(:not(.touch *)) { background: var(--hover); }
 .trash-kico { width: 15px; height: 15px; flex: none; color: var(--muted); margin-top: var(--sp-2); }   /* on the title line */
 .trash-title { font-size: var(--fs-13); font-weight: 500; color: var(--ink); line-height: 19px; }
 .trash-meta { line-height: 16px; }
@@ -1649,11 +1666,11 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .trash-add { color: var(--positive); }
 .trash-restore { flex: none; align-self: center; height: 28px; padding: 0 var(--sp-8); border: none; background: none; border-radius: var(--r-6);
   font: inherit; font-size: var(--fs-12); font-weight: 600; color: var(--accent); cursor: pointer; transition: background-color .12s var(--ease-out); }
-.trash-restore:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.trash-restore:hover:where(:not(.touch *)):not(:disabled) { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .trash-restore:disabled { opacity: .45; color: var(--muted); cursor: default; }   /* nothing to restore into — the row says why */
 /* a day's small changes: ONE quiet row (faint pencil, Show/Hide); open → one-liners [task][field old → new][Undo], no animation */
 .trash-small { width: 100%; padding: var(--sp-6) var(--sp-8); border: none; background: none; border-radius: var(--r-8); font: inherit; text-align: left; cursor: pointer; }
-.trash-small:hover, .trash-chg:hover { background: var(--hover); }
+.trash-small:hover:where(:not(.touch *)), .trash-chg:hover:where(:not(.touch *)) { background: var(--hover); }
 .trash-small .trash-kico { margin-top: 0; color: var(--faint); }
 .trash-small-n { font-size: var(--fs-12); font-weight: 500; color: var(--muted); }
 .trash-small-what { font-size: var(--fs-12); color: var(--muted); }
@@ -1681,12 +1698,12 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 /* Segmented control (dialogs.md): .cl-switcher's recessed track, the selected segment a raised panel — an accent fill shouts */
 .seg { display: flex; margin-bottom: var(--sp-12); }
 .seg button { flex: 1; padding: var(--sp-4) 0; border: 1px solid transparent; background: none; border-radius: var(--r-6);
-  font-size: var(--fs-12); font-weight: 600; color: var(--muted); cursor: pointer; &:hover { color: var(--ink); }
+  font-size: var(--fs-12); font-weight: 600; color: var(--muted); cursor: pointer; &:hover:where(:not(.touch *)) { color: var(--ink); }
   &.on { background: var(--panel); color: var(--ink-hi); box-shadow: var(--shadow-sm); } }
 .seg.sm { border-radius: var(--r-6); button { padding: 0 var(--sp-8); border: none; border-radius: var(--r-4); font-weight: 500; } }   /* the small one: a 20px choice inside a form */
 /* destructive secondary (Delete in an editor footer): red text, no fill — reads destructive without shouting */
 .ghost.danger { background: none; color: var(--p1); }
-.ghost.danger:hover { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
+.ghost.danger:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
 
 /* Saved filters: a small color dot mirrors the project/area dot in the nav. */
 .filter-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
@@ -1709,7 +1726,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 /* live preview of matching tasks (reuses taskLine) */
 .fe-preview { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); }
 .fe-prev-row { padding: var(--sp-4) var(--sp-6); border-radius: var(--r-6); font-size: var(--fs-13); }
-.fe-prev-row:hover { background: var(--hover); }
+.fe-prev-row:hover:where(:not(.touch *)) { background: var(--hover); }
 .fe-prev-empty { color: var(--muted); font-size: var(--fs-12); padding: var(--sp-4) 0; }
 
 /* caret pickers (@ # at needs): .pop pickers placed at the caret, over the composer's own pops */
@@ -1726,14 +1743,14 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .list-search { border-radius: var(--r-pill); transition: background-color .15s var(--ease-out);
   margin-left: calc((15px - 30px) / 2); }   /* outdent by the icon's inset in its 30px button → glyph left-aligns with the page title */
 .ls-searchbtn { width: 30px; height: 30px; border: none; background: none; border-radius: var(--r-pill); color: var(--faint); cursor: pointer; transition: background-color .15s var(--ease-out), color .15s var(--ease-out); }
-.ls-searchbtn:hover { background: var(--hover); color: var(--ink); }
+.ls-searchbtn:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
 .ls-searchbtn .ico { width: 15px; height: 15px; flex: none; }
 .list-search input { width: 0; opacity: 0; padding: 0; border: none; background: none; outline: none; font: inherit; font-size: var(--fs-13); color: var(--ink);
   transition: width .18s var(--ease-out), opacity .15s var(--ease-out); }
 .list-search input::placeholder { color: var(--muted); }
 .list-search input::-webkit-search-cancel-button { -webkit-appearance: none; }
 .list-search.open { background: light-dark(var(--panel), var(--hover)); }   /* light: --hover vanishes on the page (1.07:1); dark: --panel does */
-.list-search.open .ls-searchbtn:hover { background: none; }
+.list-search.open .ls-searchbtn:hover:where(:not(.touch *)) { background: none; }
 .list-search.open input { width: 170px; opacity: 1; padding-right: var(--sp-10); }
 .app.tinted .list-search.open { background: color-mix(in srgb, var(--list-tint) 14%, light-dark(var(--panel), var(--hover))); }
 /* Hearthsay sentence — the controls row reads as prose. Words are dotted-underline buttons; active filters grow into colored tokens with their own ×. */
@@ -1742,7 +1759,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .ls-verb { flex: none; }
 .ls-word { border: none; background: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-6); font: inherit; font-size: var(--fs-13); font-weight: 600; color: var(--muted); cursor: pointer;
   text-decoration: underline dotted color-mix(in srgb, var(--muted) 45%, transparent); text-underline-offset: 4px; transition: background-color .12s, color .12s; }
-.ls-word:hover { color: var(--ink); background: var(--hover); text-decoration-color: transparent; }
+.ls-word:hover:where(:not(.touch *)) { color: var(--ink); background: var(--hover); text-decoration-color: transparent; }
 .ls-word.on { color: var(--list-tint, var(--accent)); }
 .ls-frag { display: contents; }   /* verb + token pair under one x-if root */
 .ls-tok, .ls-frag > .ls-verb:not(:empty, .ls-comma) { margin-left: var(--sp-4); }   /* the sentence has no column gap: a word space before each token and connective */
@@ -1758,12 +1775,12 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .ls-ico { width: 12px; height: 12px; flex: none; }
 .ls-tok .ls-x { padding: var(--sp-2) var(--sp-8) var(--sp-2) var(--sp-2); color: color-mix(in srgb, var(--tc) 55%, var(--muted));
   font-size: var(--fs-15); line-height: 1; opacity: .7; transition: opacity .15s var(--ease-out), color .15s var(--ease-out); }   /* always visible — × is the remove affordance (body click edits) */
-.ls-tok .ls-x:hover { color: var(--ink); opacity: 1; }
+.ls-tok .ls-x:hover:where(:not(.touch *)) { color: var(--ink); opacity: 1; }
 .ls-more { text-decoration-line: none; font-weight: 500; color: var(--muted); }
 /* clear-all: a subtle trash — barely-there until hovered */
 .ls-clear { width: 24px; height: 24px; border: none; background: none;
   color: var(--faint); opacity: .6; cursor: pointer; transition: background-color .15s var(--ease-out), color .15s var(--ease-out), opacity .15s var(--ease-out); }
-.ls-clear:hover { background: var(--hover); color: var(--ink); opacity: 1; }
+.ls-clear:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); opacity: 1; }
 .ls-clear .ico { width: 13px; height: 13px; flex: none; }
 /* the group clause ("in projects") — the only word in the sentence that names a SHAPE, so it carries the accent */
 .ls-grp { color: var(--warm-ink); font-weight: 600; }
@@ -1775,7 +1792,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .sec-row:first-child { padding-top: var(--sp-4); }
 .sec-chev { width: 14px; height: 14px; flex: none; margin: 0 var(--sp-2) 0 -16px; color: var(--faint);
   transition: transform .15s var(--ease-out), color .12s var(--ease-out); }
-.sec-row:hover .sec-chev, .cl-side-more:hover .sec-chev { color: var(--ink); }
+.sec-row:hover:where(:not(.touch *)) .sec-chev, .cl-side-more:hover:where(:not(.touch *)) .sec-chev { color: var(--ink); }
 /* the picker's project pie, sized for a section head — same mark in both places, so "this section is a project
    and it's this far along" needs no second vocabulary. ::after inset scales with it (4px would leave no core). */
 .sec-pie { width: 12px; height: 12px; margin-left: var(--sp-8); }
@@ -1901,7 +1918,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .ls-due { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-6); margin: 0 var(--sp-4);
   .badge { display: inline-flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-10); font-size: var(--fs-12); border: 0; border-radius: var(--r-8); cursor: pointer; .ico { width: 13px; height: 13px; } }
   .badge.none { background: none; outline: 1px dashed var(--faint); outline-offset: -1px; }
-  .badge:hover { box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 3px color-mix(in srgb, var(--ring, currentColor) 35%, transparent); }   /* the chosen ring, faint */
+  .badge:hover:where(:not(.touch *)) { box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 3px color-mix(in srgb, var(--ring, currentColor) 35%, transparent); }   /* the chosen ring, faint */
   .badge.sel { box-shadow: 0 0 0 1.5px var(--panel), 0 0 0 3px var(--ring, currentColor); }
   .badge.today { --ring: var(--accent); } }
 .ls-inc { display: flex; gap: var(--sp-6); margin: var(--sp-2) var(--sp-4) var(--sp-6); }
@@ -1927,7 +1944,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
   .ico { width: 15px; height: 15px; flex: none; } &:active { transform: scale(.97); } }   /* press feedback */
 .sel-bar .icon-btn { width: 24px; height: 24px; padding: 0; .ico { width: 13px; height: 13px; } }
 .sel-bar .sel-delete { display: inline-flex; padding: var(--sp-6); border: none; background: none; border-radius: var(--r-8); color: var(--muted); cursor: pointer;
-  .ico { width: 15px; height: 15px; } &:hover { color: var(--p1); background: var(--hover); } }
+  .ico { width: 15px; height: 15px; } &:hover:where(:not(.touch *)) { color: var(--p1); background: var(--hover); } }
 /* self-sufficient (don't reuse .proj-pop/.pri-pop classes — the edit bar sits earlier in the DOM than the composer,
    so sharing those classes would let this hidden popover shadow the composer's pickers for querySelector-based tests) */
 .sel-prio-pop { flex-direction: row; gap: var(--sp-6); width: max-content; }
@@ -1952,7 +1969,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .loc-manager { width: 520px; max-height: 80vh; overflow-y: auto; }
 /* a place is a clean list row: its name a borderless input, hover bg, trash revealed on hover */
 .loc-row { border-radius: var(--r-6); padding: var(--sp-2) var(--sp-6); transition: background-color .1s; }
-.loc-row:hover { background: var(--hover); }
+.loc-row:hover:where(:not(.touch *)) { background: var(--hover); }
 .loc-row .inp { flex: 1; min-width: 0; border: none; background: none; border-radius: 0; min-height: 0; padding: var(--sp-4) 0; }
 .loc-row .inp:focus { outline: none; box-shadow: inset 0 -1.5px var(--accent); }   /* Tab onto a place: the line marks which name types */
 .loc-del, .loc-home { border: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); opacity: 0; transition: opacity .1s, color .1s; }
@@ -1962,7 +1979,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover { background: var(--hover); 
 .loc-home .ico { width: 15px; height: 15px; }
 .loc-row:hover .loc-home { opacity: .55; }
 .loc-home.on { opacity: 1; color: var(--accent); }
-.loc-del:hover { opacity: 1; color: var(--p1); }
+.loc-del:hover:where(:not(.touch *)) { opacity: 1; color: var(--p1); }
 .loc-del .ico { width: 14px; height: 14px; flex: none; display: block; }
 :where(.touch) .loc-row { gap: 0; padding-block: 0; }   /* no hover on a phone: shown, 44px taps whose hits meet */
 :where(.touch) :is(.loc-del, .loc-home) { width: 44px; height: 44px; justify-content: center; padding: 0; opacity: .8; }
@@ -1994,16 +2011,16 @@ textarea.inp { resize: vertical; }
 .spacer { flex: 1; }
 /* "Add a place" / "New region" — a quiet row affordance aligned with the place rows above it */
 .loc-add-input { width: 100%; border: none; padding: var(--sp-4) var(--sp-6); background: none; font-size: var(--fs-13); color: var(--muted); outline: none; border-radius: var(--r-6); }
-.loc-add-input:hover { background: var(--hover); }
+.loc-add-input:hover:where(:not(.touch *)) { background: var(--hover); }
 .loc-add-input:focus { color: var(--ink); background: none; }
 .loc-add-region { margin: var(--sp-4) 0 var(--sp-10); }
 .icon-btn { padding: var(--sp-4) var(--sp-6); border-radius: var(--r); border: 1px solid transparent; flex: none; }
 .icon-btn .ico { width: 15px; height: 15px; flex: none; display: block; }
-.icon-btn:hover { border-color: var(--edge); color: var(--ink); }
-.icon-btn.del:hover { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
+.icon-btn:hover:where(:not(.touch *)) { border-color: var(--edge); color: var(--ink); }
+.icon-btn.del:hover:where(:not(.touch *)) { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
 /* the in-row size (popover rows, the repeat rail): 24px is WCAG 2.2's minimum target; hover fills like a row */
 .icon-btn:where(.sm) { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: var(--r-6); cursor: pointer;
-  &:hover { background: var(--hover); } }
+  &:hover:where(:not(.touch *)) { background: var(--hover); } }
 
 /* ===== Calendar (iOS/macOS-style: full-bleed scroll + overlaid chrome) ===== */
 /* --foot (declared on html) reserves the bottom nav strip (.canvas-dots, bottom:10px + its padding) plus a
@@ -2059,7 +2076,7 @@ textarea.inp { resize: vertical; }
 /* Every control carries a chip, so the row reads as one set of siblings. Amber still means NOW and nothing
    else: Today gets an amber-tinted chip, the switcher and the glyph buttons stay neutral. */
 .cl-today { height: 30px; padding: 0 var(--sp-10); border-radius: var(--r); background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); font-size: var(--fs-13); font-weight: 600; cursor: pointer; }
-.cl-today:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.cl-today:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .cl-add { width: 30px; height: 30px; border-radius: var(--r);
   .ico { width: 20px; height: 20px; } }   /* the glyphs match the weight of Today and the switcher beside them */
 /* segmented control: recessed track, RAISED selected segment (macOS) — deliberately not the shared accent
@@ -2067,7 +2084,7 @@ textarea.inp { resize: vertical; }
 .cl-switcher { position: relative; gap: 1px; }
 .cl-switcher, .seg { padding: 2px; border-radius: var(--r-8); background: color-mix(in srgb, var(--ink) 7%, transparent); box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 9%, transparent); }
 .cl-seg { position: relative; z-index: 1; height: 26px; width: 28px; padding: 0; border: none; border-radius: var(--r-6); background: none; color: var(--muted); font-size: var(--fs-12); font-weight: 600; cursor: pointer; }
-.cl-seg:hover { color: var(--ink); }
+.cl-seg:hover:where(:not(.touch *)) { color: var(--ink); }
 .cl-seg.sel { color: var(--ink); }   /* chip paints the raised surface; background/shadow are from .cl-seg-chip */
 
 /* Over-header overlay (above the header z-index, not clipped by the scroller) — the zone title flying into the
@@ -2153,7 +2170,7 @@ textarea.inp { resize: vertical; }
 /* Weekends read in INK, not fill. Shading whole columns stripes the grid vertically and makes the lattice
    louder than the content. */
 .cl-cell.weekend .cl-dnum { color: var(--muted); }
-.cl-cell:hover { background: var(--hover); }
+.cl-cell:hover:where(:not(.touch *)) { background: var(--hover); }
 /* keyboard focus ring for the role="button" calendar cells/blocks/events — inset so the cells' overflow:hidden doesn't clip it */
 .cl-date:focus-visible, .cl-block:focus-visible, .cl-event:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .cl-date { justify-content: flex-end; }   /* day number sits top-right (Apple) */
@@ -2185,7 +2202,7 @@ textarea.inp { resize: vertical; }
 .cl-chip.done .cl-chip-t { text-decoration: line-through; opacity: .55; }
 /* mini completion checkbox on task chips (month cells + all-day lane) */
 .cl-chip-check { position: relative; flex: none; width: 11px; height: 11px; padding: 0; border-radius: 50%; border: 1.75px solid var(--mark); background: transparent; cursor: pointer; }
-.cl-chip-check:hover { background: color-mix(in srgb, var(--mark) 22%, transparent); }
+.cl-chip-check:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--mark) 22%, transparent); }
 .cl-chip-check.done { background: var(--mark); border-color: var(--mark); --ck: 8.8px; --ck-y: 0; }
 /* multi-day all-day event: connected segments read as one band. Each covered day gets a segment; caps round
    only the true start/end, and negative margins bleed segments to the cell edges (cells clip at their border,
@@ -2271,7 +2288,7 @@ textarea.inp { resize: vertical; }
 .cl-ch-lead.open { flex: none; width: 22px; -webkit-mask-image: linear-gradient(90deg, transparent, #000); mask-image: linear-gradient(90deg, transparent, #000); }
 .cl-ch.mk { justify-content: flex-end; }   /* a mark hangs off its own date; it has no width to run anywhere */
 
-.cl-ch:hover .cl-ch-t { text-decoration: underline; }
+.cl-ch:hover:where(:not(.touch *)) .cl-ch-t { text-decoration: underline; }
 .cl-ch:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 
@@ -2328,9 +2345,9 @@ textarea.inp { resize: vertical; }
 .cl-blk-stop { position: absolute; right: 4px; bottom: 2px; padding: 0 var(--sp-6); border-radius: var(--r-4); background: color-mix(in srgb, var(--ink) 7%, transparent);
   color: var(--muted); font-size: var(--fs-10); font-weight: 700; line-height: 1.4; letter-spacing: .05em; text-transform: uppercase;
   opacity: 0; transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out); }
-.cl-block:hover .cl-blk-stop, .cl-blk-stop:focus-visible { opacity: 1; }
+.cl-block:hover:where(:not(.touch *)) .cl-blk-stop, .cl-blk-stop:focus-visible { opacity: 1; }
 .cl-blk-stop:active { transform: scale(.97); }
-.cl-block.is-running:hover .cl-blk-tick, .cl-block.is-running:has(.cl-blk-stop:focus-visible) .cl-blk-tick { opacity: 0; }
+.cl-block.is-running:hover:where(:not(.touch *)) .cl-blk-tick, .cl-block.is-running:has(.cl-blk-stop:focus-visible) .cl-blk-tick { opacity: 0; }
 /* touch: a ≥32px tap reaching up-left from the corner (the band clips anything past its own edges) */
 :where(.touch) { .cl-blk-stop { opacity: 1; } .cl-blk-stop::after { content: ""; position: absolute; right: -4px; bottom: -2px; width: max(100%, 40px); height: 32px; }
   .cl-block.is-running .cl-blk-tick { opacity: 0; } .cl-block.is-open .cl-blk-stop::after { top: -2px; bottom: auto; } }
@@ -2375,7 +2392,7 @@ textarea.inp { resize: vertical; }
 .cl-dl-t::after { content: ""; position: absolute; left: 0; right: 0; bottom: calc(-1 * var(--dl-drop, 4px));
   border-bottom: 2px dashed color-mix(in srgb, var(--mark) 62%, transparent); }
 .cl-dl-t.at::after { border-bottom-style: solid; }
-.cl-dl-t:hover::after { border-bottom-color: var(--mark); }
+.cl-dl-t:hover:where(:not(.touch *))::after { border-bottom-color: var(--mark); }
 .cl-dl-t:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cl-dl-w { flex: none; color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }   /* the bite hour: quiet and tabular, so a column of them lines up */
 /* Elapsed time recedes. Above the events (it dims them too — spent hours should read as spent), below the now
@@ -2485,7 +2502,7 @@ textarea.inp { resize: vertical; }
 .cl-event.tier-tiny .cl-event-t { font-size: var(--fs-10); }
 
 .cl-evt-check { position: relative; flex: none; width: 12px; height: 12px; margin-top: 1px; padding: 0; border-radius: 50%; border: 2px solid var(--mark); background: transparent; cursor: pointer; transition: background-color .12s ease; }
-.cl-evt-check:hover { background: color-mix(in srgb, var(--mark) 22%, transparent); }
+.cl-evt-check:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--mark) 22%, transparent); }
 .cl-evt-check.done { background: var(--mark); border-color: var(--mark); --ck: 9.9px; --ck-y: 0; }
 .cl-event-t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; -webkit-font-smoothing: antialiased; }   /* pin grayscale AA so the weight reads identically at rest and mid-scroll */
 
@@ -2607,7 +2624,7 @@ textarea.inp { resize: vertical; }
 @media (min-width: 641px) { .cl-side-composer:not(:has(.composer-grow.grown)) + div > .cl-side-sec:not([style*="display: none"], .cl-side-sec:not([style*="display: none"]) ~ *) { margin-top: calc(var(--head) - var(--side-pt) - (1lh - 1px) / 2 - var(--side-line, 0px)); } }
 .calendar.view-month .cl-side { --side-line: 1px; }   /* month's first row rule sits 1px higher (the spacer's -1px offset) */
 .cl-side-more { width: 100%; padding: 0; border: 0; background: none; cursor: pointer; }   /* a fold: the whole line is the button */
-.cl-side-more:hover { color: var(--ink); }
+.cl-side-more:hover:where(:not(.touch *)) { color: var(--ink); }
 .cl-side-more .sec-chev { margin: 0 calc(-1 * var(--sp-4)) 0 0; }
 .cl-side-more[aria-expanded=false] .sec-chev { transform: rotate(-90deg); }   /* shut points right, as a Lists section head */
 .cl-side-list:not(:has(.item)) { display: none; }   /* an empty or folded section takes no room */
@@ -2660,7 +2677,7 @@ textarea.inp { resize: vertical; }
 @media (prefers-reduced-motion: reduce) { .dialog-backdrop.draft > :is(.event-editor, .block-editor) { @starting-style { transform: none; } } }
 .cl-block-drag { anchor-name: --cl-draft; }
 .cl-card-foot { margin-top: var(--sp-8); min-height: 28px;
-  .del-btn { color: var(--muted); padding: var(--sp-6); border-radius: var(--r-8); &:hover { color: var(--p1); background: var(--hover); } .ico { width: 16px; height: 16px; } }
+  .del-btn { color: var(--muted); padding: var(--sp-6); border-radius: var(--r-8); &:hover:where(:not(.touch *)) { color: var(--p1); background: var(--hover); } .ico { width: 16px; height: 16px; } }
   .cl-go { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; .ico { width: 16px; height: 16px; stroke-width: 2.4; } } }
 /* the standard control sized to its words; the picked kind is drawn as its tile */
 :is(.cl-kind, .cl-going .seg) { margin: 0; flex: none; button { flex: none; height: 24px; padding: 0 var(--sp-12); } }
@@ -2763,7 +2780,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .notif.leaving { opacity: 0; transform: translateX(110%); }               /* exit the same edge (spatial consistency, swipe-friendly) */
 .notif-msg { flex: 1; min-width: 0; }                                     /* fills the card on mobile → actions ride the right edge */
 .notif-act { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; border-radius: var(--r-4); transition: transform 140ms var(--ease-out); }
-.notif-act:hover { text-decoration: underline; }
+.notif-act:hover:where(:not(.touch *)) { text-decoration: underline; }
 .notif-act:active { transform: scale(.97); }
 .composer-titlerow { display: flex; align-items: flex-start; gap: var(--sp-8); }
 .composer-title { position: relative; flex: 1; min-width: 0; }
@@ -3127,6 +3144,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .chip { height: 40px; width: 38px; padding: 0; justify-content: center; > .ico { width: 19px; height: 19px; } }   /* never an area disc's glyph */
     .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 34px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); > .ico { width: 17px; height: 17px; } }
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* the steps icon last */
+    .field:has(> .chip-dl:not(.set)) { display: none; }   /* an unset deadline waits in ···, like Size and Place */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go to their icons (barFit), never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; }   /* the last first, as shown */
       &:has(> :is(.bare, .chip-area)) { min-width: fit-content; mask-image: none; } }   /* a bare icon whole: the place's map and the area discs are wider than 38 */
@@ -3153,7 +3171,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   width: var(--gear); height: var(--gear);
   border: none; background: none; color: var(--muted); cursor: pointer;
   transition: background-color .15s var(--ease-out), color .15s var(--ease-out); }
-.settings-gear:hover { background: var(--hover); color: var(--ink); }
+.settings-gear:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
 .settings-gear svg { width: 17px; height: 17px; flex: none; }
 .settings-gear .st { position: absolute; right: 3px; bottom: 3px; width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }   /* signed in & syncing fine */
@@ -3191,24 +3209,24 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .set-who span { display: block; font-size: var(--fs-12); color: var(--muted); }
 .set-out { margin-left: auto; border: none; background: none;
   padding: var(--sp-4) var(--sp-10); border-radius: var(--r-6); cursor: pointer; white-space: nowrap; }
-.set-out:hover { background: var(--hover); color: var(--ink); }
+.set-out:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
 /* Inline sign-in / phone forms — reuse .inp/.primary; Sign in left, the magic-link alt hugs the right edge */
 .set-form { margin-top: var(--sp-10); }
 .set-form .set-msg { margin: 0; }
 .set-form .set-msg.err { color: var(--danger); }
 .set-actions .set-alt { margin-left: auto; }
 .set-alt { border: none; background: none; padding: var(--sp-4) 0; cursor: pointer; }
-.set-alt:hover { color: var(--warm-ink); }
+.set-alt:hover:where(:not(.touch *)) { color: var(--warm-ink); }
 /* Sections + rows */
 .set-sec { margin-top: var(--sp-16); }
 .set-row { width: calc(100% + var(--sp-10)); margin-left: calc(-1 * var(--sp-10));   /* glyph flush with the section label; the hover fill bleeds into the gutter */
   padding: var(--sp-6) var(--sp-10); flex-wrap: wrap; row-gap: 0;   /* the row's gap-10 is for the CONTROLS; a wrapped description sits tight under its title */
   border: none; background: none; border-radius: var(--r-8); font: inherit; font-size: var(--fs-13); color: var(--ink); text-align: left; }
 .set-rowbtn { cursor: pointer; }
-.set-rowbtn:hover { background: var(--hover); }
+.set-rowbtn:hover:where(:not(.touch *)) { background: var(--hover); }
 /* destructive row: calm until you reach for it, then it reads red */
 .set-danger { color: var(--p1); }
-.set-danger:hover { background: color-mix(in srgb, var(--p1) 12%, transparent); }
+.set-danger:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--p1) 12%, transparent); }
 .set-danger .set-sub { color: color-mix(in srgb, var(--p1) 70%, var(--muted)); }
 /* the description belongs UNDER its setting title — beside it there's no room, and it squeezed the control.
    A bare key hint (a <kbd>) is short enough to stay on the title's line, at the right. */
@@ -3221,7 +3239,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .set-row .seg button { flex: none; padding-inline: var(--sp-10); }
 .set-themes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-8); padding: var(--sp-6) 0; }
 .set-themes button { min-width: 0; padding: var(--sp-4); border: none; border-radius: var(--r-8); background: none; color: var(--muted); font-size: var(--fs-12); cursor: pointer; }
-.set-themes button:hover, .set-themes button[aria-pressed="true"] { background: var(--hover); color: var(--ink); }
+.set-themes button:hover:where(:not(.touch *)), .set-themes button[aria-pressed="true"] { background: var(--hover); color: var(--ink); }
 .set-themes button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
 .theme-preview { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-8) var(--sp-10) var(--sp-4); border-radius: var(--r-4); background: var(--preview-bg); overflow: hidden; }
 .theme-preview b { color: var(--preview-ink); font-size: var(--fs-12); text-align: left; margin-bottom: var(--sp-4); }
