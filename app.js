@@ -3202,7 +3202,7 @@ document.addEventListener('alpine:init', () => {
           else { txt.style.transformOrigin = '0 0'; txt.style.scale = k; e.style.translate = d; if (e !== txt) txt.style.translate = `0px ${lift}px`; }
           // for the close: its check is the list's size, measured from where the flight starts
           const fit = f.chk && c?.width ? [`${f.chk.x + f.chk.width / 2 - c.x - dx - c.width / 2}px ${f.chk.y + f.chk.height / 2 - c.y - dy - c.height / 2}px`, f.chk.width / c.width] : null;
-          _morphMoved.push([e, d, txt, k, lift, ck, fit, f.one && f.width / k]);   // the list's line in the card text's px, when the list draws it on one
+          _morphMoved.push([e, d, txt, k, lift, ck, fit, f.one && f.width / k, f.home]);   // the list's line in the card text's px, when the list draws it on one
         });
         const fade = _morphMoved.length ? [...card.querySelectorAll(`${db ? '' : '.desc, '}.entry.ghost, .entry-or`)] : [];   // they sit where the flying rows start
         for (const el of fade) el.style.opacity = 0;
@@ -3287,7 +3287,8 @@ document.addEventListener('alpine:init', () => {
         // closes up to that line; then it is the row's line, and the row's tail (more words, or the ellipsis) fades in
         const rt = rows[0]?.querySelector('.title'), ts = rt && getComputedStyle(rt), tt = card.querySelector('.composer-title .content');
         const shrink = _wraps([[tt, rt?.getBoundingClientRect().width], ..._morphMoved.filter(m => m[0].isConnected).map(m => [m[2], m[7]])]);
-        const was = new Map([tt, ..._morphMoved.map(m => m[0])].map(x => [x, x?.getBoundingClientRect().height]));
+        const tops = new Map(), far = new Set(), rowTop = rows[0]?.getBoundingClientRect().top;   // far: the texts of rows that sit and land (the list's place under its row's top) over a screen below the view, which never fly home
+        const was = new Map([tt, ..._morphMoved.map(m => m[0])].map(x => { const r = x?.getBoundingClientRect(); tops.set(x, r?.top); return [x, r?.height]; }));
         for (const s of shrink) { Object.assign(s.x.style, _cutTo(s.w)); _join(s.x, true); }
         for (const s of shrink) s.one = s.x.getBoundingClientRect().height;   // its one line's box, unrounded: ten rows' rounding added up to 5px
         for (const s of shrink) _uncut(s.x);
@@ -3309,9 +3310,21 @@ document.addEventListener('alpine:init', () => {
         // over the whole ride, not on the spring, which turns most of it in the first 50 ms and reads as a snap
         if (ts) anims.push(tt.animate({ color: ts.color, opacity: ts.opacity,
           ...ts.textDecorationLine.includes('line-through') && { textDecorationLine: ['line-through', 'line-through'], textDecorationColor: ['transparent', ts.textDecorationColor] } }, { duration: hold + dur, easing: 'ease-in-out', fill: 'forwards' }));
-        const rise = new Map(), at = t => t / (hold + dur);   // how far each text closes up: what's under it rises by that in the card
-        for (const s of shrink) {
-          rise.set(s.x, s.high - s.one);
+        const rise = new Map(shrink.map(s => [s.x, s.high - s.one])), at = t => t / (hold + dur);   // how far each text closes up: what's under it rises by that in the card
+        // back to the list's places: the un-grown layout is where the offsets were measured; text onto the list's line,
+        // each check to the list's (his 10-30: "sizes of the subtasks checkboxes should be transitioned")
+        // how far what's under a box rises from where the open measured it
+        const drop = (box, txt) => (_morphH.get(box) ?? was.get(box)) - was.get(box) + (rise.get(txt) ?? 0);
+        let up = drop(tt, tt);
+        for (const [e, d, txt, k, lift, ck, fit, w, home] of _morphMoved) if (e.isConnected) {
+          const [dx, dy] = d.split(' ').map(parseFloat);
+          if (Math.min(tops.get(e), rowTop + home) > 2 * innerHeight) { far.add(txt); up += drop(e, txt); continue; }
+          if (w && !rise.has(txt)) anims.push(txt.animate(_pin({ textWrapMode: 'nowrap' }), of));   // a one-liner stays one as the card's padding narrows its box
+          anims.push(e.animate({ translate: ['0px 0px', `${dx}px ${dy + up}px`], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], ...e !== txt && { translate: ['0px 0px', `0px ${lift}px`] } }, of));   // a description's lift rides its one translate
+          if (fit) anims.push(ck.animate({ translate: ['0px 0px', fit[0]], scale: [1, fit[1]] }, of));
+          up += drop(e, txt);
+        }
+        for (const s of shrink) if (!far.has(s.x)) {
           const shut = s.x.animate({ height: [s.high + 'px', s.one + 'px'], overflow: ['hidden', 'hidden'] }, { duration: hold, easing: DESIGN.ease['in-out'], fill: 'forwards' });
           shut.finished.then(() => _join(s.x, true), () => {});   // the cut's, from its start
           anims.push(shut,
@@ -3319,18 +3332,6 @@ document.addEventListener('alpine:init', () => {
             // the rest is gone before the closing box cuts through it, then the row's fades in
             s.x.animate([{ '--tail': 1, easing: 'ease-out' }, { '--tail': 0, offset: at(hold * .6) }, { '--tail': 0, offset: at(hold), easing: 'ease-out' }, { '--tail': 1 }], { duration: hold + dur, fill: 'forwards' }));
           s.x.style.mask = _lineMask(s); masked.push(s.x);
-        }
-        // back to the list's places: the un-grown layout is where the offsets were measured; text onto the list's line,
-        // each check to the list's (his 10-30: "sizes of the subtasks checkboxes should be transitioned")
-        // how far what's under a box rises from where the open measured it
-        const drop = (box, txt) => (_morphH.get(box) ?? was.get(box)) - was.get(box) + (rise.get(txt) ?? 0);
-        let up = drop(tt, tt);
-        for (const [e, d, txt, k, lift, ck, fit, w] of _morphMoved) if (e.isConnected) {
-          const [dx, dy] = d.split(' ').map(parseFloat);
-          if (w && !rise.has(txt)) anims.push(txt.animate(_pin({ textWrapMode: 'nowrap' }), of));   // a one-liner stays one as the card's padding narrows its box
-          anims.push(e.animate({ translate: ['0px 0px', `${dx}px ${dy + up}px`], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], ...e !== txt && { translate: ['0px 0px', `0px ${lift}px`] } }, of));   // a description's lift rides its one translate
-          if (fit) anims.push(ck.animate({ translate: ['0px 0px', fit[0]], scale: [1, fit[1]] }, of));
-          up += drop(e, txt);
         }
         for (const el of fade) anims.push(el.animate({ opacity: [1, 0] }, { duration: hold + 30, fill: 'forwards' }));   // linear: a fifth left when the clip starts
         // a phone's checklist stays put under the card: its box masks back up to the title's line, the open's unmask reversed
@@ -4104,11 +4105,12 @@ document.addEventListener('alpine:init', () => {
       }
       this.blockH = h;
       _morphFrom = new Map(); _morphRows = [];   // where the list draws each subtask and checklist item: the card's rows fly from there
+      const rowTop = row?.getBoundingClientRect().top;
       for (let r = row; r && r !== el; r = r.nextElementSibling) {
         _morphRows.push(r);
         for (const x of r.querySelectorAll(r === row ? '.chk-txt' : '.title')) {
           const b = x.getBoundingClientRect(), chk = (r === row ? x.closest('.chk-row') : r)?.querySelector('.chk-rect, .check')?.getBoundingClientRect();   // a Steps row's step text sits in no .chk-row
-          _morphFrom.set(x.textContent.trim(), { ...b.toJSON(), fs: parseFloat(getComputedStyle(x).fontSize), ink: _inkTop(x) - b.top, chk, one: !_line1(x).wraps });   // the close lands the card's text and check on these
+          _morphFrom.set(x.textContent.trim(), { ...b.toJSON(), home: b.top - rowTop, fs: parseFloat(getComputedStyle(x).fontSize), ink: _inkTop(x) - b.top, chk, one: !_line1(x).wraps });   // the close lands the card's text and check on these
         }
       }
       this._endDraft();   // a composer already open (another row, a subtask's chevron) keeps its draft under its own key
