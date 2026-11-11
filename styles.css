@@ -1057,7 +1057,7 @@ html:not(.touch) :is(.surface-lists .item, .dsk, .palette-row) {
   .chip-dur { --cc: var(--hue-duration); }
   .chip-dl { --cc: var(--p1); }   /* the red the date chip wore for a deadline */
   .discs { flex: none; }
-  .disc { --disc-size: 18px; --disc-box: 10px; --disc-k: 1; position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--disc-size); height: var(--disc-size); border-radius: 50%; background: var(--dc); color: var(--on-accent);
+  .disc { --disc-size: 20px; --disc-box: 10px; --disc-k: 1; position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--disc-size); height: var(--disc-size); border-radius: 50%; background: var(--dc); color: var(--on-accent);
     --ring: 1.5px; box-shadow: 0 0 0 var(--ring) var(--panel);   /* cut out of the disc behind */
     & + .disc { margin-left: calc(-2 * var(--ring)); } }
   .disc .ltr { display: none; }   /* an iconless area's first letter, the phone bar's one-area tag only */
@@ -1949,7 +1949,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .shed-1 .ls-sent > .ls-verb:first-child { display: none; }
 .shed-2 .ls-sortw { font-size: 0; &::after { content: '⇅'; font-size: var(--fs-13); } }
 .shed-3 .ls-lbl { max-width: 6ch; }
-.shed-5 .ls-x { display: none; }
+.shed-5 { .ls-x { display: none; } .ls-tok > button { padding-left: var(--sp-8); } }   /* the last rung: 2 off each token's lead, an area's 12 dot fits six at 320 with the search open */
 .shed-4 :is(.ls-tok:has(.ls-flag, .lc-dot, .ls-ico) .ls-lbl, .ls-frag > .ls-verb) { display: none; }   /* .ls-lbl, not span: a :has() rule ending in a bare tag restyles every such tag in the page on DOM changes (a huge description's spans: ~1s per delete) */
 .ls-add-pop { top: calc(100% - var(--sp-16)); width: 360px; max-width: 100%; max-height: min(440px, 70vh); overflow-y: auto; }   /* never wider than the controls row, so it fits a phone */
 .ls-prow { padding: var(--sp-2) var(--sp-4) var(--sp-6); }
@@ -1968,7 +1968,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .lc-anim { transition: opacity .16s var(--ease-out), transform .16s var(--ease-out); }
 .lc-hide { opacity: 0; transform: scale(.96); }
 .lc-show { opacity: 1; transform: scale(1); }
-.lc-dot { width: 10px; height: 10px; }
+.lc-dot { width: 12px; height: 12px; }
 
 /* ── Multi-task edit bar ── occupies the filter bar's slot (swap, not stack). Calm: faint hover fills + radius,
    one accent, no hard borders. Enter/exit is a quiet slide-fade from that slot (emil: <300ms ease-out, interruptible). */
@@ -3186,7 +3186,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
     .chip { height: 40px; width: 38px; padding: 0; justify-content: center; > .ico { width: 19px; height: 19px; } }   /* never an area disc's glyph */
     .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 40px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); > .ico { width: 19px; height: 19px; } }
-    .disc { --disc-size: 20px; --disc-box: 12px; --disc-k: calc(11 / 12);   /* the box's 12 at the 11's ink: cart's clearance */
+    .disc { --disc-size: 22px; --disc-box: 12px; --disc-k: calc(11 / 12);   /* the box's 12 at the 11's ink: cart's clearance */
       box-shadow: 0 0 0 var(--ring) var(--dim, transparent), 0 0 0 var(--ring) var(--panel);   /* the sheet's color under the composer's dim, so no halo reads as a larger circle */
       & + .disc { --disc-nudge: calc(1.5 * var(--ring)); } }   /* the first disc's ring leaves the part from 3 rings in to the edge: its center is 1.5 rings off the disc's */
     /* one area is a tag: its circle and name on the phone row tag's fill (areas-1); the capsule is drawn inside the 40px target, its edges where a bare value's ink would be */
