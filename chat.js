@@ -1,5 +1,50 @@
 // Social chat over Supabase (pg_mail chat tables). Signed-in only; RLS scopes every read to the caller's chats.
 // Store-op contract (web/CLAUDE.md): reads return rows or null, writes return the row or false; nothing throws.
+import { md, esc } from './ui.js';
+
+const _opensFence = /^```[^`]*$/, _closesFence = /^```\s*$/, _head = /^(#{1,3})\s+(.*)$/, _quote = /^>\s?/, _bullet = /^\s*[-*]\s+/, _number = /^\s*(\d+)[.)]\s+/;
+const _row = /^\|.*\|\s*$/, _rule = /^\|(\s*:?-+:?\s*\|)+\s*$/, _breaksProse = /^\s*$|^```|^#{1,3}\s|^>|^\s*[-*]\s|^\s*\d+[.)]\s/;
+const _web = { web: true }, _webInline = { web: true, inline: true };
+const _prose = text => md(text, _web).replaceAll('<br>', '\n');   // .msg is pre-wrap; the text keeps its line breaks when read or copied
+// A message body as HTML for the bubble's x-html: blocks here, each block's text through md(), which escapes it before any
+// tag exists. A friend's body is untrusted: nothing else may reach the output, and links stay http(s) or mail (_web).
+// ceiling: nested lists flatten and a quote holds no blocks; a parser once a thread needs either.
+export const MD_MAX = 20000;   // md()'s mark scans go quadratic on crafted text (800 ms at this size), so a longer body stays plain
+export function chatHtml(src) {
+  if (src?.length > MD_MAX) return `<p>${esc(src)}</p>`;
+  const lines = String(src ?? '').split(/\r?\n/), out = [];
+  let i = 0;
+  const run = re => { const got = []; while (i < lines.length && re.test(lines[i])) got.push(lines[i++]); return got; };
+  const isTable = at => _row.test(lines[at]) && _rule.test(lines[at + 1] ?? '');
+  const items = re => run(re).map(line => `<li>${md(line.replace(re, ''), _webInline)}</li>`).join('');
+  const cells = (row, tag) => row.trim().slice(1, -1).split(/(?<!\\)\|/).map(c => `<${tag}>${md(c.trim().replaceAll('\\|', '|'), _webInline)}</${tag}>`).join('');
+  while (i < lines.length) {
+    const line = lines[i], head = line.match(_head), num = line.match(_number);
+    if (!line.trim()) i++;
+    else if (_opensFence.test(line)) {
+      const open = i++;
+      while (i < lines.length && !_closesFence.test(lines[i])) i++;
+      out.push(md(lines.slice(open, ++i).join('\n'), _web));
+    } else if (isTable(i)) {
+      const [first, , ...rows] = run(_row);
+      out.push(`<table><thead><tr>${cells(first, 'th')}</tr></thead><tbody>${rows.map(r => `<tr>${cells(r, 'td')}</tr>`).join('')}</tbody></table>`);
+    } else if (head) {
+      i++;
+      out.push(`<div class="md-h md-h${head[1].length}">${md(head[2], _webInline)}</div>`);
+    } else if (_quote.test(line)) out.push(`<div class="md-q">${_prose(run(_quote).map(q => q.replace(_quote, '')).join('\n'))}</div>`);
+    else if (_bullet.test(line)) out.push(`<ul>${items(_bullet)}</ul>`);
+    else if (num) out.push(`<ol start="${num[1]}">${items(_number)}</ol>`);
+    else {
+      const open = i++;
+      while (i < lines.length && !_breaksProse.test(lines[i]) && !isTable(i)) i++;
+      out.push(`<p>${_prose(lines.slice(open, i).join('\n'))}</p>`);
+    }
+  }
+  return out.join('');
+}
+// The same body as plain text, one line per block: the chat list and the arrival card, both x-text.
+export const chatPlain = src => chatHtml(src).replace(/<\/?(?:p|div|li|t[dh]|br)\b[^>]*>/g, '\n').replace(/<[^>]+>/g, '')
+  .replace(/&(amp|lt|gt|quot);/g, (_, name) => ({ amp: '&', lt: '<', gt: '>', quot: '"' }[name])).replace(/\n\s*/g, '\n').trim();
 
 const ok = ({ data, error }) => (error ? null : data);
 

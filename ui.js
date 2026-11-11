@@ -22,8 +22,9 @@ const _tlink = (url, id, live) => {
   const el = t == null ? `<span class="tlink gone" data-title="${label}">${mark || label}</span>` : `<a class="tlink${live ? ' dm-link' : ''}" href="${esc(url)}" data-title="${label}">${mark || label}</a>`;
   return live ? `<span class="dm-tok">${el}</span>` : el;
 };
-const _link = (url, text) => {
+const _link = (url, text, web) => {
   const u = _mdUrl(url), id = u.startsWith('adherod://task/') && u.slice(15);   // a labeled task link keeps its label and opens in the app
+  if (id && web) return esc(text);
   if (id) return _taskTitle(id) == null ? `<span class="tlink gone">${esc(text)}</span>` : `<a class="tlink" href="${esc(u)}">${esc(text)}</a>`;
   return u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text);
 };
@@ -65,8 +66,8 @@ const _md = (src, opts = {}) => {
   let s = raw.replace(_escOrCode, (_, mark, c) => `${C}${codes.push(mark || `<code>${esc(c)}${opts.copy ? _copyCode : ''}</code>`) - 1}${CE}`);
   const inline = (t) => {
     const links = [], L = _sentinel(t, '\uE002'), LE = L + '\uE003';
-    t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => `${L}${links.push(_link(url, txt)) - 1}${LE}`);
-    if (!opts.title) t = t.replace(TLINK, (_, pre, url, id) => `${pre}${L}${links.push(_tlink(url, id)) - 1}${LE}`);
+    t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, txt, url) => `${L}${links.push(_link(url, txt, opts.web)) - 1}${LE}`);
+    if (!opts.title && !opts.web) t = t.replace(TLINK, (_, pre, url, id) => `${pre}${L}${links.push(_tlink(url, id)) - 1}${LE}`);
     t = t.replace(/(^|[\s(])((?:https?:\/\/|www\.)[^\s<)]+)/gi, (_, pre, url) => `${pre}${L}${links.push(_link(url, url)) - 1}${LE}`);
     t = esc(t);
     t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_\n]+)__/g, '<strong>$1</strong>');
@@ -87,8 +88,8 @@ const _md = (src, opts = {}) => {
   return s.replace(new RegExp(C + '(\\d+)' + CE, 'g'), (_, i) => codes[+i]);
 };
 
-const _fenced = (src, live, inline = false, copy = false) => {
-  const raw = String(src ?? ''), prose = s => live ? s.split('\n').map(line => _dLine(line)).join('\n') : _md(s, { inline, copy });
+const _fenced = (src, live, opts) => {
+  const raw = String(src ?? ''), prose = s => live ? s.split('\n').map(line => _dLine(line)).join('\n') : _md(s, opts);
   let out = '', at = 0;
   for (const m of raw.matchAll(_fences)) {
     // Only a newline-ended opening line is language metadata; same-line commands stay literal.
@@ -100,7 +101,7 @@ const _fenced = (src, live, inline = false, copy = false) => {
   }
   return out + prose(raw.slice(at));
 };
-export const md = (src, opts = {}) => opts.literal ? _md(src, opts) : _fenced(src, false, !!opts.inline, !!opts.copy);
+export const md = (src, opts = {}) => opts.literal ? _md(src, opts) : _fenced(src, false, opts);
 
 // The composer's live Markdown: textContent(mdLive(t)) === t keeps the caret aligned. Each construct is a .dm-tok holding its
 // .dm-mark markers, which show only while the caret touches it (app.js descReveal).
@@ -200,6 +201,13 @@ export const projChipHtml = (name, isDefault) => (name || isDefault)
     : `<span class="proj-in flex-none">in</span><span class="proj-nm">${mdTitle(name)}</span>`}</span>`
   : '';
 
+// The project as a desktop row draws it, pie and name or the tray and Backlog; search rows take it too (app.js taskLine).
+const projAtHtml = r => (r.projName || r.isDefaultProj)
+  ? `<span class="proj proj-at${r.isDefaultProj ? ' proj-inbox' : ''} inline-flex items-center min-w-0">${r.isDefaultProj
+    ? '<svg class="ico"><use href="#i-backlog"/></svg><span>Backlog</span>'
+    : `<span class="pring" style="--p:${r.projPie ?? 0};--pc:${esc(r.projColor || 'var(--faint)')}"></span><span class="proj-nm">${mdTitle(r.projName)}</span>`}</span>`
+  : '';
+
 const recList = rec => Array.isArray(rec) ? rec : rec ? [rec] : [];   // = store.js recRules (ui.js stays import-free); rowBodyHtml hands checkHtml its one copy
 
 // The task's OWN checkbox — one builder so every surface showing a task (list row, link picker) agrees on
@@ -230,7 +238,7 @@ export const rowBodyHtml = (r, opts = {}) => {
     const check = checkHtml(r, 'span', 'sm');
     const chips = (r.areas || []).map(areaChipHtml).join('');
     const titleHtml = r.titleHtml ?? mdTitle(t.content);
-    return `${check}<span class="pick-name">${titleHtml}</span>${chips ? `<span class="areas inline-flex items-center gap-6 flex-none">${chips}</span>` : ''}${projChipHtml(r.projName, r.isDefaultProj)}`;
+    return `${check}<span class="pick-name">${titleHtml}</span>${chips ? `<span class="areas inline-flex items-center gap-6 flex-none">${chips}</span>` : ''}${opts.projAt ? projAtHtml(r) : projChipHtml(r.projName, r.isDefaultProj)}`;
   }
   const showProj = showsProj(r, opts);
   const badges = opts.badges !== false;
@@ -302,20 +310,19 @@ export const rowBodyHtml = (r, opts = {}) => {
   const renderRow = ({ ci, done, txt, desc }) =>
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
   const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.slice(0, openN).map(renderRow).join('')}${fold}${clRows.slice(openN).map(renderRow).join('')}</div>` : '';
-  // Each kind its own look and place (ds-3 Card 3): line 1 ends in size, repeat and the date as a word in its bucket's
-  // color (an overdue or missed date keeps its chip); line 2 reads deadline, areas, place, relations, then the project at the far right.
+  // Each kind its own look and place (ds-3 Card 3): line 1 ends in size and the date as desktop's pill, its repeat glyph inside
+  // (asst-135-3, his 11-11 "put chips on time"; the tray keeps the word in its bucket's color); line 2 reads deadline, areas, place, relations, then the project at the far right.
+  // A phone's line 2 rides up beside the title when it fits or is only the project (app.js _lift).
   const desk = !typed && !step && opts.desc !== false;   // ds-3-3: the desktop list row; desc:false is the desk sticky, which keeps the row below
   if (!typed && !desk) return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;   // a one-line row (the desk sticky, a desktop Steps row)
   const chip = ['overdue', 'missed'].includes(r.due?.kind), tint = !chip && r.dueQ ? ` style="--tc:var(--q-${r.dueQ})"` : '';
-  const when = desk ? due : badges && r.due ? `<span class="badge ${chip ? '' : 'w '}${esc(r.due.kind || '')} inline-flex items-center"${tint}><span>${esc(r.due.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
-  const repeat = m(badges && t.recurrence && !(desk && r.due), repHref.slice(1), '', 'rep');   // a desktop date's repeat glyph rides in its pill
+  const pill = desk || !opts.tray, when = pill ? due : badges && r.due ? `<span class="badge ${chip ? '' : 'w '}${esc(r.due.kind || '')} inline-flex items-center"${tint}><span>${esc(r.due.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
+  const repeat = m(badges && t.recurrence && !(pill && r.due), repHref.slice(1), '', 'rep');   // a pill's repeat glyph rides inside it
   // A Steps row keeps every chip on its title line, so the step never reads as a task; its date and marks are the typed row's.
   if (step) return chev + check + `<div class="body typed grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + repeat + when)}${step}</div>`;
-  const flag = r.dlSame ? '' : dl, pie = r.isDefaultProj ? '<svg class="ico"><use href="#i-backlog"/></svg><span>Backlog</span>'
-    : `<span class="pring" style="--p:${r.projPie ?? 0};--pc:${esc(r.projColor || 'var(--faint)')}"></span><span class="proj-nm">${mdTitle(r.projName)}</span>`;
-  const where = showProj ? `<span class="proj proj-at${r.isDefaultProj ? ' proj-inbox' : ''} inline-flex items-center min-w-0">${pie}</span>` : '';
-  // Areas and project by the title, the date last; with no date, today's order for size, deadline, place, repeat.
-  if (desk) return chev + check + `<div class="body dsk grow min-w-0">${row1(areas + where + rels, sched + (when ? flag + loc + est : est + flag + loc) + repeat + when)}${desc}${chk}</div>`;
+  const flag = r.dlSame ? '' : dl, where = showProj ? projAtHtml(r) : '';
+  // Areas by the title; the right group opens on the project and ends on the date; with no date, today's order for size, deadline, place, repeat.
+  if (desk) return chev + check + `<div class="body dsk grow min-w-0">${row1(areas + rels, where + sched + (when ? flag + loc + est : est + flag + loc) + repeat + when)}${desc}${chk}</div>`;
   // The tray's typed row keeps line 1 and the project; its checklist, notes and relations ride on line 2 as marks.
   if (opts.tray) {
     const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;

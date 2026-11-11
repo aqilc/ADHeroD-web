@@ -50,7 +50,7 @@ import { SUPABASE, SURFACES, FILES_URL } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
 const SURF_HOME = SURFACES.includes('lists') ? 'lists' : SURFACES[0];
 import { createSupabaseStore } from './supabase-store.js';
-import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, byCreated, peerName, whenLabel, threadLine, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
+import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchMessages, byCreated, peerName, chatHtml, chatPlain, whenLabel, threadLine, unread, markRead, createInvite, setName, loadFiles, uploadFile, fileBlob, fileSize } from './chat.js';
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
 let _sb, _inFlight = 0;   // _inFlight: the client's requests not yet answered: onAuth lets them land before it reloads
@@ -387,7 +387,7 @@ const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', impo
 // subscribed to, minus the string it built each run). `skip` prunes one subtree that another effect owns.
 const _touch = (v, skip) => { if (v && typeof v === 'object' && v !== skip) for (const k in v) _touch(v[k], skip); };
 // the composer's grow: the list's entry texts (text → rect) at the tap, the card rows flown from them, the edited block's list rows, the running grow's undo
-let _morphFrom = new Map(), _morphMoved = [], _morphRows = [], _morphStop = null, _morphH = new Map();   // _morphH: the card's title and rows' heights where the open measured the offsets
+let _morphFrom = new Map(), _morphMoved = [], _morphRows = [], _morphStop = null, _morphH = new Map();   // _morphH: the card's title and rows' heights in the one-line layout the open measured the offsets in
 // a list row folded shut: its padding too, or a phone's 44px row floors at 24 and the list below jumps when it hides
 const _inkTop = el => { const r = document.createRange(); r.selectNodeContents(el); return (r.getClientRects()[0] ?? el.getBoundingClientRect()).top; };   // its first line's text box, not its padding
 // where its text's first line ends, and whether it runs onto a second: a Range has a rect per inline box per line
@@ -396,6 +396,20 @@ const _line1 = el => {
   const qs = [...r.getClientRects()], first = qs.filter(q => q.top < qs[0]?.bottom - 2);   // none: an empty text or a textarea
   return { right: Math.max(...first.map(q => q.right)), wraps: first.length < qs.length };
 };
+// the card's texts that wrap, each to be drawn as its row's one line (w: the list's line in the text's own px): their mask
+// keeps the first line up to the list's ellipsis, its edge soft so no glyph is cut in half, and shows the rest at --tail
+const _wraps = pairs => pairs.flatMap(([x, w]) => {
+  const l = x && w && _line1(x), em = l?.wraps && parseFloat(getComputedStyle(x).fontSize);
+  return em ? [{ x, w, em, high: x.getBoundingClientRect().height, keep: Math.min(l.right - x.getBoundingClientRect().left, w - 2 * em) }] : [];
+});
+// where the list cuts it
+const _cutTo = w => ({ whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', minWidth: w + 'px', maxWidth: w + 'px' });
+// the notes' line breaks join as the list's line joins them: plaintext-only editing keeps every break, so it reads as
+// read-only for the flight (a focused field keeps editing, and its breaks); neither animates, so inline over a pin's run
+const _join = (x, on) => Object.assign(x.style, { whiteSpaceCollapse: on ? 'collapse' : '', webkitUserModify: on && x !== document.activeElement ? 'read-only' : '' });
+const _uncut = x => { for (const p of ['whiteSpace', 'textOverflow', 'overflow', 'minWidth', 'maxWidth', 'height']) x.style[p] = ''; _join(x, false); };
+const _pin = o => Object.fromEntries(Object.entries(o).map(([p, v]) => [p, [v, v]]));   // held over an animation's run
+const _lineMask = s => `linear-gradient(to right, #000 ${s.keep}px, transparent ${s.keep + s.em}px) 0 0 / 100% ${s.one}px no-repeat, linear-gradient(rgb(0 0 0 / var(--tail)) 0 0)`;   // inline: a keyframe's var() resolves once, not per frame
 const _fold = r => { const s = getComputedStyle(r); return [{ height: r.offsetHeight + 'px', paddingTop: s.paddingTop, paddingBottom: s.paddingBottom, overflow: 'hidden' }, { height: '0px', paddingTop: '0px', paddingBottom: '0px', overflow: 'hidden' }]; };
 let _growGen = 0;   // _growOpen's generation ids: negative (a reactive {} would read back as a proxy), so never a live timer id
 let _dlAuto = '';   // the deadline a By time pick derived: while the draft's still equals it, the date isn't the user's. Off the draft, so it never dirties one.
@@ -542,6 +556,7 @@ document.addEventListener('alpine:init', () => {
     clDayFocus: null,       // the month's one Tab stop: the day the arrows last walked to (null: today)
     clDayInView: null,      // the Tab stop while clDayFocus/today is scrolled out of the rendered rows: the first day in view
     clVisCount: 0,          // number of week rows rendered (visible + buffer); the rest is empty spacer
+    clWarm: false,          // the month has painted once: until then only the weeks in view render, the buffer a frame later
     clTopMonth: '',         // scroll-driven month label for the toolbar period (month view)
     clScrolling: false,     // scroll in progress → month band/title text visible; it holds until the scroll STOPS
     clFast: false,          // …moving fast enough to lift the out-of-month dim, which returns EARLIER, at a crawl
@@ -1075,6 +1090,7 @@ document.addEventListener('alpine:init', () => {
       // checked against its markup (`_sig`), so scrolling back over rows measures nothing. The width change that
       // bumps `_fitV` clears the cache.
       if (_fitDone === _fitV) return;   // no row added and no width change since every row was fitted: a scroll frame that brings none in queries none
+      const box = _staticEl('.surface-lists .rows'), pin = box && this._readerPin(box);   // anchoring held off (a drag, a closing composer): a row above the fold that lifts its line 2, replayed or fitted, pulls the rows on screen up
       const rows = []; let left = false;
       for (const el of document.querySelectorAll('.surface-lists .list .item')) {
         if (el._fitV === _fitV) continue;                                  // …before the descendant query, not after
@@ -1083,6 +1099,7 @@ document.addEventListener('alpine:init', () => {
         if (f && f.sig === el._sig && !el._lad) {
           const l2 = new Map(); for (const sel of f.shed) this._shed(el, sel, l2);   // the moves, then the final classes
           el.querySelector('.r1l').className = f.r1; if (f.l2) l2.get(el).className = f.l2;
+          if (f.up) this._liftSub(el);   // before the chips: a lifted row's ri index its line 2's
           for (const i of f.ri) this._relIcon(el, i);
           el._lad = f.lad; el._fitV = _fitV;
           continue;
@@ -1091,9 +1108,10 @@ document.addEventListener('alpine:init', () => {
         el._fitV = _fitV; rows.push(el);
       }
       if (!left) _fitDone = _fitV;
+      const grown = rows.length ? [...this._fitEls(rows), ...this._lift(rows)] : [];
+      if (pin) { const r = this._rowEl(pin.id); if (r) pin.sc.scrollTop += r.getBoundingClientRect().top - pin.top; }
       if (!rows.length) return;
-      const grown = this._fitEls(rows);
-      for (const el of rows) if (el._sig) _fitMemo.set(el.dataset.id, { sig: el._sig, lad: el._lad, shed: (el._moved || []).map(m => m.sel),
+      for (const el of rows) if (el._sig) _fitMemo.set(el.dataset.id, { sig: el._sig, lad: el._lad, up: el._up, shed: (el._moved || []).map(m => m.sel),
         r1: el.querySelector('.r1l').className, l2: el.querySelector('.row2.meta')?.className, ri: [...el.querySelectorAll('.r1l .row-rel')].flatMap((c, i) => c.classList.contains('icon-only') ? [i] : []) });
       // A row that gained (or lost) line 2 changed HEIGHT, and _measure already ran this pass and stamped
       // these elements for this width generation. Un-stamp exactly those and ask for one more pass, or the
@@ -1105,7 +1123,7 @@ document.addEventListener('alpine:init', () => {
     _fitEls(rows) {
       // Batch writes before reads to avoid per-row reflow: undo the previous width's fit first, so this
       // width is decided from the row's FULL content and the ladder can walk back up as well as down.
-      for (const el of rows) if (el._moved || el._lad) this._unfit(el);
+      for (const el of rows) if (el._moved || el._lad || el._up) this._unfit(el);
       // One read pass for the whole batch. Only a row whose title is actually truncated (or that has >3
       // chips, which roll on count, not width) enters the ladder — everything else costs a single read.
       const need = [];
@@ -1184,6 +1202,20 @@ document.addEventListener('alpine:init', () => {
       for (const [el, l2] of line2s) { const fill = el.querySelector('.body > .l2-fill'); if (fill) l2.append(fill); }   // marks only fill a line 2 the row earned, after its shrink steps
       return l2s.length;
     },
+    // A phone's line 2 rides up beside the title (asst-135-3, his 11-10 "unbalanced white space"): whole when it fits beside the
+    // full title, a project alone always (the title gives way down to 3em, then the project under its 7rem cap, styles.css); any other row keeps its line 2 whole.
+    // Returns the rows it lifted: they lost a line.
+    _lift(rows) {
+      const up = rows.filter(el => {                                   // READ
+        const sub = el.querySelector('.body.typed > .row-sub'); if (!sub) return false;
+        const kids = [...sub.children];
+        if (kids.length === 1 && kids[0].matches('.proj')) return true;
+        return kids.reduce((w, k) => w + k.getBoundingClientRect().width + 11, -4) <= el.querySelector('.r1l').getBoundingClientRect().width - el.querySelector('.title').scrollWidth;   // 11 between items, 6 after the title, 1 for scrollWidth rounding down
+      });
+      for (const el of up) this._liftSub(el);                          // WRITE
+      return up;
+    },
+    _liftSub(el) { el.querySelector('.r1l').append(el.querySelector('.body > .row-sub')); el._up = 1; },   // also replayed by _fit
     // Share eligibility with the writer: a rung that cannot move anything needs no title measurement.
     _shedNode(el, sel) {
       if (sel === '.m.dl' && (!el.querySelector('.badge') || el.querySelector('.step-block'))) return null;   // the sole time badge and Steps' deadline stay on line 1
@@ -1238,6 +1270,7 @@ document.addEventListener('alpine:init', () => {
     _unfit(el) {
       for (const { n, home, i } of [...(el._moved || [])].reverse()) { n.classList.remove('shed-hid'); home.insertBefore(n, home.children[i] || null); }
       el._moved = null; el._lad = 0;
+      if (el._up) { el._up = 0; el.querySelector('.row1').after(el.querySelector('.r1l > .row-sub')); }
       const fill = el.querySelector('.row2.meta > .l2-fill'); if (fill) el.querySelector('.body').append(fill);
       el.querySelector('.row2.meta')?.remove(); el.querySelector('.hid-more')?.remove();
       el.querySelector('.r1l')?.classList.remove('icons-only', 'rolled');
@@ -1446,7 +1479,7 @@ document.addEventListener('alpine:init', () => {
     chatWhen: whenLabel,
     msgLine(i) { return threadLine(this.chat.msgs[i - 1]?.created_at, this.chat.msgs[i].created_at, this._nowDay && new Date()); },   // reads _nowDay: Today turns Yesterday at midnight
     chatLine(m) {   // a files-only message previews as its first file's name, and how many more
-      if (m?.body || !m?.attachments?.length) return m?.body ?? '';
+      if (m?.body || !m?.attachments?.length) return chatPlain(m?.body ?? '');
       const [first, ...more] = m.attachments;
       return (this.files[first]?.name ?? 'File') + (more.length ? ` and ${more.length} more` : '');
     },
@@ -1552,6 +1585,7 @@ document.addEventListener('alpine:init', () => {
       setTimeout(() => URL.revokeObjectURL(url), 60e3);
     },
     fileSize,
+    chatHtml,
     startEdit(m) {
       if (!this.chat.editing) this.chat.stash = this.chat.draft;
       this.chat.editing = m.id;
@@ -2289,7 +2323,7 @@ document.addEventListener('alpine:init', () => {
       return html`<li class="item${t.completed_at ? ' done' : t.archived_at ? ' archived' : r.blocked ? ' waiting' : ''}${r.ctx ? ' ctx' : ''}${after ? ' after' : ''} flex gap-10" data-id="${t.id}" style="${style}"${raw(drag)}>${raw(this.rowBody(r, body))}</li>`;
     },
     // Height estimate for a row that has NEVER been rendered (once one has, _hCache holds its real height).
-    // One flat guess against real 34/46/54+ rows makes the scrollbar lurch on the way down, so this
+    // One flat guess against real 35/46/54+ rows makes the scrollbar lurch on the way down, so this
     // tracks the same content the row builder renders.
     _rowEst(r, after, cx = this._rowCx()) {   // after: a phone's group gap opens this row (styles.css .item.after)
       // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
@@ -2299,7 +2333,7 @@ document.addEventListener('alpine:init', () => {
       const n = chk.length ? chkVisible(chk, !!r.t.checklist_plain, this.chkOpen.has(r.t.id), _chkHeld?.key === r.t.id ? _chkHeld.done : null) : null;
       const touch = cx.touch, ml = step ? 0 : touch ? this._metaLines(r, cx) : this._shedLines(r);   // a Steps row keeps its chips on line 1
       const meta = !ml ? 0 : touch ? L2_PAD + ml * L2_ROW_H + (ml - 1) * L2_GAP : META_PAD + ml * META_ROW_H;
-      return (touch ? (cx.narrow ? 50 + (after ? 28 : 0) : 44) : 34) + step + meta + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
+      return (touch ? (cx.narrow ? 50 + (after ? 28 : 0) : 44) : step ? 34 : 35) + step + meta + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
     },
     _rowChk(r) { return r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []); },   // folded or Steps → no checklist drawn
     // Desktop: how many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
@@ -2317,15 +2351,16 @@ document.addEventListener('alpine:init', () => {
       if (!meta || r.t.content.length * 7.2 + meta <= avail) return 0;       // everything still fits line 1
       return Math.max(1, Math.min(3, Math.ceil(meta / avail)));              // the meta line wraps as needed
     },
-    // A phone's typed row: how many lines its line 2 takes (0 = none): the items rowBodyHtml puts there, at a rough width each, wrapped
-    // whole against the list's as flex-wrap does (the areas are one run). Cheap; _measure overwrites it the instant the row renders.
+    // A phone's typed row: how many lines its line 2 takes (0 = none or riding up, _lift): the items rowBodyHtml puts there, at a rough width each,
+    // wrapped whole against the list's as flex-wrap does (the areas are one run). Cheap; _measure overwrites it the instant the row renders.
     _metaLines(r, cx = this._rowCx()) {
       const areas = (r.areas || []).reduce((s, l) => s + 32 + l.name.length * 7, -6);   // capsules 6px apart
-      const items = [r.dl && !r.dlSame ? 70 : 0, areas > 0 ? areas : 0, r.loc ? 26 + r.loc.length * 7 : 0, (r.rels?.length || 0) * 72,
-        showsProj(r, this._rowOpts(r, cx)) ? 26 + (r.isDefaultProj ? 7 : r.projName.length) * 7 : 0].filter(Boolean);
-      if (!items.length) return 0;
+      const proj = showsProj(r, this._rowOpts(r, cx)) ? 26 + (r.isDefaultProj ? 7 : r.projName.length) * 7 : 0;
+      const items = [r.dl && !r.dlSame ? 70 : 0, areas > 0 ? areas : 0, r.loc ? 26 + r.loc.length * 7 : 0, (r.rels?.length || 0) * 72, proj].filter(Boolean);
+      if (!items.length || (items.length === 1 && proj)) return 0;
       if (_listW < 0) return 1;
       const room = _listW - 46 - r.depth * 22;   // 46 = gutter + check + gaps
+      if (items.reduce((w, i) => w + i + 11, 6 + r.t.content.length * 8.5 + (r.due ? 64 : 0) + (r.estSize ? 26 : 0)) <= room) return 0;   // 17px title, the date pill and size glyph on its line
       let lines = 1, x = -11;
       for (const w of items) { x += 11 + w; if (x > room && x > w) { lines++; x = w; } }   // items 11px apart (styles.css .typed .row-sub)
       return Math.min(3, lines);
@@ -2513,13 +2548,12 @@ document.addEventListener('alpine:init', () => {
       if (el) this.renderRows(el, parts);
       if (done) this.renderRows(done, doneParts);
       // The list pads its top by what the lifted rows above the grab took, so a still pointer keeps its row (and slot)
-      // even scrolled to the top; dropped, the pad leaves as they come back. Scroll anchoring sits the lift out (see
+      // even scrolled to the top; dropped, the pad leaves as they come back. Scroll anchoring sits the drag out (see
       // _liftSubtree): scrolled past those rows, it would move the list by them too.
       // ceiling: a blank band of their height tops the list while they're lifted; collapse it once the drag ends if it reads as a gap
       const list = el?.closest('.list'), grab = _liftTop != null && this._rowEl(_dragGrab);
       if (grab) list.style.paddingTop = Math.max(0, _liftTop - grab.offsetTop) + 'px';
       else if (!_dragIds) list?.style.removeProperty('padding-top');
-      if (_liftTop != null) requestAnimationFrame(() => requestAnimationFrame(() => this._listScroller()?.style.removeProperty('overflow-anchor')));
       _liftTop = null;
     },
     // Imperative row state, by id, onto an <li> a morph created (a kept one keeps its classes; each state's writer restamps live rows).
@@ -2603,10 +2637,11 @@ document.addEventListener('alpine:init', () => {
     // The browser anchors a morph, except inside a close's collapse (closeComposer holds anchoring off) or under an arrival's
     // glide (it moves the rows itself): there the row ⌘Enter files above the viewport pushes every row on screen down by its
     // height (a signed-in save lands after the collapse). Anchor by hand, as the browser would, on the first row on
-    // screen: read either side of the synchronous morph, so the collapse can't move it in between.
+    // screen: read either side of the synchronous morph, so the collapse can't move it in between. A drag past its lift
+    // holds anchoring off too (_liftSubtree), and a window sliding in rows taller or shorter than their estimate pins here.
     _readerPin(el, glide) {
-      const sc = !_dragIds && el.closest('.surface-lists') && this._listScroller();
-      if (!sc || !(glide && !this.composer.open || this._closingComposer && sc.style.overflowAnchor === 'none')) return null;
+      const sc = el.closest('.surface-lists') && this._listScroller();
+      if (!sc || !(_dragIds ? _liftTop == null : glide && !this.composer.open || this._closingComposer && sc.style.overflowAnchor === 'none')) return null;
       const s = sc.getBoundingClientRect().top;
       if (el.firstElementChild?.getBoundingClientRect().top >= s) return null;   // the rows start on screen (el is display: contents): a row filed among them pushes none off
       for (const r of el.querySelectorAll(':scope > li.item')) { const top = r.getBoundingClientRect().top; if (top >= s) return top < s + sc.clientHeight ? { sc, id: r.dataset.id, top } : null; }   // a jump leaves only off-screen rows: none to hold
@@ -2633,6 +2668,7 @@ document.addEventListener('alpine:init', () => {
             for (const name of cur.getAttributeNames()) if (!node.hasAttribute(name)) cur.removeAttribute(name);
             for (const attr of node.attributes) cur.setAttribute(attr.name, attr.value);
             cur.replaceChildren(...node.childNodes); node = cur;
+            cur._fitV = cur._moved = cur._t = null; cur._lad = cur._up = 0; cur._mV = -1;   // its fit, cached title and measured height were the old children's: _fit fits it afresh
             if (lifted) cur.classList.add('cl-lift');
           }
           node._sig = p.html; made.push(node);
@@ -3081,12 +3117,12 @@ document.addEventListener('alpine:init', () => {
     // The LIVE card's height as-if-grown, so the grow lands where auto settles. `grown` flips on for one synchronous
     // read with transitions held (no frame ever sees it); a probe clone would lay out a second copy of every row.
     fullGrow(g) {
-      const card = g.firstElementChild; if (!card) return g.scrollHeight;
+      const card = g.firstElementChild; if (!card) return [g.scrollHeight, 0, 0];
       g.style.transition = card.style.transition = 'none'; card.style.height = 'auto'; g.classList.add('grown');
-      const cs = getComputedStyle(card), h = card.offsetHeight + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+      const cs = getComputedStyle(card), mt = parseFloat(cs.marginTop), ch = card.offsetHeight, h = ch + mt + parseFloat(cs.marginBottom);
       g.classList.remove('grown'); card.style.height = ''; cs.paddingTop;   // restyle un-grown while transitions are still held
       g.style.transition = card.style.transition = '';
-      return h;
+      return [h, mt, ch];   // and the grown card's own box: the un-grown margins are others
     },
     // The row becomes the card: opaque from the tap (no crossfade, so no double title); the card's fill goes from the
     // row's to the panel's, its indent and gap from the row's to its own; subtask and checklist rows fly from where the
@@ -3094,15 +3130,18 @@ document.addEventListener('alpine:init', () => {
     _growOpen(grow, start) {
       clearTimeout(this._t); _morphStop?.();
       if (this.reduceMotion()) { this.grown = true; this.clip = false; this.growH = null; return; }
-      const dur = 300, row = this.editing && (this._inPanel() ? this._trayEl(this.editing) : this._rowEl(this.editing));
+      const dur = 300, hold = 120, row = this.editing && (this._inPanel() ? this._trayEl(this.editing) : this._rowEl(this.editing));   // hold: _growClose's, reversed
       // synchronous so first frame isn't at full height (stutter)
       this.grown = false; this.clip = true; this.growH = start;
       motion.run('grow', () => this.growH !== null);   // idle() spans the measuring frames + settle timer, which no CSS event reports
-      const anims = [], sub = [];
+      const anims = [], sub = [], lined = [];
+      let unhold = null;   // the list's scroll anchoring, off while the card is cut
       const stop = _morphStop = () => {   // also what a close or re-open run on an open still under way
         _morphStop = null;
         for (const r of sub) r.classList.add('edit-hidden');
         for (const a of anims) a.cancel();
+        for (const s of lined) { _uncut(s.x); s.x.style.mask = ''; }
+        unhold?.();
         const g = grow(); g?.classList.remove('morph'); if (g?.firstElementChild) g.firstElementChild.style.clipPath = '';
       };
       const settle = () => { stop(); this.growH = null; this.clip = false; this._reflow(); };   // to auto; the list re-windows once, here
@@ -3127,19 +3166,38 @@ document.addEventListener('alpine:init', () => {
         card.style.transition = 'none'; g.classList.add('morph'); card.offsetHeight; card.style.transition = '';   // the row's box at once, not a glide to it
         row?.classList.add('morph-hide');
         _morphMoved = [];
-        const ct1 = card.querySelector('.composer-title .content');
-        _morphH = new Map(ct1 ? [[ct1, ct1.getBoundingClientRect().height]] : []);
+        // the row's notes line flies to the description, as a subtask or checklist row flies to its entry
+        const dl = row?.querySelector('.row2 .desc-line'), desc = dl && card.querySelector('.desc'), db = desc?.getClientRects().length && dl.getBoundingClientRect();
+        const src = db ? [[desc, desc, { ...db.toJSON(), fs: parseFloat(getComputedStyle(dl).fontSize), ink: _inkTop(dl) - db.top, one: true }]] : [];
         for (const e of card.querySelectorAll('.composer-entries .entry:not(.ghost)')) {
-          const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = [..._morphFrom].find(([k]) => s.startsWith(k))?.[1]; if (!f) continue;   // a subtask's text runs on into its chips
-          const r = txt.getBoundingClientRect(), d = `${f.left - r.left}px ${f.top - r.top}px`, k = f.fs / parseFloat(getComputedStyle(txt).fontSize);   // the list draws checklist text smaller
-          e.style.translate = d; txt.style.transformOrigin = '0 0'; txt.style.scale = k;
-          // for the close: the list's text sits lower in its padded box (a checklist's), and its check is the list's size
-          const lift = f.ink - (_inkTop(txt) - txt.getBoundingClientRect().top), ck = e.querySelector('.entry-chk > *, .chk-rect'), c = ck?.getBoundingClientRect();
+          const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = [..._morphFrom].find(([k]) => s.startsWith(k))?.[1];   // a subtask's text runs on into its chips
+          if (f) src.push([e, txt, f]);
+        }
+        for (const m of src) m.push(m[2].fs / parseFloat(getComputedStyle(m[1]).fontSize));   // the list draws checklist and notes text smaller
+        // a text that wraps in the card flies as its row's one line and unfolds once home (the close's shrink, reversed;
+        // wrapped from the first frame, the rows overlapped at the list's spacing)
+        const tt = card.querySelector('.composer-title .content');
+        // nothing flying (a phone's card): the title wraps at once and covers the row's lines under it, one line would show the dock there
+        lined.push(..._wraps([[tt, src.length && rt?.getBoundingClientRect().width], ...src.map(([, txt, f, k]) => [txt, f.one && f.width / k])]));
+        // the cut shortens the card: anchoring would scroll the list under the measure and every offset would land a line off
+        const sc = lined.length ? this._editScroller() : null, anchor = sc?.style.overflowAnchor;
+        if (sc) { sc.style.overflowAnchor = 'none'; unhold = () => { sc.style.overflowAnchor = anchor; unhold = null; }; }
+        for (const s of lined) { Object.assign(s.x.style, _cutTo(s.w)); _join(s.x, true); }
+        for (const s of lined) s.one = s.x.getBoundingClientRect().height;
+        for (const s of lined) s.x.style.height = s.one + 'px';
+        _morphH = new Map(tt ? [[tt, tt.getBoundingClientRect().height]] : []);
+        for (const [e, txt, f, k] of src) {
+          _morphH.set(e, e.getBoundingClientRect().height);   // before a description, its own box, scales
+          const r = txt.getBoundingClientRect(); txt.style.transformOrigin = '0 0'; txt.style.scale = k;
+          // the list's text sits lower in its padded box (a checklist's): the flight starts and ends on its ink; a description's ink sits as the row's
+          const lift = f.ink - (_inkTop(txt) - txt.getBoundingClientRect().top), d = `${f.left - r.left}px ${f.top - r.top}px`;
+          e.style.translate = d; if (e !== txt) txt.style.translate = `0px ${lift}px`;
+          // for the close: its check is the list's size
+          const ck = e.querySelector('.entry-chk > *, .chk-rect'), c = ck?.getBoundingClientRect();
           const fit = f.chk && c?.width ? [`${f.chk.x + f.chk.width / 2 - c.x - c.width / 2}px ${f.chk.y + f.chk.height / 2 - c.y - c.height / 2}px`, f.chk.width / c.width] : null;
           _morphMoved.push([e, d, txt, k, lift, ck, fit, f.one && f.width / k]);   // the list's line in the card text's px, when the list draws it on one
-          _morphH.set(e, e.getBoundingClientRect().height);   // the un-grown card squeezes a wrapped row to one line
         }
-        const fade = _morphMoved.length ? [...card.querySelectorAll('.desc, .entry.ghost, .entry-or')] : [];   // they sit where the flying rows start
+        const fade = _morphMoved.length ? [...card.querySelectorAll(`${db ? '' : '.desc, '}.entry.ghost, .entry-or`)] : [];   // they sit where the flying rows start
         for (const el of fade) el.style.opacity = 0;
         // nothing flying (a phone's card has no rows): the card grows from the title's row alone and its subtree folds away under the edge
         if (!_morphMoved.length) sub.push(..._morphRows.slice(1).filter(r => r.isConnected));
@@ -3156,18 +3214,38 @@ document.addEventListener('alpine:init', () => {
         // measured the frame AFTER the grow mounts: x-show's deferred hides (a rAF) have landed by then
         requestAnimationFrame(() => {
           if (this._t !== t) return;
-          this.growH = this.fullGrow(g); this.grown = true;
-          const o = { duration: dur, easing: _openEase };
+          for (const s of lined) _uncut(s.x);   // the card grows to its height as-if-wrapped
+          const [full, mt, ch] = this.fullGrow(g);
+          this.growH = full; this.grown = true;
+          unhold?.();   // fullGrow laid the uncut card out with it off
+          const o = { duration: dur, easing: _openEase }, at = ms => ms / (dur + hold);
+          // over the flight the row's tail (its ellipsis or more words) fades; home, the box opens to its lines, which fade in
+          for (const s of lined) {
+            s.x.style.mask = _lineMask(s);
+            _join(s.x, true);
+            const cut = s.x.animate(_pin(_cutTo(s.w)), dur);
+            cut.finished.then(() => _join(s.x, false), () => {});
+            anims.push(cut,
+              s.x.animate([{ height: s.one + 'px', overflow: 'hidden' }, { height: s.one + 'px', overflow: 'hidden', offset: at(dur), easing: DESIGN.ease['in-out'] }, { height: s.high + 'px', overflow: 'hidden' }], dur + hold),
+              s.x.animate([{ '--tail': 1, easing: 'ease-out' }, { '--tail': 0, offset: at(dur * .6) }, { '--tail': 0, offset: at(dur), easing: 'ease-out' }, { '--tail': 1 }], dur + hold));
+          }
           for (const r of sub) anims.push(r.animate(_fold(r).map((k, i) => ({ ...k, opacity: 1 - i })), { ...o, fill: 'forwards' }));
           if (cut > 0) { card.style.clipPath = ''; anims.push(card.animate({ clipPath: [`inset(0 0 ${cut}px 0 round ${rad})`, `inset(0 0 0 0 round ${rad})`] }, o)); }
-          for (const [e, d, txt, k] of _morphMoved) {
-            e.style.translate = txt.style.scale = '';
-            anims.push(e.animate({ translate: [d, '0px 0px'] }, o), txt.animate({ scale: [k, 1] }, o),
+          // the card folds its entries, so it settles shorter than the row's items: it shrinks from the row's box with the grow,
+          // and the row is cut at its bottom on the same ride (the close's, reversed)
+          const below = cut > 0 && row.getBoundingClientRect().bottom - g.getBoundingClientRect().top - mt - ch;
+          if (below > 0) {
+            row.style.clipPath = `inset(0 0 ${below}px 0)`;
+            anims.push(row.animate({ clipPath: ['inset(0 0 0 0)', row.style.clipPath] }, o), card.animate({ height: [card.style.getPropertyValue('--from'), ch + 'px'] }, { ...o, fill: 'forwards' }));   // to the settle, or .morph's floor at the row's box shows for a frame
+          }
+          for (const [e, d, txt, k, lift] of _morphMoved) {
+            e.style.translate = txt.style.scale = txt.style.translate = '';
+            anims.push(e.animate({ translate: [d, '0px 0px'] }, o), txt.animate({ scale: [k, 1], ...e !== txt && { translate: [`0px ${lift}px`, '0px 0px'] } }, o),
               e.animate([{ backgroundColor: 'transparent', offset: 0 }], o));   // the zebra band: the list has none
           }
           for (const el of fade) { el.style.opacity = ''; anims.push(el.animate({ opacity: [0, 1] }, { duration: dur * .5, delay: dur * .35, easing: 'ease-out', fill: 'backwards' })); }
           // settle times from the grow's start, not the tap: a slow first paint outlasts a tap-timed one and the late grow pins growH
-          this._t = t = setTimeout(settle, dur + 20);
+          this._t = t = setTimeout(settle, dur + (lined.length ? hold : 0) + 20);
         });
       });
     },
@@ -3182,17 +3260,18 @@ document.addEventListener('alpine:init', () => {
       const dur = 260, hold = 120;   // styles.css .closing's --md and transition-delay
       // pins the live height, inline at once: .morph's size containment sizes an unpinned grow to 0 until the binding lands,
       // and a layout in that gap re-windows the list and scrolls it by the composer's height
+      const anims = [], masked = [], fly = _morphMoved.length > 0, card = g.firstElementChild;
+      card.style.height = card.offsetHeight + 'px';   // and the card's: .morph floors it at the row's box, which a phone's card can settle under
       g.style.height = (this.growH = g.offsetHeight) + 'px'; this.clip = true; g.classList.add('morph');   // the card's box follows it again
       motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
-      const anims = [], masked = [], fly = _morphMoved.length > 0, card = g.firstElementChild;
-      const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); for (const x of masked) x.style.mask = ''; g.classList.remove('morph', 'closing'); };
+      const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); for (const x of masked) { x.style.mask = ''; _join(x, false); } card.style.height = ''; g.classList.remove('morph', 'closing'); };
       // the open run backwards: the parts fade first, as the open fades them in last, so the shrinking card never clips one
       // still there (asst 10-30); then the card keeps its opaque box and shrinks with the grow to the row's, the rows go home,
       // the title takes the row's color; what has no place in the row fades (his 10-30: "if elements disappear, they
       // should be faded out, and text color should transition as well"). A subtask's chips are the card's: its row has its own.
       // a desk's dock is display: contents, where opacity does nothing: its boxes fade instead
       const boxes = el => getComputedStyle(el).display === 'contents' ? [...el.children].flatMap(boxes) : [el];
-      const fade = [...g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or, .composer-dock, .entry:not(.ghost) .entry-txt > *')].flatMap(boxes);
+      const fade = [...g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or, .composer-dock, .entry:not(.ghost) .entry-txt > .nlp-pill')].flatMap(boxes).filter(el => !_morphMoved.some(m => m[0] === el));   // a flown description goes home instead
       const rows = _morphRows.filter(r => r.isConnected), sub = rows.slice(1);
       for (const r of fly ? rows : rows.slice(0, 1)) r.classList.add('morph-hide', ...fly ? [] : ['morph-solo']);
       requestAnimationFrame(() => {
@@ -3203,12 +3282,11 @@ document.addEventListener('alpine:init', () => {
         // one line before they like move into their place"): over the hold its first line stays, the rest fades as its box
         // closes up to that line; then it is the row's line, and the row's tail (more words, or the ellipsis) fades in
         const rt = rows[0]?.querySelector('.title'), ts = rt && getComputedStyle(rt), tt = card.querySelector('.composer-title .content');
-        const shrink = [[tt, rt?.getBoundingClientRect().width], ..._morphMoved.filter(m => m[0].isConnected).map(m => [m[2], m[7]])]
-          .map(([x, w]) => [x, w, _line1(x), x.offsetHeight, x.getBoundingClientRect().left, parseFloat(getComputedStyle(x).fontSize)]).filter(([, w, l]) => w && l.wraps);
+        const shrink = _wraps([[tt, rt?.getBoundingClientRect().width], ..._morphMoved.filter(m => m[0].isConnected).map(m => [m[2], m[7]])]);
         const was = new Map([tt, ..._morphMoved.map(m => m[0])].map(x => [x, x?.getBoundingClientRect().height]));
-        for (const [x] of shrink) x.style.whiteSpace = 'nowrap';
-        const ones = shrink.map(([x]) => x.offsetHeight);   // its one line's box
-        for (const [x] of shrink) x.style.whiteSpace = '';
+        for (const s of shrink) { Object.assign(s.x.style, _cutTo(s.w)); _join(s.x, true); }
+        for (const s of shrink) s.one = s.x.getBoundingClientRect().height;   // its one line's box, unrounded: ten rows' rounding added up to 5px
+        for (const s of shrink) _uncut(s.x);
         // the subtree unfolds under the shrinking grow, on its spring: flying rows land on it, a phone's ride its edge down
         if (sub.length) end = this.startH;
         for (const r of sub) { r.classList.remove('edit-hidden'); anims.push(r.animate(fly ? _fold(r).reverse() : _fold(r).map((k, i) => ({ ...k, opacity: 1 - i })).reverse(), o)); }
@@ -3228,33 +3306,36 @@ document.addEventListener('alpine:init', () => {
         if (ts) anims.push(tt.animate({ color: ts.color, opacity: ts.opacity,
           ...ts.textDecorationLine.includes('line-through') && { textDecorationLine: ['line-through', 'line-through'], textDecorationColor: ['transparent', ts.textDecorationColor] } }, { duration: hold + dur, easing: 'ease-in-out', fill: 'forwards' }));
         const rise = new Map(), at = t => t / (hold + dur);   // how far each text closes up: what's under it rises by that in the card
-        for (const [i, [x, w, l, high, left, em]] of shrink.entries()) {
-          // kept: the first line up to the list's ellipsis, its edge soft so no glyph is cut in half
-          const one = ones[i], keep = Math.min(l.right - left, w - 2 * em);
-          const mask = `linear-gradient(to right, #000 ${keep}px, transparent ${keep + em}px) 0 0 / 100% ${one}px no-repeat, linear-gradient(rgb(0 0 0 / var(--tail)) 0 0)`;
-          rise.set(x, high - one);
-          anims.push(x.animate({ height: [high + 'px', one + 'px'], overflow: ['hidden', 'hidden'] }, { duration: hold, easing: DESIGN.ease['in-out'], fill: 'forwards' }),
-            // the row's line, as wide as the list's: it cuts the text where the list does
-            x.animate({ whiteSpace: ['nowrap', 'nowrap'], textOverflow: ['ellipsis', 'ellipsis'], minWidth: [w + 'px', w + 'px'], maxWidth: [w + 'px', w + 'px'] }, { delay: hold, duration: dur, fill: 'forwards' }),
+        for (const s of shrink) {
+          rise.set(s.x, s.high - s.one);
+          const shut = s.x.animate({ height: [s.high + 'px', s.one + 'px'], overflow: ['hidden', 'hidden'] }, { duration: hold, easing: DESIGN.ease['in-out'], fill: 'forwards' });
+          shut.finished.then(() => _join(s.x, true), () => {});   // the cut's, from its start
+          anims.push(shut,
+            s.x.animate(_pin(_cutTo(s.w)), { delay: hold, duration: dur, fill: 'forwards' }),
             // the rest is gone before the closing box cuts through it, then the row's fades in
-            x.animate([{ '--tail': 1, easing: 'ease-out' }, { '--tail': 0, offset: at(hold * .6) }, { '--tail': 0, offset: at(hold), easing: 'ease-out' }, { '--tail': 1 }], { duration: hold + dur, fill: 'forwards' }));
-          x.style.mask = mask; masked.push(x);   // inline: a keyframe's var() resolves once, not per frame
+            s.x.animate([{ '--tail': 1, easing: 'ease-out' }, { '--tail': 0, offset: at(hold * .6) }, { '--tail': 0, offset: at(hold), easing: 'ease-out' }, { '--tail': 1 }], { duration: hold + dur, fill: 'forwards' }));
+          s.x.style.mask = _lineMask(s); masked.push(s.x);
         }
         // back to the list's places: the un-grown layout is where the offsets were measured; text onto the list's line,
         // each check to the list's (his 10-30: "sizes of the subtasks checkboxes should be transitioned")
         // how far what's under a box rises from where the open measured it
         const drop = (box, txt) => (_morphH.get(box) ?? was.get(box)) - was.get(box) + (rise.get(txt) ?? 0);
         let up = drop(tt, tt);
-        for (const [e, d, txt, k, lift, ck, fit] of _morphMoved) if (e.isConnected) {
+        for (const [e, d, txt, k, lift, ck, fit, w] of _morphMoved) if (e.isConnected) {
           const [dx, dy] = d.split(' ').map(parseFloat);
-          anims.push(e.animate({ translate: ['0px 0px', `${dx}px ${dy + up}px`], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], translate: ['0px 0px', `0px ${lift}px`] }, of));
+          if (w && !rise.has(txt)) anims.push(txt.animate(_pin({ textWrapMode: 'nowrap' }), of));   // a one-liner stays one as the card's padding narrows its box
+          anims.push(e.animate({ translate: ['0px 0px', `${dx}px ${dy + up}px`], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], ...e !== txt && { translate: ['0px 0px', `0px ${lift}px`] } }, of));   // a description's lift rides its one translate
           if (fit) anims.push(ck.animate({ translate: ['0px 0px', fit[0]], scale: [1, fit[1]] }, of));
           up += drop(e, txt);
         }
         for (const el of fade) anims.push(el.animate({ opacity: [1, 0] }, { duration: hold + 30, fill: 'forwards' }));   // linear: a fifth left when the clip starts
         // a phone's checklist stays put under the card: its box masks back up to the title's line, the open's unmask reversed
-        const chk = !fly && rows[0]?.querySelector('.chk-list'), cut = chk && g.getBoundingClientRect().top + from - chk.getBoundingClientRect().top;
+        // and up over its notes line too, which the card's one line (shrunk over the hold) no longer covers
+        const chk = !fly && rows[0]?.querySelector('.chk-list'), cut = chk && g.getBoundingClientRect().top + from - (rows[0].querySelector('.row2 .desc-line') ?? chk).getBoundingClientRect().top;
         if (cut > 0) anims.push(card.animate({ clipPath: [`inset(0 0 0 0 round ${cs.borderRadius})`, `inset(0 0 ${cut}px 0 round ${cs.borderRadius})`] }, of));
+        // the open's cut at the card's bottom, let out as the card grows back to the row's box
+        const below = chk && rows[0].getBoundingClientRect().bottom - card.getBoundingClientRect().bottom;
+        if (below > 0) anims.push(rows[0].animate({ clipPath: [`inset(0 0 ${below}px 0)`, `inset(0 0 ${Math.max(0, below + card.offsetHeight - from)}px 0)`] }, of));
       });
       this._t = setTimeout(() => {
         if (!this._closingComposer) return;
@@ -3265,7 +3346,7 @@ document.addEventListener('alpine:init', () => {
     openComposer() {
       this._releaseCloseRange(true);
       this._releaseView();
-      this.notesOpen = !!this.editing && this.editing === this.jotted;   // a jotted task opens on its steps
+      this.notesOpen = !!this.editing && (this.editing === this.jotted || this._notesFit());   // a jotted task opens on its steps, a small one on its description and entries
       const focusBefore = document.activeElement, d = this.draft;
       // If the tapped task's TOP is in view, DON'T scroll — grow it in place (its bottom may extend below the
       // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. A close scrolls
@@ -3330,7 +3411,7 @@ document.addEventListener('alpine:init', () => {
     // open/close; rows a morph creates later are stamped by _stampRow.
     applyEditDom() {
       for (const el of document.querySelectorAll('.item.editing-row')) { el.classList.remove('editing-row'); el.style.height = ''; }
-      for (const el of document.querySelectorAll('.item.morph-hide')) el.classList.remove('morph-hide', 'morph-solo');   // the grow's: the card covered the row
+      for (const el of document.querySelectorAll('.item.morph-hide')) { el.classList.remove('morph-hide', 'morph-solo'); el.style.clipPath = ''; }   // the grow's: the card covered the row
       const before = !this.editing && _arrive.size && this._rowTops();
       for (const el of document.querySelectorAll('.surface-lists .item.edit-hidden')) {
         el.classList.remove('edit-hidden');
@@ -3409,17 +3490,19 @@ document.addEventListener('alpine:init', () => {
     areaObjs(ids) { const areas = byIdIn(this.areas); return (ids || []).map(id => areas.get(id)).filter(Boolean); },
 
     // x-html; relation picker + cascade-complete use the same markup (ui.js)
-    taskLine(t, markedTitle) {
-      const parent = this.byId.get(t.parent_id);
+    // projAt: the list row's project (ring and name, or tray and Backlog) on a desktop search row; a phone's keeps its own.
+    taskLine(t, markedTitle, projAt) {
+      const parent = this.byId.get(t.parent_id), at = projAt && !document.documentElement.classList.contains('touch');
       return rowBodyHtml({
         t, pc: this.pc(t.importance),
         titleHtml: markedTitle != null ? markedTitle : mdTitleFn(t.content),
         areas: this.areaObjs(t.area_ids).map(l => ({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })),
         projName: parent ? parent.content : '',
         isDefaultProj: !!t.parent_id && t.parent_id === this._defId,
+        projColor: parent?.color, projPie: at && parent && t.parent_id !== this._defId ? this._projPie(parent.id) : 0,
         note: inNotes(t),
         rels: [], chk: [],
-      }, { minimal: true });
+      }, { minimal: true, projAt: at });
     },
     // static body — shell <li> keeps reactive bindings
     // Grouping by project already names it in the section head — repeating it on every row is noise.
@@ -3450,6 +3533,7 @@ document.addEventListener('alpine:init', () => {
       // the checkbox OR its text toggles a checklist item; plain (uncheckable) items fall through to editTask
       const chk = e.target.closest('.chk-rect, .chk-txt')?.closest('.chk-row, .step-next');   // a Steps row's preview ticks by its node
       if (chk && !r.t.checklist_plain) return chk.matches('.step-next') && e.detail ? this._stepTick(r.t.id, true, r) : this.toggleChk(r.t.id, +chk.dataset.ci, e.detail ? r : null);
+      if (this.composer.open && !this._closingComposer && this.narrow && document.documentElement.classList.contains('touch')) return this.closeComposer();   // a phone's tap away from the open composer closes it, even on another row (his 11-11 item 1)
       this.editTask(r.t, e);
     },
     // first swatch = clear; '' → null; shared by editors + nav popovers
@@ -3474,7 +3558,9 @@ document.addEventListener('alpine:init', () => {
       const at = _rowMap.get(grab)?.i ?? -1;
       for (const d of _dragDescs) if (_rowMap.get(d)?.i > at) this._rowEl(d)?.classList.add('row-hidden');
       _liftTop = this._rowEl(grab)?.offsetTop ?? null;   // offsetTop: a held row's translate isn't the list's
-      if (_liftTop != null) this._listScroller().style.overflowAnchor = 'none';   // _paintRows' pad restores the grab's place; anchoring would add the rows' height again
+      // Off until the drop (_clearDrag): _paintRows' pad restores the grab's place, and anchoring would add the rows' height again.
+      // The ghost's slot climbing past the row the browser anchors on would jump the list by the slot's height, every few rows.
+      this._listScroller().style.overflowAnchor = 'none';
       this._reflow();
     },
     dragStart(t, e) {
@@ -4436,8 +4522,8 @@ document.addEventListener('alpine:init', () => {
           prev = k;
           if (!this.popDock) this.popXY = _pos(h);
           else if (_keyboard() && anchor.closest('.composer')) {   // lift the card over the panel, as the caret reveal does over the keyboard; never its top off screen. An editor's card rides --kb (styles.css)
-            const card = anchor.closest('.composer'), r = card.getBoundingClientRect(), over = Math.min(r.bottom - (vh - _kb), r.top);   // not $refs: a pop's own item (···'s Size) has none
-            if (over > 0) card.closest('.app').scrollTop += over;
+            const card = anchor.closest('.composer'), r = card.getBoundingClientRect(), over = Math.min(r.bottom - (vh - _kb), r.top), sc = card.closest('.app');   // not $refs: a pop's own item (···'s Size) has none
+            if (over > 0 && sc) sc.scrollTop += over;   // the jot bar's sheet sits outside the list and rides the keyboard itself
           }
         };
         follow();
@@ -4989,9 +5075,8 @@ document.addEventListener('alpine:init', () => {
     // date a filled calendar, a deadline alone a flag. Never red for a placement, even a past one.
     dueLook() {
       const d = this.draft, on = d.on?.slice(0, 10), s = on && this._sugs().find(s => s.iso === on);
-      const bar = this._inBar();   // the jot bar's chip keeps the calendar outline, in the day's color
-      if (s) return [bar ? 'i-cal' : 'i-' + s.icon + '-fill', `var(--q-${s.key})`];
-      return on || d.recurrence ? [bar ? 'i-cal' : 'i-cal-fill', 'var(--muted)'] : ['i-cal', 'var(--muted)'];
+      if (s) return [this._inBar() ? 'i-cal-fill' : 'i-' + s.icon + '-fill', `var(--q-${s.key})`];   // the jot bar's chip is a filled calendar in the day's color
+      return on || d.recurrence ? ['i-cal-fill', 'var(--muted)'] : ['i-cal', 'var(--muted)'];
     },
     calSugApply(iso) {
       if (this.dreg === 'on') this.draft.on = iso;
@@ -5887,6 +5972,7 @@ document.addEventListener('alpine:init', () => {
       if (e.metaKey || e.ctrlKey || e.altKey || this.composer.open || (modal && !sheetOnly)
           || (sheetOnly && e.key === 'Enter' && e.target.closest?.('button'))   // a sheet control's Enter is its own (↗, ×), as natively
           || tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (this.surface === 'social' && this.chat.open && !this.overview && !sheetOnly && e.key.length === 1 && !this.surfaceOrder[e.key - 1] && !(e.key === ' ' && e.target.closest?.('button, [role=button], a, summary'))) return (this.$refs.chatBar ?? this.$refs.chatInput)?.focus();   // an open thread's keys are its message, never an app shortcut; the key lands in the box
       if (this.overview) {   // the overview deck owns the keys while it's open
         if (this.ovSel === 0 && ['ArrowDown', 'j'].includes(e.key)) { e.preventDefault(); return this.rollerMove(1); }
         if (this.ovSel === 0 && ['ArrowUp', 'k'].includes(e.key))   { e.preventDefault(); return this.rollerMove(-1); }
@@ -6036,7 +6122,13 @@ document.addEventListener('alpine:init', () => {
       if (live.join() !== this.qfAreas.join()) { this.qfAreas = live; this._saveView(); }
     },
     // A set chip's lead: each area's glyph on a disc of its color, the first on top.
-    areaDiscsHtml() { return this.areaObjs(this.draft.areas).map((a, i, all) => `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}"><svg class="ico"><use href="#${a.icon || 'i-tag-tag'}"/></svg></i>`).join(''); },
+    areaDiscsHtml() {
+      const { fit, shift } = DESIGN['area-disc'];
+      return this.areaObjs(this.draft.areas).map((a, i, all) => {
+        const icon = a.icon || 'i-tag-tag', [x, y] = shift[icon] ?? [0, 0];
+        return `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}"><svg class="ico" style="--fit:${fit[icon] ?? 1};--sx:${x};--sy:${y}"><use href="#${icon}"/></svg></i>`;
+      }).join('');
+    },
     // Never a blank button: an id whose area is gone (deleted elsewhere, not yet loaded) resolves to nothing, so the
     // label keys off the resolved names, not draft.areas.length.
     areaLabel() { return this.areaObjs(this.draft.areas).map(a => a.name).filter(Boolean).join(', ') || 'Areas'; },
@@ -7456,6 +7548,14 @@ document.addEventListener('alpine:init', () => {
     chkSteps() { return !this.draft.checklist_plain && this.draft.task_type === 'steps'; },
     phoneDock() { return this.narrow && (document.documentElement.classList.contains('touch') || this._inBar()); },   // the composer's one-row dock: the 640 block's .touch and jot-bar rules
     notesHidden() { return this.phoneDock() && !this.notesOpen; },
+    // A phone hides only a large description and checklist (his 11-11 "only hide the checklists and desc if they're large"): over 6 rows the
+    // composer passes ~360px at 390, more than an S22 Ultra keeps above its keyboard. ~40 characters a description line at a phone's width.
+    // Subtasks stay behind the chip: his words name the checklist, and a phone's open folds their list rows away (composer-d).
+    _notesFit() {
+      const d = this.draft, lines = d.notes.trim() ? d.notes.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / 40)), 0) : 0;
+      const view = this.checklistView(), rows = lines + view.rows.length + (view.more ? 1 : 0);   // the rows the checklist draws, a fold row for 3+ done
+      return !this.shownSubs().length && rows > 0 && rows <= 6;
+    },
     // The bar's sheet gives its entries the room the rest leaves, so they scroll under their ghost while the title and send stay put.
     // rest excludes the entries, so a cap never changes it: one pass settles. Never under 120px (~4 rows): a taller rest scrolls the sheet.
     fitEntries(sheet) {
@@ -7961,7 +8061,7 @@ document.addEventListener('alpine:init', () => {
       _dragGhost?.classList.toggle('deep', !!id && deep && !dwell);   // the card under the pointer says why the drop is refused
     },
     _clearDrag() {
-      document.body.classList.remove('list-drag');
+      document.body.classList.remove('list-drag'); this._listScroller()?.style.removeProperty('overflow-anchor');
       const list = document.querySelector('.surface-lists .list');
       if (list) for (const li of list.querySelectorAll('.dragging, .row-hidden, .drop-into, .drop-dwell, .drop-deep')) li.classList.remove('dragging', 'row-hidden', 'drop-into', 'drop-dwell', 'drop-deep');
       _dropEl = _dragDescs = _dragIds = _dragGrab = _dragParents = _dragProjs = _intoAt = _ghostAt = null; _ghostGrown = _sortRefused = false; this._reflow();   // the subtree windows back in, fitted
@@ -8393,7 +8493,7 @@ document.addEventListener('alpine:init', () => {
       return this._copyText(button.closest('code, .md-code').textContent, 'Copied');
     },
     codeKey(e) {
-      if (e.target.closest('.code-copy') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();   // button keys must never edit/delete the containing row
+      if (e.target.closest('.code-copy') && !e.target.closest('.msg') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();   // button keys must never edit/delete the containing row
       // Editing uses raw text; restore decoration before Tab searches for the copy control.
       if (e.key !== 'Tab' || e.shiftKey || !e.target.matches('.desc, .entry.chk .entry-txt') || !e.target.textContent.includes('```')) return;
       const el = e.target; el.blur();
@@ -9070,8 +9170,11 @@ document.addEventListener('alpine:init', () => {
       const shelf = this._clShelf(), shelved = new Set(shelf);
       const sig = _calDataV + '|' + todayIso + '|' + narrow + '|' + named + '|' + shelf + (named ? '|' + this.dayNotes.map(d => d.date) : '');   // the names: a reactive read, so one arriving re-runs this
       if (_clWkSig !== sig || _clWkCache.size > 200) { _clWkSig = sig; _clWkCache.clear(); }   // size: a long scroll would otherwise keep every row it ever passed
-      const end = Math.min(CL_TOTAL_WEEKS, this.clVisStart + this.clVisCount);
-      for (let idx = Math.max(0, this.clVisStart); idx < end; idx++) {
+      // first show: the weeks in view (±1) paint first and the buffer mounts after that paint; all 28 at once froze the tap ~0.5 s at his 11-11 counts
+      const pad = this.clWarm ? 0 : CL_BUFFER - 1;
+      if (pad) requestAnimationFrame(() => setTimeout(() => { this.clWarm = true; }));
+      const end = Math.min(CL_TOTAL_WEEKS, this.clVisStart + this.clVisCount - pad);
+      for (let idx = Math.max(0, this.clVisStart + pad); idx < end; idx++) {
         let row = _clWkCache.get(idx);
         if (!row) {
           const ws = this._weekDate(idx);

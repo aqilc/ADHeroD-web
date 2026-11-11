@@ -71,9 +71,10 @@
   "layout": {
     "list-w": 800
   },
+  "area-disc": {"fit": {"i-tag-tag": 1.2, "i-tag-home": 1.2, "i-tag-briefcase": 1.15, "i-tag-star": 1.15, "i-tag-heart": 1.25, "i-tag-book": 1.1, "i-tag-cart": 1.1, "i-tag-dollar": 1.25, "i-tag-code": 1.2, "i-tag-dumbbell": 1.2, "i-tag-plane": 1.1, "i-tag-fill": 1.2, "i-tag-bell": 1.25, "i-tag-flame": 1.25, "i-tag-leaf": 1.05, "i-tag-map": 1.25, "i-tag-zap": 1.25, "i-tag-globe": 1.25, "i-tag-camera": 1.15, "i-tag-gift": 1.15, "i-tag-music": 1.0}, "shift": {"i-tag-home": [0, -0.83], "i-tag-heart": [0, 1.35], "i-tag-plane": [-0.7, 0.69], "i-tag-camera": [0, -0.67]}},
   "font": {
     "ui": "\"Instrument Sans\", -apple-system, BlinkMacSystemFont, \"SF Pro Text\", \"Segoe UI\", system-ui, sans-serif",
-    "display": "\"LT Remark\", \"Instrument Sans\", Georgia, serif"
+    "display": "\"Nyght Serif\", \"Instrument Sans\", Georgia, serif"
   },
   "//ease": "pop: a real spring (mass 1, stiffness 300, damping 20: 11% overshoot, then settles) sampled over 400ms; a longer duration slows it, same overshoot.",
   "ease": {
