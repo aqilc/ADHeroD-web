@@ -3158,12 +3158,13 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .entry.ghost { position: sticky; top: 0; bottom: 0; z-index: 1; background: linear-gradient(var(--dim), var(--dim)), var(--panel); } }   /* over the dim, as the sheet shows under it */
   .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
     .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
-    :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: calc(var(--chk-col) - var(--bleed, 0px)); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col) + 2 * var(--bleed, 0px)); } }   /* the description on the title's x (his 11-11 "the description should still align with the title in mobile web composer") */
+    :is(.composer-actions .field.loc, .composer-rels, .composer-entries) { margin-left: calc(var(--chk-col) - var(--bleed, 0px)); } :is(.composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col) + 2 * var(--bleed, 0px)); } }   /* the description keeps the ring's left edge (his 11-11 "in mobile composer, the description should be aligned to the left edge to be consistent.") */
   /* Editing: the title alone on its line; one subline under it, from the ring's left edge: the list's path, what the notes hold, the relations */
   .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* the ring's center at 26, the title at 46 */
     .type-tog { left: var(--sp-16); }
     .composer-titlerow { order: -3; flex-basis: calc(100% - var(--chk-col)); margin-left: var(--chk-col); }
     .composer-body:has(> .composer-rels > :is(.rel-chip, .msg-file)) .field.loc { max-width: 60%; }   /* a long path leaves the relations room */
+    .composer-body > .desc { margin-left: calc(var(--sp-16) - var(--sp-10)); flex-basis: calc(100% - var(--sp-16) + var(--sp-10)); }   /* on the ring's and the project icon's 16px edge */
     .composer-actions .field.loc { display: flex; order: -2; flex: 0 1 auto; max-width: none; height: 30px; gap: var(--sp-6); margin: 0 0 0 calc(var(--sp-16) - var(--sp-10)); }   /* aligned to the left edge of the screen */
     .composer-card .composer-body > .composer-rels { order: -1; flex: 1 1 0; flex-wrap: nowrap; align-items: center; min-width: 0; height: 30px; margin-left: var(--sp-12); overflow-x: auto; scrollbar-width: none;   /* over .editing's indent */
       mask-image: linear-gradient(to left, transparent, #000 var(--sp-8)); > * { flex: none; } }
