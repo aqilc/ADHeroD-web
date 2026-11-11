@@ -1060,6 +1060,7 @@ html:not(.touch) :is(.surface-lists .item, .dsk, .palette-row) {
   .disc { --disc-size: 18px; --disc-box: 10px; --disc-k: 1; position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--disc-size); height: var(--disc-size); border-radius: 50%; background: var(--dc); color: var(--on-accent);
     --ring: 1.5px; box-shadow: 0 0 0 var(--ring) var(--panel);   /* cut out of the disc behind */
     & + .disc { margin-left: calc(-2 * var(--ring)); } }
+  .disc .ltr { display: none; }   /* an iconless area's first letter, the phone bar's one-area tag only */
   .chip.set .disc .ico { width: var(--disc-box); height: var(--disc-box); color: inherit; --panel: var(--dc);   /* a glyph's cut-outs show the disc */
     --s: calc(var(--fit, 1) * var(--disc-k)); scale: var(--s);   /* design.json area-disc: fit and shift per glyph, 24-unit, here only: chips, pickers and rows draw it plain */
     translate: calc(var(--sx, 0) * var(--disc-box) / 24 * var(--s) + var(--disc-nudge, 0px)) calc(var(--sy, 0) * var(--disc-box) / 24 * var(--s)); }
@@ -2974,7 +2975,6 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .touch .surface-lists .item:has(.chk-list) > .check::before { bottom: -9px; }   /* 41px tall, ending where the first checklist item's hit starts */
   .touch .surface-lists .row-chev { display: none; }
   .touch .surface-lists .typed > .row2:not(.meta) { padding-left: 0; border-left: 0; }   /* notes on line 2's x, no bar (his 11-11 "remove the indentguide for descriptions on mobile on all platforms") */
-  .touch .surface-lists .composer-card .desc { --chk-col: calc(18px + var(--sp-12)); margin-left: calc(-1 * var(--chk-col)); width: calc(100% + var(--chk-col)); }   /* from the check's left edge, under it: the card's left edge (his 11-11 "aligned to the left edge") */
   .touch .surface-lists .item.after { padding-top: calc(var(--row-pt) + var(--sp-24) + var(--sp-4)); }   /* a top-level row after a subtree or checklist starts a group; padding, so the gap opens that row */
   .touch .surface-lists .sec-chev { margin-left: 0; }
 }
@@ -3158,13 +3158,12 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .entry.ghost { position: sticky; top: 0; bottom: 0; z-index: 1; background: linear-gradient(var(--dim), var(--dim)), var(--panel); } }   /* over the dim, as the sheet shows under it */
   .bar-on .jb-host.editing { --chk-col: calc(18px + var(--sp-12));   /* the 18px check and its gap */
     .composer-card { position: relative; } .type-tog { position: absolute; left: var(--sp-10); top: 13px; }   /* on the title line; the row keeps the card's width */
-    :is(.composer-actions .field.loc, .composer-rels, .composer-entries) { margin-left: calc(var(--chk-col) - var(--bleed, 0px)); } :is(.composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col) + 2 * var(--bleed, 0px)); } }   /* the description keeps the ring's left edge (his 11-11 "in mobile composer, the description should be aligned to the left edge to be consistent.") */
+    :is(.composer-actions .field.loc, .desc, .composer-rels, .composer-entries) { margin-left: calc(var(--chk-col) - var(--bleed, 0px)); } :is(.desc, .composer-rels, .composer-entries) { flex-basis: calc(100% - var(--chk-col) + 2 * var(--bleed, 0px)); } }   /* the description on the title's x (his 11-11 "the description should still align with the title in mobile web composer") */
   /* Editing: the title alone on its line; one subline under it, from the ring's left edge: the list's path, what the notes hold, the relations */
   .bar-on .jb-host.ka { --chk-col: calc(18px + var(--sp-12) + var(--sp-6));   /* the ring's center at 26, the title at 46 */
     .type-tog { left: var(--sp-16); }
     .composer-titlerow { order: -3; flex-basis: calc(100% - var(--chk-col)); margin-left: var(--chk-col); }
     .composer-body:has(> .composer-rels > :is(.rel-chip, .msg-file)) .field.loc { max-width: 60%; }   /* a long path leaves the relations room */
-    .composer-body > .desc { margin-left: calc(var(--sp-16) - var(--sp-10)); flex-basis: calc(100% - var(--sp-16) + var(--sp-10)); }   /* on the ring's and the project icon's 16px edge */
     .composer-actions .field.loc { display: flex; order: -2; flex: 0 1 auto; max-width: none; height: 30px; gap: var(--sp-6); margin: 0 0 0 calc(var(--sp-16) - var(--sp-10)); }   /* aligned to the left edge of the screen */
     .composer-card .composer-body > .composer-rels { order: -1; flex: 1 1 0; flex-wrap: nowrap; align-items: center; min-width: 0; height: 30px; margin-left: var(--sp-12); overflow-x: auto; scrollbar-width: none;   /* over .editing's indent */
       mask-image: linear-gradient(to left, transparent, #000 var(--sp-8)); > * { flex: none; } }
@@ -3188,6 +3187,12 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .disc { --disc-size: 20px; --disc-box: 12px; --disc-k: calc(11 / 12);   /* the box's 12 at the 11's ink: cart's clearance */
       box-shadow: 0 0 0 var(--ring) var(--dim, transparent), 0 0 0 var(--ring) var(--panel);   /* the sheet's color under the composer's dim, so no halo reads as a larger circle */
       & + .disc { --disc-nudge: calc(1.5 * var(--ring)); } }   /* the first disc's ring leaves the part from 3 rings in to the edge: its center is 1.5 rings off the disc's */
+    /* one area is a tag: its circle and name on the phone row tag's fill (areas-1); the capsule is drawn inside the 40px target, its edges where a bare value's ink would be */
+    .chip-area.set:has(.disc:only-child) { .ltr:not(:empty) { display: inline; font-size: var(--fs-11); font-weight: 700; font-style: normal; line-height: 1; text-transform: uppercase; & + .ico { display: none; } }
+      &:not(.short) { position: relative; isolation: isolate; padding: 0 calc(var(--sp-8) + var(--sp-10)) 0 calc(var(--inset) + var(--sp-4));
+        &::before { content: ""; position: absolute; z-index: -1; inset: var(--sp-6) var(--sp-8) var(--sp-6) var(--inset); border-radius: var(--r-pill); background: color-mix(in srgb, var(--tc) 13%, transparent); }
+        .disc { box-shadow: none; } }   /* no ring: it would halo on the tint */
+      > span { display: inline; } }   /* folded too, out of flow at its own size: barFit sees a rename */
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* the steps icon last */
     .field:has(> .chip-dl:not(.set)) { display: none; }   /* an unset deadline waits in ···, like Size and Place */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go to their icons (barFit), never the bare icons or the steps */

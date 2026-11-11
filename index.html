@@ -633,7 +633,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
           <!-- Area multi-select -->
           <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
-            <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :title="areaLabel()" @click="togglePop('area', $el)">
+            <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :style="'--tc:' + (areaObjs(draft.areas)[0]?.color || areaDefault)" :title="areaLabel()" @click="togglePop('area', $el)">
               <svg class="ico" x-show="!areaObjs(draft.areas).length"><use href="#i-tag-line"/></svg>
               <i class="discs inline-flex" x-show="areaObjs(draft.areas).length" x-html="areaDiscsHtml()"></i>
               <span x-text="areaLabel()"></span>
