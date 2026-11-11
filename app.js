@@ -3134,7 +3134,7 @@ document.addEventListener('alpine:init', () => {
       // synchronous so first frame isn't at full height (stutter)
       this.grown = false; this.clip = true; this.growH = start;
       motion.run('grow', () => this.growH !== null);   // idle() spans the measuring frames + settle timer, which no CSS event reports
-      const anims = [], sub = [], lined = [];
+      const anims = [], sub = [], lined = [], far = new Set();   // far: the texts of rows that start and land over a screen below the view, which never fly
       let unhold = null;   // the list's scroll anchoring, off while the card is cut
       const stop = _morphStop = () => {   // also what a close or re-open run on an open still under way
         _morphStop = null;
@@ -3169,8 +3169,9 @@ document.addEventListener('alpine:init', () => {
         // the row's notes line flies to the description, as a subtask or checklist row flies to its entry
         const dl = row?.querySelector('.row2 .desc-line'), desc = dl && card.querySelector('.desc'), db = desc?.getClientRects().length && dl.getBoundingClientRect();
         const src = db ? [[desc, desc, { ...db.toJSON(), fs: parseFloat(getComputedStyle(dl).fontSize), ink: _inkTop(dl) - db.top, one: true }]] : [];
+        const drawn = [..._morphFrom];
         for (const e of card.querySelectorAll('.composer-entries .entry:not(.ghost)')) {
-          const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = [..._morphFrom].find(([k]) => s.startsWith(k))?.[1];   // a subtask's text runs on into its chips
+          const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = drawn.find(([k]) => s.startsWith(k))?.[1];   // a subtask's text runs on into its chips
           if (f) src.push([e, txt, f]);
         }
         for (const m of src) m.push(m[2].fs / parseFloat(getComputedStyle(m[1]).fontSize));   // the list draws checklist and notes text smaller
@@ -3194,10 +3195,11 @@ document.addEventListener('alpine:init', () => {
         src.forEach(([e, txt, f, k], i) => {
           const { high, r, ink, ck, c } = at[i], dx = f.left - r.left, dy = f.top - r.top, d = `${dx}px ${dy}px`;
           _morphH.set(e, high);   // before a description, its own box, scales
-          txt.style.transformOrigin = '0 0'; txt.style.scale = k;
           // the list's text sits lower in its padded box (a checklist's): the flight starts and ends on its ink, at the flight's scale; a description's ink sits as the row's
           const lift = f.ink - (ink - r.top) * k;
-          e.style.translate = d; if (e !== txt) txt.style.translate = `0px ${lift}px`;
+          // a screen of spare: the open's glide scrolls the list by a view at most (his 310-item checklist flew 232 rows, 30 of them in view)
+          if (Math.min(f.top, r.top) > 2 * innerHeight) far.add(txt);
+          else { txt.style.transformOrigin = '0 0'; txt.style.scale = k; e.style.translate = d; if (e !== txt) txt.style.translate = `0px ${lift}px`; }
           // for the close: its check is the list's size, measured from where the flight starts
           const fit = f.chk && c?.width ? [`${f.chk.x + f.chk.width / 2 - c.x - dx - c.width / 2}px ${f.chk.y + f.chk.height / 2 - c.y - dy - c.height / 2}px`, f.chk.width / c.width] : null;
           _morphMoved.push([e, d, txt, k, lift, ck, fit, f.one && f.width / k]);   // the list's line in the card text's px, when the list draws it on one
@@ -3226,7 +3228,7 @@ document.addEventListener('alpine:init', () => {
           const o = { duration: dur, easing: _openEase };
           // the box opens from the row's line (its first, up to the list's cut) to its lines on the flight's own ease, so what's
           // under it rides straight to its place; the rest fades in behind the opening edge
-          for (const s of lined) {
+          for (const s of lined) if (!far.has(s.x)) {
             s.x.style.mask = _lineMask(s);
             anims.push(s.x.animate({ height: [s.one + 'px', s.high + 'px'], overflow: ['hidden', 'hidden'] }, o),
               s.x.animate([{ '--tail': 0 }, { '--tail': 0, offset: .2, easing: 'ease-out' }, { '--tail': 1 }], dur));
@@ -3240,7 +3242,7 @@ document.addEventListener('alpine:init', () => {
             row.style.clipPath = `inset(0 0 ${below}px 0)`;
             anims.push(row.animate({ clipPath: ['inset(0 0 0 0)', row.style.clipPath] }, o), card.animate({ height: [card.style.getPropertyValue('--from'), ch + 'px'] }, { ...o, fill: 'forwards' }));   // to the settle, or .morph's floor at the row's box shows for a frame
           }
-          for (const [e, d, txt, k, lift] of _morphMoved) {
+          for (const [e, d, txt, k, lift] of _morphMoved) if (!far.has(txt)) {
             e.style.translate = txt.style.scale = txt.style.translate = '';
             anims.push(e.animate({ translate: [d, '0px 0px'] }, o), txt.animate({ scale: [k, 1], ...e !== txt && { translate: [`0px ${lift}px`, '0px 0px'] } }, o),
               e.animate([{ backgroundColor: 'transparent', offset: 0 }], o));   // the zebra band: the list has none

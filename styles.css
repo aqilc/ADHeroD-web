@@ -3181,7 +3181,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host .composer-actions .field.loc { order: -2; align-self: flex-start; max-width: 150px; margin: var(--sp-5) var(--sp-10) 0 0; }   /* on the title's first line, not its middle */
   .bar-on .jb-host .proj-pick { height: 34px; padding: 0 var(--sp-10) 0 var(--sp-8); border-radius: var(--r); font-size: var(--fs-14); font-weight: 600; color: var(--ink); gap: var(--sp-6);
     .proj-pick-ico { width: 15px; } }
-  .bar-on .jb-host .composer-opts { height: 48px; min-width: 38px; padding-right: 0;   /* never 0 wide: it would fit beside the line break */
+  .bar-on .jb-host .composer-opts { --inset: var(--sp-6); height: 48px; min-width: 38px; padding-right: 0;   /* never 0 wide: it would fit beside the line break */
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* clear of a glyph at rest */
     &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
     .chip { height: 40px; width: 38px; padding: 0; justify-content: center; > .ico { width: 19px; height: 19px; } }   /* never an area disc's glyph */
