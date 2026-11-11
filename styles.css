@@ -1501,14 +1501,14 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .lp-mgr { margin-top: var(--sp-8); border-top: 1px solid var(--hair); border-radius: 0; }
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
-/* 1.5px border on all buttons (transparent for filled) — action-row siblings stay pixel-equal height */
+/* one box for every button, its 1.5px border transparent: a fill and a radius, never an outline (his 11-11 "just a background border radiused fill instead of a border button") */
 .primary, :where(button).ghost, .danger { padding: var(--sp-4) var(--sp-12); border: 1.5px solid transparent; border-radius: var(--r-8); font-size: var(--fs-13); cursor: pointer; }
 .primary, .danger { font-weight: 600; }
 .primary { background: var(--accent); color: var(--on-accent); }
 .primary:disabled { opacity: .45; cursor: default; }
 .danger { background: var(--p1); color: var(--on-accent); }
-:where(button).ghost { background: none; border-color: color-mix(in srgb, var(--muted) 55%, transparent); color: var(--ink); transition: border-color .15s ease, background-color .15s ease;
-  &:hover:where(:not(.touch *)) { background: var(--hover); border-color: var(--muted); } }
+:where(button).ghost { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); transition: background-color .15s ease;   /* a share of the ink, so it reads on a panel and on an open mail's --hover alike */
+  &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--ink) 14%, transparent); } }
 /* Actions on their own compact row, divided from the pickers (Todoist-style) */
 .composer-actions {
   justify-content: flex-end; align-items: stretch;
@@ -1739,9 +1739,9 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
   font-size: var(--fs-12); font-weight: 600; color: var(--muted); cursor: pointer; &:hover:where(:not(.touch *)) { color: var(--ink); }
   &.on { background: var(--panel); color: var(--ink-hi); box-shadow: var(--shadow-sm); } }
 .seg.sm { border-radius: var(--r-6); button { padding: 0 var(--sp-8); border: none; border-radius: var(--r-4); font-weight: 500; } }   /* the small one: a 20px choice inside a form */
-/* destructive secondary (Delete in an editor footer): red text, no fill — reads destructive without shouting */
-.ghost.danger { background: none; color: var(--p1); }
-.ghost.danger:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
+/* destructive secondary (Delete in an editor footer): red text on its own tint, reads destructive without shouting */
+.ghost.danger { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
+.ghost.danger:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--p1) 22%, transparent); color: var(--p1); }
 
 /* Saved filters: a small color dot mirrors the project/area dot in the nav. */
 .filter-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
@@ -1978,7 +1978,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .sel-acts { flex-wrap: wrap; margin-left: var(--sp-6); padding-left: var(--sp-8); border-left: 1px solid var(--hair); }
 .sel-field { position: relative; flex: none; }
 /* the app's .ghost and .icon-btn; Delete is the composer's trash look, its own class (a .del-btn here would shadow the composer's for querySelector) */
-.sel-bar .ghost { display: inline-flex; align-items: center; gap: var(--sp-6); font-weight: 600; transition: border-color .15s var(--ease-out), background-color .15s var(--ease-out), transform .12s var(--ease-out);
+.sel-bar .ghost { display: inline-flex; align-items: center; gap: var(--sp-6); font-weight: 600; transition: background-color .15s var(--ease-out), transform .12s var(--ease-out);
   .ico { width: 15px; height: 15px; flex: none; } &:active { transform: scale(.97); } }   /* press feedback */
 .sel-bar .icon-btn { width: 24px; height: 24px; padding: 0; .ico { width: 13px; height: 13px; } }
 .sel-bar .sel-delete { display: inline-flex; padding: var(--sp-6); border: none; background: none; border-radius: var(--r-8); color: var(--muted); cursor: pointer;
@@ -2055,8 +2055,8 @@ textarea.inp { resize: vertical; }
 .loc-add-region { margin: var(--sp-4) 0 var(--sp-10); }
 .icon-btn { padding: var(--sp-4) var(--sp-6); border-radius: var(--r); border: 1px solid transparent; flex: none; }
 .icon-btn .ico { width: 15px; height: 15px; flex: none; display: block; }
-.icon-btn:hover:where(:not(.touch *)) { border-color: var(--edge); color: var(--ink); }
-.icon-btn.del:hover:where(:not(.touch *)) { color: var(--p1); border-color: color-mix(in srgb, var(--p1) 40%, transparent); }
+.icon-btn:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
+.icon-btn.del:hover:where(:not(.touch *)) { color: var(--p1); background: color-mix(in srgb, var(--p1) 12%, transparent); }
 /* the in-row size (popover rows, the repeat rail): 24px is WCAG 2.2's minimum target; hover fills like a row */
 .icon-btn:where(.sm) { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: none; border-radius: var(--r-6); cursor: pointer;
   &:hover:where(:not(.touch *)) { background: var(--hover); } }
