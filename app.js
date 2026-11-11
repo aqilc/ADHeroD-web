@@ -3169,7 +3169,7 @@ document.addEventListener('alpine:init', () => {
         // the row's notes line flies to the description, as a subtask or checklist row flies to its entry
         const dl = row?.querySelector('.row2 .desc-line'), desc = dl && card.querySelector('.desc'), db = desc?.getClientRects().length && dl.getBoundingClientRect();
         const src = db ? [[desc, desc, { ...db.toJSON(), fs: parseFloat(getComputedStyle(dl).fontSize), ink: _inkTop(dl) - db.top, one: true }]] : [];
-        const drawn = [..._morphFrom];
+        const drawn = [..._morphFrom].sort((a, b) => b[0].length - a[0].length);   // the longest text first: 'Buy milk and eggs' never opens from the row 'Buy milk'
         for (const e of card.querySelectorAll('.composer-entries .entry:not(.ghost)')) {
           const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = drawn.find(([k]) => s.startsWith(k))?.[1];   // a subtask's text runs on into its chips
           if (f) src.push([e, txt, f]);
