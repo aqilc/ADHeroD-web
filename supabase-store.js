@@ -236,6 +236,7 @@ export function createSupabaseStore(client) {
     day_notes: collection('day_notes'),
     goals: collection('goals', { order: 'position' }),   // read and restored only by the backup: the web has no goals screen
     identities: collection('identities', { order: 'position' }),
+    gcal_calendars: collection('gcal_calendars'),
   };
 
   // table → the app-side list a change to it invalidates. tasks/areas are handled apart (they own caches).
@@ -563,6 +564,25 @@ export function createSupabaseStore(client) {
     },
     goals: { list: () => COLL.goals.list(), remove: id => COLL.goals.del(id) },
     identities: { list: () => COLL.identities.list(), remove: id => COLL.identities.del(id) },
+    // Google Calendar's mirror (docs/superpowers/specs/2026-11-14-google-calendar-sync.md). Signed in only: LocalStore has none.
+    gcal: {
+      calendars: () => COLL.gcal_calendars.list(),
+      // by (user, account, google_id), Google's fields only: a calendar's On/Off and sync token outlive every pass
+      async upsert(account, items) {
+        const uid = await userId();
+        const rows = items.map(c => ({ user_id: uid, account, google_id: c.id, summary: c.summaryOverride ?? c.summary, color: c.backgroundColor, access_role: c.accessRole }));
+        const { data, error } = await client.from('gcal_calendars').upsert(rows, { onConflict: 'user_id,account,google_id' }).select('*');
+        return error ? null : data.map(r => COLL.gcal_calendars.mine(r));
+      },
+      setShown: (id, shown) => COLL.gcal_calendars.patch(id, { shown }),
+      merge: async params => !(await client.rpc('gcal_merge', params)).error,
+      // the gcal-token function: null when the call failed; { revoked } when Google refused the refresh token; { regrant } when a Connect got none
+      async token(body) {
+        const { data, error } = await client.functions.invoke('gcal-token', { body });
+        const status = error?.context?.status;
+        return !error ? data : status === 401 ? { revoked: true } : status === 409 ? { regrant: true } : null;
+      },
+    },
 
     // Per-block-per-day actuals: upsert on (user_id, block_id, date) — answering twice must not 409.
     blockDays: {

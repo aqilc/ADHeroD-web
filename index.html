@@ -134,7 +134,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-tack" viewBox="0 0 24 24"><path transform="rotate(40 12 12)" fill="currentColor" stroke="none" d="M8 3h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2zM8 4h8v5.77L18.62 15H5.38L8 9.77zM11 14h2v6a1 1 0 0 1-2 0z"/></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
   <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle. 19 wide, 24 tall; up 4/3 so its ink mass centers on the box; joint and shift are multiples of 4/3, whole pixels in an 18px box at 1-3x (no seam) -->
-  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M2.526 9.333V8.141a9.474 9.474 0 0 1 18.947 0V9.333h-3.789V8.141a5.684 5.684 0 0 0-11.368 0V9.333z"/><rect class="lk-leg" fill="currentColor" stroke="none" x="2.526" y="6.833" width="3.789" height="2.5"/><path fill="currentColor" stroke="none" fill-rule="evenodd" d="M2.526 9.333h18.947v9.545a3.789 3.789 0 0 1-3.789 3.789h-11.368a3.789 3.789 0 0 1-3.789-3.789zM12 13.5a2.021 2.021 0 0 0-.884 3.84V19.058h1.768v-1.718A2.021 2.021 0 0 0 12 13.5z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" overflow="visible"><path class="lk-shk" fill="currentColor" stroke="none" d="M5.333 8V5.333a6.667 6.667 0 0 1 13.333 0V8H16V5.333a4 4 0 0 0-8 0V8z"/><rect class="lk-leg" fill="currentColor" stroke="none" x="5.333" y="5.333" width="2.667" height="2.667"/><path fill="currentColor" stroke="none" d="M6 8H18a3.333 3.333 0 0 1 3.333 3.333V19.333a3.333 3.333 0 0 1-3.333 3.333H6a3.333 3.333 0 0 1-3.333-3.333V11.333A3.333 3.333 0 0 1 6 8zM18 10.667H6a.667 .667 0 0 0-.667 .667V19.333a.667 .667 0 0 0 .667 .667H18a.667 .667 0 0 0 .667-.667V11.333A.667 .667 0 0 0 18 10.667zM10.667 14.333a1.333 1.333 0 0 1 2.667 0V16.333a1.333 1.333 0 0 1-2.667 0z"/></symbol>
   <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
   <symbol id="i-external" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
@@ -634,7 +634,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <!-- Area multi-select -->
           <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
             <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :style="'--tc:' + (areaObjs(draft.areas)[0]?.color || areaDefault)" :title="areaLabel()" @click="togglePop('area', $el)">
-              <svg class="ico" x-show="!areaObjs(draft.areas).length"><use href="#i-tag-line"/></svg>
+              <svg class="ico" x-show="!areaObjs(draft.areas).length"><use href="#i-tag-tag"/></svg>
               <i class="discs inline-flex" x-show="areaObjs(draft.areas).length" x-html="areaDiscsHtml()"></i>
               <span x-text="areaLabel()"></span>
             </button>
@@ -963,7 +963,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <!-- beside the bin; a new task's beside the go -->
             <button type="button" class="act-btn inline-flex items-center" :class="{ on: typeFront(true), 'by-go': !editing }" :aria-pressed="typeFront(true)" @click="typeTap(!typeFront(true))" title="Note"><svg class="ico"><use href="#i-tack"/></svg></button>
             <template x-if="editing"><div class="contents">
-              <button type="button" class="act-btn arc inline-flex items-center" @click="toggleArchive()" :title="editingTask()?.archived_at ? 'Unarchive' : 'Archive'"><svg class="ico"><use href="#i-archive"/></svg></button>
+              <button type="button" class="act-btn arc inline-flex items-center" :class="{ on: archivedNow() }" :aria-pressed="archivedNow()" @click="toggleArchive()" :title="archivedNow() ? 'Unarchive' : 'Archive'"><svg class="ico"><use href="#i-archive"/></svg></button>
               <button type="button" class="act-btn md inline-flex items-center" @click="copyEditingMd()" title="Copy as markdown"><svg class="ico"><use href="#i-clipboard"/></svg></button>
             </div></template>
             <button type="button" class="del-btn inline-flex items-center" x-show="editing" @click="deleteEditing()" title="Delete task"><svg class="ico"><use href="#i-trash"/></svg></button>
@@ -1624,6 +1624,32 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
         </div>
       </div>
+      <!-- Google Calendar's mirror lives in the account, so signed out has no section (docs/superpowers/specs/2026-11-14-google-calendar-sync.md) -->
+      <template x-if="session">
+        <div class="set-sec set-gcal"><span class="section-label">Calendars</span>
+          <template x-if="!gcal">
+            <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="gcalConnect()"><svg class="ico set-ico"><use href="#i-cal"/></svg>Connect Google Calendar</button>
+          </template>
+          <template x-if="gcal">
+            <div>
+              <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-cal"/></svg><span class="min-w-0 truncate">Google Calendar<span class="set-mail muted-12" x-text="gcal.account"></span></span>
+                <template x-if="!gcal.token"><button type="button" class="set-out flex-none muted-12" @click="gcalConnect()">Reconnect</button></template>
+                <button type="button" class="set-out flex-none muted-12" @click="gcalDisconnect()">Disconnect</button>
+              </div>
+              <template x-for="cal in gcalCals" :key="cal.id">
+                <div class="set-row flex items-center gap-10">
+                  <span class="set-ico flex items-center justify-center"><span class="filter-dot" :style="(cal.shown ? 'background:' : 'box-shadow:inset 0 0 0 1.5px ') + (cal.color || 'var(--muted)')"></span></span>
+                  <span class="min-w-0 truncate" :style="cal.shown ? '' : 'color:var(--muted)'" x-text="cal.summary"></span>
+                  <div class="seg sm">
+                    <button type="button" :class="{ on: cal.shown }" :aria-pressed="cal.shown" @click="gcalShow(cal, true)">On</button>
+                    <button type="button" :class="{ on: !cal.shown }" :aria-pressed="!cal.shown" @click="gcalShow(cal, false)">Off</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
       <!-- starter shortcuts: teach the power path by keeping it visible (full sheet stays on ?) -->
       <div class="set-sec set-sec-keys"><span class="section-label">Keyboard</span>
         <div class="set-keys">
@@ -2073,7 +2099,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
         </template></div>
       </div>
-      <div x-html="evActionsHtml('blockEdit')"></div>
+      <div x-html="evActionsHtml('blockEdit')" @click.document.capture="clPopAway('clDel', $event, $el)"></div>
+      <template x-if="pop === 'clDel'"><template x-teleport="body"><div class="pop cl-pop cl-del" :class="{ dock: popDock }" :style="popStyle()" x-data="{ day: clDelDay(), some: false, from: null, to: null }" x-html="clDelHtml()"></div></template></template>
     </div></template>
 
     <!-- Delete-project / delete-task-with-subtasks / merge-project: one dialog parameterized on kind (a merge is a delete that moves its tasks) -->

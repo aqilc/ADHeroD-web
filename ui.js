@@ -57,6 +57,11 @@ const _hl = /==(?!\s)([^\n]+?)(?<!\s)==/g;   // ==highlight== (Monoform's too), 
 const _chkMask = new RegExp(_fences.source + '|' + _escOrCode.source, 'g');   // blanks what can't hold a note's "::"
 const _chkSep = src => { const s = String(src ?? ''); return (/[`\\]/.test(s) ? s.replace(_chkMask, m => ' '.repeat(m.length)) : s).indexOf('::'); };   // the test first: replace() alone costs ~2x per row
 export const chkParts = (c, ci) => { const sep = _chkSep(c.text); return { ci, done: !!c.done, txt: sep >= 0 ? c.text.slice(0, sep) : c.text, desc: sep >= 0 ? c.text.slice(sep + 2) : '' }; };
+// A list line as the Markdown app draws it (styles.css .dm-item): its level is its indent's tabs + space pairs.
+export const listItem = (ws, inner, tag = 'span') => {
+  const lv = ws.split('\t').length - 1 + (ws.split(' ').length - 1 >> 1);
+  return `<${tag} class="dm-item lv${lv % 3}" style="--lv:${lv}">${inner}</${tag}>`;
+};
 const _sentinel = (src, mark) => { while (src.includes(mark)) mark += mark[0]; return mark; };
 // XSS-safe markdown for task descriptions (headings, bold, italic, code, links, bullets). Inline-styled spans, not a document renderer.
 const _md = (src, opts = {}) => {
@@ -80,8 +85,8 @@ const _md = (src, opts = {}) => {
     if (!opts.literal) {
       const h = line.match(/^(#{1,3})\s+(.*)$/);
       if (h) return opts.inline ? inline(h[2]) : `<span class="md-h md-h${h[1].length}">${inline(h[2])}</span>`;
-      const b = line.match(/^\s*[-*]\s+(.*)$/);
-      if (b) return opts.inline ? inline(b[1]) : `<span class="md-li">${inline(b[1])}</span>`;
+      const b = line.match(/^(\s*)[-*]\s+(.*)$/);
+      if (b) return opts.inline ? inline(b[2]) : listItem(b[1], inline(b[2]));
     }
     return inline(line);
   }).join(opts.inline || opts.literal ? ' ' : '<br>');
@@ -136,8 +141,9 @@ const _dLine = (line, literal) => {   // literal: a title's, where # and - stay 
   t = t.replace(_hl, (_, x) => _tok('==', `<mark class="hl">${x}</mark>`, '=='));
   t = t.replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*/g, (_, pre, x) => pre + _tok('*', `<em>${x}</em>`, '*'));
   t = t.replace(/(^|[^_\w])_(?!\s)([^_\n]+?)_/g, (_, pre, x) => pre + _tok('_', `<em>${x}</em>`, '_'));
-  const li = !literal && t.match(/^([-*] )|^(\d+\. )/), h = !literal && !li && t.match(/^(#{1,3})(\s[\s\S]*)?$/);
-  if (li) t = (li[1] ? `<span class="dm-tok"><span class="dm-mark dm-li">${li[1]}</span></span>` : `<span class="dm-mark dm-ol">${li[2]}</span>`) + t.slice(li[0].length);   // a number always shows
+  const li = !literal && t.match(/^([ \t]*)[-*] |^(\d+\. )/), h = !literal && !li && t.match(/^(#{1,3})(\s[\s\S]*)?$/);
+  if (li?.[2]) t = `<span class="dm-mark dm-ol">${li[2]}</span>` + t.slice(li[0].length);   // a number always shows
+  else if (li) return listItem(li[1], `<span class="dm-tok dm-lt" data-m="${li[0]}"><span class="dm-mark dm-li">${li[0]}</span></span>` + unstash(t.slice(li[0].length)));
   else if (h) t = `<span class="dm-tok dm-h h${h[1].length}"><span class="dm-mark">${h[1]}${h[2]?.[0] || ''}</span>${h[2]?.slice(1) || ''}</span>`;   // the space after # is a marker too: the heading starts flush
   return unstash(t);
 };
@@ -278,7 +284,7 @@ export const rowBodyHtml = (r, opts = {}) => {
     ? `<div class="step-next flex items-center" data-ci="${r.next.ci}"><span class="chk-rect step-node" role="checkbox" aria-checked="false" aria-label="Tick the next step"></span><span class="step-next-txt truncate min-w-0">${chkMd(r.next.txt)}</span></div>` : ''}</div>` : '';
   // Plan's tray: one flat line — check, title, project, when (a Steps row adds its step block). Nothing that unfolds, nests or ages.
   // Desktop: its checklist, notes and relations ride as marks the ladder moves onto line 2 once one exists (app.js _ladder).
-  if (opts.tray && (step || opts.typed === false)) {
+  if (opts.tray && opts.typed === false) {
     if (step) return check + `<div class="body grow min-w-0">${row1(proj, sched + dl + due + rep)}${step}</div>`;   // a Steps row leads with its step, as in the list
     const cl = t.checklist || [], plain = !!t.checklist_plain, n = plain ? 0 : cl.length;
     const fill = m(n, r.step ? 'i-steps' : 'i-list-check', cl.filter(c => c.done).length + '/' + n) + m(t.notes || plain && cl.length, 'i-edit', '') + m(r.rels.length, 'i-link', '');
@@ -319,6 +325,7 @@ export const rowBodyHtml = (r, opts = {}) => {
   const pill = desk || !opts.tray, when = pill ? due : badges && r.due ? `<span class="badge ${chip ? '' : 'w '}${esc(r.due.kind || '')} inline-flex items-center"${tint}><span>${esc(r.due.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
   const repeat = m(badges && t.recurrence && !(pill && r.due), repHref.slice(1), '', 'rep');   // a pill's repeat glyph rides inside it
   // A Steps row keeps every chip on its title line, so the step never reads as a task; its date and marks are the typed row's.
+  if (step && opts.tray) return check + `<div class="body typed grow min-w-0">${row1(proj, sched + dl + repeat + when)}${step}</div>`;
   if (step) return chev + check + `<div class="body typed grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + repeat + when)}${step}</div>`;
   const flag = r.dlSame ? '' : dl, where = showProj ? projAtHtml(r) : '';
   // Areas by the title; the right group opens on the project and ends on the date; with no date, today's order for size, deadline, place, repeat.

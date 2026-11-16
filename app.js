@@ -46,7 +46,7 @@ import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
 import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, chkFoldHtml, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, showsProj, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
 import { makeSortable, edgeScrollStep, edgeSpeed, sorting, DWELL } from './sortable.js';
-import { SUPABASE, SURFACES, FILES_URL } from './config.js';
+import { SUPABASE, SURFACES, FILES_URL, GOOGLE } from './config.js';
 // landing surface: lists when present, else the leftmost of the trimmed set
 const SURF_HOME = SURFACES.includes('lists') ? 'lists' : SURFACES[0];
 import { createSupabaseStore } from './supabase-store.js';
@@ -54,6 +54,10 @@ import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchM
 
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
 let _sb, _inFlight = 0;   // _inFlight: the client's requests not yet answered: onAuth lets them land before it reloads
+let _gcalBusy = false;   // a Google Calendar pass is running: the minute tick and focus don't start a second
+// Google Identity Services' token model, loaded on first use (developers.google.com/identity/oauth2/web/guides/use-token-model)
+const gis = () => window.google?.accounts?.oauth2 ? Promise.resolve(window.google.accounts.oauth2)
+  : new Promise((resolve, reject) => document.head.append(Object.assign(document.createElement('script'), { src: 'https://accounts.google.com/gsi/client', onload: () => resolve(window.google.accounts.oauth2), onerror: reject })));
 let _filesTried = new Set(), _tasksGen = 0;   // file ids a read answered without a row (not re-read per load) · loadTasks' generation
 const countedFetch = async (...a) => {   // every signed-in read and write passes here
   _inFlight++;
@@ -82,6 +86,7 @@ const BLOCK_PRESETS = [
   { title: 'Evening', hint: '6–10', icon: 'moon', color: '#8b5cf6', start: '18:00', end: '22:00', weekdays: [], est_minutes: null },
 ];
 const DAY_NAME = new Intl.DateTimeFormat([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });   // a day cell's accessible name
+const CAL_HEAD = html`<div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>`;   // a pop's mini-month head: the month, back, this month, on
 const CL_EPOCH = new Date(2000, 0, 2);   // a (local) Sunday — week 0 of the virtual timeline
 const CL_TOTAL_WEEKS = 5217;             // ~100 years: a fixed scroll height (no reflow) ⇒ effectively infinite
 const CL_BUFFER = 10;                     // weeks rendered beyond the viewport each side (blank-free on fast flings)
@@ -187,6 +192,7 @@ let _modalFrom = null, _modalSel = null;   // a modal's opener + its caret (init
 let _jumped = false, _editIx = 0;   // _jumped: _ensureRow moved the reader to find a row · _editIx: the last flex slot the edited row held (see editIndex)
 let _listNav = { type: 'all', id: null };   // the last list Lists showed: a trip to another surface (calendar nav included) keeps it
 let _viewHold = false, _heldP = null, _heldRes = null;   // a collapsing composer holds visibleRows' rows as they were: a save that files its row elsewhere can't move the slot under the collapse
+let _keepRow = null;   // { id, done }: a composer action (Archive, Done) leaves the edited row in its list (done: the Done list) until the composer ends
 let _closeRange = null;   // trailing space from a composer's close; never part of the windowed rows
 let _addSlot = 0;   // the Add task row's height + margin, measured while shown: a new task grows from it and collapses back into it
 let _kb = 0;   // the soft keyboard's height (init's keyboard()): pops sit above it
@@ -516,6 +522,8 @@ document.addEventListener('alpine:init', () => {
   Alpine.data('adherod', () => ({
     store: createLocalStore(),
     session: null,
+    gcal: JSON.parse(localStorage.getItem('adherod.gcal') || 'null'),   // this browser's Google sign-in { account, token, exp }; token null once it lapses
+    gcalCals: [],   // the account's gcal_calendars rows, in Google's order
     authEmail: '', authCode: '', authSent: false, authMsg: '', authErr: false, authPass: '',   // inline sign-in (settings popup)
     setPassOpen: false, setPassVal: '', setPassErr: '',   // signed-in set-password affordance
     setNameOpen: false, setNameVal: '',   // …and the name friends see (chat.js › setName)
@@ -804,6 +812,9 @@ document.addEventListener('alpine:init', () => {
       this.booted = true;   // the Windows app opens a launch's task link only now: byId is empty until here
       if (this.sticky) { this.startAdd(); this.$watch('draft.content', q => this.listQ = q || ''); }   // the title adds AND filters: its text, never its pills
       this._subscribeStore();     // activate realtime sync (no-op on LocalStore/tests)
+      this.gcalSync();   // Google Calendar: a pass on load, every minute and on focus while this browser is connected
+      setInterval(() => this.gcalSync(), 60e3);
+      addEventListener('focus', () => this.gcalSync());
       setInterval(() => { if (!document.hidden) this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) { this._nowDay = d; this._resumeDue(); } if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest (a hidden tab skips the re-list it forces); _nowDay busts visibleRows on midnight
       if (window.desktopWindow) addEventListener('storage', e => {   // the sticky and composer windows follow the app window's theme live: its write reaches them as this event
         if (e.key === 'adherod.theme' || e.key === 'adherod.colorTheme') { this.colorTheme = savedColorTheme(this.store.theme()); this.setTheme(savedAppearance()); }
@@ -1405,6 +1416,83 @@ document.addEventListener('alpine:init', () => {
     watchField(el) { _field.observe(el); },
     phoneThread() { return this.narrow && this.surface === 'social' && !!this.chat.open; },   // a whole-screen page with no switcher
     chatPeer(chat) { return chat ? peerName(chat, this._acct()) : ''; },
+    // Google Calendar, signed in only (docs/superpowers/specs/2026-11-14-google-calendar-sync.md). Google's access token lives an hour; the
+    // gcal-token function renews it from the refresh token this browser holds sealed, so only a revoked grant waits on Reconnect.
+    async gcalConnect() {
+      const account = this.gcal?.account, oauth = await gis().catch(() => null);
+      const res = oauth && await new Promise(done => oauth.initCodeClient({ client_id: GOOGLE.clientId, scope: GOOGLE.scope, ux_mode: 'popup', callback: done, error_callback: done,
+        select_account: !account, login_hint: account ?? undefined }).requestCode());
+      if (res?.type === 'popup_closed') return;   // he closed it: nothing changes
+      const t = res?.code && await this.store.gcal.token({ code: res.code });
+      if (!t?.sealed) return void this.notify(t?.regrant ? 'Connect Google Calendar once more to finish' : "Couldn't connect Google Calendar");
+      this._gcalSet({ account: account ?? null, token: t.access_token, exp: Date.now() + t.expires_in * 1000, sealed: t.sealed });
+      await this.gcalSync();
+    },
+    gcalDisconnect() {   // this browser only: the mirror stays, other devices share it
+      const token = this.gcal?.token;
+      if (token) gis().then(oauth => oauth.revoke(token)).catch(() => {});
+      localStorage.removeItem('adherod.gcal');
+      this.gcal = null;
+      this.gcalCals = [];
+    },
+    _gcalSet(g) { this.gcal = g; localStorage.setItem('adherod.gcal', JSON.stringify(g)); },
+    async gcalShow(cal, shown) {
+      const row = await this.store.gcal.setShown(cal.id, shown);
+      if (!row) return void this.notify(`${cal.summary} not changed. Check your connection`);
+      this.gcalCals = this.gcalCals.map(c => c.id === row.id ? row : c);
+      if (shown) this.gcalSync();
+    },
+    // A pass: Google's calendars into gcal_calendars, then each shown one's changes since its shared sync token, page by page through gcal_merge
+    async gcalSync() {
+      let g = this.gcal;
+      const gc = this.store.gcal;
+      if (!g || !gc || _gcalBusy) return;
+      _gcalBusy = true;
+      const live = () => this.gcal?.token === g.token;   // a Disconnect or Reconnect mid-pass wins
+      const lapse = () => live() && this._gcalSet({ ...g, token: null });
+      try {
+        if (!g.token || g.exp < Date.now() + 60000) {
+          const t = g.sealed && await gc.token({ sealed: g.sealed });
+          if (t?.access_token && this.gcal === g) this._gcalSet(g = { ...g, token: t.access_token, exp: Date.now() + t.expires_in * 1000 });
+          else {
+            if (t?.revoked || !g.sealed) live() && this._gcalSet({ ...g, token: null, sealed: null });   // offline keeps the sealed token for the next pass
+            if (!this.gcalCals.length) this.gcalCals = (await gc.calendars().catch(() => [])).filter(c => c.account === g.account);
+            return;
+          }
+        }
+        const api = async path => {
+          const res = await fetch(`https://www.googleapis.com/calendar/v3/${path}`, { headers: { Authorization: `Bearer ${g.token}` } });
+          if (res.status === 401) lapse();
+          return res.ok ? res.json() : { status: res.status };
+        };
+        const items = [];
+        for (let page = ''; ;) {
+          const res = await api(`users/me/calendarList?maxResults=250${page && `&pageToken=${encodeURIComponent(page)}`}`);
+          if (!res.items) return;
+          items.push(...res.items);
+          if (!(page = res.nextPageToken)) break;
+        }
+        const account = items.find(c => c.primary)?.id ?? g.account, rows = await gc.upsert(account, items);
+        if (!rows || !live()) return;
+        if (account !== g.account) this._gcalSet({ ...g, account });
+        this.gcalCals = rows;
+        const seen = new Date().toISOString();
+        const pass = async (cal, full) => {
+          for (let page = ''; ;) {
+            const q = new URLSearchParams({ showDeleted: true, singleEvents: false, maxResults: 2500 });
+            if (cal.sync_token && !full) q.set('syncToken', cal.sync_token);
+            if (page) q.set('pageToken', page);
+            const res = await api(`calendars/${encodeURIComponent(cal.google_id)}/events?${q}`);
+            if (res.status === 410 && !full) return pass(cal, true);   // Google dropped the token: a full pass, and what it never sees turns cancelled
+            if (!res.items) return;
+            page = res.nextPageToken;
+            const last = page ? {} : { p_token: res.nextSyncToken, p_full: full };
+            if (!await gc.merge({ p_calendar: cal.id, p_events: res.items, p_seen: seen, ...last }) || !page) return;
+          }
+        };
+        for (const cal of rows) if (cal.shown && live()) await pass(cal, false);
+      } finally { _gcalBusy = false; }
+    },
     // Signed out, Social asks to sign in and the invite waits. A refusal (400: used, yours, a bad id; 403) drops it; anything else (offline, 401, 404, 429, 5xx) keeps it for the next boot.
     async redeemInvite() {
       this.goSurface('social');
@@ -1998,12 +2086,16 @@ document.addEventListener('alpine:init', () => {
       // and its project (never a match itself: matchQuery drops overview projects) still shows. Grouped, the
       // project chain is All's sections instead, so the walk stops at the first project.
       if (this.navSel.type === 'filter') {
-        let rows = filtering ? this.filterTasks().filter(t => this.rowPass(t)) : this.filterTasks();
+        let rows = this.filterTasks();
+        const kept = _keepRow?.at >= 0 && this.byId.get(_keepRow.id);
+        if (kept && !rows.includes(kept)) rows.splice(_keepRow.at, 0, kept);
+        if (filtering) rows = rows.filter(t => this.rowPass(t));
         if (cmp) rows = rows.slice().sort(cmp);
         const hits = [], named = queryStates(this.activeFilter()?.query);   // a query that names is:archived / is:done lists those rows itself, lens or not
         for (const t of rows) {
           // below-the-line stays flat: it's a review list, not a tree. Uncached: the row may also be an open match's context row up top
-          if (t.archived_at && !named.has('archived')) { if (this.qfArchived) done.push(Object.assign(build(t, 0), { fold })); }
+          if (t.id === _keepRow?.id) _keepRow.done ? done.push(Object.assign(build(t, 0), { fold })) : hits.push(t);
+          else if (t.archived_at && !named.has('archived')) { if (this.qfArchived) done.push(Object.assign(build(t, 0), { fold })); }
           else if (t.completed_at && !t.archived_at && !named.has('done') && !_cele.has(t.id)) { if (this.showCompleted) done.push(Object.assign(build(t, 0), { fold })); }
           else if (this.qfOpen || t.completed_at || t.archived_at) hits.push(t);   // a named done/archived row stays with Open off
         }
@@ -2056,8 +2148,10 @@ document.addEventListener('alpine:init', () => {
           // A completed/archived ROOT or PROJECT CHILD (a section's row) (+ its subtree) goes to the Done section or is
           // hidden. A completed/archived SUBTASK under an ACTIVE task stays inline (struck / dashed) so it keeps its place in the tree.
           const top = !depth || this.isOverviewProject(byId.get(t.parent_id));
-          if (t.archived_at && top && !shelvedView) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
-          if (t.completed_at && top && !_cele.has(t.id)) { if (this.showCompleted) visitDone(t, 0); else done.hidden = true; return; }   // a celebrating root holds its slot; .hidden: done tasks the lens hides (the empty copy reads "All clear")
+          const held = top && t.id === _keepRow?.id;
+          if (held && _keepRow.done) { visitDone(t, 0); return; }
+          if (t.archived_at && top && !shelvedView && !held) { if (this.qfArchived) visitDone(t, 0); return; }   // archived lens → below-the-line section
+          if (t.completed_at && top && !_cele.has(t.id) && !held) { if (this.showCompleted) visitDone(t, 0); else done.hidden = true; return; }   // a celebrating root holds its slot; .hidden: done tasks the lens hides (the empty copy reads "All clear")
           if (top && !this.qfOpen) { if (!depth && this.isOverviewProject(t)) for (const c of (byParent.get(t.id) || [])) walk(c, 1); return; }   // open lens off: a root project still yields its done/archived children
           if (seen.has(t.id)) return; seen.add(t.id);
           out.push(mkRow(t, depth));
@@ -3223,8 +3317,7 @@ document.addEventListener('alpine:init', () => {
           if (this._t !== t) return;
           for (const s of lined) _uncut(s.x);   // the card grows to its height as-if-wrapped
           const [full, mt, ch] = this.fullGrow(g);
-          this.growH = full; this.grown = true;
-          unhold?.();   // fullGrow laid the uncut card out with it off
+          this.growH = full; this.grown = true;   // anchoring stays off until the settle: back on mid-grow, it held the caret's row to where it sat before the cut (a cut description dropped the list by its height)
           const o = { duration: dur, easing: _openEase };
           // the box opens from the row's line (its first, up to the list's cut) to its lines on the flight's own ease, so what's
           // under it rides straight to its place; the rest fades in behind the opening edge
@@ -4038,20 +4131,23 @@ document.addEventListener('alpine:init', () => {
     },
     _viewFree() { return _viewHold ? _heldP ??= new Promise(res => _heldRes = res) : Promise.resolve(); },
     composerMt() { return (this.editing && !this._inBar() && (!this._inPanel() || this.$refs.composer?.parentElement.matches('.cl-side-list')) ? -this.startH : 0) + 'px'; },   // over its row; the bar's task and a panel task with no row shown have none
-    // A terminal action (done, duplicate, archive) closes the composer: its open edits land first. False = they didn't, and
-    // the composer keeps them — a dirty draft closed over would only survive as a recoverable pending draft.
-    async _saveOpenEdits(d) { return this._live(d) && (this._draftSig() === this._draftBase || await this.submitComposer() === true); },
-    // Ticking the composer's own check finishes the task — like archive, that's terminal, so the composer closes.
-    // Un-completing keeps it open, and the close is conditional on the task actually ending up done (a sweep prompt can cancel).
+    // The composer's actions (its check, Archive, Duplicate) act on the saved task and the composer stays open: unsaved
+    // edits stay a draft for its Save, and a field the action changed that the draft hadn't shows the new value.
+    _keepOpen(id) {   // at: its slot in a saved filter, whose query drops an archived or done row
+      _keepRow = { id, done: !_rowMap.has(id) && _doneMap.has(id), at: this.navSel.type === 'filter' ? this.filterTasks().findIndex(t => t.id === id) : -1 };
+      return this._savedDraft();
+    },
     async toggleEditing() {
-      const t = this.byId.get(this.editing), d = this.draft; if (!t || t.archived_at) return;   // an archived check is inert: no save either
-      if (t.completed_at) return this.toggle(t);
-      if (!await this._saveOpenEdits(d)) return;
-      if (!this._closingComposer) _viewHold = true;   // the row leaves the list once the composer has collapsed over it
-      // ceiling: the hold spans the completion write, so a slow signed-in write delays other rows' changes until it lands; start it at the landing if that shows
-      const tray = this.surface === 'plan';   // its tray row comes back done for the reward's beat, counted from the collapse's end
-      try { await this.toggle(t, tray ? { t } : null); if (this.byId.get(t.id)?.completed_at && this._live(d)) this.closeComposer(true)?.then(() => tray && _cele.has(t.id) && this._celeLinger()); }
-      finally { if (!this._closingComposer) this._releaseView(); }
+      const t = this.byId.get(this.editing); if (!t || t.archived_at) return;   // an archived check is inert
+      const was = this._keepOpen(t.id);
+      if (inNotes(t) && !inNotes(this.draft) && !await this.rowNote(t)) return;   // a note the draft made a task: the check writes the type with it, else toggle skips a note
+      await this.toggle(this.byId.get(t.id));
+      this._rebaseDraft(was);
+      const now = this.byId.get(t.id);   // a checklist with unsaved edits finishes with the task, else its Save would reopen it
+      if (now?.completed_at && now.checklist?.length && now.checklist.every(c => c.done) && this._live(was.draft) && this.draft.checklist.some(c => !c.done)) {
+        for (const c of this.draft.checklist) c.done = true;
+        this.syncChkRows();
+      }
     },
     // A task's stored fields → a fresh composer draft (shared by editTask + subtask editors).
     taskToDraft(t) {
@@ -4691,7 +4787,7 @@ document.addEventListener('alpine:init', () => {
       this.repIdx = this.repRules().indexOf(r);
       const b = ev.currentTarget.getBoundingClientRect(), x = ev.detail ? ev.clientX : b.left;   // at the pointer
       const y = b.bottom + 184 <= innerHeight ? `top:${Math.round(b.bottom + 4)}px` : `top:auto; bottom:${Math.round(innerHeight - b.top + 4)}px`;   // under the control, above it near the window's foot: never over the value clicked
-      this.pzpop = { style: this.popDock ? this._calHeight() : `left:${Math.round(popLeft(x, 200))}px; ${y};` };
+      this.pzpop = { style: this.popDock ? this._dockHeight() : `left:${Math.round(popLeft(x, 200))}px; ${y};` };
     },
     // For a week / two weeks / a month: back on its first date on or after that day
     pausePicks() {
@@ -4834,12 +4930,12 @@ document.addEventListener('alpine:init', () => {
         wnd: drag ? ci >= Math.min(a, hh) && ci < Math.max(a, hh) : !!f && !!dl && c.iso >= f && c.iso < dl,
         gz: c.iso === this.draft.on && this.repRules().some(r => r.paused && r.gen_due) };
     },
-    _calHeight() { return `height:${document.querySelector('body > .pop.cal').offsetHeight}px`; },   // a docked pop that replaces the date pop keeps its height
+    _dockHeight() { return `height:${document.querySelector('body > .pop.dock:not(.tpop, .pz-pop)').offsetHeight}px`; },   // a docked pop standing in for the date or reminders pop keeps its height
     // --- time popover: opened only by a repeat statement's [at …] chip (index.html) — fixed to the viewport, not absolute inside the teleported `.pop` ---
     toggleTimePop(ev) {
       if (this.tpop) { this.tpop = false; return; }
       const b = ev.currentTarget.getBoundingClientRect();   // BOTTOM-anchored (it sits above its trigger) — the only one
-      this.tpopStyle = this.popDock ? this._calHeight() : `left:${Math.round(popLeft(b.left, 218))}px; bottom:${Math.round(innerHeight - b.top + 6)}px;`;
+      this.tpopStyle = this.popDock ? this._dockHeight() : `left:${Math.round(popLeft(b.left, 218))}px; bottom:${Math.round(innerHeight - b.top + 6)}px;`;
       this.tpop = true;
       this.$nextTick(() => this.tpop && !this.popDock && this.$refs.tpopIn?.focus());   // docked, it stands in for the keyboard, as the date pop
     },
@@ -4921,7 +5017,7 @@ document.addEventListener('alpine:init', () => {
       const ev = key === 'eventEdit';
       const sugs = BLOCK_PRESETS.map((p, i) => html`<button type="button" class="pop-item sug" style="--sug: ${p.color}" @click="clBlockPreset(${i})"><svg class="ico"><use href="#i-${p.icon}"/></svg><span>${p.title}</span><span class="rt">${p.hint}</span></button>`).join('');
       return `${ev ? '' : `<template x-if="!blockEdit.id"><div class="cal-quick">${sugs}</div></template>`}<template x-if="!evMonth"><div class="ev-days flex items-center"><div class="tpop"><div class="thg"><template x-for="d in evDays(${key}, ${ev})" :key="d.iso"><button type="button" class="th" :class="{ on: d.on }" :data-iso="d.iso" :aria-label="d.label" @click="evPickDay(${key}, d.iso, ${ev})"><span x-text="d.wd"></span><em x-text="d.d"></em></button></template></div></div><button type="button" class="icon-btn sm" aria-label="Pick a date" @click="evOpenMonth(${key}, ${ev})"><svg class="ico"><use href="#i-cal"/></svg></button></div></template>
-        <template x-if="evMonth"><div class="ev-month"><div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
+        <template x-if="evMonth"><div class="ev-month">${CAL_HEAD}
           <div class="cal-grid"><template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><span class="cal-dow" x-text="w"></span></template><template x-for="c in evMonthCells(${key}, ${ev})" :key="c.iso"><button type="button" class="cal-day" :class="c.cls" :data-iso="c.iso" :aria-label="c.label" @click="evPickDay(${key}, c.iso, ${ev})"><span x-text="c.d"></span></button></template></div></div></template>
         <template x-if="!${key}.all_day">${this.evTimesHtml(key)}</template>
         <button type="button" class="pop-item ev-allday" :class="{ on: ${key}.all_day }" :aria-pressed="${key}.all_day" @click="${key}.all_day = !${key}.all_day"><svg class="ico"><use href="#i-sun"/></svg><span>All day</span></button>`;
@@ -4988,7 +5084,7 @@ document.addEventListener('alpine:init', () => {
       const ev = key === 'eventEdit', del = ev ? 'clDeleteEvent' : 'clDeleteBlock', save = ev ? 'clSaveEvent' : 'clSaveBlock';
       return `<div class="dialog-actions cl-card-foot flex items-center gap-8"><template x-if="!${key}.id"><div class="seg cl-kind"><button type="button" :class="{ on: ${ev} }" :aria-pressed="${ev}" @click="clSetKind('event')">Event</button><button type="button" :class="{ on: ${!ev} }" :aria-pressed="${!ev}" @click="clSetKind('block')">Block</button></div></template>
         <template x-if="${ev} && eventEdit.id && eventEdit.day >= _nowDay"><div class="cl-going flex items-center gap-8"><span>Going?</span><div class="seg"><button type="button" :class="{ on: eventEdit.going === true }" :aria-pressed="eventEdit.going === true" @click="clSetGoing(true)">Going</button><button type="button" :class="{ on: eventEdit.going === false }" :aria-pressed="eventEdit.going === false" @click="clSetGoing(false)">Not going</button></div></div></template>
-        <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id && !${key}.pc" @click="${del}()" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
+        <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id && !${key}.pc" @click="${del}($el)" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
         <button type="button" class="primary cl-go" :style="${key}.color ? 'background: var(--mark)' : ''" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
     },
     calCells() {
@@ -5422,7 +5518,15 @@ document.addEventListener('alpine:init', () => {
     _setCaret(el, off) { if (off != null) this._caret(...this._pointAt(el, off)); },
     linkOpen() { this.pop = null; this.linkUrl.startsWith('adherod://task/') ? this.openTaskLink(this.linkUrl) : window.open(this.linkUrl, '_blank', 'noopener'); },
     // The address names only the task, never whose it is: whoever can see it opens it.
-    openTaskLink(url) { const id = url.slice('adherod://task/'.length); this.byId.has(id) ? this.openTaskById(id) : this.toast("Can't open this task"); },
+    openTaskLink(url) {
+      const id = url.slice('adherod://task/'.length), t = this.byId.get(id), sc = this._listScroller();
+      if (!t) return this.toast("Can't open this task");
+      // a row away from view: the list glides to it, then the composer opens there; opened at once, _ensureRow jumped the list
+      if (this.surface !== 'lists' || this._inPanel() || this.isOverviewProject(t) || this.rowIndexOf(id) < 0 || !this._rowAway(id)) return this.openTaskById(id);
+      this._revealRow(id);
+      const open = () => motion.running(sc) ? requestAnimationFrame(open) : this.openTaskById(id);
+      requestAnimationFrame(open);
+    },
     taskLink(t) { return 'adherod://task/' + t.id; },
     linkCopy() { this.pop = null; return this._copyText(this.linkUrl, 'Link copied'); },
     // Edit: the caret goes where the link was pressed, which shows its markers.
@@ -5507,25 +5611,26 @@ document.addEventListener('alpine:init', () => {
     },
     // A soft keyboard's keys are 229 keydowns (dropped at the document), so the space arrives only as inserted text: chip the word
     // it ended as the keydown does, the chip owning no space. A hardware space the keydown already handled (_spaceKeyed) is skipped.
+    // A word that stays text is never touched: a script edit of the field restarts a phone's keyboard, dropping the keys after it.
     pillAfterSpace() {
       if (this._spaceKeyed) return void (this._spaceKeyed = false);
       const skip = this._noPillOnce; this._noPillOnce = false;
       const sel = getSelection(), node = sel.anchorNode, off = sel.anchorOffset;
       if (!sel.isCollapsed || node?.nodeType !== 3 || !/\s/.test(node.data[off - 1] ?? '')) return;
-      if (!skip) {
-        node.deleteData(off - 1, 1);
-        this._caret(node, off - 1);
-        if (this.pillifyTrailing()) return;
-        node.insertData(off - 1, ' ');
-        this._caret(node, off);
-      }
+      const pilled = !skip && this.pillifyTrailing(off - 1);
+      if (pilled instanceof Promise) return void pilled.then(p => p && this._eatSpace());
+      if (pilled) return this._eatSpace();
       this._wordPicker();
+    },
+    _eatSpace() {   // the chip just made takes the space typed after its word: the caret sits at the head of the text after it
+      const sel = getSelection(), node = sel.anchorNode;
+      if (node?.nodeType === 3 && sel.anchorOffset === 0 && /^\s/.test(node.data)) node.deleteData(0, 1);
     },
     // Pill the token ENDING AT THE CARET (not the node's end) — so editing/re-typing a word mid-title
     // re-recognizes just like typing at the end. `off` is the caret offset; text after it is preserved.
-    pillifyTrailing() {
+    pillifyTrailing(end) {   // end: where the word ends, the caret by default
       const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return false;
-      const node = sel.anchorNode, off = sel.anchorOffset;
+      const node = sel.anchorNode, off = end ?? sel.anchorOffset;
       if (!node || node.nodeType !== 3) return false;
       // The caret is the authority on which editor is live. Aiming at a stale target (a subtask row that lost
       // focus without the title's @focus firing to reset it) must not bail silently: re-point at the title, not drop the keystroke.
@@ -5550,6 +5655,7 @@ document.addEventListener('alpine:init', () => {
       // the node/caret may have shifted while awaiting the store — only pill if the token text is still there
       if (node.parentNode !== this._nlpEl() || node.textContent.slice(tok.start, end) !== token) return;
       this.insertPill(node, tok.start, 'area', id, token, end);
+      return true;
     },
     // Space mints per word, so a rule's head pills before the rest arrives: "sunday" as a date, "every month" as a bare rule.
     // When the chip just before the caret, its words and the prose around it read as ONE rule, that rule takes them all.
@@ -5879,7 +5985,9 @@ document.addEventListener('alpine:init', () => {
           // the ON register lands as a date-item, never as recur_from; a date the draft didn't change keeps one moved elsewhere. fail: null — the failure branch says it, once
           const added = draft.subs.some(s => s.add && !this.byId.has(s.id)), subbed = saved && await this._saveSubs(editId, draft, saveBase, j, drops);
           const when = x => [x.on, x.dueTime, !x.recurrence].join('|'), placed = subbed && (when(draft) === when(saveBase) || await this._saveSched(editId, draft, null, j, null) !== false);
-          const kept = subbed && await this._saveReminders(editId, draft, saveBase, j, drops) && placed;   // a lost date is a failed save: its draft comes back
+          let unarc;   // the Unarchive the draft holds joins this save's entry, its passed-dates card with it
+          const kept = subbed && await this._saveReminders(editId, draft, saveBase, j, drops) && placed   // a lost date is a failed save: its draft comes back
+            && (!draft.unarchive || await this.archive(editId, false, (ok, actions) => { unarc = actions; return ok; }, j) !== false);
           // landed: this draft is the stored task now, but for a date that didn't land — the base a later save of it diffs against, so an edit undone is written back
           const nextBase = landed ? { ...JSON.parse(JSON.stringify(draft)), ...!placed && { on: saveBase.on, dueTime: saveBase.dueTime, recurrence: saveBase.recurrence }, reminders: saveBase.reminders,
             subs: subbed ? draft.subs.map(s => ({ id: s.id, done: s.done })) : saveBase.subs, subMoves: {} } : saveBase;
@@ -5887,7 +5995,7 @@ document.addEventListener('alpine:init', () => {
           if (kept) for (const s of draft.subs) if (s.links && this.byId.has(s.id)) await this._applyDraftLinks(s.id, { content: this.byId.get(s.id).content, ...s.links }, j);
           // a new subtask: an add's Bin row, so a ⌘Z puts it in the Bin (a deleted one has its own, _saveSubs)
           // kept with no journal ops: nothing the task row changed (signed in, an empty write stamps nothing), still said. A move re-labels this card below
-          const saveCard = j.length ? this._pushOps(label, 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added }) : kept ? this.notify('Saved task') : null;
+          const saveCard = j.length ? this._pushOps(unarc && j.length === 1 ? j[0][0] : label, 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added, actions: unarc?.() }) : kept ? this.notify('Saved task') : null;
           for (const drop of drops) drop();
           for (const start of starts) start();
           save.base = nextBase;
@@ -6329,6 +6437,7 @@ document.addEventListener('alpine:init', () => {
         else if (saved !== 'pre') this._pushDraftBin(key);
         // 'pre': save in progress — don't consume journal entry; caller calls _clearPending on confirmed success
       }
+      if (_keepRow) { _keepRow = null; this._rowV++; }   // the held row goes where it belongs (a closing composer's view hold keeps it through the collapse)
       this._closingComposer = true;   // stop persistDraft re-writing it (the async grow-close; an open re-arms it) — and a 2nd end is a no-op
     },
     // Called from startAdd/editTask AFTER the pristine draft is built: record the baseline, then restore a
@@ -7041,7 +7150,7 @@ document.addEventListener('alpine:init', () => {
         if (changed.includes('position') && !(flat && _rowMap.has(t.parent_id) && sort.add(t.parent_id))) return false;
         if (folds && (_visRoots.has(t.id) || this.byId.get(t.parent_id)?.overview)) {   // a root or a project's child (walk's `top`): only an open one leaving for a hidden Done list
           if (!this._dropsRoot(t.id, at(t, 'archived_at'), at(t, 'completed_at'))) return false;
-          if (!_cele.has(t.id)) drop.add(t.id);   // a celebrating root stays, patched done, until _celebrate ends
+          if (!_cele.has(t.id) && t.id !== _keepRow?.id) drop.add(t.id);   // a celebrating root stays, patched done, until _celebrate ends; the composer's row until it ends
         } else if (counts && _secMemo.some(s => 'pct' in s)) return false;
         for (let a = this.byId.get(t.parent_id), n = 0; a && n < 200; a = this.byId.get(a.parent_id), n++) if (at(a, 'completed_at') && !at(t, 'completed_at')) return false;
         edits.push([t, row, changed, folds, counts]);
@@ -8405,15 +8514,11 @@ document.addEventListener('alpine:init', () => {
       }
       return ok;
     },
-    // Overflow menu: duplicate the edited task, open edits saved first, from the SAVED row (byId) —
-    // fresh checklist ids, drop identity/status/subtree. Routed through perform() so ⌘Z removes the copy.
-    async duplicateEditing() {
-      const id = this.editing, d = this.draft; if (!this.byId.get(id) || !await this._saveOpenEdits(d)) return;
-      if (this._live(d)) this.closeComposer(true);   // a clean draft is still open: close first (saved=true → don't keep a draft)
-      await this.duplicate(id);
-    },
-    duplicate(id) {
-      const src = this.byId.get(id), f = { checklist: (src.checklist || []).map(c => ({ ...c, id: crypto.randomUUID() })) };   // fresh item ids; identity/status/subtree deliberately absent from the whitelist
+    // Duplicate: fresh checklist ids, no identity, status or subtree, through perform() so ⌘Z removes the copy. From the
+    // composer the copy is the task as shown, unsaved edits included, and the composer stays on the original.
+    duplicateEditing() { if (this.byId.get(this.editing)) return this.duplicate(this.editing, this.draftFields()); },
+    duplicate(id, shown) {
+      const src = { ...this.byId.get(id), ...shown }, f = { checklist: (src.checklist || []).map(c => ({ ...c, id: crypto.randomUUID() })) };   // fresh item ids; identity/status/subtree deliberately absent from the whitelist
       for (const k of ['content', 'notes', 'importance', 'recur_from', 'available_from', 'deadline_at', 'est_minutes', 'parent_id',
         'area_ids', 'goal_ids', 'color', 'favorite', 'place', 'location', 'recurrence', 'milestone', 'checklist_plain', 'task_type']) f[k] = src[k];
       return this.perform('Duplicated task', { target: 'task', kind: 'create', fields: f });
@@ -8715,12 +8820,14 @@ document.addEventListener('alpine:init', () => {
     async toggle(t, row = null) {
       if (inNotes(t) && !t.completed_at) return;   // a note never completes (x, the row, the composer); one that came in done reopens
       if (t.archived_at) return;   // an archived check is inert
-      if (!t.completed_at && await this.confirmSweep(t.id)) return;
       const finish = !t.completed_at, id = t.id;
-      const start = finish && row && this.celebrations !== 'off' ? this._celebrate(row, true) : null;   // before the write: its render holds the row and any completed ancestors
-      await this.applyComplete(id, finish);
-      start?.();
-      if (finish && this.celebrations === 'full' && this.byId.get(id)?.completed_at) this._dayClearFx(id);
+      const complete = async () => {
+        const start = finish && row && this.celebrations !== 'off' ? this._celebrate(row, true) : null;   // before the write: its render holds the row and any completed ancestors
+        await this.applyComplete(id, finish);
+        start?.();
+        if (finish && this.celebrations === 'full' && this.byId.get(id)?.completed_at) this._dayClearFx(id);
+      };
+      if (!(finish && await this.confirmSweep(id, complete))) await complete();   // Complete all rewards as the tick would have
     },
     // The completion reward (docs/ui/task-list.md §Completion reward): the tick pops in the row's own slot, the row lingers
     // done, then a leaving one exits; full adds a warm ring and, on an effort-weighted roll, embers. Imperative row
@@ -8892,19 +8999,19 @@ document.addEventListener('alpine:init', () => {
         setTimeout(() => el.remove(), motion.t(200));
       }, motion.t(2000));
     },
-    // Overflow menu: archive / unarchive the editing task (can't be completed anymore). Archive is a
-    // terminal action — open edits land first, then the composer closes so it's visibly gone from the list; the undo
-    // banner ("Archived task" + Undo) is the single truthful confirmation, so no extra toast.
-    async toggleArchive() {
-      const id = this.editing, t = this.byId.get(id), d = this.draft; if (!t || !await this._saveOpenEdits(d)) return;
-      await this.archive(id, !t.archived_at, ok => { if (ok) { if (this._live(d)) this.closeComposer(true); }
-        // ceiling: a save closes the composer, so a failed archive after one closes then reopens it — keep it open once a save can stay open
-        else if (!this.composer.open || this._closingComposer) this.editTask(this.byId.get(id)); });   // the save closed it: the failure reopens it, edits saved — not over another composer
+    // The composer's Archive lands now, its undo card the one confirmation. Unarchive is a draft edit: the Save writes it with
+    // the other edits, one ⌘Z.
+    toggleArchive() {
+      const t = this.byId.get(this.editing), d = this.draft; if (!t) return;
+      if (!t.archived_at) { this._keepOpen(t.id); return this.archive(t.id, true); }
+      if (d.unarchive) delete d.unarchive;   // absent, the draft equals its base again
+      else d.unarchive = true;
     },
+    archivedNow() { return !!this.editingTask()?.archived_at && !this.draft.unarchive; },
     // Archive cascades as completion does: the open tasks inside go with it, after the same ask; done ones stay done. One store
     // write stamps them all with one instant, and that instant is what Unarchive reads back: it reopens only the rows under it
     // carrying it, never one archived on its own (another instant). One ⌘Z step either way.
-    archive(roots, val, then = () => {}) {   // roots: an id, or a selection's roots (one entry, one ⌘Z)
+    archive(roots, val, then = () => {}, ops) {   // roots: an id, or a selection's roots (one entry, one ⌘Z) · ops: a save's journal steps it joins
       const ts = [roots].flat().map(id => this.byId.get(id)).filter(t => t && !t.archived_at === val); if (!ts.length) return;
       const kids = ts.flatMap(t => descendantIds(this.tasks, t.id, this._taskIdx().kids).slice(1).map(x => this.byId.get(x)).filter(k => cascades(t, k, val)));
       const ids = [...ts.map(t => t.id), ...kids.map(k => k.id)], what = ts.length > 1 ? this._nTasks(ts.length) : this.isOverviewProject(ts[0]) ? 'project' : 'task';
@@ -8916,7 +9023,7 @@ document.addEventListener('alpine:init', () => {
       const dates = n => `${n} passed date${n === 1 ? '' : 's'}`;
       const clear = () => { const ops = passed().map(si => ({ kind: 'remove', target: 'scheduleItem', id: si.id })); if (ops.length) this.perform(`Cleared ${dates(ops.length)}`, { kind: 'composite', target: 'scheduleItem', ops }); };
       const actions = () => { const n = val ? 0 : passed().length; return n ? [{ label: `Clear ${dates(n)}`, fn: clear }] : []; };
-      const run = async () => then(await this._journalRowChange((val ? 'Archived ' : 'Unarchived ') + what, 'task', ids, set, { only: () => wrote, actions }));
+      const run = async () => then(await this._journalRowChange((val ? 'Archived ' : 'Unarchived ') + what, 'task', ids, set, { only: () => wrote, actions, ops }), actions);
       if (!val || !kids.length) return run();
       this.askConfirm({ message: 'Archiving this will also archive:', bodyHtml: this._sweepHtml(kids), confirmLabel: 'Archive all', onConfirm: run });
     },
@@ -9026,7 +9133,10 @@ document.addEventListener('alpine:init', () => {
     // --- Calendar (continuous Month · page-per-week Week/Day — iOS/macOS-Calendar-style) ---
     listView() { return this.surface === 'lists'; },   // task-list views (all/backlog/project/area/filter) live on the Lists surface
     // Open = not completed/archived/a project/a parent. Callers append their own clauses (block-fill adds unscheduled/overdue).
-    _openLeaf(t, held = false) { return (!t.completed_at || held && _cele.has(t.id)) && !t.archived_at && placeable(t) && !this.hasChildren(t.id); },
+    _openLeaf(t, held = false) {   // held: a celebrating row, or the open composer's (done or archived by its actions), keeps its panel slot
+      const kept = held && t.id === _keepRow?.id;
+      return (!t.completed_at || kept || held && _cele.has(t.id)) && (!t.archived_at || kept) && placeable(t) && !this.hasChildren(t.id);
+    },
     async loadEvents() { const ev = await this.store.events.list(); _calDataV++; this.events = ev; },
     // must bust _calDataV too, else a block added between two event loads never reaches the memo
     async loadBlocks() { const bl = await this.store.blocks.list(); _calDataV++; this.blocks = bl; },
@@ -9998,6 +10108,14 @@ document.addEventListener('alpine:init', () => {
       // earlier keeps its title line; two starting within a line of each other sit side by side
       const len = r => Math.max(r.mins, 24 / k), hit = (a, b) => a.r.min < b.r.min + len(b.r) && a.r.min + len(a.r) > b.r.min;   // a short tile still draws 24px
       const at = timed.filter(r => r.mins).map(r => ({ r, x0: 0, x1: 1, z: 0 }));
+      // his 11-15 21:58 "if the event/block isn't a child of another or in another block or something, it should go back to the
+      // leftmost baseline": a tile clears the block lane (--L) only where a block sits beside it, else it starts at the hours'
+      // edge (--g); a run of overlapping tiles shares one edge so the cascade's fractions keep one width
+      const beside = r => blocks.some(b => b._sm < r.min + len(r) && b._em > r.min), runs = [];
+      let runEnd = -1;
+      for (const r of timed) { if (r.min >= runEnd) runs.push([]); runs.at(-1).push(r); runEnd = Math.max(runEnd, r.min + len(r)); }
+      const lane = new Map(runs.flatMap(run => { const L = run.some(beside); return run.map(r => [r, L]); }));
+      const edge = r => lane.get(r) ? 'var(--L)' : 'var(--g)';
       at.forEach((a, i) => {
         const prev = at.slice(0, i).filter(b => hit(a, b)), near = prev.findLast(b => (a.r.min - b.r.min) * k < 16 && b.x1 - b.x0 >= .8);   // halves of 40% at least: a run of short tiles 15px apart cascades, never splits to slivers
         if (near) { const mid = (near.x0 + near.x1) / 2; Object.assign(a, { x0: mid, x1: near.x1, z: near.z, ring: near.ring }); near.x1 = mid; }
@@ -10005,23 +10123,25 @@ document.addEventListener('alpine:init', () => {
       });
       // the one-tap answers need a tile 40px tall and 200px wide whose answer line no later tile covers; else it asks as the
       // week's tile does ("Going?", answered in the editor)
-      const tw = grid.clientWidth - parseFloat(getComputedStyle(el).getPropertyValue('--L'));
-      const room = a => a.r.mins * k >= 40 && tw * (a.x1 - a.x0) >= 200 && !at.some(b => b.z > a.z && b.r.min >= a.r.min && (b.r.min - a.r.min) * k < 40 && b.x0 < a.x0 + 200 / tw);
+      const cs = getComputedStyle(el), tws = r => grid.clientWidth - parseFloat(cs.getPropertyValue(lane.get(r) ? '--L' : '--g'));
+      const over = a => at.filter(b => b.z > a.z && b.r.min >= a.r.min && (b.r.min - a.r.min) * k < 40);   // later tiles drawn over a's time line
+      const room = a => { const tw = tws(a.r); return a.r.mins * k >= 40 && tw * (a.x1 - a.x0) >= 200 && !over(a).some(b => b.x0 < a.x0 + 200 / tw); };
       const wide = el.closest('.cl-agwrap').clientWidth >= 720;   // the 720px container query's line: a desk page has room for where and what
       let evs, locs;   // by id, built once per render when a tall tile needs them
       at.forEach(({ r, x0, x1, z, ring }, i) => {
-        const it = r.it, ht = Math.max(r.mins * k, 24), ev = wide && ht >= 58 && it.kind === 'event' && (evs ||= new Map(this.events.map(e => [e.id, e]))).get(it.id);
+        const it = r.it, tw = tws(r), L = edge(r), ht = Math.max(r.mins * k, 24), ev = wide && ht >= 58 && it.kind === 'event' && (evs ||= new Map(this.events.map(e => [e.id, e]))).get(it.id);
         const more = ev ? [(ev.location?.ids || []).map(id => (locs ||= new Map(this.locations.map(x => [x.id, x]))).get(id)?.name).filter(Boolean).join(', '), ev.notes].filter(Boolean) : [];
         const ask = this.clAsks(it), chips = room(at[i]) ? this._clAskHtml(it, ask, true) : '';
         const cov = ht < 40 && at.some(b => b.z > z && hit(at[i], b));   // the week's .cl-cov: a later tile over a one-line tile's far end, so its time rides beside the title
+        const cut = ht >= 40 && ask && !chips ? Math.min(...over(at[i]).map(b => b.x0).filter(x => x > x0 && x < x1)) : Infinity;   // where a later tile covers this one's time line: Going? shows whole before it or not at all
         const imp = it.importance === 'must' || it.importance === 'focus' ? html`<svg class="ico cl-event-imp" style="color:${this.pc(it.importance)}"><use href="#i-prio-fill"/></svg>` : '';
-        parts.push({ id: r.key, html: html`<div class="cl-event ${it.kind} tier-${ht >= 40 ? 'full' : 'compact'}${ring ? ' cl-casc' : ''}${cov ? ' cl-cov' : ''}${r.min + r.mins <= now ? ' past' : ''}${this.clTaskState(it)}" data-id="${r.key}" role="button" tabindex="0" draggable="true"`
-          + html` style="top:${P(r.min)}%;height:max(24px, ${P(r.min + r.mins) - P(r.min)}%);left:calc(var(--L) + (100% - var(--L)) * ${x0} + 2px);width:calc((100% - var(--L)) * ${x1 - x0} - 4px);z-index:${2 + z};--i:${i};--cc:${this.clItemColor(it)}">`
+        parts.push({ id: r.key, html: html`<div class="cl-event ${it.kind} tier-${ht >= 40 ? 'full' : 'compact'}${ring ? ' cl-casc' : ''}${cov ? ' cl-cov' : ''}${cut < 1 ? ' cl-cut' : ''}${r.min + r.mins <= now ? ' past' : ''}${this.clTaskState(it)}" data-id="${r.key}" role="button" tabindex="0" draggable="true"`
+          + html` style="${cut < 1 ? `--cut:${tw * (cut - x0)}px;` : ''}top:${P(r.min)}%;height:max(24px, ${P(r.min + r.mins) - P(r.min)}%);left:calc(${L} + (100% - ${L}) * ${x0} + 2px);width:calc((100% - ${L}) * ${x1 - x0} - 4px);z-index:${2 + z};--i:${i};--cc:${this.clItemColor(it)}">`
           + (it.kind === 'task-block' ? this.clCheckHtml(it, 'cl-evt-check') : '')
           + html`<span class="cl-event-b"><span class="cl-event-t"${raw(chips ? ' tabindex="-1"' : '')}>${raw(imp)}<span>${it.title}</span></span><span class="cl-event-tm"><span>${this.clTimeLabel(it)}</span>${raw(chips || (ask ? '<b class="cl-ask">Going?</b>' : ''))}</span>`
           + more.map(t => html`<span class="cl-event-tm cl-event-x">${t}</span>`).join('') + '</span></div>' });
       });
-      for (const r of timed.filter(r => !r.mins)) parts.push({ id: r.key, html: this._clAgRowHtml(r, 0, now, `top:calc(${P(r.min)}% - 12px);`) });
+      for (const r of timed.filter(r => !r.mins)) parts.push({ id: r.key, html: this._clAgRowHtml(r, 0, now, `top:calc(${P(r.min)}% - 12px);--e:${edge(r)};`) });
       if (col.today) parts.push({ id: 'now', html: html`<div class="cl-dnow" data-id="now" style="top:${P(now)}%"><span>${this._clHMA(now)}</span></div>` });
       this.renderRows(grid, parts);
     },
@@ -10360,7 +10480,7 @@ document.addEventListener('alpine:init', () => {
       this.eventEdit = null;
     },
     clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clEditPc(it); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
-    clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: saved, done, closed
+    clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: done, the composer stays open
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
     // ONE state class for every calendar mark of a task (and a Not going event) — chip, timeline event, agenda row, chapter band,
     // due/deadline mark, so a finished deadline never reads like a live one.
@@ -10377,11 +10497,11 @@ document.addEventListener('alpine:init', () => {
     compCheckHtml(tack) { const t = this.editingTask(), imp = this.draft.importance; return checkHtml({ ...(t ? this._chkArgs(t, imp) : { t: {}, pc: this.pc(imp) }), note: tack }, 'span'); },
     typeFront(tack) { return tack === inNotes(this.draft); },
     typeLabel(tack) { return !this.typeFront(tack) ? (tack ? 'Make it a note' : 'Make it a task') : tack ? 'Note' : !this.editing ? 'Task' : this.editingTask()?.content; },   // editing: a checkbox named by its task, as the row's
-    // The check = complete (toggleEditing saves the draft first); the tack swaps the draft's type. Note → Task restores the
+    // The check = complete (the saved task; the draft waits for Save); the tack swaps the draft's type. Note → Task restores the
     // type it had (steps), and deleting the memo keeps a round trip's draft equal to its base (no phantom unsaved edit).
     typeTap(tack) {
       const d = this.draft;
-      if (this.typeFront(tack)) return this._pillThen(() => this.toggleEditing());   // the done check saves the draft first, so it pills like Enter
+      if (this.typeFront(tack)) return this._pillThen(() => this.toggleEditing());   // a trailing token pills like Enter
       if (tack) { d.typeBeforeNote = d.task_type; d.task_type = 'note'; }
       else { d.task_type = d.typeBeforeNote ?? null; delete d.typeBeforeNote; }
     },
@@ -10517,7 +10637,7 @@ document.addEventListener('alpine:init', () => {
         <span x-text="(${key}.interval || 1) > 1 ? 'weeks,' : 'week,'"></span>
         <span class="st inline-flex items-center" :class="{ g: !${key}.ends?.count }"><button type="button" aria-label="Fewer times" @click="clRepStep(${key}, 'count', -1)">−</button><b x-text="${key}.ends?.count || '∞'"></b><button type="button" aria-label="More times" @click="clRepStep(${key}, 'count', 1)">+</button></span>
         <span class="nowrap">times, ending <button type="button" class="c inline-flex items-center" :class="{ g: !${key}.ends?.date, on: repCal }" @click="repCal = !repCal; repCal && _calTo(${key}.ends?.date || ${key}.date)" x-text="${key}.ends?.date ? fmt(${key}.ends.date) : 'never'"></button></span></p></div>
-        <template x-if="repCal"><div class="ev-month"><div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
+        <template x-if="repCal"><div class="ev-month">${raw(CAL_HEAD)}
           <div class="cal-grid"><template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><span class="cal-dow" x-text="w"></span></template><template x-for="c in evMonthCells({ date: ${key}.ends?.date || '' })" :key="c.iso"><button type="button" class="cal-day" :class="c.cls" :data-iso="c.iso" :aria-label="c.label" :disabled="c.iso < ${key}.date" @click="${key}.ends = c.cls.sel ? null : { date: c.iso }; repCal = false"><span x-text="c.d"></span></button></template></div></div></template>`;   // a picked end day again clears it back to never
     },
     // a weekly series starts on its first chosen weekday on/after date, so expansion is correct
@@ -10952,7 +11072,37 @@ document.addEventListener('alpine:init', () => {
       }
       this.blockEdit = null;
     },
-    async clDeleteBlock() { const b = this.blocks.find(x => x.id === this.blockEdit?.id); if (!b || await this.perform('Deleted block', { target: 'block', kind: 'delete', id: b.id })) this.blockEdit = null; },   // a failed delete keeps the editor and its edits
+    async clDeleteBlock(bin) {
+      const b = this.blocks.find(x => x.id === this.blockEdit?.id);
+      if (bin && b?.recurrence?.freq) return this.togglePop('clDel', bin);   // a repeating block's bin asks which days go
+      if (!b || await this.perform('Deleted block', { target: 'block', kind: 'delete', id: b.id })) this.blockEdit = null;   // a failed delete keeps the editor and its edits
+    },
+    // The bin's ask: This and later, Only this day, Some days, All. The days leave the repeat (its end, its skipped days)
+    // and the block stays; only All, or a pick that leaves it no day, deletes it.
+    clDelDays(from, to) { const b = this.blocks.find(x => x.id === this.blockEdit?.id); return b && from ? occurrencesInRange(b.recurrence, b.starts_at, from, to).map(s => s.slice(0, 10)) : []; },
+    clDelDay() { return this.blockEdit?.viewIso || this.clDelDays(isoDate(new Date()), '9999-12-31')[0] || null; },   // "this day": the one opened, else the next
+    clDelCells(from, to) {   // Some days' month: the block's days dotted, the picked run tinted between its ringed ends
+      const cells = this.evMonthCells({ date: '' }), on = new Set(this.clDelDays(cells[0].iso, cells[41].iso));
+      return cells.map(c => ({ ...c, cls: { out: c.cls.out, today: c.cls.today, occ: on.has(c.iso), sel: c.iso === from || c.iso === to, wnd: c.iso >= from && c.iso <= to } }));
+    },
+    async clDeleteDays(from, to) {   // to null: this day and every later one
+      const b = this.blocks.find(x => x.id === this.blockEdit?.id); if (!b) return;
+      const days = to ? this.clDelDays(from, to) : [], r = b.recurrence;
+      const rule = to ? { ...r, exdates: [...new Set([...r.exdates ?? [], ...days])] } : { ...r, ends: { date: addMinutes(from, -1440, true) } };
+      this.pop = null;
+      if (!occurrencesInRange(rule, b.starts_at, b.starts_at, '9999-12-31').length) return this.clDeleteBlock();
+      const label = days.length === 1 ? 'Deleted day' : 'Deleted days';
+      if (await this._journalRowChange(label, 'block', b.id, () => this.store.blocks.update(b.id, { recurrence: rule }).catch(() => null))) this.blockEdit = null;
+    },
+    clDelHtml() {
+      return html`<button type="button" class="pop-item" :disabled="!day" @click="clDeleteDays(day)"><span>This and later</span><span class="rt" x-text="day ? fmt(day) : ''"></span></button>
+        <button type="button" class="pop-item" :disabled="!day" @click="clDeleteDays(day, day)"><span>Only this day</span></button>
+        <button type="button" class="pop-item" :class="{ on: some }" :aria-expanded="some" @click="some = !some; from = to = day; some && _calTo(day || blockEdit.date)"><span>Some days</span></button>
+        <template x-if="some"><div class="ev-month">${raw(CAL_HEAD)}
+          <div class="cal-grid"><template x-for="(w, i) in ['S','M','T','W','T','F','S']" :key="i"><span class="cal-dow" x-text="w"></span></template><template x-for="c in clDelCells(from, to)" :key="c.iso"><button type="button" class="cal-day" :class="c.cls" :data-iso="c.iso" :aria-label="c.label" @click="from && from === to ? (c.iso < from ? from = c.iso : to = c.iso) : from = to = c.iso"><span x-text="c.d"></span></button></template></div>
+          <div class="flex"><span class="spacer"></span><button type="button" class="danger" :disabled="!clDelDays(from, to).length" @click="clDeleteDays(from, to)" x-text="(n => n ? 'Delete ' + n + (n === 1 ? ' day' : ' days') : 'No days here')(clDelDays(from, to).length)"></button></div></div></template>
+        <button type="button" class="pop-item" @click="pop = null; clDeleteBlock()"><span>All</span></button>`;
+    },
     clBlockPreset(i) {
       const { hint, icon, title, ...pre } = BLOCK_PRESETS[i];
       Object.assign(this.blockEdit, pre);
@@ -10962,9 +11112,9 @@ document.addEventListener('alpine:init', () => {
       const el = document.querySelector('.block-editor .ev-title');   // a mounted editor's field shows it; one mounting later reads it
       if (el) el.innerHTML = titleLive(title);
     },
-    clAttachedTasks() {   // Before, During, After: the order they run in
+    clAttachedTasks() {   // Before, During, After: the order they run in; an archived task leaves the list
       const id = this.blockEdit?.id, roles = ['before', 'during', 'after']; if (!id) return [];
-      return this.scheduleItems.filter(si => si.block_id === id && this.byId.has(si.task_id)).map(si => ({ si, t: this.byId.get(si.task_id) })).sort((a, b) => roles.indexOf(a.si.role) - roles.indexOf(b.si.role));
+      return this.scheduleItems.filter(si => si.block_id === id).map(si => ({ si, t: this.byId.get(si.task_id) })).filter(({ t }) => t && !t.archived_at).sort((a, b) => roles.indexOf(a.si.role) - roles.indexOf(b.si.role));
     },
     clCycleRole(itemId) {   // silent: a quick repeated tap, ⌘Z still steps back
       const item = this.scheduleItems.find(x => x.id === itemId);
@@ -11037,11 +11187,11 @@ document.addEventListener('alpine:init', () => {
     clDuring(blockId) {   // a block's "during" attachments, in its order
       return this.scheduleItems.filter(s => s.block_id === blockId && s.role === 'during').sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     },
-    // Lead = first incomplete during-attachment fitting capacity (mirrors the Android blockLead pick).
+    // Lead = first open (not done, not archived) during-attachment fitting capacity (mirrors the Android blockLead pick).
     clBlockLead(blockId) {
       const cap = this.blocks.find(b => b.id === blockId)?.est_minutes ?? null;
       return this.clDuring(blockId).map(s => this.tasks.find(t => t.id === s.task_id))
-        .find(t => t && !t.completed_at && (cap == null || t.est_minutes == null || t.est_minutes <= cap)) || null;
+        .find(t => t && !t.completed_at && !t.archived_at && (cap == null || t.est_minutes == null || t.est_minutes <= cap)) || null;
     },
 
     // --- Cloud sync (Supabase adapter, opt-in via magic link). LocalStore stays the offline default. ---

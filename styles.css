@@ -8,8 +8,8 @@
   src: url("./vendor/instrument-sans-latin-italic.woff2") format("woff2");
 }
 @font-face {
-  font-family: "Nyght Serif"; font-style: normal; font-weight: 400 700; font-display: swap;   /* the Medium file answers every heading weight: no faked bold */
-  src: url("./vendor/nyght-serif-medium.woff2") format("woff2");
+  font-family: "Boris"; font-style: normal; font-weight: 400 700; font-display: swap;   /* its one weight answers every heading weight: no faked bold */
+  src: url("./vendor/boris.woff") format("woff");
 }
 /* Bottom furniture, on html so anything fixed to the viewport can reach it: --foot reserves the dot strip,
    which is the ONLY thing in the bottom band — one source, so the toast stack never guesses. */
@@ -120,9 +120,11 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
   > p:last-child { display: inline; }   /* "edited" stays on its line */
   .md-h { font-weight: 600; color: var(--ink); line-height: 1.3; }
   .md-h1 { font-size: var(--fs-17); } .md-h2 { font-size: var(--fs-16); } .md-h3 { font-size: var(--fs-15); }
-  :is(ul, ol) { padding-left: var(--sp-20); }
+  ol { padding-left: var(--sp-20); }
+  ul { padding: 0; }
+  li.dm-item { display: block; }
   li + li { margin-top: var(--sp-2); }
-  li::marker { color: var(--muted); }
+  ol li::marker { color: var(--muted); }
   strong { font-weight: 600; color: var(--ink); }
   em { font-style: italic; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-2); }
@@ -406,6 +408,8 @@ html:not(.touch) .plan-box { display: none; }
 }
 /* Importance encoded in the checkbox color, Todoist-style (--pc set per task from importance) */
 .item:has(code:hover, .md-code:hover) { -webkit-user-drag: none; }   /* code selection wins over the row's HTML drag */
+/* touch: a hairline parts each row from the one above, from its check to the row's end (Todoist's); none above a list's first row or under a head */
+:where(.touch) .rows > .item + .item::before { content: ""; position: absolute; top: 0; left: calc(var(--gut) + var(--d, 0) * 22px); right: 0; height: 1px; background: var(--hair); pointer-events: none; }
 .check {   /* shape is identity, not layout — rounding/flex stay here so every instance (html + JS builders) agrees */
   /* inline-flex: an 18px box in ANY context — a bare span parent leaves display:inline, which ignores width/height */
   position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 2.25px solid var(--pc, var(--faint)); border-radius: 50%; flex: none;
@@ -434,8 +438,8 @@ html:not(.touch) .plan-box { display: none; }
 .item.waiting .title, .item.waiting .m, .item.waiting .badge, .item.waiting .chk-list { opacity: .62; }
 .check .lock-ico { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; color: var(--pc, var(--muted)); pointer-events: none; transition: scale .16s var(--ease-out); }   /* visible: the lifted shackle rises past the viewBox */
 #i-lock .lk-shk { translate: 0 var(--lk-lift, 0px); transition: translate .18s var(--ease-out); }   /* user units: the lift scales with the glyph */
-#i-lock .lk-leg { transform-box: view-box; transform-origin: 0 9.333px; scale: 1 var(--lk-leg, 0); transition: scale .18s var(--ease-out); }   /* fills the lifted gap so the left leg stays seated: an overlap would double a translucent ink */
-@media (any-hover: hover) and (any-pointer: fine) { .check.blocked:hover:where(:not(.touch *)) { --lk-lift: -2.5px; --lk-leg: 1; --lk-op: .45; } }
+#i-lock .lk-leg { transform-box: view-box; transform-origin: 0 8px; scale: 1 var(--lk-leg, 0); transition: scale .18s var(--ease-out); }   /* fills the lifted gap so the left leg stays seated: an overlap would double a translucent ink */
+@media (any-hover: hover) and (any-pointer: fine) { .check.blocked:hover:where(:not(.touch *)) { --lk-lift: -2.667px; --lk-leg: 1; --lk-op: .45; } }
 .check.blocked:active .lock-ico { scale: .92; }
 @media (prefers-reduced-motion: reduce) { #i-lock .lk-shk { translate: none; opacity: var(--lk-op, 1); transition: opacity .18s var(--ease-out); } #i-lock .lk-leg { scale: 1 0; } .check.blocked:active .lock-ico { scale: none; } }   /* the shackle fades instead of lifting */
 /* Paused recurrence: themed border + pause icon instead of checkmark. */
@@ -573,15 +577,28 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .desc .dm-h { font-weight: 600; color: var(--ink); }
 .desc .dm-h.h1 { font-size: var(--fs-22); }
 .desc .dm-h.h2 { font-size: var(--fs-17); }
+/* A list line (ui.js listItem), as the Markdown app draws it (App.swift Bullet, docs/ui/composer.md §Bullets): a step per
+   level, the bullet half a step in, the text and its wrapped lines on the next step. Inline-block, not block: the line's
+   own newline then ends it instead of drawing an empty line under it. */
+.dm-item { --side: round(.72ex, 1px);   /* whole px, its lift too: a fractional box paints a device px taller, shorter or off the letters' middle by the line's position */
+  display: inline-block; width: 100%; vertical-align: top;
+  padding-left: calc((var(--lv) + 1) * var(--sp-24)); text-indent: calc((var(--lv) + 1) * var(--sp-24) * -1);
+  &::before { content: ''; display: inline-block; box-sizing: border-box; width: var(--side); height: var(--side); border-radius: 50%; background: currentColor;
+    vertical-align: round((1ex - var(--side)) / 2, 1px);   /* centered on the x-height */
+    margin: 0 calc(var(--sp-24) / 2 - var(--side)) 0 calc((var(--lv) + .5) * var(--sp-24)); }
+  &.lv1::before { background: none; border: max(1px, calc(var(--side) / 6)) solid; }
+  &.lv2 { --side: round(.62ex, 1px); &::before { border-radius: 0; } }
+  &:has(> .dm-lt.on)::before { content: none; }   /* the caret on its marker shows the marker instead */
+}
 /* Live preview: a token's markers show only while the caret touches it (app.js descReveal). No transition: arrows reveal
-   them 100+ times a day. A hidden bullet reads as a dot, a fence takes no line. */
+   them 100+ times a day. A fence takes no line. */
 /* Composer checklist and subtask rows and the title too, at rest and editing. */
 :is(.desc, .entry-txt, .composer-title .content) {
   .dm-tok:not(.on) > .dm-mark { font-size: 0; line-height: 0; }   /* a px line-height would hold a 0-size box open around the baseline: the line grows ~4px */
   .dm-fence { display: block; }   /* the prose's newline before it then ends at the block, not on an empty line */
   .dm-fence:not(.on) > .dm-mark { display: none; }
-  .dm-tok:not(.on) > .dm-li { font-size: inherit; line-height: inherit; color: transparent; position: relative;   /* line-height: the dot sits on the text line, not at the 0-height box's top */
-    &::before { content: "•"; position: absolute; left: .15em; color: var(--muted); } }
+  .dm-lt > .dm-li { font-size: 0; line-height: 0; }   /* its copy shows instead: a caret inside an inline-block marker can't End past it */
+  .dm-lt.on::before { content: attr(data-m); display: inline-block; width: calc((var(--lv) + 1) * var(--sp-24)); text-indent: 0; text-align: right; white-space: pre; color: var(--muted); }   /* where the bullet was: the text stays put */
   .dm-ol { color: var(--muted); }
   .dm-tok:not(.on) > .tlink { > .dm-mark { font-size: 0; line-height: 0; } &::after { content: attr(data-title); } }   /* a task link shows its title, the address stays the text */
 }
@@ -804,8 +821,8 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .peek-allday.hot .peek-ad-hint { color: var(--ink); }
 .peek-ad-chip { max-width: 120px; padding: 2px var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-12); color: var(--txt); background: color-mix(in srgb, var(--cc) 18%, transparent); }
 /* the pane's .cl-dl bands carry their own label (no room for the week view's bottom rail) */
-.peek-col .cl-dl { overflow: hidden; }
-.peek-dl-t { position: absolute; right: 3px; bottom: 2px; max-width: calc(100% - 6px); gap: 3px; font-size: var(--fs-11); font-weight: 600; color: var(--txt); }
+.peek-col .cl-dl { overflow: hidden; }   /* no z-index, as in the week grid: its fade paints under the blocks and events */
+.peek-dl-t { position: absolute; z-index: 4; right: 3px; bottom: 4px; max-width: calc(100% - 6px); gap: 3px; font-size: var(--fs-11); font-weight: 600; color: var(--txt); }
 .peek-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
 .peek-grid { display: grid; grid-template-columns: 44px 1fr; --clhh: 44px; height: calc(var(--clhh) * 24); }
 .peek-col { border-right: none; }
@@ -1518,6 +1535,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
     .ico { width: 19px; height: 19px; }
     &:hover:where(:not(.touch *)) { color: var(--accent); } }
   .del-btn:hover:where(:not(.touch *)) { color: var(--p1); }
+  .act-btn.on { color: var(--accent); }   /* the tack: a note; the box: archived */
   .more-wrap { position: relative; }
   .acts { display: contents; } .acts .ph { display: none; }   /* a phone's edit row */
   .more-btn .ico { width: 17px; height: 17px; fill: currentColor; stroke: none; }   /* solid dots — the global .ico fill:none would otherwise render them as outlines */
@@ -1538,7 +1556,6 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
     @media (hover: hover) { &:hover:where(:not(.touch *)):not(:disabled) { background: color-mix(in oklab, var(--ink) 13%, var(--accent)); } } }
   .proj-pick { height: 28px; align-items: center; font-size: var(--fs-13); font-weight: 500; color: var(--muted); &:hover:where(:not(.touch *)) { opacity: 1; color: var(--ink); } }
   :is(.del-btn, .overview-btn, .more-btn, .act-btn) { color: var(--muted); padding: var(--sp-6); &:hover:where(:not(.touch *)) { background: var(--hover); } .ico { width: 16px; height: 16px; } }
-  .act-btn.on { color: var(--accent); }   /* the tack: a note */
   .act-btn.by-go { position: absolute; right: calc(28px - var(--sp-4) + var(--sp-2)); bottom: calc(100% + var(--sp-8) * 2); }   /* a new task's, left of the go */
   :is(.proj-pick-ico, .proj-pick .pring) { width: 16px; height: 16px; }   /* the checkbox's size, on its x */
   .composer-btns { gap: var(--sp-2); } }
@@ -2091,13 +2108,15 @@ textarea.inp { resize: vertical; }
    clipped second line, so whole countdowns drop and the nearest ellipsizes last. Inline children share the number's
    baseline unasked. GOLD tops the ramp, never the accent — Today stays the warmest thing. */
 .cl-cds { height: 1em; overflow: hidden; }   /* one title line (line-height 1) */
-.cl-cd { max-width: 230px; line-height: 1; margin-left: var(--sp-16); }   /* clear of the title's hover surface (it bleeds 8px) */
+.cl-cd { max-width: 230px; line-height: 1; margin-left: var(--sp-16);   /* clear of the title's hover surface (it bleeds 8px) */
+  font-size: calc(var(--fs-11) + var(--prox) * 2px); font-weight: calc(500 + var(--prox) * 200);   /* the name's ink lives here: truncate's … draws in this box's font */
+  color: color-mix(in oklch, var(--muted), var(--warm-ink) calc(var(--prox) * 100%)); }
+.cl-cd::before { content: ''; font-size: var(--fs-34); }   /* the title's strut: puts the countdown on the title's baseline */
 .cl-cd + .cl-cd { margin-left: var(--sp-10); }
 .cl-err { --prox: 0; max-width: none; }   /* a failed Outlook calendar read, whole: its code is the clue */
 .cl-cd b { margin-right: 5px; font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums;
   font-size: calc(var(--fs-13) + var(--prox) * 6px); color: color-mix(in oklch, var(--muted), var(--gold) calc(var(--prox) * 100%)); }
-.cl-cd span { font-size: calc(var(--fs-11) + var(--prox) * 2px); font-weight: calc(500 + var(--prox) * 200); letter-spacing: 0;
-  color: color-mix(in oklch, var(--muted), var(--warm-ink) calc(var(--prox) * 100%)); }
+.cl-cd span { letter-spacing: 0; }
 @media (any-hover: hover) and (any-pointer: fine) { .cl-period-btn.pick:hover:where(:not(.touch *)) { background: var(--hover); } }
 /* week mode: the row is the target, so the whole week lights on hover and the anchor week stays selected */
 .cal-day.hot { background: var(--hover); }
@@ -2236,8 +2255,8 @@ textarea.inp { resize: vertical; }
 .cl-event.done .cl-event-t, .cl-ag-row.done .cl-ag-n, .cl-ch.done .cl-ch-t, .cl-chip.done .cl-chip-t,
 .cl-dl-t.done span:not(.cl-dl-w), .cl-event.not-going .cl-event-t, .cl-ag-row.not-going .cl-ag-n, .cl-ch.not-going .cl-ch-t, .cl-chip.not-going .cl-chip-t { text-decoration: line-through; }
 .cl-event.not-going, .cl-ag-row.not-going, .cl-ch.not-going, .cl-chip.not-going { opacity: .6; }   /* Not going: still there, struck; .45 is illegible */
-.cl-event.done, .cl-ag-row.done, .cl-ch.done, .cl-chip.done, .cl-dl-t.done, .cl-dl.done,
-.cl-event.archived, .cl-ag-row.archived, .cl-ch.archived, .cl-chip.archived, .cl-dl-t.archived, .cl-dl.archived { opacity: .55; }
+.cl-event.done, .cl-ag-row.done, .cl-ch.done, .cl-chip.done, .cl-dl-t.done,
+.cl-event.archived, .cl-ag-row.archived, .cl-ch.archived, .cl-chip.archived, .cl-dl-t.archived { opacity: .55; }   /* a .cl-dl dims through its colors (the DEADLINE runway rules) */
 .cl-chip.done .cl-chip-t { text-decoration: line-through; opacity: .55; }
 /* mini completion checkbox on task chips (month cells + all-day lane) */
 .cl-chip-check { position: relative; flex: none; width: 11px; height: 11px; padding: 0; border-radius: 50%; border: 1.75px solid var(--mark); background: transparent; cursor: pointer; }
@@ -2407,10 +2426,12 @@ textarea.inp { resize: vertical; }
    week leaves. Date-only lands at the day's close ("by end of day"); with a time, the rule just moves up.
    The rule is DASHED while the deadline is date-only — a fuzzy edge for a fuzzy hour — and goes solid the
    moment one carries a time, so the line itself says how exact it is (and never reads as an hour hairline). */
-.cl-dl { position: absolute; left: 0; right: 0; top: 0; z-index: 4; pointer-events: none;
-  border-bottom: 2px dashed color-mix(in srgb, var(--mark) 62%, transparent); }
-.cl-dl.at { border-bottom-style: solid; }
+.cl-dl { position: absolute; left: 0; right: 0; top: 0; pointer-events: none; }   /* no z-index: its .lead fade paints under blocks and events (inline z 1 to 3), the rule (::after, 4) over them */
+.cl-dl::after { content: ""; position: absolute; inset: 0; z-index: 4; border-bottom: 2px dashed color-mix(in srgb, var(--mark) 62%, transparent); }
+.cl-dl.at::after { border-bottom-style: solid; }
 .cl-dl.lead { background: linear-gradient(180deg, transparent 55%, color-mix(in srgb, var(--tint) 72%, transparent)); }
+/* done/archived dims through its colors, not opacity: opacity would make a stacking context and sink the rule under the events */
+.cl-dl:is(.done, .archived) { --mark: oklch(from var(--cc) var(--cal-m-l) var(--cal-m-c) h / .55); --tint: oklch(from var(--cc) var(--cal-t-l) var(--cal-t-c) h / .55); --txt: oklch(from var(--cc) var(--cal-x-l) var(--cal-x-c) h / .55); }
 /* --dl-drop ties the rail's floor to the underline's drop, so the LOWEST deadline's dashed rule sits exactly
    ON the rail's bottom edge — which is the week boundary the moment the rail lets go of the pin. Change one
    and the alignment survives; that is the whole reason it is a variable and not two matching numbers. */
@@ -2520,7 +2541,7 @@ textarea.inp { resize: vertical; }
 .cl-event-b { display: block; min-width: 0; overflow: hidden; }
 .cl-event-imp { display: inline-block; width: 9px; height: 9px; margin-right: var(--sp-2); vertical-align: -1px; }   /* leads the title: the time line's .75 opacity drops Must's red under 3:1 */
 .cl-event-tm { display: block; font-size: var(--fs-10); line-height: 1.3; opacity: .75; font-variant-numeric: tabular-nums; }
-.cl-event-tm:has(.cl-ask, .cl-ag-ask) { opacity: 1; > span { opacity: .75; } }   /* the label dims, the Going? ask keeps its contrast */
+.cl-event-tm:has(.cl-ask, .cl-ag-ask) { opacity: 1; > span:not(.cl-ag-ask) { opacity: .75; } }   /* the label dims, the Going? ask keeps its contrast */
 /* .cl-cov = something is drawn OVER this one, so only its top strip shows: the time joins the title on that
    surviving line instead of sitting on a second line under the cascade. Same layout the compact tier uses. */
 .cl-event.tier-compact, .cl-event.cl-cov { display: flex; align-items: baseline; gap: var(--sp-4); }
@@ -2537,6 +2558,8 @@ textarea.inp { resize: vertical; }
 /* The Going ask shows whole after the time or wraps onto a row the 1lh clips, never as "Goi…" */
 .cl-event:is(.tier-compact, .cl-cov) .cl-event-tm:has(.cl-ask) { display: flex; flex-wrap: wrap; justify-content: flex-end; height: 1lh; > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; } }
 .cl-event.cl-cov .cl-event-tm:has(.cl-ask) { justify-content: flex-start; }
+/* ...and on a full tile whose time line a later tile covers (.cl-cut, --cut = that tile's left edge from this one's) */
+.cl-event.cl-cut .cl-event-tm { display: flex; flex-wrap: wrap; height: 1lh; overflow: hidden; max-width: calc(var(--cut) - var(--sp-6) - 4px - var(--sp-4)); > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
 .cl-event.tier-tiny { padding-top: 0; padding-bottom: 0; line-height: 1; }
 .cl-event.tier-tiny .cl-event-tm { display: none; }
 .cl-event.tier-tiny .cl-event-t { font-size: var(--fs-10); }
@@ -2618,7 +2641,7 @@ textarea.inp { resize: vertical; }
 .cl-agenda .cl-event-tm:has(.cl-ag-ask) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-6); }   /* the one-tap answers where the week's tile says "Going?" */
 .cl-event .cl-ag-ask .pri-chip { height: 16px; padding: 0 var(--sp-6); font-size: var(--fs-10); }   /* the time line's size */
 .cl-event-tm:has(.cl-ag-ask):last-child { padding-bottom: var(--sp-8); }   /* room for the chips' touch slop: .cl-event-b clips it */
-.cl-dmark { position: absolute; z-index: 1; left: calc(var(--L) + 2px); right: 2px; height: 24px; min-height: 0; padding-top: 0; padding-bottom: 0; grid-template-columns: 0 15px minmax(0, 1fr); gap: var(--sp-6); align-items: center; overflow: hidden; background: color-mix(in srgb, var(--tint) 70%, transparent); }
+.cl-dmark { position: absolute; z-index: 1; left: calc(var(--e, var(--L)) + 2px); right: 2px; height: 24px; min-height: 0; padding-top: 0; padding-bottom: 0; grid-template-columns: 0 15px minmax(0, 1fr); gap: var(--sp-6); align-items: center; overflow: hidden; background: color-mix(in srgb, var(--tint) 70%, transparent); }
 .cl-dmark .cl-ag-t { visibility: hidden; }
 .cl-dmark .cl-ag-d { display: none; }
 .cl-dmark .cl-ag-n { font-size: var(--fs-13); }
@@ -2632,10 +2655,10 @@ textarea.inp { resize: vertical; }
 .cl-night-n b { font-family: var(--font-display); font-weight: 700; font-variant-numeric: tabular-nums; font-size: var(--fs-13); }
 .cl-night-n i { font-style: normal; font-size: var(--fs-11); font-weight: 600; margin-left: 1px; }
 .cl-night-n small { display: block; margin-top: var(--sp-2); font-size: var(--fs-10); }
-.cl-night-h { flex: none; margin-top: var(--sp-12); padding-left: calc(var(--L) + var(--sp-4) + var(--sp-8)); font-size: var(--fs-13); font-weight: 650; color: var(--txt); line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* on the tiles' title x */
+.cl-night-h { flex: none; margin-top: var(--sp-12); padding-left: calc(var(--g) + var(--sp-4) + var(--sp-8)); font-size: var(--fs-13); font-weight: 650; color: var(--txt); line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }   /* on the tiles' title x */
 .cl-dnext { position: relative; flex: none; height: 36px; margin: var(--sp-6) var(--sp-12) var(--sp-8) 0; }   /* the next day's first item on the hours' own columns */
 .cl-dnext .cl-dhr { top: 0; border-top: 0; }
-.cl-dnext .cl-event { top: 0; height: 36px; left: calc(var(--L) + 2px); right: 2px; }
+.cl-dnext .cl-event { top: 0; height: 36px; left: calc(var(--g) + 2px); right: 2px; }   /* the next day draws no blocks: nothing beside it */
 @media (max-width: 640px) {   /* phone: a tight hour column, AM/PM set small */
   .cl-agenda { --g: 44px; --L: 64px; }
   .cl-dblk { left: 48px; }
@@ -2750,6 +2773,8 @@ textarea.inp { resize: vertical; }
 .ev-row { gap: var(--sp-12); margin-top: var(--sp-12); }
 /* the When pop: the week strip or a month, start – end, the composer's hour grid and quarters (.tpop, here in place) */
 .pop.cl-pop:is(.ev-when, :has(.ev-times)) { width: 296px; }   /* the block Repeat pop's times too */
+.pop.cl-del:not(.dock):has(.ev-month) { width: 296px; }   /* the delete ask's month, as wide as the When pop's */
+.cl-del .ev-month .danger { margin-top: var(--sp-8); }
 .pop.cl-pop.ev-when { gap: var(--sp-8); .cal-quick { margin-bottom: 0; } }
 .cl-pop .tpop { position: static; width: auto; }
 .ev-when:has(.ev-month) .ev-hours { display: none; }   /* the month takes their place, so the pop stays clear of the card */
@@ -2976,6 +3001,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .touch .surface-lists .row-chev { display: none; }
   .touch .surface-lists .typed > .row2:not(.meta) { padding-left: 0; border-left: 0; }   /* notes on line 2's x, no bar (his 11-11 "remove the indentguide for descriptions on mobile on all platforms") */
   .touch .surface-lists .item.after { padding-top: calc(var(--row-pt) + var(--sp-24) + var(--sp-4)); }   /* a top-level row after a subtree or checklist starts a group; padding, so the gap opens that row */
+  .touch .surface-lists .item.after::before { top: calc((var(--sp-24) + var(--sp-4)) / 2); }   /* the hairline sits mid-gap */
   .touch .surface-lists .sec-chev { margin-left: 0; }
 }
 
@@ -3132,7 +3158,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .thread { padding-bottom: calc(max(var(--kb), var(--safe-b)) + var(--field) + var(--sp-24)); > .chat-comp { display: none; } }   /* its last message and files stay above the field… */
   .bar-on .canvas.in-thread > .jot-bar::before { top: calc(-1 * var(--sp-24)); height: auto; }   /* …and its fade, which tracks the field's height */
   #notif-stack.by-field { --foot: calc(max(var(--kb), var(--safe-b)) + var(--field) + var(--sp-12)); }   /* toasts stand on the field, as on Plan */
-  .bar-on :is(.topbar, .cl-bar, .soc-list) .settings-gear { display: flex; position: static; flex: none; }
+  .bar-on :is(.topbar, .cl-bar, .soc-list) .settings-gear { display: flex; position: static; inset: auto; flex: none; }   /* inset: a touch tap's position: relative keeps it in place */
   /* a 60px header that stays on top, clear at rest (the glow runs from y=0); once rows scroll under it, it frosts */
   .bar-on .app { padding-top: 0; scroll-padding-top: 60px; container-type: scroll-state; }   /* the header's height (_seenTop); a state, not a scroll-driven animation: the motion dial zeroes those */
   .bar-on .topbar { position: sticky; top: 0; z-index: 8; height: 60px; margin: 0 calc(-1 * var(--pad-x)) var(--sp-8); padding: var(--sp-6) var(--pad-x) 0;   /* z 8: over a row's composer (7) */
@@ -3168,7 +3194,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .composer-entries { margin-left: calc(var(--sp-16) - var(--sp-10) - var(--bleed)); flex-basis: calc(100% - var(--sp-16) + var(--sp-10) + 2 * var(--bleed)); margin-top: var(--sp-4); }   /* their boxes on that edge too, a step under the description */
     .composer-actions .field.loc { display: flex; order: -2; flex: 0 1 auto; max-width: none; height: 30px; gap: var(--sp-6); margin: 0 0 0 calc(var(--sp-16) - var(--sp-10)); }   /* aligned to the left edge of the screen */
     .composer-card .composer-body > .composer-rels { order: -1; flex: 1 1 0; flex-wrap: nowrap; align-items: center; min-width: 0; height: 30px; margin-left: var(--sp-12); overflow-x: auto; scrollbar-width: none;   /* over .editing's indent */
-      mask-image: linear-gradient(to left, transparent, #000 var(--sp-8)); > * { flex: none; } }
+      mask-image: linear-gradient(to left, transparent, #000 var(--sp-8)); > * { flex: none; } > .msg-file { min-height: 0; height: 30px; margin: 0; } }   /* the line's height: the phone's 44px chip was cut square */
     :is(.proj-pick, .ka-notes) { height: 30px; min-width: 0; padding: 0; gap: var(--sp-5); background: none; font-size: var(--fs-13); font-weight: 400; color: var(--muted);
       .ico { flex: none; color: var(--faint); width: 15px; height: 15px; } .pring { width: 15px; height: 15px; } }
     .proj-pick span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3211,7 +3237,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   /* row 2 reads as row 1: its muted ink, 19px glyphs on the 38px pitch of the icon chips, ··· at the far end */
   .bar-on .jb-host .acts.edit { --lead: calc((44px - 38px) / 2 + .5px); padding-left: var(--lead);   /* the 19px glyph's left edge stays on the 16px edge */
     :is(.overview-btn, .del-btn, .act-btn:not(.md)) { flex: 0 0 38px; }
-    :is(.overview-btn, .del-btn, .more-btn, .act-btn:not(.on)) { color: var(--muted); }   /* the tack keeps its accent when it holds a note */
+    :is(.overview-btn, .del-btn, .more-btn, .act-btn:not(.on)) { color: var(--muted); }   /* the tack and the box keep their accent while on */
     :is(.overview-btn, .del-btn, .more-btn, .act-btn:not(.md)) .ico { width: 19px; height: 19px; }
     .more-wrap { margin-left: auto; } .more-btn { width: 40px; } }   /* ··· centered under the go's 40 */
   .bar-on .jb-host .composer-actions .by-go { position: static; flex: none; width: 38px; height: 40px; justify-content: center; padding: 0; .ico { width: 19px; height: 19px; } }   /* static: the desktop rule pins it absolute; a mouse window's bar takes this dock */
@@ -3227,6 +3253,54 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .jb-go .palette-row { min-height: 44px; }
 }
 .jb-host { display: none; }
+/* Phone taps at 44 (web-59..63): a face grows where its row has room; elsewhere a centered 44 ::after, the face unchanged
+   and neighbors spaced so the hits meet. Rows keep their pitch (his 11-14 "i don't think the tasks should have that much space between them"). */
+.touch :is(.bar-on .settings-gear, .ls-searchbtn, .jb-dest, .rl-add, .rl-more, .rl-mvb, .event-editor .del-btn, .event-editor .cl-going .seg button, .blk-wd, .cl-period-btn,
+    .settings .seg.sm button, .ls-add-pop :is(.pri-chip, .area-opt, .badge), .pop.dock :is(.pri-chip, .area-opt, .area-ghost), .bar-on .jb-host .kc button) { position: relative;
+  &::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); translate: -50% -50%; } }
+.touch .ls-word { position: relative; &::before { content: ''; position: absolute; inset: 50% 0 auto; height: 44px; translate: 0 -50%; } }   /* the words abut, so 44 tall at their own width; ::before: a shed sort word draws its ⇅ in ::after */
+/* web-59: docked pops' rows at the sheet's 44 */
+.touch .pop.dock .pop-item { min-height: 44px; gap: var(--sp-12); padding-inline: var(--sp-10); font-size: var(--fs-15); :is(.ico, .pring) { width: 18px; height: 18px; } }   /* a project's ring with the # beside it */
+.touch .pop.dock :is(.pri-chip, .area-opt, .area-ghost) { min-height: 36px; padding-inline: var(--sp-12); font-size: var(--fs-15); }
+.touch .pop.dock .area-ghost input { font-size: var(--fs-15); min-width: 90px; }
+.touch .pop.dock :is(.pri-grid, .area-grid) { gap: var(--sp-8); }
+/* web-60: the tray's arrows side by side, their hits meeting at a 12 gap */
+.touch .rl-mv { flex-direction: row; gap: var(--sp-12); opacity: .6; }
+.touch .rl-mvb { width: 32px; height: 28px; align-items: center; justify-content: center; color: var(--muted); }
+.touch .rl-mvb .ico, .touch .rl-mvb:first-child .ico { width: 18px; height: 18px; margin: 0; }
+.touch .rl-more { width: 32px; height: 28px; padding: 0; margin-left: var(--sp-12); }
+/* web-61: Settings and the Filter sheet */
+.touch .settings .set-row { min-height: 44px; font-size: var(--fs-15); }
+.touch .settings .seg.sm button { height: 32px; min-width: 44px; padding: 0 var(--sp-12); font-size: var(--fs-13); }
+.touch .settings :is(.inp, .primary) { min-height: 44px; font-size: var(--fs-15); }
+.touch .ls-add-pop :is(.pri-chip, .area-opt, .badge) { min-height: 36px; font-size: var(--fs-13); }
+.touch .ls-due, .touch .ls-add-pop .pri-grid { gap: var(--sp-8); }
+/* web-62: the composer's chips and icons 44 apiece */
+.touch .composer-card .composer-opts.composer-opts .chip { height: 44px; }
+.touch .composer-card:has(.acts.edit) .composer-opts.composer-opts .chip { min-width: 44px; }   /* an edit's chips have their row; a new task's share it with the actions and stay 40 wide, abutting */
+.touch .composer-card .acts.edit.edit :is(.ph, .overview-btn, .del-btn, .act-btn, .more-btn) { flex: 0 1 44px; min-width: 0; }   /* 44 where the row has room; the card's 344 at 390 shares it (a width would hold the row's min-content at 352) */
+.touch .bar-on .jb-host .acts.edit.edit :is(.ph, .overview-btn, .del-btn, .act-btn, .more-btn) { flex: none; width: 44px; }   /* the bar's 372 holds all eight at 44 */
+.touch .composer-card .composer-actions.composer-actions :is(.primary, .more-btn, .by-go) { width: 44px; min-width: 44px; height: 44px; }
+.touch .composer-card .proj-pick:not(.jb-host *) { height: 44px; }   /* the card's pill keeps Save's row height */
+.touch .bar-on .jb-host.ka { --grew: calc((44px - 38px) / 2);   /* a tapped task's chips and actions grew 38 to 44: their first icons stay on the 16px edge */
+  .composer-opts { --inset: calc((44px - 19px) / 2); }
+  .acts.edit { --out: calc((44px - 18px) / 2 - var(--sp-16) + var(--sp-10) + var(--grew)); }
+  .chip-area.set:has(.disc:only-child):not(.short) { padding-right: calc(var(--sp-8) + var(--sp-10) + var(--grew)); &::before { right: calc(var(--sp-8) + var(--grew)); } } }   /* the tag's edges as far from its neighbors' ink as before */
+.touch .bar-on .jb-host .field.loc.loc :is(.proj-pick, .ka-notes) { position: relative;   /* the bar's project line keeps its height under the title; the hit is 36 */
+  &::after { content: ''; position: absolute; inset: 50% 0 auto; height: max(100%, 36px); translate: 0 -50%; } }
+.touch .bar-on .jb-host .composer-opts :is(.chip, .chip.set:not(.chip-imp, .chip-dur)) { height: 44px; }   /* the bar's values too: one row height */
+.touch .bar-on .jb-host .composer-opts .chip-area.set:has(.disc:only-child):not(.short)::before { inset-block: var(--sp-8); }   /* the one-area tag stays 28 in the 44 target */
+.touch .bar-on .jb-host .composer-opts .chip-area { justify-content: flex-start; }   /* the circle where the one-area tag's edge was when its name gives way */
+.touch .bar-on .jb-host .kc.kc { padding-block: var(--sp-4); button { height: 36px; } }   /* the strip scrolls, so its own box holds the slop */
+/* a step's check and Remove reach 44 wide on the steps' 30 pitch; Remove is already absolute */
+.touch .entry.chk .chk-rect { position: relative; &::before { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 30px; translate: -50% -50%; } }
+.touch .entry.chk .entry-del::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 30px; translate: -50% -50%; }
+/* web-63: the event editor and Social's Sign in */
+.touch .event-editor .composer-opts.composer-opts .chip { height: 44px; }
+.touch .event-editor .primary.primary { width: 44px; height: 44px; }
+.touch .blk-wd { width: 36px; height: 36px; font-size: var(--fs-13); }
+.touch :has(> .blk-wd) { gap: var(--sp-8); }
+.touch .soc-out .primary { min-height: 44px; padding-inline: var(--sp-20); font-size: var(--fs-15); }
 /* ---- Account & settings: corner gear + popup ---- */
 /* The gear — calm idiom: faint hover fill, no border, no glow; clearly apart from the centered dot strip */
 .settings-gear { position: absolute; left: var(--sp-12); bottom: calc(10px + var(--safe-b)); z-index: 5;   /* sits higher than the dot strip (4px) */
@@ -3294,6 +3368,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
    A bare key hint (a <kbd>) is short enough to stay on the title's line, at the right. */
 .set-sub { flex: 1 0 100%; order: 1; margin: 1px 0 0 25px; }   /* 25px = icon (15) + the row's gap-10, so the description lines up under its title, not under the icon */
 .set-sub:has(kbd) { flex: none; order: 0; margin-left: auto; }
+.set-mail { margin-left: var(--sp-8); }   /* the Google account beside "Google Calendar" */
+.set-gcal .set-out + .set-out { margin-left: 0; }
 /* every settings row is named by a glyph as well as a word — scanning a settings list is a recognition task */
 .set-ico { width: 15px; height: 15px; flex: none; overflow: visible; color: var(--muted); }   /* visible: #i-lock's shackle rises past the viewBox */
 .set-danger .set-ico { color: inherit; }
