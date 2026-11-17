@@ -1877,9 +1877,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
     </div>
 
-    <!-- Locations manager dialog -->
-    <div class="dialog loc-manager" role="dialog" aria-modal="true" aria-label="Locations" @click.stop x-show="locMgr">
-      <div class="fe-head"><span class="fe-title">Locations</span></div>
+    <!-- Places manager dialog -->
+    <div class="dialog loc-manager" role="dialog" aria-modal="true" aria-label="Places" @click.stop x-show="locMgr">
+      <div class="fe-head"><span class="fe-title">Places</span></div>
       <p class="loc-help">Group places into regions. Drag a place to move it between them.</p>
 
       <template x-if="!locations.length && !pendingRegions.length">

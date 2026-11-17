@@ -166,10 +166,9 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .msg-file .ico { flex: none; width: 14px; height: 14px; color: var(--muted); }
 .msg-file .fsz { flex: none; font-size: var(--fs-11); color: var(--muted); }
 .chat-pend { flex-wrap: wrap; gap: var(--sp-6); margin-bottom: var(--sp-6); }
-.msg-file.pend { position: relative; overflow: hidden; max-width: 240px; margin: 0; padding-right: var(--sp-2); cursor: default; }
-.msg-file.up { color: var(--muted); }
-.msg-file.up::after { content: ''; position: absolute; left: 0; bottom: 0; width: 100%; height: 2px; background: var(--accent);
-  transform: scaleX(var(--pct)); transform-origin: left; transition: transform .2s var(--ease-out); }
+.msg-file.pend { max-width: 240px; margin: 0; padding-right: var(--sp-2); cursor: default; }
+.msg-file.up { color: var(--muted); background: linear-gradient(var(--accent) 0 0) 0 100% / calc(var(--pct) * 100%) 2px no-repeat, var(--hover);   /* the corners clip it, so no overflow cuts the ✕'s 44 */
+  transition: background-size .2s var(--ease-out); }
 .msg-file.failed, .msg-file.failed .ico { color: var(--p1); }
 .msg-file :is(.retry, .drop) { flex: none; display: grid; place-items: center; height: 22px; padding: 0 var(--sp-4); border: 0; border-radius: var(--r-6);
   background: none; color: inherit; font: inherit; cursor: pointer; }
@@ -1224,6 +1223,7 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
 .pop, .nav-pop { position: absolute; z-index: 20; background: var(--panel); border: none;   /* the composer card's idiom: no edge, r-lg; rows r-6 sit concentric (14 − 8 inset) */
   border-radius: var(--r-lg); box-shadow: var(--shadow); padding: var(--sp-8); display: flex; flex-direction: column; gap: 1px; }
 .pop { top: calc(100% + 5px); left: 0; min-width: 192px; }
+body > .pop { z-index: 61; }   /* an open menu stands over the toasts (#notif-stack 60), which never block input */
 .pop-scrim { position: fixed; inset: 0; z-index: -1; }   /* in the composer's stacking context: over the rows, under its own chips */
 .pop-sub-head, .rem-sug-head { padding: var(--sp-6) var(--sp-4) var(--sp-2); }
 .nav-pop { top: 100%; left: var(--sp-8); z-index: 30; min-width: 184px; }
@@ -3223,7 +3223,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .composer-entries { margin-left: calc(var(--sp-16) - var(--sp-10) - var(--bleed)); flex-basis: calc(100% - var(--sp-16) + var(--sp-10) + 2 * var(--bleed)); margin-top: var(--sp-4); }   /* their boxes on that edge too, a step under the description */
     .composer-actions .field.loc { display: flex; order: -2; flex: 0 1 auto; max-width: none; height: 30px; gap: var(--sp-6); margin: 0 0 0 calc(var(--sp-16) - var(--sp-10)); }   /* aligned to the left edge of the screen */
     .composer-card .composer-body > .composer-rels { order: -1; flex: 1 1 0; flex-wrap: nowrap; align-items: center; min-width: 0; height: 30px; margin-left: var(--sp-12); overflow-x: auto; scrollbar-width: none;   /* over .editing's indent */
-      mask-image: linear-gradient(to left, transparent, #000 var(--sp-8)); > * { flex: none; } > .msg-file { min-height: 0; height: 30px; margin: 0; } }   /* the line's height: the phone's 44px chip was cut square */
+      mask-image: linear-gradient(to left, transparent, #000 var(--sp-8)); > * { flex: none; }
+      > .msg-file { min-height: 0; height: 24px; margin: 0; padding: 0 var(--sp-4) 0 var(--sp-6); gap: var(--sp-5); :is(.retry, .drop) { align-self: center; height: auto; min-width: 0; padding: 0 var(--sp-2); } .retry { position: relative; z-index: 1; } } }   /* droid-71 B: 24 tall (his 11-17 "shouldn't be too much bigger than the backlog button beside it"); the ✕'s 44 tap (the scroller cuts it to the line's 30, as the 44px box was), Retry over it */
     :is(.proj-pick, .ka-notes) { height: 30px; min-width: 0; padding: 0; gap: var(--sp-5); background: none; font-size: var(--fs-13); font-weight: 400; color: var(--muted);
       .ico { flex: none; color: var(--faint); width: 15px; height: 15px; } .pring { width: 15px; height: 15px; } }
     .proj-pick span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3284,10 +3285,13 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .jb-host { display: none; }
 /* Phone taps at 44 (web-59..63): a face grows where its row has room; elsewhere a centered 44 ::after, the face unchanged
    and neighbors spaced so the hits meet. Rows keep their pitch (his 11-14 "i don't think the tasks should have that much space between them"). */
-.touch :is(.bar-on .settings-gear, .ls-searchbtn, .jb-dest, .rl-add, .rl-more, .rl-mvb, .event-editor .del-btn, .event-editor .cl-going .seg button, .blk-wd, .cl-period-btn,
-    .settings .seg.sm button, .ls-add-pop :is(.pri-chip, .area-opt, .badge), .pop.dock :is(.pri-chip, .area-opt, .area-ghost), .bar-on .jb-host .kc button) { position: relative;
+.touch :is(.bar-on .settings-gear, .ls-searchbtn, .jb-dest, .rl-add, .rl-more, .rl-mvb, .event-editor .del-btn, .event-editor .cl-going .seg button, .blk-wd, .cl-period-btn, .sheet-x,
+    .settings .seg.sm button, .ls-add-pop :is(.pri-chip, .area-opt, .badge), .pop.dock :is(.pri-chip, .area-opt, .area-ghost), .bar-on .jb-host .kc button, .bar-on .jb-host .composer-rels .drop) { position: relative;
   &::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); translate: -50% -50%; } }
 .touch .ls-word { position: relative; &::before { content: ''; position: absolute; inset: 50% 0 auto; height: 44px; translate: 0 -50%; } }   /* the words abut, so 44 tall at their own width; ::before: a shed sort word draws its ⇅ in ::after */
+.touch :is(.cl-period-btn, .list-controls:has(.list-search.open) .ls-subj) { overflow: clip; overflow-clip-margin: var(--sp-12); }   /* their ellipsis clip would cut the slop */
+.touch .list-search.open input { --h: 44px; height: var(--h); margin-block: calc((1lh - var(--h)) / 2); }   /* a field has no ::after: its own box grows, given back in margin */
+.touch .bar-on .topbar-title { padding-block: var(--sp-5); margin-block: calc(-1 * var(--sp-5)); }   /* an ::after would cover the title's h1 */
 /* web-59: docked pops' rows at the sheet's 44 */
 .touch .pop.dock .pop-item { min-height: 44px; gap: var(--sp-12); padding-inline: var(--sp-10); font-size: var(--fs-15); :is(.ico, .pring) { width: 18px; height: 18px; }   /* a project's ring with the # beside it */
   &.sub { padding-left: calc(var(--sp-16) + var(--sp-24)); } }   /* a disclosed choice's icon under its parent's label: 10 in + the 18 icon + its 12 gap */
@@ -3302,7 +3306,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 /* web-61: Settings and the Filter sheet */
 .touch .settings .set-row { min-height: 44px; font-size: var(--fs-15); }
 .touch .settings .seg.sm button { height: 32px; min-width: 44px; padding: 0 var(--sp-12); font-size: var(--fs-13); }
-.touch .settings :is(.inp, .primary) { min-height: 44px; font-size: var(--fs-15); }
+.touch :is(.settings, .loc-manager) :is(.inp, .primary) { min-height: 44px; font-size: var(--fs-15); }
+.touch .loc-manager { :is(.loc-region-head, .loc-add-input) { min-height: 44px; } .loc-row { margin-top: var(--sp-2); } }   /* abutting 44s lose a px to the neighbor at a fractional y */
 .touch .ls-add-pop :is(.pri-chip, .area-opt, .badge) { min-height: 36px; font-size: var(--fs-13); }
 .touch .ls-due, .touch .ls-add-pop .pri-grid { gap: var(--sp-8); }
 /* web-62: the composer's chips and icons 44 apiece */

@@ -2965,7 +2965,7 @@ document.addEventListener('alpine:init', () => {
       for (const f of this.filters) it.push({ kind: 'filter', type: 'filter', id: f.id, label: f.name, f });
       it.push({ kind: 'sec', label: 'Areas', add: 'area' });
       for (const l of this.areas) it.push({ kind: 'area', type: 'area', id: l.id, label: l.name, l });
-      it.push({ kind: 'sec', label: 'Locations' }, { kind: 'loc', label: 'Manage locations' });
+      it.push({ kind: 'sec', label: 'Places' }, { kind: 'loc', label: 'Manage places' });
       return it;
     },
     selectableRollerItems() { return this.rollerItems().filter(i => i.kind !== 'sec'); },
@@ -4379,7 +4379,7 @@ document.addEventListener('alpine:init', () => {
         { kind: 'cmd', type: 'command', id: 'new-task', title: 'New task', icon: 'i-edit', kw: 'add create' },
         { kind: 'cmd', type: 'command', id: 'new-filter', title: 'New filter', icon: 'i-search', kw: 'add create query' },
         { kind: 'cmd', type: 'command', id: 'today', title: 'Jump to Today', icon: 'i-cal', kw: 'calendar now' },
-        { kind: 'cmd', type: 'command', id: 'locations', title: 'Manage locations', icon: 'i-tag-map', kw: 'places regions' },
+        { kind: 'cmd', type: 'command', id: 'locations', title: 'Manage places', icon: 'i-tag-map', kw: 'locations regions' },
       );
       return t;
     },
@@ -6308,7 +6308,7 @@ document.addEventListener('alpine:init', () => {
           ['<b>tomorrow</b> or <b>fri</b> or <b>next week</b>','Schedule a day or window'],['<b>in 3 days</b> or <b>aug 10</b> or <b>2026-12-25</b>','Schedule relative to now'],
           ['<b>5pm</b> or <b>noon</b>','Set a time'],['<b>30m</b> or <b>1h30m</b>','Set duration'],
           ['<b>by fri</b> or <b>due tomorrow</b> or <b>^ aug 10</b>','Set deadline'],['<b>only tue</b>','Restrict to one day'],
-          ['<b>#project</b>','Choose project'],['<b>@area</b>','Add area'],['<b>at Office</b>','Require a location'],['<b>away from Home</b>','Exclude a location'],
+          ['<b>#project</b>','Choose project'],['<b>@area</b>','Add area'],['<b>at Office</b>','Require a place'],['<b>away from Home</b>','Exclude a place'],
           ['<b>needs Report</b> or <b>needed by Launch</b>','Add dependency'],['<b>Item :: detail</b>','Checklist description only']]},
         {l:'Filter syntax',r:[
           ['<b>#work</b> or <b>##work</b>','Project / descendants'],['<b>@errands</b>','Area'],['<b>importance:must,focus</b>','Importance'],
@@ -6573,7 +6573,7 @@ document.addEventListener('alpine:init', () => {
       if (bulk) { const k = bulk.length, tgt = e.op.target || 'task'; return out(`${k} ${tgt}${k > 1 ? 's' : ''}`, k < this._entryOps(e).length ? e.label : 'Deleted', peek(bulk.map(op => name(opRow(op)) || '(untitled)'), 'trash-del')); }
       // every other bin entry is a deletion: its subtasks, checklist and description peek in red
       const rows = e.op?.rows || e.op?.ops?.find(o => o.rows)?.rows || [], root = rows[0] || {}, desc = (root.notes || '').trim(), items = (root.checklist || []).map(i => i.text).filter(t => (t || '').trim());
-      if (e.target !== 'task') return out(clip(name(root)), { project: 'Project', area: 'Area', event: 'Event', block: 'Time block', filter: 'Filter', location: 'Location' }[e.target] || 'Item', peek([desc], 'trash-del'));
+      if (e.target !== 'task') return out(clip(name(root)), { project: 'Project', area: 'Area', event: 'Event', block: 'Time block', filter: 'Filter', location: 'Place' }[e.target] || 'Item', peek([desc], 'trash-del'));
       const detail = ['Task', ...n(rows.length - 1, 'subtask'), ...n(items.length, 'checklist item'), ...desc ? ['description'] : [], ...root.recurrence && root.recur_from ? ['repeats from ' + this.fmt(root.recur_from)] : []];
       return out(clip(name(root)), detail.join(', '), peek([...rows.slice(1).map(name), ...items, desc], 'trash-del'));
     },
@@ -7310,10 +7310,10 @@ document.addEventListener('alpine:init', () => {
       if (!name?.trim()) return;
       const l = await this.store.locations.add({ name: name.trim(), region: region || this.currentRegion }); await this.loadLocations();
       // its undo is a top-level remove: _apply scrubs and captures its references as Delete does, so a redo puts them back
-      l ? this._pushEntry('Added location', { kind: 'remove', target: 'location', id: l.id, rows: [l] }) : this.toast('Failed adding the place. Try again?');
+      l ? this._pushEntry('Added place', { kind: 'remove', target: 'location', id: l.id, rows: [l] }) : this.toast('Failed adding the place. Try again?');
     },
-    patchLocation(id, fields) { return this._journalRowChange('Edited location', 'location', id, () => this.store.locations.update(id, fields)); },
-    async deleteLocation(id) { if (this.locations.some(l => l.id === id)) return this.perform('Deleted location', { kind: 'delete', target: 'location', id }); },
+    patchLocation(id, fields) { return this._journalRowChange('Edited place', 'location', id, () => this.store.locations.update(id, fields)); },
+    async deleteLocation(id) { if (this.locations.some(l => l.id === id)) return this.perform('Deleted place', { kind: 'delete', target: 'location', id }); },
     placeLabel(l) { return this.locations.some(x => x !== l && x.name === l.name) ? `${l.name}, ${l.region || 'Home'}` : l.name; },   // a name repeated across regions carries its region
     locName(id) { return this.locations.find(x => x.id === id)?.name ?? ''; },   // a place not loaded yet (a synced task ahead of its place) reads as no place, as rowLoc: never its id
     // Row badge: first pinned location's name (+N when several), '' when the task isn't location-scoped or names aren't loaded.
@@ -7380,7 +7380,7 @@ document.addEventListener('alpine:init', () => {
     },
     locChipLabel() {
       const L = this.draft.location, names = (L?.ids || []).map(id => this.locName(id)).filter(Boolean);
-      if (!names.length) return 'Location';
+      if (!names.length) return 'Place';
       const list = names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) : names.join(' or ');
       return (L.mode === 'except' ? 'away from ' : '') + list;   // the map says "at"
     },
