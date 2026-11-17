@@ -1802,7 +1802,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- closed, the Bin reads nothing: a task write would otherwise re-check every row -->
       <template x-for="days in trashOpen ? [trashDays()] : []" :key="0">
       <div class="contents">
-      <div class="trash-empty" x-show="!days.length">Nothing recent. Deletions and bulk changes stay here for 30 days.</div>
+      <div class="trash-empty" x-show="!days.length">Nothing recent. Deletions and bulk changes land here.</div>
       <!-- ONE chronological list under day heads — the bin answers "what did I just do?", so time order is the whole point.
            The row says what kind it is: icon, the peek's text color (red gone, green a dropped draft) and the verb. -->
       <div class="trash-list flex-col" x-show="days.length">
