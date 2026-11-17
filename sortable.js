@@ -64,7 +64,8 @@ const guarded = new WeakSet();
 // redirect(to, items, from, far) → b: the gap opens right before items[b] instead (no span), `cut` true in preview and onCommit; null keeps `to`.
 // far(x) → true: the finger's x unindents: pinned and redirect then judge the item's own slot too, and nothing nests.
 // dwell(item, false) → may nest: as the finger enters an item's middle (null: none); dwell(item, true) after DWELL there → true makes it `into`.
-export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnly, onCommit, enabled, fixed, pinned, refused, onHold, lift, span, above, redirect, preview, dwell, far }) {
+// lead(item) → px: a gap above the item's own row that its box holds; the held item's slot walks by its row's center, not its box's.
+export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnly, onCommit, enabled, fixed, pinned, refused, onHold, lift, span, above, redirect, preview, dwell, far, lead }) {
   let st = null;
   // From first use, not from the press: Chrome's compositor sees a listener added mid-touch only a frame later, and a finger's
   // pre-hold wobble lands first and makes the whole touch unblockable (the drag then pans away). On the scroller's parent: Chrome never
@@ -110,7 +111,7 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
     const unlift = lift?.(st.item, st.x0);   // before measuring: it may take rows out of the list
     const items = [...st.scope.querySelectorAll(itemSel)], from = items.indexOf(st.item);
     if (from < 0 || items.length < 2) { unlift?.(); return from < 0 ? onUp() : still(); }   // alone, its subtree aside
-    Object.assign(st, { items, from, to: from, dragging: true, unlift }); sorting = true; container.style.userSelect = 'none';
+    Object.assign(st, { items, from, to: from, dragging: true, unlift, lead: lead?.(st.item) ?? 0 }); sorting = true; container.style.userSelect = 'none';
     const rects = st.items.map(el => el.getBoundingClientRect());
     st.rects = rects; st.centers = rects.map(r => r.top + r.height / 2);
     st.h = Math.abs(st.centers[1] - st.centers[0]);
@@ -169,7 +170,7 @@ export function makeSortable(container, { itemSel, handleSel, scopeSel, touchOnl
     const scrolled = (st.scrollEl?.scrollTop ?? 0) - st.startScrollTop, dy = st._cy - st.startY + scrolled;   // scroll-adjusted, for the visual and the commit
     st.item.style.transform = `translateY(${dy}px)`;
     st.far = !!far?.(st._cx);
-    let to = targetIndex(st.centers, st.from, st.centers[st.from] + dy);
+    let to = targetIndex(st.centers, st.from, st.centers[st.from] + st.lead / 2 + dy);
     if (to < st.from && above && !st.far) to = above(to, st.items, st.from);   // far, the row under the finger unindents, not the one above() picks
     const own = to === st.from && !st.far;   // far, the item's own slot may still unindent it
     st.pinned = !own && !!pinned?.(to, st.items, st.from, st.far);

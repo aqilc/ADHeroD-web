@@ -1389,6 +1389,31 @@ code > .code-copy { position: sticky; display: inline-flex; vertical-align: midd
   b { min-width: 10px; text-align: center; font-weight: 600; }
   &.g { background: var(--hover); color: var(--muted); b { color: var(--muted); } button { color: var(--muted); } }
 }
+/* touch: the sentence on 45px lines, its controls 32-35 with hits as tall as a line, so they meet:
+   hit testing rounds the point and the box to whole px, and 44 against a 44 pitch loses a neighbor's px (web-58 R2) */
+.touch .pop.cal {
+  :is(.zone .c, .zone .st button, .zbtn, .zdel, .addrep .c, .cal-nav, .rep-num .seg button) { position: relative;
+    &::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 45px); height: 45px; translate: -50% -50%; } }
+  .zone p { font-size: var(--fs-15); line-height: 45px; margin: 0; }
+  :is(.zone, .addrep) .c { height: 32px; font-size: var(--fs-15); padding: 0 var(--sp-12); }
+  .zone .st { height: 32px; padding: 0; gap: 0; font-size: var(--fs-15);
+    button { width: 36px; height: 32px; border-radius: var(--r-pill); box-shadow: none; background: none; font-size: var(--fs-17); }
+    b { min-width: 12px; } }
+  .zrail { gap: var(--sp-10); padding-top: var(--sp-4); }   /* 35 + 10: the line's pitch */
+  .zone :is(.zbtn, .zdel) { width: 35px; height: 35px; .ico { width: 18px; height: 18px; } }
+  .zone .zdel { margin-top: var(--sp-4); }
+  .addrep .c { padding: 0 var(--sp-16); }
+  .cal-nav { width: 35px; height: 35px; }
+  .cal-navs { gap: var(--sp-10); }   /* the arrows' hits meet, as the sentence's */
+  &.rep-open :is(.cal-head, .cal-grid) { display: none; }   /* a repeat number's picker stands in the calendar's place */
+}
+.rep-num { gap: var(--sp-12); padding: var(--sp-12) var(--sp-4) var(--sp-16);
+  .rep-st { gap: var(--sp-24);
+    button { width: 44px; height: 44px; border: none; border-radius: 50%; background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--warm-ink); font-size: var(--fs-22); cursor: pointer; }
+    b { min-width: 48px; text-align: center; font-size: var(--fs-28); font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; } }
+  .seg { margin: 0; background: var(--hover); border-radius: var(--r-pill); padding: var(--sp-4);
+    button { height: 36px; font-size: var(--fs-15); border-radius: var(--r-pill); } }
+}
 /* anchored time popover — one component, two anchors (Add-time row, [at ...] chip) */
 /* fixed + above .pop(z20): one instance serves every anchor, across teleported popups; tpopStyle sets left + bottom */
 .tpop {
@@ -1514,7 +1539,11 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .c.sel { font-weight: 600; }
 .c.selx { background: var(--deadline); color: var(--on-accent); font-weight: 600; }
 .c.x { background: color-mix(in srgb, var(--p1) 12%, transparent); color: var(--p1); }
-.lp-new input { border: none; background: none; color: var(--ink); font-size: var(--fs-12); width: 64px; &::placeholder { color: var(--faint); } }
+.lp-new input { border: none; background: none; outline: none; color: var(--ink); font-size: var(--fs-12); width: 64px; &::placeholder { color: var(--faint); } }
+.touch .blk-place .lp-row { padding-block: var(--sp-6);   /* a phone's event and block Place pop: a 44px tap */
+  .c { position: relative; height: 32px; font-size: var(--fs-15); padding: 0 var(--sp-12);
+    &::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; translate: -50% -50%; } }
+  input { font-size: var(--fs-15); width: 120px; } }
 .lp-mgr { margin-top: var(--sp-8); border-top: 1px solid var(--hair); border-radius: 0; }
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
@@ -3260,7 +3289,8 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   &::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: max(100%, 44px); translate: -50% -50%; } }
 .touch .ls-word { position: relative; &::before { content: ''; position: absolute; inset: 50% 0 auto; height: 44px; translate: 0 -50%; } }   /* the words abut, so 44 tall at their own width; ::before: a shed sort word draws its ⇅ in ::after */
 /* web-59: docked pops' rows at the sheet's 44 */
-.touch .pop.dock .pop-item { min-height: 44px; gap: var(--sp-12); padding-inline: var(--sp-10); font-size: var(--fs-15); :is(.ico, .pring) { width: 18px; height: 18px; } }   /* a project's ring with the # beside it */
+.touch .pop.dock .pop-item { min-height: 44px; gap: var(--sp-12); padding-inline: var(--sp-10); font-size: var(--fs-15); :is(.ico, .pring) { width: 18px; height: 18px; }   /* a project's ring with the # beside it */
+  &.sub { padding-left: calc(var(--sp-16) + var(--sp-24)); } }   /* a disclosed choice's icon under its parent's label: 10 in + the 18 icon + its 12 gap */
 .touch .pop.dock :is(.pri-chip, .area-opt, .area-ghost) { min-height: 36px; padding-inline: var(--sp-12); font-size: var(--fs-15); }
 .touch .pop.dock .area-ghost input { font-size: var(--fs-15); min-width: 90px; }
 .touch .pop.dock :is(.pri-grid, .area-grid) { gap: var(--sp-8); }

@@ -823,7 +823,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
         </template>
         <!-- ── Unified calendar pop (.pop.cal): due, plan-nav — outside the composer's x-if so clnav works while it's closed ── -->
-        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" :class="{ 'cal-wk': pop === 'clnav' && clView === 'week', dock: popDock, 'sheet full': popSheet() }" :style="popStyle()">
+        <template x-if="pop === 'due' || pop === 'clnav'"><template x-teleport="body"><div class="pop cal" :class="{ 'cal-wk': pop === 'clnav' && clView === 'week', 'rep-open': repNum && pop === 'due', dock: popDock, 'sheet full': popSheet() }" :style="popStyle()">
           <div class="sheet-top">Go to a day</div>
           <!-- date-text input (not shown for clnav) -->
           <input type="text" class="cal-type" x-show="pop === 'due'" :placeholder="dreg === 'by' ? 'Deadline (friday, in 2 weeks)' : 'Date or repeat (every 2 weeks)'" x-model="draft.dateText" x-ref="calType" @input="applyDateText(false)" @keydown.enter.prevent="applyDateText(true)" @keydown.stop="$event.key === 'Escape' && escape()">
@@ -837,6 +837,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" class="pop-item clear" x-show="dreg === 'on' && (draft.on || draft.recurrence)" @click="draft.on = ''; draft.dueTime = ''; draft.part = ''; draft.recurrence = null; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No date</span></button>
             <button type="button" class="pop-item clear" x-show="dreg === 'by' && dlSet()" @click="draft.available_from = ''; draft.deadline_at = ''; pop = null"><svg class="ico"><use href="#i-circle"/></svg><span>No deadline</span></button>
           </div>
+          <template x-if="repNum && pop === 'due'"><div class="rep-num flex-col">
+            <div class="rep-st flex items-center justify-center"><button type="button" aria-label="Fewer" @click="repNum === 'n' ? setRepeatInterval(-1) : setRepeatCount(-1)">−</button><b x-text="repNum === 'n' ? curRule()?.interval || 1 : curRule()?.ends?.count || '∞'"></b><button type="button" aria-label="More" @click="repNum === 'n' ? setRepeatInterval(1) : setRepeatCount(1)">+</button></div>
+            <div class="seg" x-show="repNum === 'n'"><template x-for="[f, label] in [['day', 'Days'], ['week', 'Weeks'], ['month', 'Months'], ['year', 'Years']]" :key="f"><button type="button" :class="{ on: curRule()?.freq === f }" :aria-pressed="curRule()?.freq === f" @click="setRepeatUnit(f)" x-text="label"></button></template></div>
+          </div></template>
           <!-- shared: calendar head + grid -->
           <div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>
           <!-- the days are html (calPaint), their events delegated here: per-day bindings were half of the pop's open -->
@@ -859,13 +863,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <p>
                 <button type="button" class="icon-btn sm del zdel" title="Delete repeat" @click="clearRepeat(ri)"><svg class="ico"><use href="#i-trash"/></svg></button>
                 every
-                <span class="st inline-flex items-center"><button type="button" @click="repIdx = ri; setRepeatInterval(-1)">−</button><b x-text="r.interval || 1"></b><button type="button" @click="repIdx = ri; setRepeatInterval(1)">+</button></span>
-                <button type="button" class="c inline-flex items-center" @click="repIdx = ri; cycleRepeatFreq()" x-text="repeatUnitLabel(r)"></button>
+                <span class="st inline-flex items-center" x-show="!phoneDock()"><button type="button" @click="repIdx = ri; setRepeatInterval(-1)">−</button><b x-text="r.interval || 1"></b><button type="button" @click="repIdx = ri; setRepeatInterval(1)">+</button></span>
+                <!-- a phone folds the number into its chip ("2 days"); a tap puts its picker in the calendar's place (web-58) -->
+                <button type="button" class="c inline-flex items-center" :class="{ ring: repNum === 'n' && repIdx === ri }" @click="repIdx = ri; phoneDock() ? repNumTap('n') : cycleRepeatFreq()" x-text="(phoneDock() ? (r.interval || 1) + ' ' : '') + repeatUnitLabel(r)"></button>
                 <template x-if="repDaysLabel(r)"><span>on <button type="button" class="c inline-flex items-center" @click="repIdx = ri; pulseWeekdays()" x-text="repDaysLabel(r)"></button></span></template>
                 <span class="nowrap"><button type="button" class="c inline-flex items-center" :class="{ g: !r.at }" @click.stop="repIdx = ri; toggleTimePop($event)" x-text="r.at ? 'at ' + fmtTime(r.at) : 'at –'"></button><span>,</span></span>
                 <span class="nowrap">starting <button type="button" class="c inline-flex items-center" :class="{ g: !draft.on, ring: !endPicking && !pausePicking }" title="tap a day on the calendar above" @click="repIdx = ri; endPicking = false; pausePicking = false; pulseCal()" x-text="draft.on ? fmt(draft.on.slice(0, 10)) : '–'"></button>,</span>
-                <span class="st inline-flex items-center" :class="{ g: !r.ends?.count }"><button type="button" @click="repIdx = ri; setRepeatCount(-1)">−</button><b x-text="r.ends?.count || '∞'"></b><button type="button" @click="repIdx = ri; setRepeatCount(1)">+</button></span>
-                <span class="nowrap">times, ending <button type="button" class="c inline-flex items-center" :class="{ g: !r.ends?.date, ring: endPicking && repIdx === ri }" @click="repIdx = ri; toggleEndPicking()" x-text="r.ends?.date ? fmt(r.ends.date) : 'never'"></button></span>
+                <span class="st inline-flex items-center" x-show="!phoneDock()" :class="{ g: !r.ends?.count }"><button type="button" @click="repIdx = ri; setRepeatCount(-1)">−</button><b x-text="r.ends?.count || '∞'"></b><button type="button" @click="repIdx = ri; setRepeatCount(1)">+</button></span>
+                <span class="nowrap"><button type="button" class="c inline-flex items-center" x-show="phoneDock()" :class="{ g: !r.ends?.count, ring: repNum === 'count' && repIdx === ri }" @click="repIdx = ri; repNumTap('count')" x-text="(r.ends?.count || '∞') + ' times'"></button><span x-show="!phoneDock()">times</span><span class="nowrap">, ending <button type="button" class="c inline-flex items-center" :class="{ g: !r.ends?.date, ring: endPicking && repIdx === ri }" @click="repIdx = ri; toggleEndPicking()" x-text="r.ends?.date ? fmt(r.ends.date) : 'never'"></button></span></span>
                 <template x-if="r.paused"><span class="nowrap pzl">paused until <button type="button" class="c pz inline-flex items-center" @click.stop="togglePausePop($event, r)" x-text="pauseLabel(r)"></button></span></template>
               </p>
             </div>
@@ -1610,7 +1615,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </button>
           </template>
         </div>
-        <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-clock"/></svg>Breathing now line
+        <!-- a phone's Plan (Day, Month) draws no now line; Week, from 640, does -->
+        <div class="set-row flex items-center gap-10" x-show="!narrow"><svg class="ico set-ico"><use href="#i-clock"/></svg>Breathing now line
           <div class="seg sm">
             <button type="button" :class="{ on: nowBreathe }" :aria-pressed="nowBreathe" @click="setFlag('nowBreathe', true)">On</button>
             <button type="button" :class="{ on: !nowBreathe }" :aria-pressed="!nowBreathe" @click="setFlag('nowBreathe', false)">Off</button>
@@ -1963,9 +1969,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div></template>
         <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clPlace', $event, $el)">
           <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(eventEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(eventEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(eventEdit.location_id) || 'Place'"></span></button>
-          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :class="{ dock: popDock }" :style="popStyle()">
+          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :class="{ dock: popDock }" :style="popStyle()" x-init="locNew = null">
             <button type="button" class="pop-item" :class="{ on: !eventEdit.location_id }" @click="eventEdit.location_id = null; pop = null">Anywhere</button>
             <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: eventEdit.location_id === l.id }" @click="eventEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
+            <div class="lp-row"><button type="button" class="c ghosty" x-show="locNew !== 'clPlace'" @click="locNew = 'clPlace'; $nextTick(() => locNew === 'clPlace' && $refs.clPlaceNew?.focus())">＋ place</button><template x-if="locNew === 'clPlace'"><span class="c ghosty lp-new"><input x-ref="clPlaceNew" placeholder="name…" @keydown.enter.prevent="createPlaceInline(currentRegion, $event.target.value, l => { eventEdit.location_id = l.id; pop = null })" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span></template></div>
           </div></template></template>
         </div>
         <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clRepeat', $event, $el)">
@@ -2031,9 +2038,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
         <div class="field" @click.document.capture="clPopAway('clPlace', $event, $el)">
           <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(blockEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(blockEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(blockEdit.location_id) || 'Place'"></span></button>
-          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :class="{ dock: popDock }" :style="popStyle()">
+          <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :class="{ dock: popDock }" :style="popStyle()" x-init="locNew = null">
             <button type="button" class="pop-item" :class="{ on: !blockEdit.location_id }" @click="blockEdit.location_id = null; pop = null">Anywhere</button>
             <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: blockEdit.location_id === l.id }" @click="blockEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
+            <div class="lp-row"><button type="button" class="c ghosty" x-show="locNew !== 'clPlace'" @click="locNew = 'clPlace'; $nextTick(() => locNew === 'clPlace' && $refs.clPlaceNew?.focus())">＋ place</button><template x-if="locNew === 'clPlace'"><span class="c ghosty lp-new"><input x-ref="clPlaceNew" placeholder="name…" @keydown.enter.prevent="createPlaceInline(currentRegion, $event.target.value, l => { blockEdit.location_id = l.id; pop = null })" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span></template></div>
           </div></template></template>
         </div>
         <div class="field" @click.document.capture="clPopAway('clUsable', $event, $el)">

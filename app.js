@@ -343,7 +343,7 @@ const OVERLAYS = [
   [c => c.navPop, c => c.navPop = null], [c => c.listMenu, c => c.listMenu = null],   // Hearthsay sentence menus (add/sort)
   [c => c.listTray, c => c.listTray = null],
   [c => c.navRename, c => c.navRename = null], [c => c.tpop, c => c.tpop = false], [c => c.pzpop, c => c.pzpop = null], [c => c.pausePicking, c => c.pausePicking = false],
-  [c => c.endPicking, c => c.endPicking = false], [c => c.pop === 'rem' && c.remEd, c => c.remBack()],   // the reminder setter steps back to its list first
+  [c => c.repNum, c => c.repNum = null], [c => c.endPicking, c => c.endPicking = false], [c => c.pop === 'rem' && c.remEd, c => c.remBack()],   // the reminder setter steps back to its list first
   [c => c.pop, c => c.pop = null],
   [c => c.selMenu, c => c.selMenu = null],   // an open edit-bar sub-menu closes before the selection itself
   [c => c.sel.length, c => c.clearSel()],    // active multi-select clears (before the lower list states)
@@ -4741,7 +4741,7 @@ document.addEventListener('alpine:init', () => {
       const third = Math.ceil(ranked.length / 3);
       return 's' + (Math.min(Math.floor(ranked.findIndex(r => use[r] === use[id]) / third), 2) + 1);
     },
-    endPicking: false, tpop: false, pzpop: null, pausePicking: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0,
+    endPicking: false, tpop: false, pzpop: null, pausePicking: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0, repNum: null,
     // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (placement, amber,
     // saved as a schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). Set by the chip
     // that opened it: the date chip opens 'on', the flag chip 'by'.
@@ -4757,7 +4757,7 @@ document.addEventListener('alpine:init', () => {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
       this.dreg = reg;   // a deadline still shows as its red day in the date pop (calDayClass paints both registers)
-      this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this._typedN = 1; this._typedFrom = '';
+      this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this.repNum = null; this._typedN = 1; this._typedFrom = '';
       this.draft.dateText = '';   // both pops share the field: what was typed in one never lands in the other
       this._calTo((reg === 'by' && (this.draft.deadline_at || this.draft.available_from)) || this.draft.on || this.draft.deadline_at || isoDate(new Date()));
       this.$nextTick(() => this.pop === name && !this.popDock && !document.activeElement?.closest('.pop.cal') && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it. A held tick lands late: a Tab already in the pop keeps its place
@@ -4782,7 +4782,7 @@ document.addEventListener('alpine:init', () => {
     },
     togglePausePop(ev, r) {
       const was = this.pzpop || this.pausePicking;
-      this.pzpop = null; this.pausePicking = false;
+      this.pzpop = null; this.pausePicking = false; this.repNum = null;
       if (was) return;
       this.repIdx = this.repRules().indexOf(r);
       const b = ev.currentTarget.getBoundingClientRect(), x = ev.detail ? ev.clientX : b.left;   // at the pointer
@@ -4853,10 +4853,14 @@ document.addEventListener('alpine:init', () => {
     toggleFromCompletion() { const r = this.curRule(); if (r) r.from_completion = !r.from_completion; },
     cycleRepeatFreq() {
       const order = ['day', 'week', 'month', 'year'], r = this.curRule(); if (!r) return;
-      const next = order[(order.indexOf(r.freq) + 1) % 4];
-      this.setRepeatFreq(next);
-      if (next === 'month') r.month_day = new Date((this.draft.on || isoDate(new Date())).slice(0, 10) + 'T00:00').getDate();
+      this.setRepeatUnit(order[(order.indexOf(r.freq) + 1) % 4]);
     },
+    setRepeatUnit(freq) {
+      const r = this.curRule(); if (!r) return;
+      this.setRepeatFreq(freq);
+      if (freq === 'month') r.month_day = new Date((this.draft.on || isoDate(new Date())).slice(0, 10) + 'T00:00').getDate();
+    },
+    repNumTap(k) { this.repNum = this.repNum === k ? null : k; },   // a phone's repeat number: its picker stands in the calendar's place
     // "on [...]" chip label: weekly day set / monthly day-of-month / yearly anniversary; null when inapplicable (day freq)
     repDaysLabel(r) {
       if (!r) return null;
@@ -4866,14 +4870,14 @@ document.addEventListener('alpine:init', () => {
       if (r.freq === 'year') return anchor.toLocaleDateString([], { month: 'short', day: 'numeric' });
       return null;
     },
-    pulseWeekdays() { this.flash('hdrPulse', '_hdrPulseT', true, 700); },
+    pulseWeekdays() { this.repNum = null; this.flash('hdrPulse', '_hdrPulseT', true, 700); },   // the calendar comes back to show them
     // count-ends stepper: count and date are mutually exclusive (ends is single-valued); stepping to 0 = never
     setRepeatCount(delta) {
       const r = this.curRule(); if (!r) return;
       const next = Math.max(0, Math.min(99, (r.ends?.count || 0) + delta));
       r.ends = next ? { count: next } : null;
     },
-    toggleEndPicking() { if (this.curRule()) this.endPicking = !this.endPicking; },
+    toggleEndPicking() { if (!this.curRule()) return; this.endPicking = !this.endPicking; this.repNum = null; },
     // Tap-and-hold a day (~450ms) = "every month on the Nth", anchored there. The trailing click is swallowed.
     calDayTap(c) {
       const r = this.curRule();
@@ -4981,7 +4985,7 @@ document.addEventListener('alpine:init', () => {
     clearRepeat(i = 0) {   // trash one statement; a single leftover collapses back to the legacy object shape
       const arr = this.repRules().filter((_, j) => j !== i);
       this.draft.recurrence = arr.length === 0 ? null : arr.length === 1 ? arr[0] : arr;
-      this.repIdx = 0; this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false;
+      this.repIdx = 0; this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this.repNum = null;
     },
     repeatUnitLabel(r) {
       if (!r) return '';
@@ -5239,7 +5243,7 @@ document.addEventListener('alpine:init', () => {
       document.activeElement?.blur();   // openDate keeps a focus already inside the pop, and this chip is in it
       this.openDate('due', document.querySelector('.chip-dl'), 'by');
     },
-    pulseCal() { this.flash('calPulse', '_calPulseT', true, 800); },
+    pulseCal() { this.repNum = null; this.flash('calPulse', '_calPulseT', true, 800); },
     _nlpEl() { return _nlpFocus?.el || this.$refs.content; },
     _nlpDraft() { return _nlpFocus?.draft || this.draft; },
     // --- Inline-pill editor (contenteditable title) ---
@@ -7367,12 +7371,12 @@ document.addEventListener('alpine:init', () => {
       return { sel: on && this.draft.location.mode !== 'except', selx: on && this.draft.location.mode === 'except', ghosty: !on };
     },
     locExpandRegion(r) { this.locExpanded = this.locExpanded.includes(r) ? this.locExpanded.filter(x => x !== r) : [...this.locExpanded, r]; },
-    async createPlaceInline(region, name) {
+    async createPlaceInline(region, name, pick = l => this.toggleLocId(l.id)) {
       this.locNew = null;
       if (!name?.trim()) return;
       await this.addLocation(name.trim(), region);
       const l = this.locations.find(x => x.name === name.trim() && (x.region || 'Home') === region);
-      if (l) this.toggleLocId(l.id);   // created from the picker = you meant it → selected
+      if (l) pick(l);   // created from the picker = you meant it → selected
     },
     locChipLabel() {
       const L = this.draft.location, names = (L?.ids || []).map(id => this.locName(id)).filter(Boolean);
@@ -8251,6 +8255,7 @@ document.addEventListener('alpine:init', () => {
         // ceiling: past an open parent with 2+ subtasks the gap steps back (after its subtree, then after its first subtask): drop()'s
         // landings go in that order. Revisit if phone drags read as jumpy; a fix moves where a drop below an open parent lands (user's OK)
         span,
+        lead: item => { const s = getComputedStyle(item); return parseFloat(s.paddingTop) - parseFloat(s.paddingBottom); },   // a group row's gap (styles.css .item.after)
         // sorted, a slot under another parent opens the gap where the row lands among that parent's rows (desktop: dragOver)
         redirect: (to, items, from, far) => {
           const t = this.byId.get(items[to].dataset.id), up = far && outOf(items[to]);
