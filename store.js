@@ -314,7 +314,7 @@ export const placedMap = items => {
   for (const x of items || []) if (!x.block_id && x.date) m.set(x.task_id, x.date + (x.start ? 'T' + x.start : ''));
   return m;
 };
-// The FKs a restored row carries (pg_mail/schema.js:243,282,299,318,349): a gone cascade parent makes the DB reject the
+// The FKs a restored row carries (pg_mail/schema.js:233,282,299,318,349): a gone cascade parent makes the DB reject the
 // row (and its batch), so it stays out; a gone location is ON DELETE SET NULL, so the block just loses it.
 export const REFS = { scheduleItem: [['task_id', 'task'], ['block_id', 'block']], blockDay: [['block_id', 'block']],
   reminder: [['ref_id', 'task'], ['block_id', 'block']], block: [['location_id', 'location']], relation: [['task_id', 'task'], ['related_id', 'task']] };
@@ -405,7 +405,7 @@ export function createLocalStore(opts = {}) {
   const removeAndScrub = (k, write, id, refs) => { if (!dropRow(k, write, id)) return false;
     for (const [refKey, writeRefs, col] of refs) scrubRows(refKey, writeRefs, r => r[col]?.includes(id), r => ({ ...r, [col]: r[col].filter(x => x !== id) }));
     return true; };
-  // task_relations FKs both ends to tasks (pg_mail/schema.js:282): no blocked_by/relates id outlives its task.
+  // task_relations FKs both ends to tasks (pg_mail/schema.js:272): no blocked_by/relates id outlives its task.
   const dropEdges = (r, dead, edit = () => r) => { for (const k of ['blocked_by', 'relates']) if (r[k]?.some(dead)) { r = edit(r.id); r[k] = r[k].filter(x => !dead(x)); } };
 
   const readTasks = () => view(TASKS_KEY);   // cached rows: a writer edits through cow
@@ -664,7 +664,7 @@ export function createLocalStore(opts = {}) {
         });
       },
       async update(id, fields) { return patchRow(BLOCKS_KEY, writeBlocks, id, fields); },
-      // parity with the DB: schedule_items/block_days/reminders .block_id all cascade (pg_mail/schema.js:299,318,349).
+      // parity with the DB: schedule_items/block_days/reminders .block_id all cascade (pg_mail/schema.js:287,318,349).
       // The block goes first: a failed cascade leaves orphans its restore re-attaches, never a block stripped of them.
       async remove(id) {
         if (!dropRow(BLOCKS_KEY, writeBlocks, id)) return false;
@@ -852,7 +852,7 @@ export function createLocalStore(opts = {}) {
           if (!writeTasks(remaining)) return false;
           const meta = readMeta();
           if (targetId && groups.some(([root]) => root === meta.default_project_id)) { meta.default_project_id = targetId; writeMeta(meta); }
-          // Parity with the DB (schedule_items.task_id, reminders.ref_id ON DELETE CASCADE, pg_mail/schema.js:299,349): a
+          // Parity with the DB (schedule_items.task_id, reminders.ref_id ON DELETE CASCADE, pg_mail/schema.js:287,349): a
           // removed task takes its attachments and reminders, after the tasks write so a failed delete keeps them. Schedule
           // items key on the tasks that remain, not `gone`, so an earlier failed write's orphan goes too.
           const live = new Set(remaining.map(r => r.id)), si = view(SCHEDULE_ITEMS_KEY), rem = view(REMINDERS_KEY);

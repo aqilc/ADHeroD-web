@@ -41,7 +41,7 @@ const REM_LIST = new Intl.ListFormat('en');   // "9am and 6pm"
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, dueQuick, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS, DAY_PARTS, partOf } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, queryStates, bodyText } from './search.js';
 import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds, gcalAsEvents } from './calendar.js';
-import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE, BACKUP_KINDS, isBackup, restorePlan } from './import.js';
+import { ruleFromRRULE, parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE, BACKUP_KINDS, isBackup, restorePlan } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
 import { esc as escHtml, mdLive as mdLiveRender, mdCut, chkLive as chkLiveRender, chkParts, chkVisible, chkFoldHtml, html, raw, dotStripHtml, rollerBoxHtml, rowBodyHtml, showsProj, checkHtml, mdTitle as mdTitleFn, titleLive, areaChipHtml, areaOptHtml, keyTip, setTaskTitles } from './ui.js';
@@ -1579,11 +1579,13 @@ document.addEventListener('alpine:init', () => {
       return _gcal.rows.filter(x => x.calendar_id === series.calendar_id && (x === series || x.series_id === series.google_id)).map(x => ({ ...x, status: 'cancelled' }));
     },
     // a series split at an occurrence: its start as Google keys it, whether it's the series' first, and the repeat ended the moment
-    // before it (head) or kept from it on (tail, a COUNT dropped)
+    // before it (head) or kept from it on (tail: an UNTIL kept, a COUNT less the days before the cut)
     _gCut(g) {
       const { r, series } = g, cut = r.series_id ? r.original_start : g.at;
       const until = series.all_day ? addMinutes(cut.slice(0, 10), -1440, true).replaceAll('-', '') : new Date(gMs(cut) - 1000).toISOString().replace(/[-:]|\.\d+/g, '');
-      const rule = u => series.recurrence.map(l => !l.startsWith('RRULE:') ? l : 'RRULE:' + l.slice(6).split(';').filter(p => !/^(COUNT|UNTIL)=/.test(p) || !u && p.startsWith('UNTIL=')).concat(u ? ['UNTIL=' + u] : []).join(';'));
+      const from = isoDate(new Date(gMs(series.starts_at))), before = addMinutes(isoDate(new Date(gMs(cut))), -1440, true);
+      const left = l => { const n = /;COUNT=(\d+)/.exec(';' + l)?.[1]; return n ? ['COUNT=' + (n - occurrencesInRange(ruleFromRRULE(l).rule, from, from, before).length)] : []; };
+      const rule = u => series.recurrence.map(l => !l.startsWith('RRULE:') ? l : 'RRULE:' + l.slice(6).split(';').filter(p => !/^(COUNT|UNTIL)=/.test(p) || !u && p.startsWith('UNTIL=')).concat(u ? ['UNTIL=' + u] : left(l.slice(6))).join(';'));
       return { cut, first: gMs(cut) <= gMs(series.starts_at), head: rule(until), tail: rule(null) };
     },
     _gDrop(e, d, fields) {
@@ -1612,7 +1614,7 @@ document.addEventListener('alpine:init', () => {
     // it, then update it); 'all': the series, its time shifted as the occurrence's was; 'later': a series from that day with
     // the edit, made before the old one ends the day before (data safety: a failed end deletes the new one).
     // Returns the events Google answered, null on a failure (said, and nothing changes here).
-    // ceiling: the new half drops a COUNT and the old series keeps its moved days after the cut; revisit when a split of his repeats or doubles a day
+    // ceiling: the old series keeps its moved days after the cut; revisit when a split of his doubles a day
     async _gWrite(g, f, scope) {
       const { r, cal, series } = g, api = (method, path = '', body) => this._gApi(cal.google_id, method, path, body), path = id => '/' + encodeURIComponent(id);
       const { slot, ...fields } = f ?? {}, { cut, first, head, tail: rest } = series ? this._gCut(g) : {};
@@ -6864,7 +6866,7 @@ document.addEventListener('alpine:init', () => {
       const gone = new Set(rows.map(r => r.id)), at = k => JSON.parse(JSON.stringify(rows.flatMap(r => ix[k].get(r.id) || [])));
       return { links: at('links').filter(([a]) => !gone.has(a)), also: [['scheduleItem', at('scheduleItem')], ['reminder', at('reminder')]] };
     },
-    // A block delete cascades its attachments, reminders and day overrides (pg_mail/schema.js:299,318,349; LocalStore blocks.remove).
+    // A block delete cascades its attachments, reminders and day overrides (pg_mail/schema.js:287,318,349; LocalStore blocks.remove).
     _blockRefs(id) { return { also: ['scheduleItem', 'reminder', 'blockDay'].map(k => [k, JSON.parse(JSON.stringify(window.Alpine.raw(this[k + 's']).filter(r => r.block_id === id)))]) }; },
     _refIndex() {
       const ix = { links: new Map(), scheduleItem: new Map(), reminder: new Map() }, add = (m, id, v) => { const l = m.get(id); if (l) l.push(v); else m.set(id, [v]); }, raw = window.Alpine.raw;
@@ -10233,6 +10235,19 @@ document.addEventListener('alpine:init', () => {
       for (const r of timed.filter(r => !r.mins)) parts.push({ id: r.key, html: this._clAgRowHtml(r, 0, now, `top:calc(${P(r.min)}% - 12px);--e:${edge(r)};`) });
       if (col.today) parts.push({ id: 'now', html: html`<div class="cl-dnow" data-id="now" style="top:${P(now)}%"><span>${this._clHMA(now)}</span></div>` });
       this.renderRows(grid, parts);
+      // a deadline mark draws over a tile, never through its text: a title it crosses moves below it, then any line still
+      // under it or past the tile's end hides whole (never half a "10:00 – 12:00")
+      const marks = [...grid.querySelectorAll('.cl-dmark')].map(m => m.getBoundingClientRect()), crosses = (m, b) => m.top < b.bottom && m.bottom > b.top;
+      for (const tile of grid.querySelectorAll('.cl-event')) {
+        const lines = tile.querySelectorAll('.cl-event-t, .cl-event-tm'), body = tile.querySelector('.cl-event-b');
+        body.style.paddingTop = '';
+        for (const line of lines) line.classList.remove('cl-under');
+        const t = marks.length && tile.getBoundingClientRect(), on = marks.filter(m => crosses(m, t));
+        if (!on.length) continue;
+        const title = lines[0].getBoundingClientRect(), push = Math.max(0, ...on.filter(m => crosses(m, title)).map(m => m.bottom - title.top));
+        if (push) body.style.paddingTop = push + 'px';
+        for (const line of lines) { const b = line.getBoundingClientRect(); line.classList.toggle('cl-under', on.some(m => crosses(m, b)) || b.bottom > t.bottom); }
+      }
     },
     _clAgRow(e, col) { const el = e.target.closest('.cl-ag-row, .cl-event'); return el && col.agenda?.find(r => r.key === el.dataset.id); },
     clAgClick(e, col) {

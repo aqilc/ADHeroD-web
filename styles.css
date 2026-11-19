@@ -2627,10 +2627,11 @@ textarea.inp { resize: vertical; }
 .cl-agenda .cl-event-tm:has(.cl-ag-ask) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-6); }   /* the one-tap answers where the week's tile says "Going?" */
 .cl-event .cl-ag-ask .pri-chip { height: 16px; padding: 0 var(--sp-6); font-size: var(--fs-10); }   /* the time line's size */
 .cl-event-tm:has(.cl-ag-ask):last-child { padding-bottom: var(--sp-8); }   /* room for the chips' touch slop: .cl-event-b clips it */
-.cl-dmark { position: absolute; z-index: 1; left: calc(var(--e, var(--L)) + 2px); right: 2px; height: 24px; min-height: 0; padding-top: 0; padding-bottom: 0; grid-template-columns: 0 15px minmax(0, 1fr); gap: var(--sp-6); align-items: center; overflow: hidden; background: color-mix(in srgb, var(--tint) 70%, transparent); }
+.cl-dmark { position: absolute; z-index: 3; left: calc(var(--e, var(--L)) + 2px); right: 2px; height: 24px; min-height: 0; padding-top: 0; padding-bottom: 0; grid-template-columns: 0 15px minmax(0, 1fr); gap: var(--sp-6); align-items: center; overflow: hidden; background: color-mix(in srgb, var(--tint) 70%, var(--bg)); }   /* opaque over the event it falls inside: its text never shows through */
 .cl-dmark .cl-ag-t { visibility: hidden; }
 .cl-dmark .cl-ag-d { display: none; }
 .cl-dmark .cl-ag-n { font-size: var(--fs-13); }
+.cl-event .cl-under { visibility: hidden; }   /* a line under a deadline mark (app.js measures) */
 .cl-dnow { position: absolute; left: 0; right: 0; z-index: 1; border-top: 2px solid var(--accent); pointer-events: none; }   /* under the tiles: over them it struck through the times of the event it crossed */
 .cl-dnow span { position: absolute; left: 0; top: -10px; padding: 1px var(--sp-5); border-radius: var(--r-4); background: var(--accent); color: var(--on-accent); font-size: var(--fs-11); font-weight: 700; line-height: 1.5; font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* the night: the unseen hours between this day's last line and the next day's first item, a starfield, no hour line */
