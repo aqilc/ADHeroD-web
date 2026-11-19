@@ -1,6 +1,6 @@
-// Import: .ics calendars and pasted `{"adherod":1}` task payloads. Pure — no DOM, no store.
-// Both paths end in the SAME shape: { items, problems }. A payload with ANY problem imports NOTHING;
-// the caller renders `problems` and refuses. Guessing at a malformed import is worse than refusing it.
+// Import: .ics calendars and pasted `{"adherod":1}` task payloads. Pure: no DOM, no store.
+// Both paths end in { items, problems }. A payload with any problem imports nothing; the caller renders `problems`
+// and refuses.
 import { localStamp, IMPORTANCE } from './nlp.js';
 import { MAX_DEPTH } from './store.js';
 
@@ -14,7 +14,7 @@ const problem = (path, message) => ({ path, message });
 // ─── .ics ──────────────────────────────────────────────────────────────────────────────────────────
 // RFC5545 line unfolding: a leading space/tab continues the previous line.
 const unfold = text => text.replace(/\r\n/g, '\n').replace(/\n[ \t]/g, '');
-// "NAME;PARAM=V:value" → [name, params, value]. Only the FIRST colon separates; values contain colons.
+// "NAME;PARAM=V:value" → [name, params, value]. Only the first colon separates; values contain colons.
 function icsLine(line) {
   const c = line.indexOf(':');
   if (c < 0) return null;
@@ -25,26 +25,25 @@ function icsLine(line) {
 const icsUnescape = s => s.replace(/\\[nN]/g, '\n').replace(/\\([,;\\])/g, '$1');
 const icsDigits = v => v.replace(/[^0-9TZ]/g, '');
 
-// A DATE/DATE-TIME → { iso, allDay }. Wall-clock local text is what the whole app stores, so a `Z` or
-// TZID value is converted to local here: the calendar reads a stored time's digits as local wall-clock.
+// A DATE/DATE-TIME → { iso, allDay }. The app stores wall-clock local text, so a `Z` or TZID value is converted to local here.
 function icsWhen(value, params) {
   const v = icsDigits(value);
   if (params.VALUE === 'DATE' || !v.includes('T')) return { iso: `${v.slice(0, 4)}-${v.slice(4, 6)}-${v.slice(6, 8)}`, allDay: true };
   const [d, t] = v.split('T');
   const parts = [d.slice(0, 4), d.slice(4, 6), d.slice(6, 8), t.slice(0, 2), t.slice(2, 4)].map(Number);
   if (!t.endsWith('Z') && !params.TZID) return { iso: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}T${t.slice(0, 2)}:${t.slice(2, 4)}`, allDay: false };
-  // Both Z and TZID resolve to an absolute instant, then render in the machine's local zone.
   const utc = Date.UTC(parts[0], parts[1] - 1, parts[2], parts[3], parts[4]);
   const at = new Date(t.endsWith('Z') ? utc : utc - tzOffsetAt(params.TZID, utc));
   return { iso: localStamp(at), allDay: false };
 }
-// Offset (ms) of a named zone at an instant — Intl is the platform's own tz database, no VTIMEZONE parsing.
-function tzOffsetAt(tzid, utcMs) {
+// Offset (ms) of a named zone at an instant, via Intl: no VTIMEZONE parsing.
+const _zoneFmt = new Map();   // one formatter per zone: a series converts every occurrence drawn
+export function tzOffsetAt(tzid, utcMs) {
   try {
-    const f = new Intl.DateTimeFormat('en-US', { timeZone: tzid, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const f = _zoneFmt.get(tzid) ?? _zoneFmt.set(tzid, new Intl.DateTimeFormat('en-US', { timeZone: tzid, hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })).get(tzid);
     const o = Object.fromEntries(f.formatToParts(new Date(utcMs)).map(p => [p.type, p.value]));
     return Date.UTC(+o.year, +o.month - 1, +o.day, +o.hour % 24, +o.minute, +o.second) - utcMs;
-  } catch { return 0; }   // unknown TZID → treat as floating local, matching the no-TZID branch
+  } catch { return 0; }   // unknown TZID: floating local, as with no TZID
 }
 // PT1H30M / P1D / P2W → minutes.
 function icsDuration(s) {
@@ -57,12 +56,14 @@ const addDaysIso = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUT
 
 const WD = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
 const FREQ = { DAILY: 'day', WEEKLY: 'week', MONTHLY: 'month', YEARLY: 'year' };
-// RRULE → the app's rule shape, or a problem naming what can't be represented. Never approximates:
-// an approximated rule produces a calendar that is wrong in a way you only notice weeks later.
+// RRULE → the app's rule shape, or a problem naming what can't be represented. Never approximates: a wrong rule
+// shows up weeks later.
 export function ruleFromRRULE(text, path) {
   const parts = Object.fromEntries(text.split(';').filter(Boolean).map(p => { const i = p.indexOf('='); return [p.slice(0, i).toUpperCase(), p.slice(i + 1)]; }));
   const bad = k => problem(path, `Repeat rule not supported (${k})`);
   for (const k of ['BYSETPOS', 'BYWEEKNO', 'BYYEARDAY']) if (parts[k]) return { problem: bad(k) };
+  // DAILY;BYDAY=MO,…,FR (Google's "every weekday" in some exports) only filters the days: one week's walk over them
+  if (parts.FREQ === 'DAILY' && parts.BYDAY) { if (parts.INTERVAL > 1) return { problem: bad('FREQ=DAILY;INTERVAL with BYDAY') }; parts.FREQ = 'WEEKLY'; }
   const freq = FREQ[parts.FREQ];
   if (!freq) return { problem: parts.FREQ ? bad(`FREQ=${parts.FREQ}`) : problem(path, 'RRULE has no FREQ.') };
   const r = { freq, interval: parts.INTERVAL ? +parts.INTERVAL : 1, from_completion: false, ends: null, done_count: 0 };
@@ -86,14 +87,13 @@ export function ruleFromRRULE(text, path) {
   }
   if (parts.BYMONTH) r.months = parts.BYMONTH.split(',').map(Number).sort((a, b) => a - b);
   if (parts.COUNT) r.ends = { count: +parts.COUNT };
-  // UNTIL is a DATE boundary compared against plain date strings, so read its digits directly. Converting
-  // its instant to local shifts the last day by one in any negative-offset zone (green under TZ=UTC).
+  // UNTIL is a date boundary compared against plain date strings, so read its digits directly: converting its instant
+  // to local shifts the last day by one in any negative-offset zone.
   else if (parts.UNTIL) { const u = icsDigits(parts.UNTIL); r.ends = { date: `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}` }; }
   return { rule: r };
 }
 
-// Parse a calendar into { items, problems }. Multiple VEVENTs; VALARM blocks are skipped outright so an
-// alarm's own DURATION/TRIGGER can't be read as the event's.
+// Parse a calendar into { items, problems }. VALARM blocks are skipped so an alarm's DURATION/TRIGGER can't be read as the event's.
 export function parseICS(text) {
   const items = [], problems = [];
   const lines = unfold(String(text)).split('\n');
@@ -131,8 +131,8 @@ function finishEvent(e, items, problems) {
   if (e.rrule.length > 1) return problems.push(problem(path, 'has more than one RRULE. Only one repeat rule is supported.'));
 
   let ends = e.end ? e.end.iso : (e.durMin != null ? shift(e.start, e.durMin) : null);
-  // An all-day end is EXCLUSIVE in ICS but INCLUSIVE here — via DTEND *or* DURATION, so a one-day
-  // event stays one day instead of spilling into tomorrow. Never let it land before the start.
+  // An all-day end is exclusive in ICS but inclusive here (via DTEND or DURATION), so a one-day event stays one
+  // day. Never lands before the start.
   if (ends && e.start.allDay) ends = maxIso(addDaysIso(ends.slice(0, 10), -1), e.start.iso);
   const item = { kind: 'event', title: e.title || 'Untitled', notes: e.notes || null, starts_at: e.start.iso, ends_at: ends ?? e.start.iso, all_day: e.start.allDay, external_id: e.uid ?? null, seq: e.seq ?? null, modified: e.modified ?? null };
 
@@ -142,10 +142,10 @@ function finishEvent(e, items, problems) {
     if (e.exdates.length) rule.exdates = e.exdates;
     item.recurrence = rule;
   } else if (e.exdates.length) return problems.push(problem(path, 'has EXDATE but no RRULE. Nothing to subtract from.'));
-  // A RECURRENCE-ID event IS the moved occurrence: it imports as a standalone event, and the series it was
-  // lifted out of carries the matching EXDATE. Nothing to represent beyond flagging it for the caller.
+  // A RECURRENCE-ID event is the moved occurrence: it imports as a standalone event, and its series carries the
+  // matching EXDATE.
   if (e.recurrenceId) item.detached_from = e.recurrenceId;
-  if (e.recurrenceId && e.uid) item.external_id = `${e.uid}#${e.recurrenceId}`;   // it shares the series UID: a re-drop must find each row, not one for both
+  if (e.recurrenceId && e.uid) item.external_id = `${e.uid}#${e.recurrenceId}`;   // it shares the series UID: a re-drop must find each row
   items.push(item);
 }
 const maxIso = (a, b) => (a >= b ? a : b);
@@ -155,9 +155,8 @@ const shift = (start, mins) => {
   return d.toISOString().slice(0, 16);
 };
 
-// Should an incoming VEVENT overwrite the row already imported under the same UID? Only on a HIGHER
-// SEQUENCE — re-dropping an older export must never roll newer data back, and re-dropping the SAME file
-// must not clobber edits made since. Equal or absent sequences therefore mean "leave it alone".
+// Should an incoming VEVENT overwrite the row already imported under the same UID? Only on a higher SEQUENCE:
+// an older export must not roll newer data back, nor the same file clobber later edits.
 // ceiling: SEQUENCE only. Publishers that bump LAST-MODIFIED without SEQUENCE won't refresh; storing a
 // second column is the fix if that shows up in a real export.
 export const icsReplaces = (existingSeq, incomingSeq) => (incomingSeq ?? 0) > (existingSeq ?? 0);
@@ -174,8 +173,7 @@ const TASK_KEYS = ['id', 'title', 'type', 'notes', 'importance', 'minutes', 'lis
 const REPEAT_KEYS = ['freq', 'interval', 'weekdays', 'month_day', 'nth', 'months', 'count', 'until', 'exdates'];
 const REMINDER_KEYS = ['anchor', 'at', 'offset', 'severity'];
 
-// Unknown keys are the hallucination canary: a model that invents "priority" must fail loudly, because a
-// silently dropped field is a task that looks right and isn't.
+// Unknown keys fail loudly: a model that invents "priority" would otherwise get a task that looks right and isn't.
 const unknown = (obj, allowed, path, problems) => {
   for (const k of Object.keys(obj)) if (!allowed.includes(k)) problems.push(problem(`${path}.${k}`, `unknown field "${k}". Allowed here: ${allowed.join(', ')}.`));
 };
@@ -185,8 +183,8 @@ const oneOf = (v, list, path, label, problems) => {
   return true;
 };
 
-// Detect the payload without parsing the world: only a JSON object carrying the sentinel or a "tasks" array
-// qualifies (a model that never saw the prompt leaves the sentinel out), so an ordinary paste can never trip the importer.
+// Only a JSON object carrying the sentinel or a "tasks" array qualifies (a model that never saw the prompt leaves
+// the sentinel out), so an ordinary paste never trips the importer.
 export function looksLikePayload(text) {
   const t = String(text).trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
   return t.startsWith('{') && /"adherod"\s*:|"tasks"\s*:\s*\[/.test(t);
@@ -254,8 +252,8 @@ export function parsePayload(text, { lists = [], areas = [], places = [], today 
   };
   for (const [i, raw] of (Array.isArray(doc.tasks) ? doc.tasks : []).entries()) walk(raw, `tasks[${i}]`, 1, null);
 
-  // Relations resolve against payload-local ids only — a reference to a task that isn't here is a
-  // hallucinated link, and nothing downstream (client or Postgres) prevents a needs-cycle.
+  // Relations resolve against payload-local ids only: a reference to a task that isn't here is a bad link, and
+  // nothing downstream prevents a needs-cycle.
   for (const it of items) for (const key of ['needs', 'relates'])
     for (const ref of it[key]) if (!ids.has(ref)) problems.push(problem(`${label(it)}.${key}`, `refers to id "${ref}", which no task in this payload declares.`));
   for (const cyc of cycles(items, ids)) problems.push(problem(label(cyc[0]), `these tasks need each other in a loop: ${cyc.map(c => c.content).join(' → ')} → ${cyc[0].content}.`));
@@ -349,10 +347,8 @@ function readReminders(v, path, today, problems) {
 }
 
 // ─── the prompt you hand to an assistant ───────────────────────────────────────────────────────────
-// Generated, not canned: it carries TODAY and the user's real lists/areas/places, so the model writes
-// #their-list instead of inventing one — the difference between a payload that validates and one that
-// bounces. The worked example below is asserted against parsePayload in the tests: if the format ever
-// drifts from the validator, the prompt's own example stops validating and the suite says so.
+// Generated: it carries today and the user's real lists/areas/places, so the model writes #their-list instead of
+// inventing one. The worked example below is asserted against parsePayload in the tests, so format drift fails the suite.
 export const PROMPT_EXAMPLE = {
   adherod: 1,
   lists: ['Thermodynamics'],
@@ -398,7 +394,7 @@ ${JSON.stringify(PROMPT_EXAMPLE, null, 2)}
 If my material does not support a field, omit it. Do not pad the list with tasks I did not ask for. Here is my material:`;
 }
 
-// Every simple cycle in the needs-graph, so the message can name the actual loop rather than "a cycle exists".
+// Every simple cycle in the needs-graph, so the message can name the loop.
 function cycles(items, ids) {
   const found = [], seen = new Set();
   const visit = (it, stack) => {
@@ -418,7 +414,7 @@ export const BACKUP_KINDS = ['identity', 'goal', 'area', 'location', 'block', 't
 export const isBackup = doc => doc?.adherod_backup === 1 && !!doc.rows && typeof doc.rows === 'object';
 // A restore adds copies beside what's there and never touches a live row: every row gets a new id and its references
 // follow. What can't be doubled maps onto the live one: an area or identity of that name (unique per user), the
-// default project, a day already named. A reference to a row not in the file is dropped; a task under one goes to the default project.
+// default project, a day already named. A reference to a row not in the file is dropped; its tasks go to the default project.
 export function restorePlan(doc, { defaultProject = null, areas = [], identities = [], locations = [], filters = [], dayNotes = [] } = {}) {
   const ids = new Map(), minted = new Set(), same = { area: [areas, 'name'], identity: [identities, 'statement'], location: [locations, 'name'], filter: [filters, 'query'] }, named = new Set(dayNotes.map(d => d.date));
   if (doc.default_project_id && defaultProject) ids.set(doc.default_project_id, defaultProject);

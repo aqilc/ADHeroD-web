@@ -37,7 +37,7 @@ export function hydrateTask(row) {
     archived_at: row.archived_at ?? null,
     blocked_by: rel.filter(r => r.type === 'needs').map(r => r.related_id),
     relates: rel.filter(r => r.type === 'relates').map(r => r.related_id),
-    attachments: row.attachments ?? [],   // never in dehydrateTask: an INSERT naming it fails whole until db:apply, so it rides an UPDATE
+    attachments: row.attachments ?? [],   // not in dehydrateTask: an INSERT naming it fails until db:apply, so it rides an UPDATE
     overview: row.overview ?? false,
     milestone: row.milestone ?? false,
     checklist: chkIds((row.checklist ?? []).map(({ id, text, done }) => ({ id, text, done }))),   // array order IS the order
@@ -142,7 +142,7 @@ export function createSupabaseStore(client) {
   let _settings = {}, _cTasks = [], _cAreas = [], _cDef = null;
   let themeWrite = Promise.resolve();   // slow earlier selections must not overwrite the latest one
   let _loaded = false, _areasLoaded = false, _settingsLoaded = false;
-  let _cacheV = 0, _bootGen = 0;   // _cacheV: bumped by every cache write/invalidation — a bootstrap answering after one must not write over it
+  let _cacheV = 0, _bootGen = 0;   // _cacheV: bumped by every cache write/invalidation; a bootstrap answering after one must not overwrite it
   const _uf = makeFuzzy();
   let _cIdx = buildSearchDocs([], [], null), _idxDirty = false;
   const rebuildIdx = () => { _idxDirty = true; _cacheV++; };   // mark dirty; built lazily in search()/runFilter()
@@ -157,8 +157,8 @@ export function createSupabaseStore(client) {
   let _retryDelay = 2000;
   const _pendRefetch = new Set(), _pendDrop = new Set();
   // ── Warm caches for the side lists ────────────────────────────────────────
-  // As tasks and areas: the first list() fetches, every later one is free, our own writes patch the row and its
-  // DB timestamp (so the realtime bounce is a no-op), and a remote change patches from its payload — no refetch either way.
+  // The first list() fetches, later ones are free; our writes patch the row and its DB timestamp (so the realtime
+  // bounce is a no-op) and a remote change patches from its payload.
   function collection(table, { order, hydrate = r => r, boot = false } = {}) {   // boot: bootstrap primes it, so a refill under one must win over its answer
     let rows = null, gen = 0;   // null = cold · gen: bumped by invalidate or a write while cold, so a list answering after one is dropped
     const cmp = order ? (a, b) => { const x = a[order] ?? 0, y = b[order] ?? 0; return x < y ? -1 : x > y ? 1 : 0; } : null;
@@ -184,8 +184,8 @@ export function createSupabaseStore(client) {
       put, drop,
       mine(row) { if (!row) return null; return put(row); },   // our write: patch + suppress the echo
       mineDrop(id) { drop(id); return true; },
-      // ── The writes every side list does identically. Only the row's own columns differ, so callers pass
-      // just those; user scoping and the cache patch belong to the collection, the timestamps to the DB (default now(), set_updated_at).
+      // ── The writes every side list shares: callers pass only the row's own columns; user scoping and the
+      // cache patch belong to the collection, the timestamps to the DB (default now(), set_updated_at).
       async insert(row) {
         const uid = await userId();
         const { data, error } = await client.from(table).insert({ user_id: uid, ...row }).select('*').single();
@@ -237,14 +237,15 @@ export function createSupabaseStore(client) {
     goals: collection('goals', { order: 'position' }),   // read and restored only by the backup: the web has no goals screen
     identities: collection('identities', { order: 'position' }),
     gcal_calendars: collection('gcal_calendars'),
+    gcal_events: collection('gcal_events'),
   };
 
   // table → the app-side list a change to it invalidates. tasks/areas are handled apart (they own caches).
   const SYNC_KINDS = { events: 'event', blocks: 'block', filters: 'filter',
-    locations: 'location', schedule_items: 'scheduleItem', block_days: 'blockDay', reminders: 'reminder', day_notes: 'dayNote' };
+    locations: 'location', schedule_items: 'scheduleItem', block_days: 'blockDay', reminders: 'reminder', day_notes: 'dayNote',
+    gcal_events: 'gcalEvent', gcal_calendars: 'gcalCal' };
   const taskUpdate = async (id, uid, payload) => Object.keys(payload).length ? client.from('tasks').update(payload).eq('id', id).eq('user_id', uid) : { error: null };
-  // Debounce a burst of remote task events, then patch ONLY the touched rows (bounded refetch with the relations embed) —
-  // never a full-table scan. Full refetch is the fallback for a payload with no id.
+  // Debounce a burst of remote task events, then refetch only the touched rows (no id in a payload: a full refetch).
   const scheduleApply = (delay = 250) => { clearTimeout(_applyT); _applyT = setTimeout(async () => {
     _applyT = null;
     const before = _cTasks;
@@ -290,8 +291,8 @@ export function createSupabaseStore(client) {
 
   const URL_IDS = 150;   // ids per request URL: ~40 B each, and proxies cap near 8 KB ≈ 200
   const taskSort = (x, y) => (x.position ?? 0) - (y.position ?? 0) || (y.created_at || '').localeCompare(x.created_at || '');
-  // A write's row (`patch`: the columns it wrote), read back into the cache. The write landed even when the read fails ("didn't
-  // save" invites a duplicate retry): the cached row takes what it wrote, and the cache goes cold so the next list re-pulls.
+  // A write's row (`patch`: the columns it wrote), read back into the cache. The write landed even when the read
+  // fails (a "didn't save" invites a duplicate retry): the cached row takes what it wrote and the cache goes cold.
   // `wrote`: the write's response was lost, so only a row holding every written column proves it landed.
   // Postgres answers jsonb with its object keys re-sorted and timestamptz as "+00:00" for a written "Z": equal by value, not text.
   const STAMP = /^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d(\.\d+)?)?(Z|[+-]\d\d:\d\d)$/;
@@ -351,9 +352,8 @@ export function createSupabaseStore(client) {
     const ids = movedOutParents(rows, id, oldParentId, ts, (await settings()).default_project_id); if (ids.length) await patchTasks(uid, ids, { completed_at: ts });
   }
 
-  // Find-or-create an area by TRIMMED name, reusing an existing one instead of ever inserting a duplicate.
-  // Cache hit wins; on a stale-cache unique clash (another device already created it — the DB's
-  // areas_user_name_idx forbids same-owner dupes) refetch that row and reuse it.
+  // Find-or-create an area by TRIMMED name. Cache hit wins; on a stale-cache unique clash (another device
+  // created it; areas_user_name_idx forbids dupes) refetch that row and reuse it.
   async function ensureArea(name, color = null) {
     const nm = (name ?? '').trim();
     const cached = _cAreas.find(a => a.name === nm);
@@ -369,8 +369,7 @@ export function createSupabaseStore(client) {
     return null;
   }
 
-  // fields.areas (names) → area ids, mirroring LocalStore.resolveAreas: prefer explicit area_ids, else
-  // find-or-create each name (reusing existing rows — never a duplicate).
+  // fields.areas (names) → area ids, as LocalStore.resolveAreas: area_ids win, else find-or-create each name.
   async function resolveAreaIds(fields) {
     const { ids, names } = resolveAreaNames(fields);
     if (ids) return ids;
@@ -399,9 +398,9 @@ export function createSupabaseStore(client) {
     const res = await Promise.all(type === 'relates' ? [stale('task_id', 'related_id'), stale('related_id', 'task_id')] : [stale('task_id', 'related_id')]);
     return !res.some(r => r.error);
   }
-  // Upsert; on an FK reject (23503: a parent deleted since) look the referenced ids up IN THE DB — never the cache, which can
-  // lag another device — drop/null the dead ones (liveRefs) and retry once. → the rows stored (a live one kept as it is, its id
-  // added to `live`), or null on failure.
+  // Upsert; on an FK reject (23503: a parent deleted since) look the ids up IN THE DB (the cache can lag another
+  // device), drop/null the dead ones (liveRefs) and retry once. → the rows stored (a live one kept, its id added to
+  // `live`), or null.
   async function upsertLive(kind, table, rows, onConflict = 'id', live = null) {
     const put = () => { const q = client.from(table).upsert(rows, { onConflict, ignoreDuplicates: true }); return !rows.length ? { data: [], error: null } : live ? q.select('id') : q; };
     let { data, error } = await put();
@@ -434,8 +433,7 @@ export function createSupabaseStore(client) {
       for (const r of d.task_relations || []) (relByTask[r.task_id] ||= []).push(r);
       _cTasks = (d.tasks || []).map(t => hydrateTask({ ...t, task_relations: relByTask[t.id] || [] }));
       _cAreas = d.areas || []; _loaded = true; _areasLoaded = true; rebuildIdx();
-      // The RPC already carried these — prime the caches from it rather than letting the first list() refetch
-      // what we are holding in our hand. This is what makes bootstrap a COLD START instead of a poll.
+      // The RPC already carried these: prime the caches so the first list() doesn't refetch them (a cold start).
       const out = { filters: d.filters || [], locations: d.locations || [],
         events: (d.events || []).map(hydrateEvent), blocks: (d.blocks || []).map(hydrateBlock) };
       for (const k of ['filters', 'locations', 'events', 'blocks']) COLL[k].prime(out[k].slice());
@@ -460,9 +458,8 @@ export function createSupabaseStore(client) {
     currentRegion() { return _settings.current_region ?? 'Home'; },
     setDeskCheck: deskCheck => patchSettings({ desk_check: deskCheck }),
 
-    // Trash restore: re-insert previously-deleted rows. Powers "Recently deleted". A row already live stays as it is (ON CONFLICT DO NOTHING):
-    // the cache can miss one another device brought back and edited since, which the Bin's older copy must never overwrite.
-    // `live` gets those rows' ids: the Bin keeps their copy.
+    // Trash restore: re-insert deleted rows. A row already live stays (ON CONFLICT DO NOTHING): another device may have
+    // brought it back and edited it, and the Bin's older copy must not overwrite that. `live` gets those ids.
     async reinsert(kind, rows, live = null) {
       if (!rows?.length) return false;
       const uid = await userId();
@@ -472,7 +469,7 @@ export function createSupabaseStore(client) {
         // one statement: every row lands or none does, so a failure leaves the Bin entry whole
         const { data, error } = await client.from('tasks').upsert(tasks, { onConflict: 'id', ignoreDuplicates: true }).select('id');
         if (error) return false;
-        // after every row, as an edge can point at a later one; an edge to a task deleted since can't come back, and a live row keeps its own
+        // after every row, as an edge can point at a later one; an edge to a task deleted since can't come back
         const landed = new Set(data.map(r => r.id)), rels = out.flatMap(({ task_relations }, i) => landed.has(ids[i]) ? task_relations.map(r => ({ ...r, task_id: ids[i], user_id: uid })) : []);
         for (const id of ids) if (!landed.has(id)) live?.add(id);
         if (!await upsertLive('relation', 'task_relations', rels, 'task_id,related_id,type')) return false;
@@ -508,7 +505,8 @@ export function createSupabaseStore(client) {
     events: {
       list: () => COLL.events.list(),
       get: id => COLL.events.one(id),
-      // ticket, attachments, going and importance ride an UPDATE: an INSERT naming them fails whole until db:apply. A failed one takes the new row back.
+      // ticket, attachments, going and importance ride an UPDATE: an INSERT naming them fails until db:apply.
+      // A failed one takes the new row back.
       async add(fields) {
         const row = await COLL.events.insert({
           title: fields.title || '', notes: fields.notes ?? null,
@@ -547,9 +545,9 @@ export function createSupabaseStore(client) {
 
   scheduleItems: {
       list: () => COLL.schedule_items.list(),
-      add: ({ task_id, block_id, role, position, date, start, duration_min }) => COLL.schedule_items.insert({
+      add: ({ task_id, block_id, role, position, date, start, duration_min, gcal_uid, gcal_day }) => COLL.schedule_items.insert({
         task_id, block_id: block_id ?? null, role: role ?? 'during', position: position ?? 0,
-        date: date ?? null, start: start ?? null, duration_min: duration_min ?? null,
+        date: date ?? null, start: start ?? null, duration_min: duration_min ?? null, gcal_uid: gcal_uid ?? null, gcal_day: gcal_day ?? null,
       }),
       update: (id, fields) => COLL.schedule_items.patch(id, pick(fields, ['date', 'start', 'duration_min', 'role', 'position'])),
       remove: id => COLL.schedule_items.del(id),
@@ -567,6 +565,7 @@ export function createSupabaseStore(client) {
     // Google Calendar's mirror (docs/superpowers/specs/2026-11-14-google-calendar-sync.md). Signed in only: LocalStore has none.
     gcal: {
       calendars: () => COLL.gcal_calendars.list(),
+      events: () => COLL.gcal_events.list(),
       // by (user, account, google_id), Google's fields only: a calendar's On/Off and sync token outlive every pass
       async upsert(account, items) {
         const uid = await userId();
@@ -605,7 +604,7 @@ export function createSupabaseStore(client) {
         await getSettings(); rebuildIdx();   // prime _cDef + search index for search()/runFilter()
         return [...rows].sort(taskSort);
       },
-      // fresh, past the cache: the row as another device may have left it (a realtime gap). The app reads then writes.
+      // fresh, past the cache: the row as another device may have left it (a realtime gap).
       // ceiling: an edit landing between the read and the write is still lost — move to a conditional write
       // (.eq('updated_at', read stamp), as setChecklistItem) if users report multi-device contention.
       async get(id) {
@@ -677,8 +676,7 @@ export function createSupabaseStore(client) {
 
       async setChecklistItem(id, itemId, done) {
         const uid = await userId(), flip = t => (t?.checklist || []).some(c => c.id === itemId) && t.checklist.map(c => c.id === itemId ? { ...c, done } : c);
-        // only over the row as read: another device's edit since (the cache can miss it) matches nothing, so the flip goes
-        // into the stored list — one read, and only then
+        // only over the row as read: another device's edit since matches nothing, so the flip goes into the stored list
         const put = t => client.from('tasks').update({ checklist: flip(t) }).eq('id', id).eq('user_id', uid).eq('updated_at', t.updated_at).select('updated_at');
         let t = _cTasks.find(x => x.id === id); if (!flip(t)) return false;
         let res = await put(t);
@@ -718,8 +716,8 @@ export function createSupabaseStore(client) {
         } catch (e) { console.error('[sb] move failed', e); return null; }
       },
 
-      // id, [id, ...every row the caller journaled], or a list of those (a bulk delete): each id's subtree as cached goes, never a
-      // row the caller didn't list. A group whose id is gone is skipped, and the answer is false.
+      // id, [id, ...every row the caller journaled], or a list of those (a bulk delete): each id's cached subtree goes,
+      // never a row the caller didn't list. A group whose id is gone is skipped, and the answer is false.
       async remove(id, targetId) {
         try {
           const uid = await userId();
@@ -739,8 +737,8 @@ export function createSupabaseStore(client) {
           const def = (await settings()).default_project_id;
           if (targetId && groups.some(([root]) => root === def)) await patchSettings({ default_project_id: targetId });
           const gone = groups.flatMap(([, g]) => [...g]);
-          // The ids ride the URL: groups pack into DELETEs of ≤URL_IDS, a group never split —
-          // its rows go whole or not at all. ceiling: one group past ~200 ids fails whole — an RPC taking uuid[] once a project that big fails to delete
+          // The ids ride the URL: groups pack into DELETEs of ≤URL_IDS, a group never split (whole or not at all).
+          // ceiling: one group past ~200 ids fails whole; add a uuid[] RPC once a project that big fails to delete
           for (let i = 0, batch = []; i < groups.length; i++) {
             batch.push(...groups[i][1]);
             if (i < groups.length - 1 && batch.length + groups[i + 1][1].size <= URL_IDS) continue;
@@ -750,10 +748,10 @@ export function createSupabaseStore(client) {
           }
           await refreshTasks(kids); dropTasks(gone);   // reparented kids changed; the removed rows leave the cache
           COLL.schedule_items.invalidate(); COLL.reminders.invalidate();   // and their FK cascade took these
-          // the reopen_ancestors trigger reopened a done target under an open kid: the cache follows, as move's does (one kid: they share the target)
+          // the reopen_ancestors trigger reopened a done target under an open kid: the cache follows (kids share it)
           const openKid = kids.find(k => !byId.get(k).completed_at && !byId.get(k).archived_at);
           if (openKid) await reopenAncestors(openKid, uid).catch(e => console.error('[sb] reopen after remove failed', openKid, e));   // landed: can't fail it
-          // Same rule as move-out, over the pre-delete rows (every root still present) with the kids reparented.
+          // Same rule as move-out, over the pre-delete rows with the kids reparented.
           const ts = new Date().toISOString(), close = removedOutParents(kids.length ? rows.map(r => kids.includes(r.id) ? { ...r, parent_id: targetId } : r) : rows, groups, ts, def);
           if (close.length) await patchTasks(uid, close, { completed_at: ts });
           return groups.length === lists.length;
@@ -772,17 +770,17 @@ export function createSupabaseStore(client) {
           const only = v => [...patches].filter(([, p]) => Object.keys(p).length === 1 && p.completed_at === v).map(([x]) => x), closes = only(ts), opens = only(null);
           const rest = [...patches].filter(([x]) => !closes.includes(x) && !opens.includes(x));
           // A rest patch rewrites columns (checklist, recurrence) from the row as read: only over that row, as setChecklistItem.
-          // Another device's edit since (the cache can miss it) matches nothing, so the patch is remade from one fresh read.
+          // Another device's edit since matches nothing, so the patch is remade from one fresh read.
           const put = (x, p, at) => client.from('tasks').update(p).eq('id', x).eq('user_id', uid).eq('updated_at', at).select('id');
-          // A row our own closes closed (the old trigger stamps this ts) is re-planned as it was: still open.
+          // A row our own closes closed (the trigger stamps this ts) is re-planned as it was: still open.
           const ours = r => r && Date.parse(r.completed_at) === Date.parse(ts) ? { ...r, completed_at: null } : r;
           const guarded = async ([x, p]) => {
             const res = await put(x, p, rows.find(r => r.id === x).updated_at); if (res.error || res.data?.length) return res;
             const fresh = await this.get(x).catch(() => null), again = fresh && plan(rows.map(r => r.id === x ? ours(fresh) : r)).get(x);
             return again ? put(x, again, fresh.updated_at) : { error: !fresh };
           };
-          // In turn: closes, reopens, then the rewrites. A server still on the old auto_complete_parent closes the repeating
-          // parent and reopen_ancestors may take it back; both are settled before its advance lands. Partial: the app rolls back.
+          // In turn: closes, reopens, then the rewrites, so a server closing the repeating parent and reopen_ancestors
+          // taking it back both settle before its advance lands. Partial: the app rolls back.
           const res = [];
           for (const [ids, v] of [[closes, ts], [opens, null]]) if (ids.length && !res.some(r => r.error)) res.push(await client.from('tasks').update({ completed_at: v }).in('id', ids).eq('user_id', uid).select('id'));
           if (!res.some(r => r.error)) res.push(...await Promise.all(rest.map(guarded)));
@@ -796,17 +794,17 @@ export function createSupabaseStore(client) {
         return true;
       },
 
-      // Archive: a task that can't be completed anymore. Non-destructive — pauses recurrence.
-      // Excluded from sweeps/parent-walks (see store.js). ids: one id, or a cascade's set at one instant — all or none.
+      // Archive: non-destructive, pauses recurrence; excluded from sweeps/parent-walks (see store.js).
+      // ids: one id, or a cascade's set at one instant: all or none.
       async setArchived(ids, val) {
         const uid = await userId(), ts = new Date().toISOString(), list = [ids].flat(), at = val ? ts : null;
         const rows = await taskRows().catch(() => null); if (!rows) return false;
         const byId = new Map(rows.map(r => [r.id, r])); if (!list.every(x => byId.has(x))) return false;
-        // each write holds the server row to what this cache saw (cascades): a row another device archived on its own since keeps its instant
+        // each write holds the server row to what this cache saw: a row another device archived since keeps its instant
         const was = byId.get(list[0]).archived_at, held = (q, back) => val !== !!back ? q.is('archived_at', null) : q.eq('archived_at', back ? ts : was);
         const repeats = val ? list.filter(x => recActive(byId.get(x).recurrence)) : [], plain = list.filter(x => !repeats.includes(x));
         const put = (x, upd, back) => held(client.from('tasks').update(upd).eq('id', x).eq('user_id', uid), back).select('id');
-        // ceiling: one URL holds ~150 ids — a cascade past that splits into requests; chunk it once a project that big archives
+        // ceiling: one URL holds ~150 ids; chunk a cascade past that once a project that big archives
         const res = await Promise.all([...plain.length ? [held(client.from('tasks').update({ archived_at: at }).in('id', plain).eq('user_id', uid)).select('id')] : [],
           ...repeats.map(x => put(x, { archived_at: at, recurrence: pauseRecurrence(byId.get(x).recurrence) }))]);   // pause, never destroy
         const wrote = res.flatMap(r => r.data || []).map(r => r.id);   // the held rows the server took: the caller's undo takes back only those
@@ -938,8 +936,8 @@ export function createSupabaseStore(client) {
           else _pendRefetch.add(rid);
           scheduleApply();
         });
-        // A relation write never touches the tasks ROW, so the tasks listener above cannot see it — refetch
-        // both ends, including our echoes: the cache holds derived links, not the junction timestamps.
+        // A relation write never touches the tasks ROW, so the tasks listener can't see it: refetch both ends,
+        // our echoes too, as the cache holds derived links, not the junction timestamps.
         on('task_relations', p => {
           const r = isDel(p) ? p?.old : p?.new ?? p?.old;
           if (!r?.task_id && !r?.related_id) { _needFull = true; return scheduleApply(); }
@@ -954,8 +952,7 @@ export function createSupabaseStore(client) {
           else _cAreas = _cAreas.some(a => a.id === rid) ? _cAreas.map(a => a.id === rid ? p.new : a) : [..._cAreas, p.new];
           rebuildIdx(); _onChange?.('area');
         });
-        // The side lists: patch the cache straight from the payload, exactly as areas does. A remote
-        // change costs zero round-trips, and our own echo costs nothing at all.
+        // The side lists: patch the cache straight from the payload, as areas does: no round-trip.
         for (const [table, kind] of Object.entries(SYNC_KINDS)) {
           const c = COLL[table];
           on(table, p => {
@@ -965,8 +962,8 @@ export function createSupabaseStore(client) {
             _onChange?.(kind);
           });
         }
-        // The first connect closes the handshake's gap: a write between the boot's pull and SUBSCRIBED reaches neither, so every
-        // table's rows stamped since the pull (set_updated_at stamps each insert and update; 5 min covers client clock skew) run through its handler.
+        // The first connect closes the handshake's gap: a write between the boot's pull and SUBSCRIBED reaches neither,
+        // so every table's rows stamped since the pull (5 min covers client clock skew) run through its handler.
         // ceiling: a row deleted in that gap stays until the next re-pull; revisit if a deleted row is ever reported back after a boot.
         const catchUp = () => {
           if (_bootAt === null) return;

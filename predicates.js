@@ -9,12 +9,12 @@ export const inNotes = t => t?.task_type === 'note';
 
 export const isReference = inNotes;
 
-// The blockers still holding t up (is:blocked): archived can't complete, so it no longer blocks; a gone id neither.
+// The blockers still holding t up (is:blocked): an archived blocker can't complete, so it doesn't block; a gone id
+// neither.
 export const openBlockers = (t, byId) => (t.blocked_by ?? []).filter(id => { const b = byId.get(id); return b && !b.completed_at && !b.archived_at; });
 
-// Absent fields are falsy — null-safe without explicit guards. Span only: `recurrence` is the shared
-// rule field (repeat engine + standing rule), so a rule alone must NOT read as placed — recurring
-// errands and cadence things float (freeze §1/§4).
+// Span only: `recurrence` is the shared rule field (repeat engine + standing rule), so a rule alone must not read as
+// placed: recurring errands and cadence things float (freeze §1/§4).
 export const hasStanding = t => !!(t.starts_at || t.ends_at);
 
 // contract: items = t.schedule_items or equivalent array; absent/null/empty → false.

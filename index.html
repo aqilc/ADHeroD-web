@@ -53,8 +53,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <symbol id="i-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></symbol>
   <!-- ring = the task check's (18px at stroke 3 = its 2.25px border) -->
   <symbol id="i-steps" viewBox="0 0 24 24"><circle cx="5.5" cy="6.5" r="2.5"/><circle cx="5.5" cy="17.5" r="2.5"/><path d="M5.5 9v6M12 7h9M12 18h9"/></symbol>   <!-- the Steps rail: two nodes joined, i-list-check's lines -->
-  <!-- size = how much of a drink it takes: a sip · a mug · a full cup · two cups. Tabler art; the mug is scaled to
-       its width ceiling and multi is two session cups at .75 offset right+up, so the pair stands a full cup tall. -->
+  <!-- size = how much of a drink it takes: a sip · a mug · a full cup · two cups. Tabler art; the mug is scaled to its
+       width ceiling and multi is two cups at .75 offset right+up, so the pair stands a full cup tall. -->
   <symbol id="i-size-tiny" viewBox="0 0 24 24"><g transform="translate(12,12) scale(1.1444) translate(-12,-12)" stroke-width="1.7476"><path d="M3 14c.83 .642 2.077 1.017 3.5 1c1.423 .017 2.67 -.358 3.5 -1c.83 -.642 2.077 -1.017 3.5 -1c1.423 -.017 2.67 .358 3.5 1 M3 10h14v5a6 6 0 0 1 -6 6h-2a6 6 0 0 1 -6 -6v-5 M16.746 16.726a3 3 0 1 0 .252 -5.555"/><path opacity=".5" d="M8 5a1.4 1.4 0 0 0 -.6 1.2a1.4 1.4 0 0 0 .6 1.2 M12 5a1.4 1.4 0 0 0 -.6 1.2a1.4 1.4 0 0 0 .6 1.2"/></g></symbol>
   <symbol id="i-size-short" viewBox="0 0 24 24"><g transform="translate(12,13.745) scale(1.2222) translate(-12,-12)" stroke-width="1.6364"><path d="M4.083 5h10.834a1.08 1.08 0 0 1 1.083 1.077v8.615c0 2.38 -1.94 4.308 -4.333 4.308h-4.334c-2.393 0 -4.333 -1.929 -4.333 -4.308v-8.615a1.08 1.08 0 0 1 1.083 -1.077 M16 8h2.5c1.38 0 2.5 1.045 2.5 2.333v2.334c0 1.288 -1.12 2.333 -2.5 2.333h-2.5"/></g></symbol>
   <symbol id="i-size-session" viewBox="0 0 24 24"><g transform="translate(12,12) scale(1.2875) translate(-12,-13)" stroke-width="1.5534"><path d="M5 11h14v-3h-14l0 3 M17.5 11l-1.5 10h-8l-1.5 -10 M6 8v-1a2 2 0 0 1 2 -2h8a2 2 0 0 1 2 2v1"/></g></symbol>
@@ -117,9 +117,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <!-- one path, four subpaths: the four bars CROSS, and as separate <line>s each crossing paints twice (see i-backlog) -->
   <symbol id="i-proj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10.5" stroke-width="3"/><path d="M12 12V3a9 9 0 0 1 9 9Z" fill="currentColor" stroke="none"/></symbol>   <!-- a project with no progress to show: the .pring, a quarter done -->
   <symbol id="i-panel-r" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></symbol>
-  <!-- ONE path, two subpaths — not two <path>s. The row's project chip strokes with a SEMI-TRANSPARENT color, and
-       two separate paints double their alpha wherever they meet (the tray line hits the box walls at x=2/x=22),
-       which reads as dark blobs on the glyph. A single stroke op composites the union once, at one alpha. -->
+  <!-- One path, two subpaths: the project chip strokes with a semi-transparent color, and two separate paints
+       double their alpha where they meet (dark blobs); a single stroke composites the union once. -->
   <symbol id="i-backlog" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2 M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
   <symbol id="i-mail" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></symbol>
   <symbol id="i-reply" viewBox="0 0 24 24"><path d="M20 18v-2a4 4 0 0 0-4-4H4"/><path d="m9 17-5-5 5-5"/></symbol>
@@ -130,7 +129,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 <symbol id="i-all" viewBox="0 0 24 24"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
-  <!-- thumbtack tilted ~40° (not the map-pin i-pin; that stays for locations). One fill-only path: a stroked fill doubles a translucent ink (dark --muted) where they overlap -->
+  <!-- thumbtack tilted ~40° (i-pin stays for locations). One fill-only path: a stroked fill doubles a translucent
+       ink where they overlap -->
   <symbol id="i-tack" viewBox="0 0 24 24"><path transform="rotate(40 12 12)" fill="currentColor" stroke="none" d="M8 3h8a1 1 0 0 1 0 2H8a1 1 0 0 1 0-2zM8 4h8v5.77L18.62 15H5.38L8 9.77zM11 14h2v6a1 1 0 0 1-2 0z"/></symbol>
   <symbol id="i-pin-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11c0-1.06.24-2.07.66-2.97M8.5 4.06A7 7 0 0 1 19 10c0 2.05-1.28 4.42-2.8 6.5"/><circle cx="12" cy="10" r="2.5"/><line x1="3" y1="3" x2="21" y2="21"/></symbol>
   <!-- lock: fill-only, shackle and body meet edge to edge (paint over paint doubles a translucent ink, like i-tack); the shackle is its own path so hover can lift it (overflow: past the viewBox); square top corners keep the sides flush with the shackle. 19 wide, 24 tall; up 4/3 so its ink mass centers on the box; joint and shift are multiples of 4/3, whole pixels in an 18px box at 1-3x (no seam) -->
@@ -185,12 +185,13 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </div>
 
     <!-- ── List controls: search, sentence, menus ── -->
-    <!-- Lists view controls: search + sort + quick-filters, above the task list.
-         Sort/filter state is global + persisted; completed tasks are hidden by default and shown in a section below the add button.
-         gap-6: the outdented search glyph sits over the checks, so the sentence starts on the row titles' column. -->
-    <!-- .crowded (2+ tokens) / phone: the row NEVER wraps — search yields, then the measured shed ladder
-         (_fitControls; re-run by x-effect when what the line holds changes, @transitionend when the search width does).
-         A microtask, not $nextTick: Alpine holds nextTicks while any x-transition starts, so a stale shed painted for frames and the word moved under a tap -->
+    <!-- Lists view controls: search + sort + quick-filters, above the task list. Sort/filter state is global +
+         persisted. gap-6: the outdented search glyph sits over the checks, so the sentence starts on the row
+         titles' column. -->
+    <!-- .crowded (2+ tokens) / phone: the row never wraps: search yields, then the measured shed ladder
+         (_fitControls; re-run by x-effect when the line's contents change, @transitionend when the search width
+         does). A microtask, not $nextTick: Alpine holds nextTicks while an x-transition starts, so a stale shed
+         would paint -->
     <div class="list-controls flex items-center gap-6" x-ref="lc" :class="{ crowded: qfFacets() >= 2 }" x-show="!sel.length"
          x-effect="qfFragments(); listSearchOpen; listQ; sortBy; groupBy; sel.length; queueMicrotask(() => _fitControls())" @transitionend="$event.propertyName === 'width' && _fitControls()">
       <!-- search rests as a bare icon; the input unfolds on click, `/` or ⌘F and collapses when empty on blur -->
@@ -205,8 +206,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                @blur="if (!listQ) listSearchOpen = false">
       </div>
 
-      <!-- Hearthsay sentence: the row reads as prose — "showing everything · sorted by hand". Words open menus;
-           active filters grow into colored tokens with their own ×. State + persistence unchanged (qf*/sortBy). -->
+      <!-- Hearthsay sentence: the row reads as prose ("showing everything · sorted by hand"). Words open menus;
+           active filters grow into colored tokens with their own ×. -->
       <div class="ls-sent flex items-center">
         <span class="ls-verb">showing</span>
         <!-- subject/+and… toggle via x-if, not x-show — x-show effects go stale in the e2e webview (see ui-conventions) -->
@@ -214,8 +215,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="ls-word ls-subj" data-sk="Filter tasks"
                   @click.stop="listMenu = listMenu === 'add' ? null : 'add'" x-text="'everything'" aria-label="Filter tasks" aria-haspopup="menu" :aria-expanded="listMenu === 'add'"></button>
         </template>
-        <!-- One token per facet, from qfFragments(). Connectives ("in", "due") live OUTSIDE the token so the
-             line reads as honest prose; .ls-frag is display:contents so both stay flex children of the bar. -->
+        <!-- One token per facet, from qfFragments(). Connectives ("in", "due") live outside the token so the line reads
+             as prose; .ls-frag is display:contents so both stay flex children of the bar. -->
         <template x-for="f in qfFragments()" :key="f.k">
           <span class="ls-frag">
             <template x-if="'verb' in f"><span class="ls-verb" x-text="f.verb"></span></template>
@@ -322,8 +323,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </div>
 
     <!-- ── Multi-task edit bar + task list ── -->
-    <!-- Multi-task edit bar: REPLACES the filter bar while a selection is active (swap, not stack). Calm idiom:
-         faint fills + radius, one accent, no hard boxes. Each action applies to ALL selected as ONE undoable composite. -->
+    <!-- Multi-task edit bar: replaces the filter bar while a selection is active. Each action applies to all selected
+         as one undoable composite. -->
     <div class="sel-bar flex items-center gap-4" x-show="sel.length > 0" x-cloak
          x-transition:enter="sel-anim" x-transition:enter-start="sel-hide" x-transition:enter-end="sel-show"
          x-transition:leave="sel-anim" x-transition:leave-start="sel-show" x-transition:leave-end="sel-hide">
@@ -377,7 +378,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
     </div>
 
-    <!-- Today's plan atop All: what has a time today, as the Day view shows it (Things' events box); gone when nothing is placed -->
+    <!-- Today's plan atop All: what has a time today, as the Day view shows it; gone when nothing is placed -->
     <template x-if="navSel.type === 'all'"><div class="plan-box" x-html="planBoxHtml()"></div></template>
 
     <div class="empty flex-col items-center gap-6" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)">
@@ -449,8 +450,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <ul class="list flex-col" x-effect="paintSel()" x-init="initListSort($el)"
         @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)" @contextmenu="rowMenuOpen($event)"
         @dragstart="listDragStart($event)" @dragenter.prevent="listDragOver($event)" @dragover.prevent="listDragOver($event)" @dragleave="listDragLeave($event)" @drop.prevent="listDrop($event)" @dragend="dragEnd()">
-      <!-- direct innerHTML (not x-html): x-html walks ~9000 nodes for Alpine directives — rows carry none -->
-      <!-- preserve the scroller position across rebuilds: replacing every row (esp. while the composer's edit-row is mid-list) otherwise clamps scrollTop to 0 -->
+      <!-- direct innerHTML (not x-html): x-html walks ~9000 nodes for Alpine directives, rows carry none -->
+      <!-- keeps the scroller position across rebuilds: replacing every row would clamp scrollTop to 0 -->
       <div class="rows" x-effect="renderRows($el, listHtml())"></div>
 
       <!-- drop ghost: flex order (rows i*2); left edge = landing depth (shallower = outdent vs reorder) -->
@@ -512,7 +513,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="pop area-autocomplete link-autocomplete" x-cloak :class="{ strip: phoneDock() }" :style="pickerStyle(linkPicker())" @click.document="linkPicker() && outside($event, $el) && (needsPicker.open = nbyPicker.open = false)">
           <template x-for="(r, i) in linkOptions()" :key="r.t.id">
             <!-- optional-chained: x-for re-evaluates a row's bindings on the frame the picker closes, when
-                 linkPicker() is already null (Alpine Expression Error, harmless but printed) -->
+                 linkPicker() is already null (a harmless but printed Alpine error) -->
             <button type="button" class="pop-item" :class="{ hot: i === linkPicker()?.sel }"
                     @click="pickLink(r.t.id)" @mousemove="linkPicker() && (linkPicker().sel = i)">
               <!-- the task's OWN checkbox (shared builder), not the relation stop sign, which reads as archived -->
@@ -526,7 +527,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" class="pop-item" :class="{ hot: i === locPicker.sel }"
                     @click="pickPill('loc', l.name)" @mousemove="locPicker.sel = i">
               <svg class="ico"><use href="#i-pin"/></svg><span class="nm truncate" x-text="l.name"></span>
-              <!-- how many open tasks already wait there: places are for batching, not just labeling; closed, it counts nothing (a tick would re-scan every task) -->
+              <!-- how many open tasks already wait there; closed, it counts nothing (a tick would re-scan every
+                   task) -->
               <span class="rt" x-text="locPicker.open && locOpenCount(l.id) || ''"></span>
             </button>
           </template>
@@ -538,7 +540,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div class="desc" x-ref="desc" x-show="!notesHidden()" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Description"
              data-placeholder="Description" @beforeinput="liveBeforeInput($event)" @input="onDescInput($event)" @compositionend="onDescInput()"
              @keydown="descKeydown($event)" @paste="descPaste($event)" @copy="descCopy($event)" @cut="descCopy($event)"></div>
-        <!-- Relation and file chips, shown under the description so they're easy to see (add more via ⋯ Relations, a drop or a paste) -->
+        <!-- Relation and file chips under the description (add more via ⋯ Relations, a drop or a paste) -->
         <div class="composer-rels" x-show="relChips().length || editingTask()?.attachments?.length || composerFiles().length">
           <template x-for="r in relChips()" :key="r.type + r.id">
             <span class="rel-chip" :class="[r.type, r.done && 'done']">
@@ -557,11 +559,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <button type="button" class="drop" @click="dropPending(f)" :aria-label="'Remove ' + f.name"><svg class="ico" aria-hidden="true"><use href="#i-x"/></svg></button></span>
           </template>
         </div>
-        <!-- Inline subtasks / checklist entries (Things-style), directly below the description -->
+        <!-- Inline subtasks / checklist entries, directly below the description -->
         <div class="composer-entries flex-col" x-show="!notesHidden()" @copy="chkCopy($event)" @pointermove="chkDragOut($event)" @click.document.capture="pop === 'kind' && !$event.target.closest('.ghost > .ghost-check') && popAway('kind', $event)">
-          <!-- The subtask ghost's ONE element — never re-created, so a subtask landing mid-typing can't tear it from under the caret: the
-               empty state's "ghost OR ghost" row, else the head of the subtask list (Tab from the description lands on it first; new
-               subtasks land right below it). Rows are plain DOM painted by paintSubs from draft.subs (keyed by task id), their events delegated here. -->
+          <!-- The subtask ghost is one element, never re-created, so a subtask landing mid-typing can't tear it
+               from under the caret: the empty state's "ghost OR ghost" row, else the head of the subtask list (Tab
+               from the description lands on it first). Rows are plain DOM painted by paintSubs from draft.subs,
+               events delegated here. -->
           <div :class="shownSubs().length ? 'entry-list flex-col' : 'entry-empty'" x-show="shownSubs().length || !draft.checklist.length"
                x-init="initEntrySort($el, 'sub')" x-effect="paintSubs($el)"
                @click="subRowEv($event)" @focus.capture="subRowEv($event)" @blur.capture="subRowEv($event)" @input="subRowEv($event)" @beforeinput="subRowEv($event)" @keydown="subRowEv($event)" @paste="subRowEv($event)">
@@ -584,7 +587,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               </div>
             </template>
           </div>
-          <!-- ghost first (in DOM AND on screen) → open items → done items (checklistRows sorts after hold release). Ghost-first DOM = Tab from the description lands on the "new item" box before the existing rows. -->
+          <!-- ghost first (in DOM and on screen) → open items → done items (checklistRows sorts after hold
+               release); Tab from the description lands on the "new item" box first. -->
           <!-- shown whenever it holds anything, subtasks or not: a checklist beside subtasks (a drag in, a sync, a convert landing under a reopened draft) is never hidden -->
           <template x-if="draft.checklist.length">
             <!-- grip only while editing a SAVED task: a not-yet-created task has no order worth preserving -->
@@ -595,8 +599,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <span class="chk-rect ghost-check" :class="{ plain: chkPlain() }" x-bind="kindBox"></span>
                 <textarea class="entry-txt chk-ghost-ta" rows="1" :placeholder="chkSteps() ? 'Add step' : 'New checklist item'" x-model="chkGhost" @keydown="entryKey($event)" @keydown.enter="ghostEnter($event)" @keydown.escape="chkGhostEsc($event)" @paste="chkPaste($event)" @keydown.stop></textarea>
               </div>
-              <!-- The ghost doubles as find: matches float to the top + highlight (display only — stored order
-                   untouched, nothing hidden); grips drop while the order is temporary. Enter still adds. -->
+              <!-- The ghost doubles as find: matches float to the top + highlight (display only, stored order
+                   untouched); grips drop while the order is temporary. Enter still adds. -->
             </div>
           </template>
           <!-- a phone's ghost box: what the ghost row adds (kindBox) -->
@@ -608,8 +612,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
         <!-- ── Composer opts: teleported pickers ── -->
         <!-- pickers gated in x-if so Alpine doesn't init the whole block at boot; each teleported pop is gated
-             AGAIN on its own open flag, so a composer open builds the visible card only (~950 fewer nodes,
-             ~200 fewer listeners) and each picker pays its own mount the first time it is opened -->
+             again on its own open flag, so a composer open builds the visible card only (~950 fewer nodes, ~200
+             listeners) -->
         <div class="composer-dock">   <!-- chips + actions: one block, so a phone can dock them above the keyboard (styles .composer-dock) -->
         <template x-if="composer.open">
         <div class="composer-opts flex items-center" x-init="barFit($el)">
@@ -660,8 +664,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <button type="button" class="pop-item" :class="{ on: sizeNow() === 'session' }" @click="setSize('session')"><svg class="ico"><use href="#i-size-session"/></svg>Session <i>one sitting</i><span class="rt">½–1 h</span></button>
                 <button type="button" class="pop-item" :class="{ on: sizeNow() === 'multi' }" @click="setSize('multi')"><svg class="ico"><use href="#i-size-multi"/></svg>Multi <i>spread across days</i><span class="rt">2 h+</span></button>
               </div>
-              <!-- Exact minutes: one field, no wheels. Type a number → Enter commits and closes; empty commits
-                   nothing (the ladder pick stands). The ladder writes it too, so the two never disagree. -->
+              <!-- Exact minutes: one field, no wheels. Enter commits and closes; empty commits nothing (the ladder pick
+                   stands). The ladder writes it too, so the two never disagree. -->
               <label class="hmrow"><svg class="ico"><use href="#i-clock"/></svg>Exactly
                 <input class="inp durx" inputmode="numeric" placeholder="–" :value="draft.durMin || ''" @beforeinput="/\D/.test($event.data ?? '') && $event.preventDefault()"
                        @keydown.stop @keydown.enter.prevent.stop="setDur(Math.max(0, +$el.value || 0)); pop = null" @change="setDur(Math.max(0, +$el.value || 0))">min</label>
@@ -684,7 +688,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <span x-text="dlLabel()"></span>
             </button>
           </div>
-          <!-- the time popover, opened by a repeat statement's [at …] chip — fixed to the viewport so it can sit over the teleported .pop -->
+          <!-- the time popover, opened by a repeat statement's [at …] chip; fixed to the viewport so it can sit
+               over the teleported .pop -->
           <template x-if="pzpop"><template x-teleport="body"><div class="pop pz-pop" :class="{ dock: popDock }" :style="pzpop.style" @click.stop @click.outside="pzpop = null">
             <template x-for="o in pausePicks()" :key="o.label"><button type="button" class="pop-item" @click="pauseUntil(o.iso)"><span x-text="o.label"></span><span class="rt" x-text="fmt(o.iso)"></span></button></template>
             <button type="button" class="pop-item" @click="pzpop = null; pausePicking = true">Pick a day</button>
@@ -705,7 +710,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" class="pop-item clear tx" @click="timeSet(''); tpop = false"><svg class="ico"><use href="#i-x"/></svg>no time</button>
           </div></template></template>
           <!-- Reminders: the list looks, the setter sets; one title row on both, the bell turning into Back.
-               Severity is the lead icon's SHAPE; a self-repeating reminder shows the repeat switch instead, and tapping it pauses. -->
+               Severity is the lead icon's shape; a self-repeating reminder shows the repeat switch instead (tap
+               pauses). -->
           <div class="field" @click.document.capture="pop === 'rem' && outside($event, $el) && popAway('rem', $event)">
             <button type="button" class="chip chip-rem inline-flex items-center" :class="{ set: draft.reminders.length, open: pop === 'rem' }" title="Remind" aria-haspopup="dialog" :aria-expanded="pop === 'rem'" @click="togglePop('rem', $el)">
               <svg class="ico"><use :href="draft.reminders.length ? '#i-bell-fill' : '#i-bell'"/></svg>
@@ -978,7 +984,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           </div>
         </div>
         </div>
-        <!-- a phone's pop covers most of the screen: the scrim takes the tap that dismisses it (popAway closes), like a sheet's backdrop; outside the dock, whose clip-path would clip it -->
+        <!-- a phone's pop covers most of the screen: the scrim takes the tap that dismisses it; outside the dock,
+             whose clip-path would clip it -->
         <template x-if="pop && narrow"><div class="pop-scrim"></div></template>
         </div>
       </form>
@@ -989,8 +996,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- Full ghost task row (keeps the .add-task-btn hook): looks like an empty task row; click opens the composer -->
     <button class="add-task-btn flex items-center gap-10" x-ref="addRow" data-sk="New task" x-show="!composer.open || editing" @click="startAdd()"><span class="ghost-check"></span><span class="ghost-title">Add task</span></button>
 
-    <!-- Completed tasks: a section BELOW the add button so the button stays visible and completed items are clearly separated. -->
-    <!-- Done: a real task list (same row components) so subtasks show and the composer can relocate in + open inline. -->
+    <!-- Completed tasks sit below the add button so it stays visible. A real task list (same row components):
+         subtasks show and the composer can open inline. -->
     <div class="list-done" x-show="(showCompleted || qfArchived) && completedRows().length" x-cloak>
       <div class="list-done-head flex items-center gap-6"><span x-text="showCompleted && qfArchived ? 'Done &amp; Archived' : qfArchived ? 'Archived' : 'Done'"></span><span class="list-done-n" x-text="completedRows().length"></span><span class="head-rule"></span></div>
       <ul class="list flex-col" @mouseover="listOver($event)" @mouseleave="clearHover()" @click="listClick($event)" @contextmenu="rowMenuOpen($event)">
@@ -1029,13 +1036,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </template>
       </div>
     </div>
-    <!-- Peek Pane: drag a row and today's REAL day column docks in from the right — drop on the grid =
-         timed schedule (est as duration), drop on the all-day strip = all-day, drop back in the list = reorder.
-         Fixed overlay (move-rail pattern): never reflows the list mid-drag. Children reuse the cl-* vocabulary and
-         the week column's item look (clEvClass/clBlkClass/clDlClass + styles); inert — no drag, click or check. -->
+    <!-- Peek Pane: drag a row and today's real day column docks in from the right: drop on the grid = timed schedule
+         (est as duration), on the all-day strip = all-day, back in the list = reorder. Fixed overlay, never reflows
+         the list mid-drag. Children reuse the cl-* vocabulary and the week column's item look; inert. -->
     <aside class="peek" :class="{ on: peekOn() }" aria-label="Schedule" @dragover="peekEdge($event)" @dragleave="$el.contains($event.relatedTarget) || _peekCancelEdge()">
       <div class="peek-panel flex-col">
-      <!-- edge-dwell paging affordances: glow + rotated target-day label; the charge bar fills over the dwell so the hold is FELT -->
+      <!-- edge-dwell paging affordances: glow + rotated target-day label; the charge bar fills over the dwell -->
       <div class="peek-eg l" x-show="dragId && peekCanBack()" :class="{ hot: peekEdgeHot === 'prev' }"><span class="peek-eg-lbl" x-text="peekEdgeLabel(-1)"></span></div>
       <div class="peek-eg r" x-show="dragId" :class="{ hot: peekEdgeHot === 'next' }"><span class="peek-eg-lbl" x-text="peekEdgeLabel(1)"></span></div>
       <template x-for="col in peekOn() ? [peekCol()] : []" :key="'peek' + col.iso">
@@ -1112,8 +1118,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </button></template>
       </div>
       <!-- outside .cl-bar: backdrop-filter creates a containing block, trapping position:fixed children -->
-      <!-- ONE row of chips on the title's baseline. No ‹ › steppers: scrolling IS how you move
-           through time here, and two buttons that duplicate a gesture you already make are just noise.
+      <!-- One row of chips on the title's baseline; no ‹ › steppers, scrolling moves through time.
            Views abbreviate to single letters so the whole cluster fits the line. -->
       <template x-if="!narrow">   <!-- on a phone the bar is title-only: views + actions live in the dot strip (dotStripHtml seg) -->
       <div class="cl-actions flex gap-8">
@@ -1132,8 +1137,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- over-header zone title overlay; top set IMPERATIVELY on scroll (_clPositionZone) — reactive top lags a frame -->
       <div class="cl-mtitles overlay" x-ref="clMtitlesBox">
         <template x-for="t in (clView === 'month' ? clZoneTitles() : _periodZoneTitles())" :key="t.name">
-          <!-- NO :style top or :class — _clPositionZone is the single writer of top and .at-bar. A second writer on top leaves a
-               title entering or leaving the list at a stale y for a frame (the teleport). -->
+          <!-- No :style top or :class: _clPositionZone is the single writer of top and .at-bar; a second writer
+               leaves a title entering or leaving the list at a stale y for a frame. -->
           <div class="cl-mtitle" :data-name="t.name"><span class="cl-dn-t" x-text="clSplitTitle(t.name)[2]"></span><span x-text="clSplitTitle(t.name)[0]"></span><span class="cl-yr" x-text="clSplitTitle(t.name)[1]"></span></div>
         </template>
       </div>
@@ -1144,9 +1149,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <template x-for="w in clHeadCells()" :key="w.key">
           <div class="cl-wh" :class="{ today: w.today, weekend: w.weekend }">
             <template x-if="!w.day"><span x-text="w.name"></span></template>
-            <!-- a week day's slot IS its name field, always an input (no swap to misalign); the weekday is the placeholder.
-                 Value written only while unfocused, so a re-render never eats the caret. A week move or a view switch removes the head;
-                 x-for strips Alpine's listeners first, so _clSetPos and clSetView blur it (_clSaveName) before, and @change still saves. -->
+            <!-- a week day's slot is its name field, always an input (no swap to misalign); the weekday is the
+                 placeholder. Value written only while unfocused, so a re-render never eats the caret. A week move
+                 or view switch removes the head; x-for strips Alpine's listeners first, so _clSetPos and clSetView
+                 blur it (_clSaveName) before. -->
             <template x-if="w.day"><input class="cl-wh-n" spellcheck="false" autocomplete="off" :placeholder="w.name" :aria-label="'Name ' + w.name + ' ' + w.day"
               x-effect="document.activeElement !== $el && ($el.value = clDayLabel(w.key))" @keydown.enter.prevent="$el.blur()"
               @keydown.escape.prevent.stop="$el.value = clDayLabel(w.key); $el.blur()" @change="clSetDayLabel(w.key, $el)"></template>
@@ -1166,15 +1172,15 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-for="wk in clWeeks()" :key="wk.key">
             <div class="cl-wk" x-detach :style="'top:calc(var(--rowh) * ' + wk.key + ')' + ((clVT && clView === 'month' && wk.key === clAnchorIdx()) ? ';view-transition-name:cl-active-week' : '')" @click="clOpenWeekRow(wk.key)">
               <template x-for="c in wk.days" :key="c.iso">
-                <!-- out-of-month is a data ATTRIBUTE, not a class: clFocusYM flips at every month boundary (~4-7× a
-                     fling) and Alpine's :class path clears and re-adds, rewriting all ~190 cells' class twice per flip.
-                     The generic attribute path is diff-guarded, so only the ~60 cells that really change write anything.
-                     clDimYM, not clFocusYM: it holds while fast, when .cl-fast lifts the dim and a flip would show nothing. -->
+                <!-- out-of-month is a data attribute, not a class: Alpine's :class path clears and re-adds,
+                     rewriting all ~190 cells' class twice per clFocusYM flip; the attribute path is diff-guarded,
+                     so only ~60 cells write. clDimYM, not clFocusYM: it holds while fast, when .cl-fast lifts the
+                     dim and a flip would show nothing. -->
                 <div class="cl-cell" :class="{ today: c.today, weekend: c.weekend }" :data-out="c.ym !== clDimYM ? 1 : 0" @click="narrow && ($event.stopPropagation(), clOpenDay(c.iso))" @dragover.prevent @dragenter.prevent="_clDropCell($el); clDropPreview = null" @drop="clDropOn($event, c.iso)">
                   <div class="cl-date flex items-center gap-4" role="button" :tabindex="c.iso === (clDayInView || clDayFocus || _nowDay) ? 0 : -1" :aria-label="c.label" @keydown="clKeyActivate($event)" @click.stop="clOpenDay(c.iso)"><span class="cl-mlabel" x-show="c.mlabel" x-text="c.mlabel"></span><span class="cl-dn" x-text="clDayLabel(c.iso)"></span><span class="cl-dnum" x-text="c.day"></span></div>
                   <div class="cl-chips flex-col min-w-0 gap-2">
-                    <!-- a chip has NO click of its own: it is part of its day, so the click is the day's (a side panel
-                         would cover the very day you are looking at), and no Tab stop either. Drag and the checkbox still work. -->
+                    <!-- a chip has no click of its own: the click is its day's (a side panel would cover the day
+                         you are looking at), and no Tab stop either. Drag and the checkbox still work. -->
                     <template x-for="(it, ix) in c.items.slice(0, c.shown)" :key="it.kind+it.id+ix">
                       <div class="cl-chip flex items-center min-w-0" :class="it.pad ? 'cl-span cl-pad' : clChipCls(it)" :draggable="!it.pad && !!_dndKind(it.kind)" @dragstart.stop="clDragStart($event, _dndKind(it.kind), it.id, it.start)" @dragend="clDragEndSchedule()" :style="'--cc:' + clItemColor(it)"><template x-if="clIsTask(it) && it.spanStart !== false"><span x-html="clCheckHtml(it)" @click.stop="clToggleTask(it.id)"></span></template><template x-if="it.kind === 'task-deadline'"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg></template><span class="cl-chip-t grow min-w-0 truncate" :style="'--cl-label-days:' + (it.labelDays || 1) + ';--cl-label-cap:' + (it.labelCap || 0)" x-text="it.spanStart === false && !c.first ? '' : (it.spanStart === true && !it.allDay ? clAgTime(_clMin(it.start)) + ' ' : '') + it.title"></span></div>
                     </template>
@@ -1188,10 +1194,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
 
 
-      <!-- The two chrome rails, drawn per week from ONE template: the ALL-DAY rail pinned under the weekday row
-           (whole-day claims as titles, due marks below them) and the DEADLINE rail pinned above the nav, where
-           the day ends. Timed work keeps the timeline; these carry everything it has no hour to put. Rendered
-           twice — the pinned week and the next one, which rides the boundary between them (_clAdPaint). -->
+      <!-- The two chrome rails, drawn per week from one template: the all-day rail pinned under the weekday row
+           (whole-day claims as titles, due marks below) and the deadline rail pinned above the nav. Timed work
+           keeps the timeline; these carry what has no hour. Rendered twice: the pinned week and the next, riding
+           the boundary (_clAdPaint). -->
       <div class="cl-adwrap" x-ref="clAd" x-cloak x-effect="clAdPages() && $nextTick(() => _clAdSync())"
            :style="'display:' + (clView === 'week' ? 'block' : 'none')">
         <!-- the departing week recedes: a wash whose floor IS the week boundary (see _clAdPaint) -->
@@ -1220,7 +1226,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-for="col in pg.cols" :key="'dr'+col.iso">
             <div class="cl-dlrail-c flex-col min-w-0">
               <template x-for="m in col.deadlines" :key="'dr'+m.id">
-                <button type="button" class="cl-dl-t flex items-center min-w-0" :class="(m.start.length > 10 ? 'at' : '') + clTaskState(m)" :style="'--cc:' + clItemColor(m)" :title="'Deadline: ' + m.title + ', ' + clDlWhen(m)" @click.stop="clItemClick(m)"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span><span class="cl-dl-w" x-text="clDlLeft(m)"></span></button>
+                <button type="button" class="cl-dl-t flex items-center min-w-0" draggable="true" @dragstart.stop="clDragStart($event, 'deadline', m.id, m.start)" @dragend="clDragEndSchedule()" :class="(m.start.length > 10 ? 'at' : '') + clTaskState(m)" :style="'--cc:' + clItemColor(m)" :title="'Deadline: ' + m.title + ', ' + clDlWhen(m)" @click.stop="clItemClick(m)"><svg class="ico cl-dl-ico"><use href="#i-flag"/></svg><span class="truncate" x-text="m.title"></span><span class="cl-dl-w" x-text="clDlLeft(m)"></span></button>
               </template>
             </div>
           </template>
@@ -1231,9 +1237,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- WEEK / DAY: one continuous timeline; each block is a 24h day/week whose top border is the 12am rule -->
       <div class="cl-pages" :class="{ single: clView === 'day' }" :style="'display:' + (clView === 'week' || clView === 'day' ? 'block' : 'none') + ';--clhh:' + clHourH + 'px;--ph:' + clPeriodH() + 'px'" x-ref="clPages" @wheel="clPagesWheel($event)"
            @pointerdown="clPagesTouch($event)" @pointermove="clPagesTouch($event)" @pointerup.window="clPagesTouch($event)" @pointercancel.window="clPagesTouch($event)">
-        <!-- No scroller: --pf is the position in PERIODS and the transform is its only rendering. Written
-             IMPERATIVELY by _clPaint (never bound): a binding here puts an Alpine flush on every wheel event,
-             main-thread work per frame that is felt as lag. -->
+        <!-- No scroller: --pf is the position in periods and the transform is its only rendering. Written imperatively
+             by _clPaint, never bound: a binding puts an Alpine flush on every wheel event, felt as lag. -->
         <div class="cl-pages-inner" x-ref="clInner">
         <template x-for="pg in clBlocks()" :key="pg.key">
           <div class="cl-period-block" :style="'top:calc(var(--ph) * ' + pg.rel + ');height:var(--ph)' + (clVT && clView === 'week' && pg.key === clAnchorIdx() ? ';view-transition-name:cl-active-week' : '')" :inert="clView === 'day' && pg.key !== _periodIdx(_clDate())">   <!-- inert: a Day page beside today is only clipped off (its tail sits under the header), so Tab and taps skip it -->
@@ -1257,8 +1262,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                 <template x-for="h in clHours()" :key="'g'+h"><div class="cl-hour grow"><span x-text="clHourLabel(h)" x-show="!clNowCuts(h, pg.cols.find(c => c.today))"></span></div></template>
                 <!-- the live clock rides the gutter opposite the now line — time made readable, not just marked -->
                 <div class="cl-now-pill" :style="clNowAt(pg.cols.find(c => c.today), '--now')" x-text="clNowLabel(pg.cols.find(c => c.today))"></div>
-                <!-- and while placing, the landing time reads out in that same column, so you aim by the clock; max(9px): at 00:00 it
-                     hangs below the day's top rule (as the tail ghost does), not half under the pinned weekday row -->
+                <!-- while placing, the landing time reads out in that column; max(9px): at 00:00 it hangs below the
+                     day's top rule (as the tail ghost does), not half under the pinned weekday row -->
                 <div class="cl-drop-clock" :style="'display:' + (clDropPreview?.clock && pg.cols.some(c => c.iso === clDropPreview.iso) ? 'block' : 'none') + ';top:max(9px, ' + (clDropPreview ? clDropPreview.min / 14.4 : 0) + '%)'" x-text="clDropPreview?.clock"></div>
               </div>
               <template x-for="(col, ci) in pg.cols" :key="'c'+col.iso">
@@ -1277,10 +1282,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <!-- the draft's ghost: the tile it will be, ringed; no x-show: a string :style overwrites its display:none -->
                   <div class="cl-block-drag" :class="eventEdit?.draft ? 'cl-event' : 'cl-block'" :style="clDraftBand(col.iso)"><template x-if="eventEdit?.draft"><span class="cl-event-b"><span class="cl-event-t" x-text="eventEdit.title"></span><span class="cl-event-tm" x-text="clDraftTime()"></span></span></template><template x-if="blockEdit?.draft"><span class="cl-blk-t" x-text="blockEdit.title"></span></template><span class="cl-grip t"></span><span class="cl-grip b"></span></div>
                   <!-- elapsed time recedes: today up to now, and every day already behind us -->
-                  <!-- DEADLINE: a rule across the day at the hour it bites, the runway above it darkening
-                       toward it. The label is STICKY to the bottom of the scroller, so a deadline can never be
-                       scrolled out of sight — it rides the bottom edge and lands on its own rule when you
-                       reach that hour. Drawn in BOTH all-day modes: this is about WHEN, not about the day. -->
+                  <!-- DEADLINE: a rule across the day at the hour it bites, the runway above it darkening toward it.
+                       The label sticks to the bottom of the scroller so a deadline is never scrolled out of sight, and
+                       lands on its own rule at that hour. Drawn in both all-day modes. -->
                   <template x-for="(m, mi) in col.deadlines" :key="'dl'+m.id">
                     <div class="cl-dl" :class="clDlClass(m, mi)" :style="'--cc:' + clItemColor(m) + ';height:' + clDlPct(m) + '%'"></div>
                   </template>
@@ -1289,7 +1293,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
                   <!-- everything planned for this day is done — the column warms instead of going blank -->
                   <template x-if="col.cleared"><div class="cl-cleared"><span class="cl-cleared-t" x-text="col.cleared.label"></span></div></template>
                   <template x-for="(p, ix) in col.timed" :key="p.it.kind+p.it.id+ix">
-                    <div class="cl-event" :class="clEvClass(p)" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id, p.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it, true)" :style="clEvStyle(p, ix)">
+                    <div class="cl-event" :class="clEvClass(p)" :data-g="/^g:/.test(p.it.id) ? p.it.id : null" :data-at="p.it.start" role="button" tabindex="0" draggable="true" @dragstart.stop="clDragStart($event, _dndKind(p.it.kind), p.it.id, p.it.start)" @dragend="clDragEndSchedule()" @keydown="clKeyActivate($event)" @click.stop="p.it.kind === 'task-block' ? clOpenTaskSide(p.it.id) : clItemClick(p.it, true)" :style="clEvStyle(p, ix)">
                       <template x-if="p.it.kind === 'task-block'"><span x-html="clCheckHtml(p.it,'cl-evt-check')" @click.stop="clToggleTask(p.it.id)"></span></template>
                       <span class="cl-event-b"><span class="cl-event-t"><template x-if="p.it.importance === 'must' || p.it.importance === 'focus'"><svg class="ico cl-event-imp" :style="'color:' + pc(p.it.importance)"><use href="#i-prio-fill"/></svg></template><span x-text="p.it.title"></span></span><span class="cl-event-tm"><span x-text="clTimeLabel(p.it)"></span><template x-if="clAsks(p.it)"><b class="cl-ask">Going?</b></template></span></span>
                     </div>
@@ -1303,8 +1307,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
       </div>
 
-      <!-- staging tray: what still needs a slot (slipped + unscheduled). What IS scheduled is the timeline's job,
-           never listed here twice. Composer relocates in here when editing. -->
+      <!-- staging tray: what still needs a slot (slipped + unscheduled); what is scheduled is the timeline's job.
+           Composer relocates in here when editing. -->
       <aside class="cl-side" :class="{ open: clSideVisible() }" :inert="!clSideVisible()">   <!-- closed, it is only slid off: inert keeps Tab from reaching it and sliding the calendar sideways -->
         <div class="cl-side-top" @pointerdown="clSheetDown($event)" @pointermove="sheetMove($event)" @pointerup="sheetUp($event)" @pointercancel="sheetUp($event)"></div>
         <!-- the one real composer, for a task with no row shown here; a row's opens at its row (relocateComposer) -->
@@ -1381,16 +1385,16 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- ── Canvas dots + settings + overview deck + nav popovers ── -->
      <div class="canvas-dots" :class="clShowToday() ? '' : 'no-today'" @click="dotStripClick($event)" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }"
           x-html="dotStripHtml(surfaceOrder.map(s => ({ ...surfMeta(s), unread: s === 'social' &amp;&amp; chatUnread(), seg: s === 'plan' &amp;&amp; narrow ? { views: clViews(), cur: clView, side: clSideOpen } : null })), surfaceIndex())"></div>
-     <!-- Account & settings: a gear in the corner, apart from the dots (a door over the app, not a place in it).
-          Status dot only when signed in — accent = last server call succeeded, gray = offline or not synced. Top-right up-arrow: a Windows-app update is ready. -->
+     <!-- Account & settings: a gear in the corner, apart from the dots. Status dot only when signed in: accent = last
+          server call succeeded, gray = offline or not synced. Top-right up-arrow: a Windows-app update is ready. -->
      <button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">
        <svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg>
        <template x-if="session"><span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span></template>
        <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
      </button>
-     <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists and Plan on a phone, unless adherod.bar is '0'. No bar of its own: the page fades
-          under it and the field floats. Lists, Plan, Social keep their order; where you are widens into the field. Lists' chip names the list a task
-          lands in and opens the overview, as the current dot does; Plan's opens its view sheet. -->
+     <!-- The jot bar (docs/ui/mobile-design-baseline.md §8): Lists and Plan on a phone, unless adherod.bar is '0'.
+          The page fades under it and the field floats; where you are widens into the field. Lists' chip names the
+          list a task lands in and opens the overview, as the current dot does; Plan's opens its view sheet. -->
      <!-- the lists tray, pulled up from the title (app.js trayDown) or held up from the bar's chip (holdMove); every list -->
      <div class="lsw-scrim" :class="{ on: listTray || popSheet() }" @click="listTray = null"></div>
      <div class="pop lsw" :class="listTray" role="menu" aria-label="Your lists" :inert="!listTray" @pointerdown="trayDown($event)" @pointermove="sheetMove($event)" @pointerup="sheetUp($event)" @pointercancel="sheetUp($event)">
@@ -1458,7 +1462,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <template x-if="overview">
   <div class="overview" :inert="modalOpen()" @pointerdown="$el._down = $event.target" @click="if ($event.target === $el._down && !$event.target.closest('[data-ridx], [data-more], [data-add], .ov-card, .nav-pop')) closeOverview()" @wheel.passive="onOverviewWheel($event)">
     <div id="ov-stage">
-    <!-- Lists picker: a center-focused roller on the left of the deck; the cards keep their size (not cramped) -->
+    <!-- Lists picker: a center-focused roller on the left of the deck -->
     <div class="ov-roller" :class="{ sel: ovSel === 0 }" @mouseenter="ovSel = 0">
       <div class="roller" x-ref="roller" @click="rollerClick($event)">
           <template x-for="(row, idx) in rollerRows()" :key="row.sec ? 'sec:' + row.label : row.kind + ':' + (row.id ?? row.ridx)">
@@ -1519,8 +1523,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </template>
     <template x-if="overview && navRename">
       <div class="nav-pop rl-pop" @click.stop :style="navPopStyle()">
-        <!-- Focused as it renders, not a tick later: keys typed right after the Rename click are the deck's shortcuts until then
-             ("g" goes to Backlog and quits the overview). Selected: a rename usually replaces, and a just-added area opens on its placeholder. -->
+        <!-- Focused as it renders, not a tick later: keys typed right after the Rename click are the deck's
+             shortcuts until then ("g" quits the overview). Selected: a rename usually replaces, and a just-added
+             area opens on its placeholder. -->
         <input class="pop-input" type="text" x-init="$el.focus(); $el.select()"
           :value="(byId.get(navRename)?.content) || (areas.find(a => a.id === navRename)?.name) || ''"
           @keydown.enter.prevent="saveRename(byId.get(navRename) || areas.find(a => a.id === navRename), $el.value)">
@@ -1531,7 +1536,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
   <!-- Account & settings popup: the card rises from the corner gear (transform-origin bottom-left), the app dims a
        step behind. Escape via the central escape() chain; backdrop click closes. Sign-in: email → OTP (magic link
-       + 6-digit code from one email). No Automations section: none exist yet. -->
+       + 6-digit code from one email). -->
   <div class="settings" x-show="settingsOpen" x-cloak :inert="anyDialog()" @click.self="settingsOpen = false"
        @online.window="online = true" @offline.window="online = false" @sync-status.window="synced = $event.detail">
     <div class="settings-card" role="dialog" aria-modal="true" aria-label="Account &amp; settings" @click.stop><div class="set-scroll" x-effect="settingsOpen && ($el.scrollTop = 0)">
@@ -1698,8 +1703,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </div></div>
   </div>
 
-  <!-- The whole window accepts a dropped .ics. Shown only while a FILE is over the page, so ordinary
-       task/event dragging never sees it. -->
+  <!-- The whole window accepts a dropped .ics. Shown only while a file is over the page, not for task/event
+       dragging. -->
   <div class="drop-veil flex items-center justify-center" x-show="fileDrag" x-cloak>
     <div class="drop-note" x-text="dropNote()"></div>
   </div>
@@ -1708,8 +1713,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <!-- All modal dialogs live in one backdrop; clicking it closes every open dialog (closeDialogs). -->
   <div class="dialog-backdrop" :class="{ 'palette-backdrop': palette.open, draft: !anyDialog(), docked: popDock && pop?.startsWith('cl') }" x-show="anyDialog() || clDraft()" x-cloak @click="closeDialogs()">
 
-    <!-- Import preview — a pasted {"adherod":1} payload and a dropped .ics both land here. NOTHING is
-         written until it validates clean: any problem lists itself and the confirm button stays disabled. -->
+    <!-- Import preview: a pasted {"adherod":1} payload and a dropped .ics both land here. Nothing is written until
+         it validates clean: a problem lists itself and the confirm button stays disabled. -->
     <div class="dialog import-sheet" role="dialog" aria-modal="true" aria-label="Import" @click.stop x-show="importPreview" :inert="stacked && guideOpen">
       <div class="sheet-head flex items-center justify-between"><span x-text="importTitle()"></span><button class="sheet-x flex-none inline-flex items-center justify-center" @click="importPreview = null" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
 
@@ -1754,8 +1759,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
     </div>
 
-    <!-- Bulk-add guide: the format, and the prompt you hand an assistant. The prompt is GENERATED so it
-         carries today's date and the real list/area/place names — a canned one makes the model invent them. -->
+    <!-- Bulk-add guide: the format, and the prompt you hand an assistant. The prompt is generated so it carries
+         today's date and the real list/area/place names; a canned one makes the model invent them. -->
     <div class="dialog guide-sheet" role="dialog" aria-modal="true" aria-label="Bulk-add tasks" @click.stop x-show="guideOpen">
       <div class="sheet-head flex items-center justify-between">Bulk-add tasks<button class="sheet-x flex-none inline-flex items-center justify-center" @click="guideOpen = false" aria-label="Close" title="Close"><svg class="ico"><use href="#i-x"/></svg></button></div>
 
@@ -1803,8 +1808,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <template x-for="days in trashOpen ? [trashDays()] : []" :key="0">
       <div class="contents">
       <div class="trash-empty" x-show="!days.length">Nothing recent. Deletions and bulk changes land here.</div>
-      <!-- ONE chronological list under day heads — the bin answers "what did I just do?", so time order is the whole point.
-           The row says what kind it is: icon, the peek's text color (red gone, green a dropped draft) and the verb. -->
+      <!-- One chronological list under day heads: the bin answers "what did I just do?". The row says what kind it is:
+           icon, the peek's text color (red gone, green a dropped draft) and the verb. -->
       <div class="trash-list flex-col" x-show="days.length">
         <template x-for="day in days" :key="day.key">
           <div class="flex-col">
@@ -1944,8 +1949,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- ── Event + block editors, delete dialog ── -->
     <!-- Event editor (calendar) -->
     <template x-if="eventEdit"><div class="dialog event-editor" :class="{ swapped: eventEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="clCardStyle(eventEdit)" @pointerdown.outside="eventEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (eventEdit = null)">
-      <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="New event" x-init="clTitleInit($el, 'eventEdit')" x-effect="eventEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
-      <textarea class="ev-notes" rows="1" placeholder="Description" aria-label="Description" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea>
+      <div class="ev-title" :contenteditable="eventEdit.g?.ro ? 'false' : 'true'" role="textbox" aria-label="Title" data-placeholder="New event" x-init="clTitleInit($el, 'eventEdit')" x-effect="eventEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
+      <textarea class="ev-notes" rows="1" placeholder="Description" aria-label="Description" x-show="!eventEdit.g?.ro || eventEdit.notes" :readonly="!!eventEdit.g?.ro" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea>
       <div class="composer-rels ev-files" x-show="eventEdit.attachments.length || eventEdit.files.length">
         <template x-for="id in eventEdit.attachments" :key="id">
           <span class="msg-file pend flex items-center"><svg class="ico" aria-hidden="true"><use href="#i-file"/></svg><button type="button" class="truncate" @click="openFileId(id)" x-text="fileName(id)"></button>
@@ -1959,7 +1964,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
-          <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" :aria-disabled="!!eventEdit.pc" @click="eventEdit.pc || togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
+          <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(eventEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" :aria-disabled="!!(eventEdit.pc || eventEdit.g?.ro)" @click="eventEdit.pc || eventEdit.g?.ro || togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(eventEdit.date)[0]"/></svg><span x-text="clWhenLabel(eventEdit)"></span></button>
           <template x-if="pop === 'clWhen'"><template x-teleport="body"><div class="pop cl-pop ev-when" :class="{ dock: popDock }" :style="popStyle()" x-init="evMonth = false" x-html="evWhenHtml('eventEdit')"></div></template></template>
         </div>
         <template x-if="eventEdit.pc"><div class="contents">   <!-- an Outlook meeting: its room, call and invite as Outlook has them; a field each, so a narrow row wraps chip by chip -->
@@ -1967,21 +1972,21 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <div class="field" x-show="eventEdit.pc.join"><button type="button" class="chip set inline-flex items-center" title="Join the call" @click="desktopWindow('open', eventEdit.pc.join)"><svg class="ico"><use href="#i-external"/></svg><span>Join</span></button></div>
           <div class="field"><button type="button" class="chip set inline-flex items-center" title="Open the invite" @click="clPcInvite(eventEdit.id.slice(3))"><svg class="ico"><use href="#i-mail"/></svg><span>Invite</span></button></div>
         </div></template>
-        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clPlace', $event, $el)">
-          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(eventEdit.location_id) }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(eventEdit.location_id) ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(eventEdit.location_id) || 'Place'"></span></button>
+        <div class="field" x-show="!eventEdit.pc && (!eventEdit.g?.ro || eventEdit.place)" @click.document.capture="clPopAway('clPlace', $event, $el)">
+          <button type="button" class="chip chip-loc inline-flex items-center" :class="{ set: locName(eventEdit.location_id) || eventEdit.place }" title="Place" aria-haspopup="menu" :aria-expanded="pop === 'clPlace'" :disabled="!!eventEdit.g?.ro" @click="togglePop('clPlace', $el)"><svg class="ico"><use :href="locName(eventEdit.location_id) || eventEdit.place ? '#i-pin-fill' : '#i-pin'"/></svg><span x-text="locName(eventEdit.location_id) || eventEdit.place || 'Place'"></span></button>
           <template x-if="pop === 'clPlace'"><template x-teleport="body"><div class="pop cl-pop blk-place" :class="{ dock: popDock }" :style="popStyle()" x-init="locNew = null">
-            <button type="button" class="pop-item" :class="{ on: !eventEdit.location_id }" @click="eventEdit.location_id = null; pop = null">Anywhere</button>
+            <button type="button" class="pop-item" :class="{ on: !eventEdit.location_id && !eventEdit.place }" @click="eventEdit.location_id = null; eventEdit.place = ''; pop = null">Anywhere</button>
             <template x-for="l in locations" :key="l.id"><button type="button" class="pop-item" :class="{ on: eventEdit.location_id === l.id }" @click="eventEdit.location_id = l.id; pop = null" x-text="placeLabel(l)"></button></template>
             <div class="lp-row"><button type="button" class="c ghosty" x-show="locNew !== 'clPlace'" @click="locNew = 'clPlace'; $nextTick(() => locNew === 'clPlace' && $refs.clPlaceNew?.focus())">＋ place</button><template x-if="locNew === 'clPlace'"><span class="c ghosty lp-new"><input x-ref="clPlaceNew" placeholder="name…" @keydown.enter.prevent="createPlaceInline(currentRegion, $event.target.value, l => { eventEdit.location_id = l.id; pop = null })" @keydown.escape.stop="locNew = null" @keydown.stop @click.stop></span></template></div>
           </div></template></template>
         </div>
-        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clRepeat', $event, $el)">
+        <div class="field" x-show="!eventEdit.pc && !eventEdit.g" @click.document.capture="clPopAway('clRepeat', $event, $el)">
           <button type="button" class="chip chip-repeat inline-flex items-center" :class="{ set: clRepeatLabel(eventEdit) }" title="Repeat" aria-haspopup="dialog" :aria-expanded="pop === 'clRepeat'" @click="togglePop('clRepeat', $el)"><svg class="ico"><use href="#i-repeat"/></svg><span x-text="clRepeatLabel(eventEdit) || 'Repeat'"></span></button>
           <template x-if="pop === 'clRepeat'"><template x-teleport="body"><div class="pop cl-pop" :class="{ dock: popDock }" :style="popStyle()"><div class="flex flex-wrap items-center gap-6">
             <template x-for="w in clBlockWeekdays" :key="w.d"><button type="button" class="blk-wd" :class="{ sel: eventEdit.weekdays.includes(w.d) }" @click="_toggleIn(eventEdit.weekdays, w.d)" x-text="w.l"></button></template>
           </div><div x-html="clRepHtml('eventEdit')"></div></div></template></template>
         </div>
-        <div class="field" @click.document.capture="clPopAway('clImp', $event, $el)">
+        <div class="field" x-show="!eventEdit.g" @click.document.capture="clPopAway('clImp', $event, $el)">
           <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: evImp(eventEdit) !== 'none' }" :style="'--cc:' + pc(evImp(eventEdit))" :title="impName(evImp(eventEdit), 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'clImp'" @click="togglePop('clImp', $el)"><svg class="ico"><use :href="evImp(eventEdit) !== 'none' ? '#i-prio-fill' : '#i-prio'"/></svg><span x-text="impName(evImp(eventEdit), 'Importance')"></span></button>
           <template x-if="pop === 'clImp'"><template x-teleport="body"><div class="pop cl-pop pri-pop" :class="{ dock: popDock }" :style="popStyle()">
             <template x-for="o in [['none','None','No special handling'],['focus','Focus','Holds other pings while it runs'],['must','Must','Rings until it starts']].filter(o => !eventEdit.pc || o[0] !== 'focus')" :key="o[0]">
@@ -1989,7 +1994,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </template>
           </div></template></template>
         </div>
-        <div class="field" x-show="!eventEdit.pc" @click.document.capture="clPopAway('clTicket', $event, $el)">
+        <div class="field" x-show="!eventEdit.pc && !eventEdit.g" @click.document.capture="clPopAway('clTicket', $event, $el)">
           <button type="button" class="chip chip-ticket inline-flex items-center" :class="{ set: eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length }" title="Ticket" aria-haspopup="dialog" :aria-expanded="pop === 'clTicket'" @click="togglePop('clTicket', $el)"><svg class="ico"><use href="#i-clip"/></svg><span x-show="eventEdit.ticket.trim() || eventEdit.attachments.length || eventEdit.files.length">Ticket</span></button>
           <template x-if="pop === 'clTicket'"><template x-teleport="body"><div class="pop cl-pop ev-ticket" :class="{ dock: popDock }" :style="popStyle()">
             <textarea class="ev-field" rows="1" placeholder="Link or code" aria-label="Link or code" :value="eventEdit.ticket" @input="eventEdit.ticket = $event.target.value" @keydown.enter.prevent="pop = null"></textarea>
@@ -1997,14 +2002,21 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-if="eventDrop() && session"><label class="pop-item"><svg class="ico"><use href="#i-clip"/></svg>Attach file<input type="file" multiple hidden @change="addFiles($event.target.files, eventEdit.files); $event.target.value = ''; pop = null"></label></template>
           </div></template></template>
         </div>
-        <div class="field"><button type="button" class="chip chip-rem ev-countdown inline-flex items-center" :class="{ set: eventEdit.countdown }" title="Count down to this" :aria-pressed="eventEdit.countdown" @click="eventEdit.countdown = !eventEdit.countdown"><svg class="ico"><use href="#i-bell-alarm"/></svg><span>Count down</span></button></div>
-        <div class="field" @click.document.capture="clPopAway('clColor', $event, $el)">
+        <div class="field" x-show="!eventEdit.g"><button type="button" class="chip chip-rem ev-countdown inline-flex items-center" :class="{ set: eventEdit.countdown }" title="Count down to this" :aria-pressed="eventEdit.countdown" @click="eventEdit.countdown = !eventEdit.countdown"><svg class="ico"><use href="#i-bell-alarm"/></svg><span>Count down</span></button></div>
+        <div class="field" x-show="!eventEdit.g" @click.document.capture="clPopAway('clColor', $event, $el)">
           <button type="button" class="chip chip-color inline-flex items-center" :class="{ set: eventEdit.color }" title="Color" aria-haspopup="dialog" :aria-expanded="pop === 'clColor'" @click="togglePop('clColor', $el)"><svg class="ico"><use href="#i-palette"/></svg></button>
           <template x-if="pop === 'clColor'"><template x-teleport="body"><div class="pop cl-pop ev-colors" :class="{ dock: popDock }" :style="popStyle()" @click="swatchPick($event, v => eventEdit.color = v)" x-html="swatchRow(eventEdit.color)"></div></template></template>
         </div>
       </div>
+      <div x-html="clAttachedHtml('eventEdit')"></div>
       <div x-html="evActionsHtml('eventEdit')"></div>
     </div></template>
+    <!-- a repeating Google event's ask, outside the editor: a drop opens it at the drop -->
+    <template x-if="pop === 'gSer'"><template x-teleport="body"><div class="pop cl-pop cl-del" :class="{ dock: popDock }" :style="popStyle()" @pointerdown.outside="pop = null">
+      <button type="button" class="pop-item" @click="gSerPick('later')"><span>This and later</span></button>
+      <button type="button" class="pop-item" @click="gSerPick('one')"><span>Only this day</span></button>
+      <button type="button" class="pop-item" @click="gSerPick('all')"><span>All</span></button>
+    </div></template></template>
 
     <!-- Block editor: a condition-bearing span (click a time on week/day to create, click a band to edit) -->
     <template x-if="blockEdit"><div class="dialog block-editor" :class="{ swapped: blockEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!blockEdit.draft" aria-label="Block" @click.stop :style="clCardStyle(blockEdit)" @pointerdown.outside="blockEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (blockEdit = null)">
@@ -2095,18 +2107,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="ghost" @click="clSetBlockDay(blockEdit.id, { planned_start: null, planned_end: null, actual_start: null, actual_end: null }, blockEdit.viewIso, 'Reset block occurrence')">Reset this day</button>
         </div>
       </template>
-      <div class="blk-field" x-show="clAttachedTasks().length">
-        <label class="section-label">Attached tasks</label>
-        <div class="entry-list flex flex-col"><template x-for="{ si, t } in clAttachedTasks()" :key="si.id">
-          <div class="entry" :class="{ done: t.completed_at }">   <!-- a subtask's row (SUB_ROW): ticks, opens, detaches -->
-            <span class="entry-chk" x-html="entryCheckHtml(t)" @click="toggle(t)"></span>
-            <div class="entry-txt" x-text="t.content"></div>
-            <button type="button" class="c g flex-none" @click="clCycleRole(si.id)" x-text="si.role[0].toUpperCase() + si.role.slice(1)"></button>
-            <button type="button" class="entry-kids" title="Open this task" @click="editTask(t)"><svg class="ico"><use href="#i-chev-r"/></svg></button>
-            <button type="button" class="entry-del" title="Detach" @click="clRemoveAttached(si.id)"><svg class="ico"><use href="#i-x"/></svg></button>
-          </div>
-        </template></div>
-      </div>
+      <div x-html="clAttachedHtml('blockEdit')"></div>
       <div x-html="evActionsHtml('blockEdit')" @click.document.capture="clPopAway('clDel', $event, $el)"></div>
       <template x-if="pop === 'clDel'"><template x-teleport="body"><div class="pop cl-pop cl-del" :class="{ dock: popDock }" :style="popStyle()" x-data="{ day: clDelDay(), some: false, from: null, to: null }" x-html="clDelHtml()"></div></template></template>
     </div></template>
@@ -2151,13 +2152,13 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
        only the cards themselves are interactive, so the Undo/Redo/Discard buttons stay reachable. -->
   <!-- ── Notif stack + scripts ── -->
   <!-- under a dialog only the buttons go inert: an inert live region leaves the tree and announces nothing. Settings is no dialog: Undo stays clickable beside it -->
-  <div id="notif-stack" aria-live="polite" x-cloak :class="{ 'by-settings': settingsOpen, 'by-field': bar && phoneThread() }">
+  <div id="notif-stack" aria-live="polite" x-cloak :class="{ 'by-settings': settingsOpen, 'by-field': bar && phoneThread(), 'by-dialog': anyDialog() }">
     <template x-for="n in notifs" :key="n.id">
       <div class="notif" :class="n.leaving && 'leaving'" @pointerenter="_notifHold(n.id, 'pointer', true)" @pointerleave="_notifHold(n.id, 'pointer', false)"
         @focusin="_notifHold(n.id, 'focus', true)" @focusout="$el.contains($event.relatedTarget) || _notifHold(n.id, 'focus', false)">
         <span class="notif-msg" x-text="n.msg"></span>
         <template x-for="a in n.actions" :key="a.label">
-          <button type="button" class="notif-act" :inert="anyDialog()" :data-sk="a.jid && a.dir < 0 && 'Undo / redo'" @click="_runNotifAction(n, a)" x-text="a.label"></button>
+          <button type="button" class="notif-act" :tabindex="anyDialog() ? -1 : null" :data-sk="a.jid && a.dir < 0 && 'Undo / redo'" @click="_runNotifAction(n, a)" x-text="a.label"></button>
         </template>
       </div>
     </template>

@@ -15,7 +15,8 @@ export const fuzzyRank = (uf, hay, q) => {
   return (info && order) ? order.map(o => info.idx[o]) : idxs;
 };
 
-// A task's typed text past its title: description · checklist (a step's `::` description rides in its text) · legacy free-text place.
+// A task's typed text past its title: description · checklist (a step's `::` description rides in its text) · legacy
+// place.
 export const bodyText = t => [t.notes || '', (t.checklist || []).map(c => c.text).join(' '), t.place || ''].join(SEP);
 
 // field order = rank order: title · areas · places · path · description · checklist · place
@@ -179,8 +180,7 @@ export const queryStates = query => isVals(parseQuery(query));   // the is: valu
 
 export function matchQuery(query, tasks, ctx) {
   const ast = typeof query === 'string' ? parseQuery(query) : query;
-  // `due:` asks about the date a task SITS on — its placement (ctx.placed, from the caller's date-items).
-  // recur_from is only a recurrence anchor, so it answers for repeats and nothing else.
+  // `due:` asks about the date a task sits on (ctx.placed); recur_from is only a recurrence anchor, so repeats only.
   const when = t => ctx.placed?.get(t.id) || (t.recurrence ? t.recur_from : null) || '';
   const byId = new Map(tasks.map(t => [t.id, t]));
   const hasChild = new Set(tasks.map(t => t.parent_id).filter(Boolean));

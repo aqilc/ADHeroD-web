@@ -4,9 +4,9 @@ const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);   // deep-equal fo
 // an instant reads back in the server's format (written "…Z", stored "…+00:00"): the same instant is the same value
 const same = (k, a, b) => eq(a, b) || k.endsWith('_at') && typeof a === 'string' && typeof b === 'string' && Date.parse(a) === Date.parse(b);
 
-// Keep only the fields whose current live value still equals what we last wrote (`expect`).
-// A field changed underneath (by another device or a later edit) is dropped → never clobbered.
-// attachments merge by id instead: putting one file back must not undo another one added or removed since.
+// Keep only the fields whose live value still equals what we last wrote (`expect`); a field changed underneath
+// (another device, a later edit) is dropped, never clobbered. Attachments merge by id so one file put back
+// doesn't undo another added or removed since.
 export function guardedFields(target, currentRow, expect) {
   const out = {};
   for (const k in target) {
@@ -36,7 +36,7 @@ export function trashView(journal, now) {
 }
 
 // Past the count cap only unrestored Bin rows stay (the Bin promises 30 days), detached so ⌘Z can't walk into a weeks-old delete.
-// own: the cap counts only this tab's entries; another tab's age out at 30 days (a busy tab must not evict another's history).
+// own: the cap counts only this tab's entries, so a busy tab never evicts another's history (those age out at 30 days).
 // ceiling: Bin rows (full subtree rows) and closed tabs' entries stay uncapped for 30 days and every tab re-reads them all on each
 // other tab's write — read by index (tab, ts) past ~1000 entries or a ~16ms re-read.
 export function pruneJournal(journal, cursor, now, own = () => true) {
@@ -98,10 +98,10 @@ export async function jWipe() {
   meta.put(Math.max((await req(meta.get('epoch')) ?? 0) + 1, Date.now()), 'epoch');   // its time: an entry stamped after it was added since
   return committed(t);
 }
-// The localStorage journal → records: copy, verify every one committed, only then remove the key. A failure keeps the key
-// for the next boot. The shared legacy key: a record already stored is newer (written since) and stays. A tab's page-hide key
-// (adherod.journal.<tab>, _journalStash) holds what it hadn't stored: it replaces the record unless that one is newer (`mt`: the tab
-// lived on, or another tab changed it since) or a wipe since took it; the tab's own records it dropped go.
+// The localStorage journal → records: copy, verify every one committed, only then remove the key; a failure keeps it
+// for the next boot. Shared legacy key: an already-stored record is newer and stays. A tab's page-hide key
+// (adherod.journal.<tab>, _journalStash) holds what it hadn't stored: it replaces the record unless that is newer
+// (`mt`) or a wipe since took it; the tab's own records it dropped go.
 export async function jMigrate() {
   let ok = true;
   for (const key of Object.keys(localStorage).filter(k => /^adherod\.journal(\.|$)/.test(k))) {

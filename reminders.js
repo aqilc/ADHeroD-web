@@ -6,11 +6,10 @@ const DAYPARTS = [[12, 'morning'], [17, 'afternoon'], [24, 'evening']];
 const daypart = iso => DAYPARTS.find(([h]) => +iso.slice(11, 13) < h)[1];
 const side = r => (r.offset_minutes || 0) > 0 ? 'after' : 'before';
 
-// Only the time facts the task actually carries — an absent fact is never offered (grounded-options rule).
-// Keys ARE the DB's `reminder_anchor` enum values — the UI's human words live in `label`, so nothing has to
-// translate at the store boundary (an invented key like 'window_open' fails the enum at insert time).
-// 'start' = the window opens (available_from) · 'due' = recur_from: the window's soft close, and the
-// occurrence anchor on a recurring host — the same column either way, so one row, one label per case.
+// Only the time facts the task actually carries; an absent fact is never offered. Keys are the DB's `reminder_anchor`
+// enum values (an invented key fails the enum at insert); human words live in `label`. 'start' = the window opens
+// (available_from) · 'due' = recur_from: the window's soft close, and the occurrence anchor on a recurring host, one
+// column either way.
 export const anchorsFor = t => [
   t.deadline_at && { key: 'deadline', label: 'Deadline', at: t.deadline_at },
   t.available_from && { key: 'start', label: 'Window opens', at: t.available_from },
@@ -53,8 +52,8 @@ export const suggestionsFor = (t, existing = [], now = new Date()) => {
   return all.filter(s => !existing.some(e => isSimilar(s, e))).slice(0, 3);
 };
 
-// The composer edits the user's own sentences only — the server brain's derived rows (start/deadline_near/
-// soft_slip/log_nudge/block*) are not reminders in this model and must never be shown OR reconciled away.
+// The composer edits the user's own sentences only: the server's derived rows (start/deadline_near/soft_slip/
+// log_nudge/block*) are never shown or reconciled away.
 export const userReminders = (rows, taskId) => (rows || []).filter(r => r.kind === 'user' && r.ref_id === taskId);
 
 export const offsetLabel = n => { const a = Math.abs(n); return !a ? 'at' : a % 1440 === 0 ? a / 1440 + 'd' : a % 60 === 0 ? a / 60 + 'h' : a + 'm'; };
@@ -78,7 +77,7 @@ export const nextAt = (r, now = Date.now()) => {
   return isNaN(d) ? r.at : localStamp(d);   // a malformed cadence keeps its at rather than failing the restore
 };
 
-// Two severities: a stored 'gentle' (no longer offered) reads, cycles and delivers as a Ping.
+// Two severities: a stored 'gentle' reads, cycles and delivers as a Ping.
 export const sevOf = r => r.severity === 'alarm' ? 'alarm' : 'ping';
 // One lead slot: a severity-shaped bell, or the repeat switch wearing the same severity weight.
 const BELL = { ping: 'i-bell-fill', alarm: 'i-bell-alarm' };

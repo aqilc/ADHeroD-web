@@ -1,7 +1,7 @@
-// The Alpine component — every surface and interaction; the only module with import-time side effects (motion.install, design-token injection).
+// The Alpine component: every surface and interaction; the only module with import-time side effects.
 import DESIGN from './design.json' with { type: 'json' };
 
-// design.json → CSS custom properties, injected before Alpine boots. styles.css declares only layout constants (--foot, --bar, --side…).
+// design.json → CSS custom properties, injected before Alpine boots.
 const _vars = (m) => Object.entries(m).map(([k, v]) => `--${k}:${v}`).join(';');
 const _scale = (d) => [
   d.space.map((n) => `--sp-${n}:${n}px`), d.type.map((n) => `--fs-${String(n).replace('.', '_')}:${n}px`), Object.entries(d.layout).map(([k, v]) => `--${k}:${v}px`),
@@ -40,7 +40,7 @@ import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, se
 const REM_LIST = new Intl.ListFormat('en');   // "9am and 6pm"
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, dueQuick, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS, DAY_PARTS, partOf } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, queryStates, bodyText } from './search.js';
-import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds } from './calendar.js';
+import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds, gcalAsEvents } from './calendar.js';
 import { parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE, BACKUP_KINDS, isBackup, restorePlan } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
@@ -55,6 +55,12 @@ import { loadChats, loadMessages, sendMessage, editMessage, messageStore, watchM
 // null when unconfigured → stays on LocalStore (UMD bundle sets globalThis.supabase at init).
 let _sb, _inFlight = 0;   // _inFlight: the client's requests not yet answered: onAuth lets them land before it reloads
 let _gcalBusy = false;   // a Google Calendar pass is running: the minute tick and focus don't start a second
+let _gcalDraw = null;   // the pending redraw a pass's burst of rows shares
+let _gcalKey = '[]';   // what Plan draws of Google's rows now, as gcalDraw last drew it
+let _gcal = { rows: [], cals: [] };   // the mirror gcalDraw last read: an open Google event's row, series and calendar
+let _gPend = [];   // Google rows a delete hides until Google has it (its Undo passed): gcalDraw draws them over the mirror's
+const gMs = v => Date.parse(v.length <= 10 ? v + 'T00:00' : v);   // a Google event's stamp as an instant, a date at its local midnight
+let _gRun = null;   // the write a repeating Google event's ask (Only this day, This and later, All) runs with the pick
 // Google Identity Services' token model, loaded on first use (developers.google.com/identity/oauth2/web/guides/use-token-model)
 const gis = () => window.google?.accounts?.oauth2 ? Promise.resolve(window.google.accounts.oauth2)
   : new Promise((resolve, reject) => document.head.append(Object.assign(document.createElement('script'), { src: 'https://accounts.google.com/gsi/client', onload: () => resolve(window.google.accounts.oauth2), onerror: reject })));
@@ -77,7 +83,7 @@ const sbClient = () => { if (_sb === undefined) _sb = (globalThis.supabase && SU
 
 const SURF_META = { lists: { label: 'Lists', icon: 'i-all' }, plan: { label: 'Plan', icon: 'i-cal' }, social: { label: 'Social', icon: 'i-chat' } };
 const CL_HOURS = Array.from({ length: 24 }, (_, h) => h);
-const CL_WAKING_START = 8;   // default waking day start (h)
+const CL_WAKING_START = 8;
 const CL_WAKING_END = 24;
 // a new block's suggestions, atop its When pop: each fills the times and repeat and colors the block
 const BLOCK_PRESETS = [
@@ -86,7 +92,7 @@ const BLOCK_PRESETS = [
   { title: 'Evening', hint: '6–10', icon: 'moon', color: '#8b5cf6', start: '18:00', end: '22:00', weekdays: [], est_minutes: null },
 ];
 const DAY_NAME = new Intl.DateTimeFormat([], { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });   // a day cell's accessible name
-const CAL_HEAD = html`<div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>`;   // a pop's mini-month head: the month, back, this month, on
+const CAL_HEAD = html`<div class="cal-head flex items-center justify-between"><span x-text="calLabel()"></span><span class="cal-navs flex items-center"><button type="button" class="icon-btn sm cal-nav" aria-label="Previous month" @click="calShift(-1)"><svg class="ico"><use href="#i-chev-l"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="This month" @click="calToday()"><svg class="ico"><use href="#i-circle"/></svg></button><button type="button" class="icon-btn sm cal-nav" aria-label="Next month" @click="calShift(1)"><svg class="ico"><use href="#i-chev-r"/></svg></button></span></div>`;
 const CL_EPOCH = new Date(2000, 0, 2);   // a (local) Sunday — week 0 of the virtual timeline
 const CL_TOTAL_WEEKS = 5217;             // ~100 years: a fixed scroll height (no reflow) ⇒ effectively infinite
 const CL_BUFFER = 10;                     // weeks rendered beyond the viewport each side (blank-free on fast flings)
@@ -98,23 +104,23 @@ const BAR = (() => { const q = new URLSearchParams(location.search).get('bar'); 
 const STACK_MQ = matchMedia('(max-width: 759px)');   // the stacked-dialogs CSS block's twin: two 380px dialog min-widths don't fit
 const SIDE_MQ = matchMedia('(max-width: 772px)');   // the task panel (--side 412) + the narrowest phone we lay out (360): under it the panel overlays
 const CL_FOOT = 56;                       // bottom nav strip the timeline stops short of (--foot in CSS, less the gesture bar's band)
-const CL_TITLE_PX = 15;                   // one title strip. Two events starting closer than this leave nothing of
-                                          // the lower one to read, so they STACK (staggered) instead of cascading.
-const CL_STACK_X = 8;                     // stagger step for concurrent peers. Splitting the width made slivers
-const CL_STACK_Y = CL_TITLE_PX;           // (28px in a week column); a stack keeps every item near full width and
-                                          // leaves each one a WHOLE title line of its own — which is also the only
-                                          // place that hovers it, so raising one can't swallow a peer's hover zone.
-// Day/week has NO SCROLLER. It is a transform viewport: clPos {idx, frac} is the position, and the timeline is
-// painted at translateY(-pf · --ph). No spacer means no origin to drift from.
+const CL_TITLE_PX = 15;                   // one title strip: two events closer than this leave nothing of the lower one, so they STACK
+const CL_STACK_X = 8;                     // stagger step for concurrent peers
+const CL_STACK_Y = CL_TITLE_PX;           // a stack keeps items near full width (a split is 28px slivers in a week column)
+                                          // and gives each a WHOLE title line, the only place that hovers it, so raising
+                                          // one can't swallow a peer's hover zone
+const CL_NG_PX = 16;                     // a Not going event's tile on the hours: still there, one title line
+// Day/week has NO SCROLLER: a transform viewport. clPos {idx, frac} is the position; the timeline is
+// painted at translateY(-pf · --ph), so there is no origin to drift from.
 const GLIDE_YIELD = ['wheel', 'touchstart', 'pointerdown'];   // fresh wheel gestures, touches and presses outrank a glide; an existing tail doesn't
 const CL_DAY_HOUR = 14;                   // the least px an hour of Day draws: its 14px label line; more pushes an ordinary day past a small phone's page
-const CL_GESTURE_GAP = 140;               // ms of quiet that ends a scroll gesture (trackpad momentum fires continuously, so this only trips when the fingers are done)
+const CL_GESTURE_GAP = 140;               // ms of quiet that ends a scroll gesture (momentum fires continuously)
 const CL_TURN_MS = 368;                   // page-turn / nudge tween
 const CL_FLING = 0.94;                    // per-frame decay of touch-release momentum
 const CL_NO_PAGE = Object.freeze({ key: '', bands: [], cols: [] });   // the rail's empty page (see clAdPage)
 const CL_LEAVE_DIM = 0.55;                // how far the departing week fades behind the one arriving (see _clAdPaint)
 const CL_WEEK_BLEED = 64;                 // px the week may travel PAST its own end, so the next week peeks in
-const CL_MONTH_SLOW = 0.1;                // px/ms — a month scroll this slow is a crawl, and the out-of-month dim returns (tuned by feel)
+const CL_MONTH_SLOW = 0.1;                // px/ms — a month scroll this slow is a crawl, and the out-of-month dim returns
 const CL_MONTH_WAKE = 4;                  // ×SLOW to lift it again mid-gesture — the gap is what stops a decaying glide strobing across one threshold
 const CL_MONTH_SETTLE = 260;              // ms a month scroll must stay stopped before the band/title text goes (a wheel's notches each fire scrollend)
 const CL_WALK = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };   // a focused month day's arrows, in days
@@ -140,8 +146,8 @@ const _clPgCache = new Map();   // day/week periods by index: scale-free days + 
 const _clNexts = new Map();   // _clNextFirst(): a day's next day's first timed item or block, cleared with _clPgCache
 const _clWkCache = new Map();   // month week rows by index, off the Alpine proxy (a reactive Map deep-proxies every cell)
 const _nextMemo = new Map();   // repeat rule + anchor + day → the occurrence its row shows (whenShown): one step-walk per repeat per day
-let _clBlocksSig = null, _clBlocksCache = [], _clWkOut = [], _clWkSig = null, _clPgSig = null;   // clBlocks() single-entry memo — a view switch/scroll settle re-fires it ~100×; returning the SAME array ref lets Alpine's x-for no-op instead of re-diffing 500+ nodes
-const _clWheel = { t: -Infinity, v: Infinity, hi: 0, lo: 0, hiT: 0, n: 0 };   // wheel gesture gate (_clGestureFresh): last event time and speed, peak/floor speed, the peak's time, events since it — module scope, off the Alpine proxy
+let _clBlocksSig = null, _clBlocksCache = [], _clWkOut = [], _clWkSig = null, _clPgSig = null;   // clBlocks() single-entry memo: a settle re-fires it ~100×; the SAME array ref lets x-for no-op
+const _clWheel = { t: -Infinity, v: Infinity, hi: 0, lo: 0, hiT: 0, n: 0 };   // wheel gesture gate (_clGestureFresh): last event time/speed, peak/floor speed, peak time, events since; off the Alpine proxy
 let _calDataV = 0, _clScrollT, _clFrac = 0, _clMTop = 0, _clAdD, _clAdPg, _clAdH = 0;   // _clFrac mirrors clPos.frac, _clMTop the month scrollTop, without Alpine reactivity · _clAdD/_clAdPg/_clAdH: last boundary offset / rail page / deadline-rail height painted
 const _periodLabels = new Map();   // (view|idx) -> label; toLocaleDateString is far too slow to call per wheel event
 const _dayLabels = new Map();   // day-view label -> { iso, wd }: labels stay date-only (cached), a day's name lays over the weekday at render
@@ -150,8 +156,7 @@ const clEdgeEnd = () => { motion.stop('clEdge'); removeEventListener('dragenter'
 const clEdgeOut = e => e.target.closest?.('.cl-pcol') || clEdgeEnd();
 // List-drag ghost: module-level — no binding reads it, so its writes trigger no Alpine effect
 let _dragGhost = null, _dragBlank = null, _dragOff = null, _dragDay = null, _dragIds = null, _dragGrab = null, _dragDescs = null, _dragSubDepth = 1, _dndHeld = null, _liftTop = null;   // _dragDay: a panel row's copy, { row, day } widths and which it shows · _liftTop: the grabbed row's top as the drag lifts its subtree · _dragIds: the dragged tasks, in shown order · _dragGrab: the grabbed row, kept in the window · _dragDescs: their descendants, out of the list until the drop (see _editShift) · _dragSubDepth: their deepest subtree's depth
-// Our drag image, held under the pointer by its grab offset. The browser's own is a snapshot we can neither place
-// nor test (it may carry the source's dim): a blank canvas hides it.
+// Our drag image, held under the pointer by its grab offset; the browser's own can't be placed or tested, so a blank canvas hides it.
 function dragFollow(e) {   // a move onto a new element brings only a dragenter, so both move it
   if (!_dragOff) return;
   // a panel row's copy keeps the row's width over the panel and takes one day column's off it, its title wrapping; the swap is instant (a tween re-wraps the title every frame)
@@ -177,7 +182,7 @@ function dragImage(e, html, r, day) {   // r: the grabbed box · day: a narrower
 const dragImageEnd = () => { _dragOff = null; if (_dragGhost) _dragGhost.hidden = true; };
 const INTO_SEEN = 100;   // ms: a human reaction to the nest outline. ceiling: a release within it of the outline reorders; revisit if users report a deliberate nest landing as a reorder
 let _intoAt = null, _intoSeen = null, _dropSlot = null, _ghostAt = null, _ghostGrown = false, _sortRefused = false, _dragParents = null, _dragProjs = null;   // _sortRefused: the last dragover's slot is one a sort refuses · _dragParents: the carried roots' parents · _dragProjs: their projects · _intoAt: { id, t } the row whose middle the pointer entered, and when · _intoSeen: { t, half } when the last into was earned, and the half under it · _dropSlot: the last row zone, which the ghost keeps · _ghostAt: the slot the ghost first opened at this drag · _ghostGrown: it has moved or closed since
-// visibleRows() memo: O(n) tree walk called many times per render; cache on _rowV+navSel+listQ so drag/animation don't recompute per frame.
+// visibleRows() memo, keyed on _rowV+navSel+listQ: the O(n) walk runs many times per render.
 let _listHay = new Map(), _listHayV = -1;   // task id → its lowercased searchable text, per _rowV (a _rowStale bump drops only its ids): built once, not per keystroke
 let _visMemo = null, _visKey = '', _doneMemo = [], _secMemo = [], _hitRank = new Map(), _qfToday = '', _qfTmr = '', _qfWk = '';   // _doneMemo: completed rows for the section below the add-task button
 let _rowMap = null, _doneMap = null, _parentMap = null;   // id→row + parent→[childRows] Maps maintained alongside _visMemo for O(1) hover/rowFromEl lookup
@@ -204,27 +209,25 @@ let _goRows = [];   // Go to's last rows, held while it folds away (goRows)
 let _editPin = null, _editEnd = null;   // mirror `editing` / the collapse's target height OUTSIDE Alpine (listHtml reads both; a reactive read there would make composer open/close rebuild the list)
 let _listW = -1, _fitV = 0;         // list width + the generation every row's fit is stamped with (see _fit)
 let _fitDone = -1;                  // the _fitV a _fit pass left every list row fitted at; a morph that adds rows resets it
-// The list's static containers (no template above them), looked up every scroll frame: `.list-done .rows` sits past the
-// composer's markup, so a document walk to it cost more than the frame's whole window build.
+// The list's static containers, looked up every scroll frame: a document walk to `.list-done .rows` costs more than the
+// frame's whole window build.
 const _els = new Map(), _staticEl = sel => { let el = _els.get(sel); if (!el?.isConnected) _els.set(sel, el = document.querySelector(sel)); return el; };
 const _fitMemo = new Map();         // id → { sig, lad, shed, r1, l2, ri }: this width's fit outcome, replayed onto a rebuilt <li> (see _fit)
-// The overflow ladder: what leaves line 1, in order, while the title is still truncated. Everything after
-// this list is what a row keeps longest — project 3rd-to-last, size 2nd-to-last, and the scheduled-time
-// badge never at all. `.m.dl` is skipped when there is no scheduled time (the deadline holds that slot).
+// The overflow ladder: what leaves line 1, in order, while the title is truncated; what follows is kept longest (project 3rd-to-last, size
+// 2nd-to-last, scheduled-time badge never). `.m.dl` is skipped with no scheduled time (the deadline holds that slot).
 // Line 2 then degrades in place with L2_STEPS rather than wrapping; a phone's typed row never sheds (its line 2 is its
 // markup's), a Steps row hides behind a "…". → docs/ui/task-list.md §Row overflow
 const LADDER = ['.row-rels', '.m.loc', '.areas', '.m.dl', '.proj', '.m.est'];
-// Line 2 reads in a FIXED order, not the order things happened to shed — otherwise the same two items
-// swap places depending on which width you arrived from. Badges, then chips, then relations, then prose.
+// Line 2 reads in a FIXED order (badges, chips, relations, prose), not the order things shed, so the same two items
+// don't swap with the width you arrived from.
 const L2_ORDER = ['.areas', '.proj', '.m.dl', '.m.loc', '.m.est', '.row-rels'];
 const L2_STEPS = ['l2-shrink', 'icons-only', 'rolled'];
 const META_ROW_H = 17, META_PAD = 4;    // one wrapped meta row + the line's own margin (layout-lists.e2e "ladder")
 const L2_ROW_H = 18, L2_PAD = 2, L2_GAP = 4;    // a phone's line-2 line, its margin above and the gap between its wrapped lines (styles.css .typed .row-sub)
 const STEP_FLOOR = 160;   // a Steps row's title gives way first, down to this; then chips hide (see _shed)
-// WINDOWED LIST. Only the rows within WIN_MARGIN of the viewport EXIST as <li>s; the rest are two spacer
-// <li>s holding their summed height, so the scrollbar stays honest — and every list-wide pass (fitRows, paintSel,
-// the keyed morph, the browser's style recalc) pays for the window, not the corpus (~25k elements at 1000 rows).
-// Bigger margin costs rendered rows 1:1; 600px is ~15 rows each side. The window is rebuilt only once fewer than
+// WINDOWED LIST. Only rows within WIN_MARGIN of the viewport EXIST as <li>s; two spacer <li>s hold the rest's summed height, so every
+// list-wide pass (fitRows, paintSel, the keyed morph, style recalc) pays for the window, not the corpus (~25k elements at 1000 rows).
+// Bigger margin costs rendered rows 1:1 (600px ~15 rows each side). The window is rebuilt only once fewer than
 // WIN_KEEP px remain past an edge (see _winOf), plus WIN_RUN ms of travel ahead of a fling.
 const WIN_MARGIN = 600, WIN_KEEP = 200, WIN_RUN = 120, SEC_H = 30;   // SEC_H: section-head height until one has actually been measured
 let _winSt = 0, _winAt = 0, _winV = 0, _winD = 0, _winRun = WIN_RUN, _win = new WeakMap(), _restT = 0;   // the last scroll event's scrollTop, timeStamp, velocity (px/ms), travel (px), runway (ms) · the kept window per list model { s, e } · the at-rest re-grow timer
@@ -239,8 +242,8 @@ const glideEls = () => [...document.querySelectorAll(GLIDE_ROWS)].filter(el => e
 const _push = new Map();   // task id → the Steps tick waiting for its re-rendered row (_stepTick)
 const _arrive = new Map();   // task id → user-create stagger slot, consumed before paint; unseen rows expire
 const _cele = new Map();   // task id → completion reward or quiet ancestor hold (_celebrate): its row holds its slot until it ends
-// A completion's ember burst: 7 to 9 particles around the check, each its own angle, reach, size and timing
-// (docs/ui/task-list.md §Completion reward). Rolled once per tick, so a re-rendered row replays the same burst.
+// A completion's ember burst: 7 to 9 particles, each its own angle, reach, size and timing
+// (docs/ui/task-list.md §Completion reward). Rolled once per tick, so a re-rendered row replays it.
 const emberBurst = () => {
   const n = 7 + Math.floor(motion.rand() * 3);
   return '<i class="ember">' + Array.from({ length: n }, (_, i) => {
@@ -253,7 +256,7 @@ let _celeHead = null;   // the page title's reward mark (_celeHead), gone with t
 let _rowPatch = null, _visBP = null, _visRoots = new Set();  // _visBP: the last full walk's parent → children index · _visRoots: its scope roots
 let _secKids = null;   // childIndex for this pass's section pies — one build, not one per head
 // task id → its row's view data, reused across recomputes while _rowCacheKey (`_rowV|minute`) holds: a search key
-// changes which rows show, not what one says. The minute: due/deadline labels read the clock.
+// changes which rows show, not what one says; the minute: due/deadline labels read the clock.
 let _rowCache = new Map(), _rowCacheKey = '';
 let _rowStale = null;   // ids: loadTasks' _rowV bump changed only these rows — the cache drops them, not all
 const _idIx = new WeakMap();   // list → id → item: areas/locations are replaced on write, never mutated in place
@@ -264,9 +267,8 @@ const SHAPE = 'parent_id position completed_at archived_at overview area_ids est
 const FILTER_RE = new RegExp(`(^|\\s)(#|@|${KEYS.join(':|')}:)|[&|!()]`, 'i');   // a query that filters, not just searches
 const VIEW_KEYS = { due: ['recur_from', 'recurrence'], importance: ['importance', 'recur_from', 'recurrence'], deadline: ['deadline_at'], created: ['created_at'], alpha: ['content'], place: ['location'] };
 const _hCache = new Map();            // id → measured px: an estimate is only ever used for a row that has never rendered at this width
-// The pill-NLP engine runs on an ACTIVE target: { el, draft } = the editor + the draft its pills write to.
-// Null = the title (the default: $refs.content → this.draft); a focused subtask row swaps in its own editor +
-// sub-draft so the SAME engine drives NLP there. Off Alpine's reactive data: no binding reads it.
+// The pill-NLP engine runs on an ACTIVE target { el, draft }: null = the title ($refs.content → this.draft); a focused
+// subtask row swaps in its own, so the SAME engine drives NLP there. Off Alpine's reactive data: no binding reads it.
 let _nlpFocus = null;
 let _trigKey = null;   // '@'/'#' keyed down: its picker opens on that char's input event (refreshPickers)
 const MAC = /Mac|iP/.test(navigator.platform);   // Ctrl isn't the mod key there: Ctrl+Y is the system yank
@@ -283,17 +285,16 @@ const _jBus = new BroadcastChannel('adherod.journal');   // a tab that wrote tel
 const _ahead = new Set();   // entry ids: this tab's Bin copies of deletes still running (_binAhead), hidden in its Bin until they settle
 const _converting = new Set();   // task ids mid-convert to subtasks: a second convert of the same items would duplicate them
 const _serialQ = new Map();   // key → its last queued run (_serial)
-// Every field kind the pill engine can commit — used to rebuild a draft wholesale from an editor's DOM pills.
+// Every field kind the pill engine commits; rebuilds a draft from an editor's DOM pills.
 const PILL_KINDS = ['imp', 'dur', 'proj', 'area', 'loc', 'rec', 'deadline', 'date', 'needs', 'neededBy'];
-// Journal kinds that edit an OPEN composer draft and nothing else (never the store). They step in the linear
-// ⌘Z timeline only while the draft they were recorded against is the one on screen — see _jSkip.
+// Journal kinds that edit an OPEN composer draft only (never the store); they step in the linear ⌘Z timeline
+// only while their draft is on screen — see _jSkip.
 const DRAFT_KINDS = ['convert', 'chk-multi', 'sub-multi', 'chk-item', 'checklist-item', 'held-sub', 'desc-edit'];
 // A task's fields whose single edit is a Bin "small change" (+ 'date', its date-item); position, completion and checklist ticks never are.
 const SMALL_FIELDS = ['content', 'importance', 'area_ids', 'deadline_at', 'checklist'];
 const SMALL_CAP = 40;   // ceiling: small rows kept per day (the oldest goes), each a Bin row for 30 days — lower it once the journal nears pruneJournal's ~1000-entry re-read trigger; raise it if a day's edits fall out of the Bin
-// Per-kind spec: json flag (value stored as JSON in dataset), optional num (cast raw to number), the four draft operations, and
-// (single kinds) read = the field as a chip value, null when clear (mirrorPills) — all receive (self, draft, ...) so helpers like
-// setDur/refreshRecurrenceDue are reachable.
+// Per-kind spec: json flag (stored as JSON in dataset), optional num (cast raw), the four draft operations, and (single kinds)
+// read = the field as a chip value, null when clear (mirrorPills); all receive (self, draft, ...).
 const PILL_SPEC = {
   imp:      { json: 0, label: (s, v) => s.impName(v, 'Importance'), read: (s, d) => d.importance === 'none' ? null : d.importance,
               commit: (s, d, v) => { d.importance = v; }, clear: (s, d) => { d.importance = 'none'; }, snapshot: (s, d) => d.importance, restore: (s, d, x) => { d.importance = x ?? 'none'; } },
@@ -313,8 +314,8 @@ const PILL_SPEC = {
               read: (s, d) => { if (!d.deadline_at) return null; const from = (d.available_from || '').slice(0, 10), only = !!from && from === d.deadline_at.slice(0, 10); return { iso: d.deadline_at, only, from: only ? '' : from }; },
               commit: (s, d, v) => { d.deadline_at = v.iso; if (v.only || v.from) d.available_from = v.from || v.iso.slice(0, 10); },   // only = walled both sides; from = a range ("next month")
               clear: (s, d) => { d.deadline_at = ''; }, snapshot: (s, d) => ({ deadline_at: d.deadline_at, available_from: d.available_from }), restore: (s, d, x) => { d.deadline_at = (x && typeof x === 'object' ? x.deadline_at : x) || ''; if (x && typeof x === 'object') d.available_from = x.available_from || ''; } },
-  // Dependencies. Both write ONE link (the other's `blocked_by`) — "needed by" is just the inverse direction,
-  // recorded from the end you're usually standing at. Applied after save, since a new task has no id yet.
+  // Dependencies. Both write ONE link (the other's `blocked_by`); "needed by" is the inverse direction.
+  // Applied after save, since a new task has no id yet.
   needs:    { json: 0, multi: 'needs', label: (s, v) => 'needs ' + (s.byId.get(v)?.content || ''),
               commit: (s, d, v) => { if (!d.needs.includes(v)) d.needs.push(v); }, clear: (s, d, r) => { const i = d.needs.indexOf(r); if (i >= 0) d.needs.splice(i, 1); }, snapshot: (s, d) => [...d.needs], restore: (s, d, x) => { d.needs = x || []; } },
   neededBy: { json: 0, multi: 'neededBy', label: (s, v) => 'needed by ' + (s.byId.get(v)?.content || ''),
@@ -326,8 +327,8 @@ const PILL_SPEC = {
 // Decode a pill's dataset.value back to its typed JS value (JSON-encoded kinds vs string vs number).
 function pillValue(kind, raw) { const sp = PILL_SPEC[kind]; return sp.json ? JSON.parse(raw) : sp.num ? +raw : raw; }
 // Every overlay, topmost first: [open?, close, dialog?]. escape() and Back (popstate) close the first open one;
-// anyDialog/closeDialogs (the shared backdrop) read the dialog rows. Anything that stacks ON TOP of the overview
-// (dialogs, the roller ⋯ popover) closes first; the overview only when nothing is layered above it.
+// anyDialog/closeDialogs (the shared backdrop) read the dialog rows. Anything stacked ON TOP of the overview
+// (dialogs, the roller ⋯ popover) closes before it.
 const COMPOSER_LAYER = [c => c.composer.open && !c._closingComposer, (c, back) => c.closeComposer(back ? false : 'drop')];   // Esc drops the draft (⌘Z, the Bin), Back keeps it like a click away; a collapsing composer is already closed
 const OVERLAYS = [
   [c => c.shortcutsOpen, c => c.shortcutsOpen = false, 1], [c => c.trashOpen, c => c.trashOpen = false, 1],
@@ -364,8 +365,8 @@ const normalizeTaskOp = op => {
   return op;
 };
 // Picker specs — drives openPicker/refreshPicker/pickPill/pickerKeydown generically.
-// `char` is the trigger TEXT (not always one char — "at " opens the places), `val` maps a match row to the
-// pill value, `find` locates the trigger in the node's text (default: the last occurrence of `char`).
+// `char` is the trigger TEXT ("at " opens the places), `val` maps a match row to the pill value, `find` locates
+// the trigger in the node's text (default: the last `char`).
 const PICKERS = {
   area: { key: 'areaPicker', char: '@', sel: '.area-autocomplete', kind: 'area', grid: 1, name: (s, id) => s.areaById(id)?.name,
           matches: s => s.areaMatches(), onCreate: s => s.areaPicker.frag.trim() ? (s.createAreaFromPicker(), true) : false },
@@ -380,7 +381,7 @@ const PICKERS = {
   neededBy: { key: 'nbyPicker', word: 'needed by', sel: '.link-autocomplete', kind: 'neededBy', name: (s, id) => s.byId.get(id)?.content, val: t => t.id,
               matches: s => s.linkMatches(s.nbyPicker.frag), noSpace: 1 },
 };
-// A word trigger's text is the word plus its space, and it's found at the last WORD BOUNDARY — a plain
+// A word trigger's text is the word plus its space, found at the last WORD BOUNDARY: a plain
 // lastIndexOf would latch onto the "at" inside "sat"/"later".
 for (const k in PICKERS) if (PICKERS[k].word) {
   const w = PICKERS[k].word, re = new RegExp('(?:^|\\s)' + w + '\\s', 'gi'), n = w.length + 1;
@@ -389,12 +390,13 @@ for (const k in PICKERS) if (PICKERS[k].word) {
 }
 // The composer draft's empty shape — one source of truth for the title draft, resetDraft, and subtask sub-drafts.
 const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', importance: 'none', on: '', available_from: '', deadline_at: '', durMin: 0, dateText: '', dueTime: '', part: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], checklist_plain: false, task_type: null, recurrence: null, location: { mode: 'any', ids: [] }, needs: [], neededBy: [], reminders: [] });
-// Deep-read a reactive value WITHOUT serializing it — subscribes an effect to every nested field (what JSON.stringify
-// subscribed to, minus the string it built each run). `skip` prunes one subtree that another effect owns.
+// Deep-read a reactive value WITHOUT serializing it: subscribes an effect to every nested field.
+// `skip` prunes one subtree that another effect owns.
 const _touch = (v, skip) => { if (v && typeof v === 'object' && v !== skip) for (const k in v) _touch(v[k], skip); };
 // the composer's grow: the list's entry texts (text → rect) at the tap, the card rows flown from them, the edited block's list rows, the running grow's undo
 let _morphFrom = new Map(), _morphMoved = [], _morphRows = [], _morphStop = null, _morphH = new Map();   // _morphH: the card's title and rows' heights in the one-line layout the open measured the offsets in
-// a list row folded shut: its padding too, or a phone's 44px row floors at 24 and the list below jumps when it hides
+// a check's flight to the list's (f, the list's text box and check) from c, the card's, with the text's offset dx dy
+const _chkFit = (f, c, dx, dy) => f.chk && c?.width ? [`${f.chk.x + f.chk.width / 2 - c.x - dx - c.width / 2}px ${f.chk.y + f.chk.height / 2 - c.y - dy - c.height / 2}px`, f.chk.width / c.width] : null;
 const _inkTop = el => { const r = document.createRange(); r.selectNodeContents(el); return (r.getClientRects()[0] ?? el.getBoundingClientRect()).top; };   // its first line's text box, not its padding
 // where its text's first line ends, and whether it runs onto a second: a Range has a rect per inline box per line
 const _line1 = el => {
@@ -416,7 +418,9 @@ const _join = (x, on) => Object.assign(x.style, { whiteSpaceCollapse: on ? 'coll
 const _uncut = x => { for (const p of ['whiteSpace', 'textOverflow', 'overflow', 'minWidth', 'maxWidth', 'height']) x.style[p] = ''; _join(x, false); };
 const _pin = o => Object.fromEntries(Object.entries(o).map(([p, v]) => [p, [v, v]]));   // held over an animation's run
 const _lineMask = s => `linear-gradient(to right, #000 ${s.keep}px, transparent ${s.keep + s.em}px) 0 0 / 100% ${s.one}px no-repeat, linear-gradient(rgb(0 0 0 / var(--tail)) 0 0)`;   // inline: a keyframe's var() resolves once, not per frame
+// a list row folded shut: its padding too, or a phone's 44px row floors at 24 and the list below jumps when it hides
 const _fold = r => { const s = getComputedStyle(r); return [{ height: r.offsetHeight + 'px', paddingTop: s.paddingTop, paddingBottom: s.paddingBottom, overflow: 'hidden' }, { height: '0px', paddingTop: '0px', paddingBottom: '0px', overflow: 'hidden' }]; };
+const _idle = window.requestIdleCallback ?? (f => setTimeout(f, 200));   // Safari has no requestIdleCallback
 let _growGen = 0;   // _growOpen's generation ids: negative (a reactive {} would read back as a proxy), so never a live timer id
 let _dlAuto = '';   // the deadline a By time pick derived: while the draft's still equals it, the date isn't the user's. Off the draft, so it never dirties one.
 let _draftT = 0;   // persistDraft's debounce — module-level: a reactive handle, written by one persistDraft effect, woke the other
@@ -426,7 +430,7 @@ let _chkQ = null, _chkFuzzy = null, _chkTinted = false;   // ghost-find memo (qu
 let _chkSeed = '';   // the finder's query editTask put in the ghost: a search, so Save doesn't add it as an item
 const _chkHtml = new Map();   // item text → chkLive html: paintChk re-derives every row's html on each checklist change
 // Ghost find → item id → match ranges (null = hit without range info). uFuzzy's in-order regex backtracks
-// exponentially on a near miss past 3 terms (5 long words ~100 ms; a copied item plus one more word froze the page),
+// exponentially on a near miss past 3 terms (5 long words ~100 ms),
 // so a longer query matches its words in order, exactly: by then it reads as a new item, not a search.
 function chkHits(items, q) {
   const texts = items.map(c => c.text), terms = (_chkFuzzy ??= makeFuzzy()).split(q), map = new Map();
@@ -443,8 +447,7 @@ function chkHits(items, q) {
     }
     return map;
   }
-  // outOfOrder=0: this uFuzzy build returns NO info/ranges for multi-term needles when ooo=1,
-  // and the sub-match <mark>s need ranges — ordered terms is the right trade for find-as-you-type.
+  // outOfOrder=0: this uFuzzy build returns no ranges for multi-term needles when ooo=1, and the sub-match <mark>s need them.
   const [idxs, info, order] = _chkFuzzy.search(texts, q, 0, 1e4);
   if (idxs && info && order) for (const o of order) map.set(items[info.idx[o]].id, info.ranges[o]);
   else if (idxs) for (const i of idxs) map.set(items[i].id, null);
@@ -491,8 +494,8 @@ document.addEventListener('alpine:init', () => {
   // tree instead of one live removal each (four phone month swipes at 4x CPU: ~175 ms of nested `remove` -> ~3 ms).
   // ceiling: Alpine 3.15.12's destroyTree runs the root's cleanups before its children's; if an upgrade flips that, the nested removes go live again (app.perf "phone month" goes red).
   Alpine.directive('detach', (el, _, { cleanup }) => cleanup(() => el.remove()));
-  // x-text as Alpine's, minus the rewrite of an unchanged value: a binding reading the rows (the empty copy, the Done
-  // count) re-runs on every tick, and replacing even a hidden text node cost the tick ~1.1 est-ms of its ~5 at 1k.
+  // x-text as Alpine's, minus the rewrite of an unchanged value: a binding that re-runs every tick (the empty copy, the Done count)
+  // would otherwise replace even a hidden text node (~1.1 est-ms of ~5 at 1k).
   // ceiling: replaces Alpine 3.15.12's x-text — re-diff it on an Alpine upgrade.
   Alpine.directive('text', (el, { expression }, { effect, evaluateLater }) => {
     const get = evaluateLater(expression);
@@ -546,6 +549,7 @@ document.addEventListener('alpine:init', () => {
     dragOverRegion: null,   // region currently hovered as a drop target
     events: [],             // calendar events, loaded from store
     pcEvents: [],           // the work PC's Outlook calendar (Windows app only), drawn beside events, never stored or edited
+    gcalEvents: [],         // Google Calendar's mirror (gcal_events), drawn beside events, read-only
     pcEdit: JSON.parse(localStorage.getItem('adherod.pcEdit') || '{}'),   // series → his {title, notes, color, countdown} over an Outlook meeting. ceiling: this PC only, as Must
     pcMustSet: JSON.parse(localStorage.getItem('adherod.must') || '{}'),   // series → Must, where it differs from Outlook's High. ceiling: this PC only; revisit if Outlook meetings show on another device
     blocks: [],             // condition-bearing blocks (environment per span), loaded from store
@@ -583,9 +587,9 @@ document.addEventListener('alpine:init', () => {
     clVT: false,            // a view transition is capturing — see .calendar.vt (view-transition-name is layer-promoting, so it may not linger)
     clSettling: false, clPlaced: null,   // arrival stagger · the block that just landed springs into place
     clPVisStart: 0, clPVisCount: 3,   // virtualization window over the continuous day/week timeline
-    // WHERE YOU ARE, and the ONLY thing that says so. { idx: absolute period, frac: 0..1 into it }. Nothing reads the
-    // position back from the DOM: a pixel offset changes meaning the instant clPeriodH does, so a stored one would need a
-    // racy correction after every zoom/resize/view switch. Held in period-space, a zoom is just a repaint.
+    // WHERE YOU ARE: { idx: absolute period, frac: 0..1 into it }. Never read back from the DOM: a pixel offset changes
+    // meaning the instant clPeriodH does, so a stored one needs a racy correction after every zoom/resize/view switch;
+    // in period-space a zoom is just a repaint.
     clPos: { idx: 0, frac: 0 },
     clTopPeriod: '',        // scroll-driven day/week heading (mirrors clTopMonth)
     clFocusYM: null,        // dominant month at center — others dim when idle
@@ -609,7 +613,7 @@ document.addEventListener('alpine:init', () => {
     drag: { active: false, x0: 0, y0: 0, w: 0, t0: 0, id: null, axis: null },
     dragDx: 0,
     dragging: false,
-    kbd: false,   // the last input was a key: keyboard paths cut instead of animating (ui-build G9); a pointer or wheel clears it
+    kbd: false,   // the last input was a key: keyboard paths cut instead of animating; a pointer or wheel clears it
     overview: false,
     ovSel: 0,
     ovArchOpen: false,   // Overview's Archived row: shut until opened, as left after that
@@ -717,14 +721,12 @@ document.addEventListener('alpine:init', () => {
       const flushAll = () => { if (_wiping) return; clearTimeout(_draftT); this._flushDraftNow(); this._journalStash(); };
       window.addEventListener('pagehide', flushAll);
       // First use compiles parseQuick's regexes (30ms at 6x CPU): at idle with nothing moving, not on a typed space or mid-fling.
-      const idle = window.requestIdleCallback ?? (f => setTimeout(f, 200));   // Safari has no requestIdleCallback
-      const warmNlp = () => motion.active() ? idle(warmNlp) : matchTrailingToken('warm up', new Date());
-      idle(warmNlp);
+      const warmNlp = () => motion.active() ? _idle(warmNlp) : matchTrailingToken('warm up', new Date());
+      _idle(warmNlp);
       _jBus.onmessage = () => this._jQueue(() => this._journalSync());   // another tab's entries: its deletes show in this Bin
-      // While any overlay is open the app owns ONE history entry, so a phone's/browser's Back closes the topmost
-      // (escape()) instead of leaving the page; none open → no entry, so a real Back still leaves. Back while
-      // typing in the composer only drops the keyboard (read a long task). A shortcut only — iOS has no back, so
-      // ×/Cancel/Escape stay the way out (ui-ios-portable).
+      // While any overlay is open the app owns ONE history entry, so Back closes the topmost (escape()) instead of leaving
+      // the page; none open → no entry, so a real Back still leaves. Back while typing in the composer only drops the keyboard.
+      // A shortcut only: iOS has no back, so ×/Cancel/Escape stay the way out (ui-ios-portable).
       Alpine.effect(() => this._syncHist());
       // Focus goes back to a modal's opener on close — unless the close itself moved focus on (palette → a task).
       Alpine.effect(() => {
@@ -754,13 +756,11 @@ document.addEventListener('alpine:init', () => {
         else this._nowTickV++;   // shown: the now-line and leave-by catch up on the minutes a hidden tab skipped
         for (const id of _notifTimers.keys()) this._notifHold(id, 'hidden', document.hidden);   // a card waits out a hidden tab: its Undo is there on return
       });
-      // A trackpad PINCH arrives as ctrl/⌘+wheel. Left to the browser it page-zooms, which changes the row
-      // height the virtualized calendar measures dates against — the same scrollTop then reads as a different
-      // YEAR. Capture + stopPropagation so the calendar always claims it and no inner
-      // scroll handler sees it as a fling.
-      // Being on Plan is the WHOLE condition — ownership of a gesture must never depend on hit-testing: over the side
-      // panel/margins, or the ::view-transition overlay a view STEP puts up mid-pinch (e.target is <html> for the
-      // ~300ms it runs), a target check loses the gesture and the rest of one continuous pinch page-zooms.
+      // A trackpad PINCH arrives as ctrl/⌘+wheel. Left to the browser it page-zooms, which changes the row height the calendar
+      // measures dates against (the same scrollTop then reads as a different YEAR). Capture + stopPropagation so the calendar
+      // always claims it and no inner scroll handler sees it as a fling.
+      // Being on Plan is the WHOLE condition: a hit-test loses the gesture over the side panel or the ::view-transition
+      // overlay a view step puts up mid-pinch (e.target is <html> for ~300ms), and the rest of the pinch page-zooms.
       document.addEventListener('wheel', e => {
         if (!(e.ctrlKey || e.metaKey) || this.surface !== 'plan') return;
         e.stopPropagation(); this.clZoomWheel(e);
@@ -775,7 +775,7 @@ document.addEventListener('alpine:init', () => {
       if (this.sticky) Object.assign(this, { sortBy: 'due', sortDir: 'asc', groupBy: 'none', qfImp: [], qfAreas: [], qfDue: null, qfOpen: true, qfArchived: false, showCompleted: false });   // its own view, never saved
       try { _tipsSeen = new Set(JSON.parse(localStorage.getItem('adherod.tipsSeen') || '[]')); } catch {}
       // Shortcut coach: a MOUSE click on a control a key also does (data-sk = its ? sheet label). Capture, so a
-      // @click.stop can't hide it; a keyboard-activated click has pointerType '' and a tap 'touch' — neither counts.
+      // @click.stop can't hide it; a key-activated click has pointerType '' and a tap 'touch': neither counts.
       // Composer/palette open: onKey runs no single keys and holds ⌘Z there, so the tip would teach a dead key.
       document.addEventListener('click', e => {
         if (this.shortcutTips && e.pointerType === 'mouse' && !this.composer.open && !this.palette.open) this._coach(e.target.closest?.('[data-sk]')?.dataset);
@@ -841,7 +841,7 @@ document.addEventListener('alpine:init', () => {
         // His title, notes, color and countdown lie over each series (pcEdit); a countdown counts to the series' next one.
         const pcDay = (iso, back = 0) => { const d = new Date(iso.slice(0, 10) + 'T00:00'); d.setDate(d.getDate() - back); return isoDate(d); };
         let read = [], readKey = '';
-        // Kept in his settings so we can read off the work PC whether alerts reach him, with no file or paste from him: the calendar's
+        // Kept in the user's settings so a work PC's alert delivery can be read remotely: the calendar's
         // last read (a meeting count or why it failed) and the last ten alerts with Windows' answer, never a title. Rewritten once a day unchanged.
         const build = await desktopWindow('build'), check = { build: build?.bundle || build?.tag || null, calendar: null, alerts: [] };
         let checked = '';
@@ -883,9 +883,25 @@ document.addEventListener('alpine:init', () => {
             due.push(item);
             if (must) due.push({ ...item, id: e.id + '#start', at: start, until: +new Date(e.end), sev: rung.has(e.id) ? 'hush' : 'ping' });
           }
+          const ours = item => {   // an Alarm goes quiet 15 minutes after it rang: a hush with its tag keeps the card, silent
+            if (item.sev !== 'alarm') return due.push(item);
+            item.more = ['', item.id];
+            due.push(item);
+            if (rung.has(item.id)) due.push({ ...item, id: item.id + '#quiet', at: item.at + 15 * 60e3, until: item.at + 864e5, sev: 'hush' });
+          };
           for (const r of this.reminders) {
             const task = r.kind === 'user' && !r.paused && this.byId.get(r.ref_id), when = task && (isRepeating(r) ? nextAt(r, late) : fireAt(r, task, nowAt));
-            if (when) due.push({ id: r.id + '@' + when, at: +new Date(when), until: +new Date(when) + 10 * 60e3, sev: sevOf(r), title: task.content, body: '', join: '' });   // the id carries the time: a repeat rings again
+            if (when) ours({ id: r.id + '@' + when, at: +new Date(when), until: +new Date(when) + 10 * 60e3, sev: sevOf(r), title: task.content, body: '', join: '' });   // the id carries the time: a repeat rings again
+          }
+          // A task placed at a time Pings 10 minutes before with its first open step (Android Notify.kt line()); a Must rings an Alarm at its time too.
+          const placed = this._placedMap();
+          for (const t of this.tasks) {
+            const when = !t.completed_at && !t.archived_at && !t.overview && placed.get(t.id);
+            if (!(when?.length >= 16)) continue;   // a date alone rings nothing (parsed, it'd be UTC midnight)
+            const step = (!t.checklist_plain && t.checklist?.find(c => !c.done)?.text) || this.childTasks(t.id).find(k => !k.completed_at)?.content;
+            const item = { id: t.id + '@' + when, at: +new Date(when), until: +new Date(when), sev: 'ping', title: step ? `${t.content}: ${step}` : t.content, body: this.fmtTime(when.slice(11, 16)), join: '' };
+            due.push({ ...item, at: item.at - 10 * 60e3 });
+            if (t.importance === 'must') ours({ ...item, id: item.id + '#must', sev: 'alarm', until: item.at + 10 * 60e3 });
           }
           const day = new Date(now), events = new Map(this.events.map(e => [e.id, e])), focus = [];
           day.setDate(day.getDate() + 1);
@@ -925,7 +941,7 @@ document.addEventListener('alpine:init', () => {
           localStorage.setItem('adherod.rung', JSON.stringify([...rung].filter(([, until]) => until > now - 864e5)));
           if (next < Infinity) ringTimer = setTimeout(ring, Math.min(next - now, 2 ** 31 - 1));
         };
-        Alpine.effect(ring);   // reads this.reminders, this.byId and this.events: an edit reschedules
+        Alpine.effect(ring);   // reads this.reminders, this.byId, this.tasks, this.scheduleItems and this.events: an edit reschedules
         addEventListener('focus', () => { pinged = []; });   // seen: the next Ping starts a new notification
         loadMail();
         loadCalendar();
@@ -1038,15 +1054,15 @@ document.addEventListener('alpine:init', () => {
             }
           }
           this._reflow(); }).observe(list);
-        // The list is WINDOWED: scrolling is what brings rows into existence, so the scroll listener is the
-        // render loop, not just a re-fit. 150ms at REST re-grows the window to a whole margin: a jump (PageDown, a
-        // scrollbar click) is painted before we re-window, onto rows already built — and the kept one may be WIN_KEEP.
-        // Not `scrollend` (a per-frame programmatic scroll fires it every frame); a long frame mid-fling has moved on.
+        // The list is WINDOWED: scrolling brings rows into existence, so the scroll listener is the render loop, not
+        // just a re-fit. 150ms at REST re-grows the window to a whole margin: a jump (PageDown, a scrollbar click) is
+        // painted before we re-window, onto rows already built. Not `scrollend` (a per-frame programmatic scroll fires
+        // it every frame); a long frame mid-fling has moved on.
         const app = document.querySelector('.app');
-        // Speed = travel over the scroll EVENTS' timeStamps, however far apart: a slow phone's every frame is >150ms, and
-        // zeroing past that would stop the runway growing ahead. A jump after a pause divides by the pause. Budget: O(1) per event.
-        // Mid-motion the runway is the last frame's length when that beats WIN_RUN: the next frame is as slow as the last, so a
-        // 1s frame at 1px/ms must reach 1000px ahead, not 120 (scroll.e2e "fling", red under load). From rest (_winV 0) it stays WIN_RUN.
+        // Speed = travel over the scroll EVENTS' timeStamps: a slow phone's every frame is >150ms, and zeroing past
+        // that would stop the runway growing. A jump after a pause divides by the pause. Budget: O(1) per event.
+        // Mid-motion the runway is the last frame's length when that beats WIN_RUN (a 1s frame at 1px/ms must reach
+        // 1000px ahead, not 120: scroll.e2e "fling"). From rest (_winV 0) it stays WIN_RUN.
         if (app) app.addEventListener('scroll', e => {
           this._releaseCloseRange();
           if (app._growGlide?.sizing) app._growGlide.scrollAt = e.timeStamp;
@@ -1071,9 +1087,8 @@ document.addEventListener('alpine:init', () => {
       };
       _restT = setTimeout(rest, 150);
     },
-    // rAF-throttle, shared by both passes: a fling fires scroll far faster than a frame — undebounced, each
-    // call forces a layout. The slot REMEMBERS a re-window asked for while a fit-only frame was queued: dropped,
-    // a scroll landing in that frame leaves its rows unbuilt until the next scroll (a blank viewport if none comes).
+    // rAF-throttle, shared by both passes: a fling fires scroll far faster than a frame, and each call forces a layout. The slot
+    // REMEMBERS a re-window asked for while a fit-only frame was queued: dropped, a scroll in that frame leaves its rows unbuilt.
     fitRows(win) {
       _fitW ||= !!win; if (_fitQ) return;
       const fit = () => { try { if (_fitW) { _fitW = false; this._paintRows(); } } finally { _fitQ = 0; } this._fit(); if (_fitW) this.fitRows(); };   // a re-window the paint asked for (a window move's runway) is next frame's
@@ -1083,25 +1098,20 @@ document.addEventListener('alpine:init', () => {
         else fit();
       });
     },   // _fitQ held through the paint: its morph's fit is this frame's; a throw must not wedge it
-    // Scroll/resize: re-window the DOM FIRST (rows only exist because we scrolled to them), then fit what
-    // is now in it. One rAF for both — the fit has to read the rows the re-window just created.
+    // Scroll/resize: re-window the DOM first (rows exist only because we scrolled to them), then fit it, in one rAF.
     _reflow() { this.fitRows(true); },
     // Things-style: title squeezed by areas → icons only; still squeezed → roll extras into "+N".
-    // Windowing makes this pass viewport-sized by construction: every .item in the DOM is within one margin
-    // of the fold. Scoped to .surface-lists: Plan-surface lists are hidden (~37ms/pass of 0-rect hits).
+    // Windowing keeps this viewport-sized: every .item in the DOM is within one margin of the fold.
+    // Scoped to .surface-lists (Plan-surface lists are hidden: ~37ms/pass of 0-rect hits).
     _fit() {
-      // Fit each row ONCE per list WIDTH. Squeeze is a function of the row's content and the width it has —
-      // scrolling changes neither, and re-measuring fitted rows is most of a scroll pass. The stamp rides on the ELEMENT, like morphRows' `_sig`:
-      // the <li> the morph replaced comes back unstamped and is re-measured. The width generation `_fitV` is
-      // bumped by the .list ResizeObserver, which HANDS us the new width — asking the DOM for it here would
-      // force a second layout per pass, right after the morph dirtied it.
-      // Zero-height items are the Done list while its lens is off, or a row hidden by an edit/drag: they
-      // can't be squeezed — leave them UNSTAMPED so they are fitted once they are real.
-      // A row the window dropped and rebuilt at the same width REPLAYS its fit: the outcome is cached by id and
-      // checked against its markup (`_sig`), so scrolling back over rows measures nothing. The width change that
-      // bumps `_fitV` clears the cache.
-      if (_fitDone === _fitV) return;   // no row added and no width change since every row was fitted: a scroll frame that brings none in queries none
-      const box = _staticEl('.surface-lists .rows'), pin = box && this._readerPin(box);   // anchoring held off (a drag, a closing composer): a row above the fold that lifts its line 2, replayed or fitted, pulls the rows on screen up
+      // Fit each row once per list width: scrolling changes neither its content nor its width, and re-measuring is most
+      // of a scroll pass. The stamp rides on the element (like morphRows' `_sig`), so a morph-replaced <li> is
+      // re-measured. `_fitV` is bumped by the .list ResizeObserver, which hands us the width: asking the DOM would
+      // force a second layout right after the morph. Zero-height items (Done lens off, a row hidden by an edit/drag)
+      // can't be squeezed: left unstamped until they are real. A row the window dropped and rebuilt at the same width
+      // replays its fit (cached by id, checked against `_sig`); a `_fitV` bump clears it.
+      if (_fitDone === _fitV) return;   // nothing added or resized since every row was fitted
+      const box = _staticEl('.surface-lists .rows'), pin = box && this._readerPin(box);   // anchoring held off (a drag, a closing composer): a row above the fold gaining line 2 would pull the rows on screen up
       const rows = []; let left = false;
       for (const el of document.querySelectorAll('.surface-lists .list .item')) {
         if (el._fitV === _fitV) continue;                                  // …before the descendant query, not after
@@ -1124,19 +1134,15 @@ document.addEventListener('alpine:init', () => {
       if (!rows.length) return;
       for (const el of rows) if (el._sig) _fitMemo.set(el.dataset.id, { sig: el._sig, lad: el._lad, up: el._up, shed: (el._moved || []).map(m => m.sel),
         r1: el.querySelector('.r1l').className, l2: el.querySelector('.row2.meta')?.className, ri: [...el.querySelectorAll('.r1l .row-rel')].flatMap((c, i) => c.classList.contains('icon-only') ? [i] : []) });
-      // A row that gained (or lost) line 2 changed HEIGHT, and _measure already ran this pass and stamped
-      // these elements for this width generation. Un-stamp exactly those and ask for one more pass, or the
-      // spacers keep last width's heights and the scrollbar drifts. Converges: next pass they are _fitV-
-      // stamped, so the ladder doesn't re-run and nothing schedules again.
+      // A row that gained or lost line 2 changed height after _measure stamped it this generation: un-stamp those and
+      // reflow once, or the spacers keep last width's heights and the scrollbar drifts. Converges: next pass they are _fitV-stamped.
       if (grown.length) { for (const el of grown) el._mV = -1; this._reflow(); }
     },
     // Fit `rows` at their current width; returns the rows the ladder ran on if it opened a line 2 (they changed height).
     _fitEls(rows) {
-      // Batch writes before reads to avoid per-row reflow: undo the previous width's fit first, so this
-      // width is decided from the row's FULL content and the ladder can walk back up as well as down.
+      // Writes before reads, no per-row reflow: undo the previous width's fit so this width is decided from the full content.
       for (const el of rows) if (el._moved || el._lad || el._up) this._unfit(el);
-      // One read pass for the whole batch. Only a row whose title is actually truncated (or that has >3
-      // chips, which roll on count, not width) enters the ladder — everything else costs a single read.
+      // One read pass for the batch; only a truncated title (or >3 chips, which roll on count) enters the ladder.
       const need = [];
       for (const el of rows) {
         const title = el.querySelector('.title'), g = el.querySelector('.areas');
@@ -1158,29 +1164,24 @@ document.addEventListener('alpine:init', () => {
         width = w;
       })).observe(side);
     },
-    // The row's overflow ladder. Rungs fire ONE at a time and only while the title is still truncated, so a
-    // row spends exactly as much of line 1 as its own title needs. Buying space in place (chips → icon
-    // pills) always precedes buying it with height. The scheduled-time badge never leaves line 1; when the
-    // row has no scheduled time the DEADLINE holds that slot and never leaves either.
-    // Order + rationale: docs/ui/task-list.md §Row overflow. Returns true if line 2 was created.
-    // RUNG-MAJOR, never row-major: each rung does ONE read pass over every row still overflowing, then one
-    // write pass. Row-major (ladder one row to completion, then the next) interleaves a read after every
-    // write, so 40 rows × 6 rungs cost 240 forced layouts instead of 6 (tests/lists-view.e2e's read ratchet).
+    // The row's overflow ladder. Rungs fire one at a time, only while the title is still truncated; buying space in place
+    // (chips → icon pills) precedes buying it with height. The scheduled-time badge never leaves line 1; without one,
+    // the deadline holds that slot and never leaves either. Order: docs/ui/task-list.md §Row overflow. Returns true if line 2 was created.
+    // Rung-major, not row-major: one read pass over every overflowing row, then one write pass. Row-major interleaves a
+    // read after every write (40 rows × 6 rungs = 240 forced layouts vs 6; tests/lists-view.e2e's read ratchet).
     _ladder(rows) {
       if (!rows.length) return 0;
       const fits = (el) => { const t = el._t || (el._t = el.querySelector('.title')); return t.scrollWidth <= t.clientWidth + 1 || (el._steps && t.clientWidth >= STEP_FLOOR); };
       for (const el of rows) el._steps = !!el.querySelector('.step-block');
-      // Rung 0/1 — chips in place: >3 chips roll on COUNT, otherwise the
-      // squeeze that got the row here collapses them to icon pills. Both are writes; no read needed.
+      // Rung 0/1 — chips in place: >3 roll on count, else the squeeze collapses them to icon pills. Writes only.
       for (const el of rows) this._chipMode(el);
       // Then blocker and file chips drop their names ONE at a time, the widest named first, so the row keeps the most names it has room for.
       const relRungs = batch => { while ((batch = batch.filter(el => el.querySelector('.r1l .row-rel:not(.icon-only)') && !fits(el) && (el._relAt = this._relWidest(el)) >= 0)).length) for (const el of batch) this._relIcon(el, el._relAt); };   // READ, then WRITE
       relRungs(rows);
       const line2s = new Map();
       for (const sel of LADDER) {
-        // Shed while the title is squeezed — AND for a row holding exactly ONE item on line 2. A lone item
-        // is not allowed to stay (a line must earn itself), so if another rung can still supply a second
-        // one, TAKE IT rather than reverting: handing back re-clips the title the first rung just fixed.
+        // Shed while the title is squeezed, and for a row with exactly one item on line 2: it can't stay alone, so take a
+        // second from another rung if one can supply it; handing back re-clips the title the first rung just fixed.
         const still = rows.filter(el => {                              // READ — one layout for the batch
           if (!this._shedNode(el, sel)) return false;   // an absent rung buys no space; don't measure it
           const l2 = line2s.get(el);
@@ -1189,10 +1190,8 @@ document.addEventListener('alpine:init', () => {
         if (!still.length) continue;
         for (const el of still) this._shed(el, sel, line2s);          // WRITE
       }
-      // A SECOND LINE MUST EARN ITSELF. One lone item down there — a bare project chip, a single badge —
-      // reads worse than the slightly clipped title it bought, because the line looks like a mistake rather
-      // than a row. Hand it back and let the title truncate. (Two or more is a meta row and reads as one.)
-      // Whatever is STILL alone here had nothing left to pair with — the ladder ran out of rungs.
+      // A second line must earn itself: a lone item (a bare project chip, one badge) reads worse than the clipped title it bought.
+      // Hand it back and let the title truncate; two or more read as a meta row. What is still alone had no rung left to pair with.
       const back = [];
       for (const [el, l2] of line2s) {
         if (l2.children.length > 1) continue;
@@ -1201,8 +1200,7 @@ document.addEventListener('alpine:init', () => {
         line2s.delete(el); back.push(el);
       }
       relRungs(back);                    // and so are the chip rungs
-      // Line 2 must never wrap to a third line, so it degrades IN PLACE: shrink text, then drop chip names,
-      // then roll the chips away — same preference order as line 1, same rung-major batching.
+      // Line 2 never wraps to a third line: it degrades in place (shrink text, drop chip names, roll chips), rung-major like line 1.
       const l2s = [...line2s.values()];
       for (const cls of L2_STEPS) {
         const over = l2s.filter(l2 => l2.scrollWidth > l2.clientWidth + 1
@@ -1213,9 +1211,8 @@ document.addEventListener('alpine:init', () => {
       for (const [el, l2] of line2s) { const fill = el.querySelector('.body > .l2-fill'); if (fill) l2.append(fill); }   // marks only fill a line 2 the row earned, after its shrink steps
       return l2s.length;
     },
-    // A phone's line 2 rides up beside the title (asst-135-3, his 11-10 "unbalanced white space"): whole when it fits beside the
-    // full title, a project alone always (the title gives way down to 3em, then the project under its 7rem cap, styles.css); any other row keeps its line 2 whole.
-    // Returns the rows it lifted: they lost a line.
+    // A phone's line 2 rides up beside the title: whole when it fits beside the full title, a project alone always (the title
+    // gives way down to 3em, then the project under its 7rem cap, styles.css); other rows keep line 2 whole. Returns the rows lifted.
     _lift(rows) {
       const up = rows.filter(el => {                                   // READ
         const sub = el.querySelector('.body.typed > .row-sub'); if (!sub) return false;
@@ -1236,8 +1233,8 @@ document.addEventListener('alpine:init', () => {
     // Pure writes in L2_ORDER, also replayed by _fit without measuring.
     _shed(el, sel, line2s) {
       const n = this._shedNode(el, sel); if (!n) return;
-      // A Steps row keeps ONE title line, so the step never reads as a task — what doesn't fit hides behind a "…"
-      // listing it, never moving under the step. The deadline is exempt: the one red that means a consequence.
+      // A Steps row keeps one title line so the step never reads as a task: what doesn't fit hides behind a "…" listing it.
+      // The deadline is exempt: the one red that means a consequence.
       if (el.querySelector('.step-block')) {
         n.classList.add('shed-hid');
         (el._moved || (el._moved = [])).push({ n, home: n.parentElement, i: [...n.parentElement.children].indexOf(n), sel });
@@ -1256,9 +1253,8 @@ document.addEventListener('alpine:init', () => {
       (el._moved || (el._moved = [])).push({ n, home, i: [...home.children].indexOf(n), sel });
       const rank = L2_ORDER.indexOf(sel);
       l2.insertBefore(n, [...l2.children].find(c => L2_ORDER.findIndex(o => c.matches(o)) > rank) || null);
-      // icons-only/rolled are a LINE-1 treatment; once the chips leave line 1 the class is vestigial
-      // there (it styles descendants it no longer has). Hand the count-based `rolled` to line 2 — >3
-      // chips roll on any line — and let line 2's own ladder decide whether names still have to go.
+      // icons-only/rolled are line-1 treatments, vestigial once the chips leave line 1. Hand the count-based `rolled` to
+      // line 2 and let its own ladder decide whether names still have to go.
       if (sel === '.row-rels') this._relNames(n);   // line 2 has the room: names come back
       if (sel === '.areas') {
         const r1l = el.querySelector('.r1l');
@@ -1266,9 +1262,8 @@ document.addEventListener('alpine:init', () => {
         r1l.classList.remove('icons-only', 'rolled');
       }
     },
-    // Rung 0/1 — chips collapse IN PLACE: >3 chips roll on COUNT, otherwise
-    // the squeeze that got the row here collapses them to icon pills. Pure writes; costs no height, so it is
-    // both the first rung and what a row keeps when a line is handed back.
+    // Rung 0/1 — chips collapse in place: >3 roll on count, else icon pills. Pure writes, no height: also what a row
+    // keeps when a line is handed back.
     _chipMode(el) {
       const r1l = el.querySelector('.r1l'), chips = el.querySelector('.areas');
       if (!r1l.querySelector('.areas')) return void (el._lad = 1);   // chips live on line 2 now — not ours to style
@@ -1276,8 +1271,7 @@ document.addEventListener('alpine:init', () => {
       if (chips && chips.querySelectorAll('.area').length > 3) r1l.classList.add('rolled');
       el._lad = 1;
     },
-    // Put every laddered node back where it came from and drop line 2. Newest shed first: each index was measured
-    // after the earlier sheds left, so only the reverse order undoes one shed per insert (areas and project both read 1).
+    // Put every laddered node back and drop line 2. Newest shed first: each index was measured after the earlier sheds left.
     _unfit(el) {
       for (const { n, home, i } of [...(el._moved || [])].reverse()) { n.classList.remove('shed-hid'); home.insertBefore(n, home.children[i] || null); }
       el._moved = null; el._lad = 0;
@@ -1331,7 +1325,7 @@ document.addEventListener('alpine:init', () => {
       this.surface = name; this.navPop = null;
     },
     openOverview() {
-      // Only close the composer if it's empty — non-empty content is kept behind the overview so the user doesn't lose work.
+      // An empty composer closes; a non-empty one stays behind the overview.
       if (this.composer.open && !this.draft.content.trim() && !this.draft.notes && !this.draft.on) this.closeComposer();
       this.ovSel = this.surfaceIndex(); this.rollerSel = 0; this.overview = true; this.rollerCenter();
     },
@@ -1422,7 +1416,7 @@ document.addEventListener('alpine:init', () => {
       const account = this.gcal?.account, oauth = await gis().catch(() => null);
       const res = oauth && await new Promise(done => oauth.initCodeClient({ client_id: GOOGLE.clientId, scope: GOOGLE.scope, ux_mode: 'popup', callback: done, error_callback: done,
         select_account: !account, login_hint: account ?? undefined }).requestCode());
-      if (res?.type === 'popup_closed') return;   // he closed it: nothing changes
+      if (res?.type === 'popup_closed') return;   // the user closed it: nothing changes
       const t = res?.code && await this.store.gcal.token({ code: res.code });
       if (!t?.sealed) return void this.notify(t?.regrant ? 'Connect Google Calendar once more to finish' : "Couldn't connect Google Calendar");
       this._gcalSet({ account: account ?? null, token: t.access_token, exp: Date.now() + t.expires_in * 1000, sealed: t.sealed });
@@ -1435,11 +1429,25 @@ document.addEventListener('alpine:init', () => {
       this.gcal = null;
       this.gcalCals = [];
     },
+    // Each shown calendar's events into Plan, from the mirror any device fills; one redraw for every row a pass's realtime burst brings
+    gcalDraw() {
+      return _gcalDraw ??= new Promise(r => setTimeout(r, 100)).then(async () => {
+        _gcalDraw = null;
+        const gc = this.store.gcal, [cals, rows] = gc ? await Promise.all([gc.calendars(), gc.events()]) : [[], []];
+        _gcal = { rows, cals };
+        const next = gcalAsEvents(rows.filter(r => !_gPend.some(p => p.id === r.id)).concat(_gPend), cals), key = JSON.stringify(next);
+        if (key === _gcalKey) return;   // every load asks for a redraw: one with nothing new re-renders nothing (a drag keeps its preview)
+        _gcalKey = key;
+        _calDataV++;
+        this.gcalEvents = next;
+      });
+    },
     _gcalSet(g) { this.gcal = g; localStorage.setItem('adherod.gcal', JSON.stringify(g)); },
     async gcalShow(cal, shown) {
       const row = await this.store.gcal.setShown(cal.id, shown);
       if (!row) return void this.notify(`${cal.summary} not changed. Check your connection`);
       this.gcalCals = this.gcalCals.map(c => c.id === row.id ? row : c);
+      this.gcalDraw();
       if (shown) this.gcalSync();
     },
     // A pass: Google's calendars into gcal_calendars, then each shown one's changes since its shared sync token, page by page through gcal_merge
@@ -1451,14 +1459,9 @@ document.addEventListener('alpine:init', () => {
       const live = () => this.gcal?.token === g.token;   // a Disconnect or Reconnect mid-pass wins
       const lapse = () => live() && this._gcalSet({ ...g, token: null });
       try {
-        if (!g.token || g.exp < Date.now() + 60000) {
-          const t = g.sealed && await gc.token({ sealed: g.sealed });
-          if (t?.access_token && this.gcal === g) this._gcalSet(g = { ...g, token: t.access_token, exp: Date.now() + t.expires_in * 1000 });
-          else {
-            if (t?.revoked || !g.sealed) live() && this._gcalSet({ ...g, token: null, sealed: null });   // offline keeps the sealed token for the next pass
-            if (!this.gcalCals.length) this.gcalCals = (await gc.calendars().catch(() => [])).filter(c => c.account === g.account);
-            return;
-          }
+        if (!(g = await this._gcalFresh())) {
+          if (!this.gcalCals.length) this.gcalCals = (await gc.calendars().catch(() => [])).filter(c => c.account === this.gcal?.account);
+          return;
         }
         const api = async path => {
           const res = await fetch(`https://www.googleapis.com/calendar/v3/${path}`, { headers: { Authorization: `Bearer ${g.token}` } });
@@ -1493,7 +1496,152 @@ document.addEventListener('alpine:init', () => {
         for (const cal of rows) if (cal.shown && live()) await pass(cal, false);
       } finally { _gcalBusy = false; }
     },
-    // Signed out, Social asks to sign in and the invite waits. A refusal (400: used, yours, a bad id; 403) drops it; anything else (offline, 401, 404, 429, 5xx) keeps it for the next boot.
+    // this browser's connection with a token good for a minute more, renewed when it isn't; null when none can be had
+    async _gcalFresh() {
+      let g = this.gcal;
+      if (!g || g.token && g.exp >= Date.now() + 60000) return g;
+      const t = g.sealed && await this.store.gcal.token({ sealed: g.sealed });
+      if (t?.access_token && this.gcal === g) { this._gcalSet(g = { ...g, token: t.access_token, exp: Date.now() + t.expires_in * 1000 }); return g; }
+      if ((t?.revoked || !g.sealed) && this.gcal?.token === g.token) this._gcalSet({ ...g, token: null, sealed: null });   // offline keeps the sealed token for the next pass
+      return null;
+    },
+    // One events request to Google on calendar `cal`: its answer, null on a failure. A delete answers with the event read back.
+    async _gApi(cal, method, path, body) {
+      const g = await this._gcalFresh(); if (!g) return null;
+      const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal)}/events${path}`,
+        { method, headers: { Authorization: `Bearer ${g.token}`, 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) }).catch(() => null);
+      if (res?.status === 401 && this.gcal?.token === g.token) this._gcalSet({ ...this.gcal, token: null });
+      if (!res?.ok) return null;
+      return method !== 'DELETE' ? res.json() : await this._gApi(cal, 'GET', path) ?? { id: decodeURIComponent(path.slice(1)), status: 'cancelled' };
+    },
+    // An open Google event: its mirror row, calendar, whether that calendar takes writes, and the series it repeats in
+    _gOf(id) {
+      const r = _gcal.rows.find(x => 'g:' + x.id === id), cal = r && _gcal.cals.find(c => c.id === r.calendar_id);
+      if (!cal) return null;
+      const series = r.recurrence ? r : r.series_id ? _gcal.rows.find(x => x.calendar_id === r.calendar_id && x.google_id === r.series_id) ?? null : null;
+      return { r, cal, series, ro: !['owner', 'writer'].includes(cal.access_role) };
+    },
+    // Google's event opens in our editor, modal: a draft's ghost tile would show an edit Google hasn't taken yet
+    clEditG(it) {
+      const o = this._gOf(it.id); if (!o) return;
+      const { r } = o, date = it.start.slice(0, 10);
+      this.eventEdit = { g: { ...o, at: it.start, end: it.end }, id: it.id, title: r.title ?? '', notes: r.notes ?? '', date, span: this._adSpan({ starts_at: it.start, ends_at: it.end }), start: timeOf(it.start, '09:00'), end: timeOf(it.end, '10:00'),
+        multi: !it.allDay && date < it.end.slice(0, 10), all_day: !!it.allDay, color: it.color ?? null, location_id: this.locations.find(l => l.name === r.place)?.id ?? null, place: r.place ?? '', weekdays: [], countdown: false, importance: 'none', ticket: '', attachments: [], files: [] };
+    },
+    // A Google occurrence as an attached task keys it on every device: Google's iCalUID, and a repeat's planned local day
+    // ceiling: a This and later split starts a new series, so the later days' tasks stay with the old one; revisit when one goes missing
+    _gKey({ r, series, at }) {
+      return { gcal_uid: (series ?? r).ical_uid, gcal_day: !series ? null : r.series_id ? isoDate(new Date(gMs(r.original_start))) : at.slice(0, 10) };
+    },
+    // a task dropped on a Google tile attaches to that occurrence; Google gets nothing
+    async _gAttach(taskId, el) {
+      const o = this._gOf(el.dataset.g), m = o && (o.series ?? o.r);
+      // a row mirrored before ical_uid existed reads it from Google once; the merge keeps it for every device
+      const got = m && !m.ical_uid && await this._gApi(o.cal.google_id, 'GET', '/' + encodeURIComponent(m.google_id));
+      if (got?.iCalUID && await this.store.gcal.merge({ p_calendar: o.cal.id, p_events: [got], p_seen: new Date().toISOString() })) m.ical_uid = got.iCalUID;
+      const key = m && this._gKey({ ...o, at: el.dataset.at });
+      if (!key?.gcal_uid) return this.toast('Failed attaching. Try again?');
+      if (this.scheduleItems.some(si => si.task_id === taskId && si.gcal_uid === key.gcal_uid && (si.gcal_day ?? null) === key.gcal_day)) return;
+      return this.perform('Attached to ' + (o.r.title || 'event'), { kind: 'create', target: 'scheduleItem', fields: { task_id: taskId, ...key } }, { fail: 'Failed attaching. Try again?' });
+    },
+    // what the editor changed of Google's event; slot: the occurrence's new [start, end] as local stamps
+    _gChanges(e) {
+      const { r, at, end } = e.g, rg = this._evRange(e);
+      const f = Object.fromEntries([['summary', e.title, r.title], ['description', e.notes, r.notes], ['location', this.locName(e.location_id) || e.place, r.place]]
+        .map(([k, v, was]) => [k, v.trim(), (was ?? '').trim()]).filter(([, v, was]) => v !== was));
+      if (rg.starts_at !== at || rg.ends_at !== end) f.slot = [rg.starts_at, rg.ends_at];
+      return Object.keys(f).length ? f : null;
+    },
+    clSaveG(e) {
+      const f = this._gChanges(e);
+      if (!f) return void (this.eventEdit = null);   // a reader calendar's editor changes nothing (its fields are locked)
+      this._gAsk(e.g, document.querySelector('.event-editor .cl-go'), async s => { if (await this._gWrite(e.g, f, s)) this.eventEdit = null; });
+    },
+    // A delete leaves Plan at once and reaches Google once its Undo has passed, so Undo only shows it again (a failure brings it back, said)
+    // ceiling: a tab closed inside the Undo window drops the delete and the event stays in Google; revisit if one of his comes back
+    _gDelete(g, bin) {
+      this._gAsk(g, bin, scope => {
+        const gone = this._gGone(g, scope), lift = () => { _gPend = _gPend.filter(x => !gone.includes(x)); this.gcalDraw(); };
+        let undone = false;
+        _gPend.push(...gone);
+        this.gcalDraw();
+        this.eventEdit = null;
+        this.notify('Deleted event', { actions: [{ label: 'Undo', fn: () => { undone = true; lift(); } }], done: async () => { if (!undone) { await this._gWrite(g, null, scope); lift(); } } });
+      });
+    },
+    // the rows a delete hides until Google has it: the event, the occurrence as a cancelled one, the series ended before it, or all of it
+    _gGone(g, scope) {
+      const { r, series } = g;
+      if (!series || r.series_id && scope === 'one') return [{ ...r, status: 'cancelled' }];
+      const { cut, first, head } = this._gCut(g);
+      if (scope === 'one') return [{ id: 'gone:' + r.id + cut, calendar_id: r.calendar_id, series_id: series.google_id, original_start: cut, status: 'cancelled' }];
+      if (scope === 'later' && !first) return [{ ...series, recurrence: head }];
+      return _gcal.rows.filter(x => x.calendar_id === series.calendar_id && (x === series || x.series_id === series.google_id)).map(x => ({ ...x, status: 'cancelled' }));
+    },
+    // a series split at an occurrence: its start as Google keys it, whether it's the series' first, and the repeat ended the moment
+    // before it (head) or kept from it on (tail, a COUNT dropped)
+    _gCut(g) {
+      const { r, series } = g, cut = r.series_id ? r.original_start : g.at;
+      const until = series.all_day ? addMinutes(cut.slice(0, 10), -1440, true).replaceAll('-', '') : new Date(gMs(cut) - 1000).toISOString().replace(/[-:]|\.\d+/g, '');
+      const rule = u => series.recurrence.map(l => !l.startsWith('RRULE:') ? l : 'RRULE:' + l.slice(6).split(';').filter(p => !/^(COUNT|UNTIL)=/.test(p) || !u && p.startsWith('UNTIL=')).concat(u ? ['UNTIL=' + u] : []).join(';'));
+      return { cut, first: gMs(cut) <= gMs(series.starts_at), head: rule(until), tail: rule(null) };
+    },
+    _gDrop(e, d, fields) {
+      const o = this._gOf(d.id);
+      if (!o || o.ro || fields.starts_at === d.at) return;   // dropped where it already is
+      const g = { ...o, at: d.at, end: addMinutes(d.at, minutesBetween(fields.starts_at, fields.ends_at), fields.all_day) };
+      this._gAsk(g, { x: e.clientX, y: e.clientY }, s => this._gWrite(g, { slot: [fields.starts_at, fields.ends_at] }, s));
+    },
+    // A repeating event asks which days a write takes, at the button pressed or the drop's point; a one-off writes at once
+    _gAsk(g, at, run) {
+      if (!g.series) return run();
+      _gRun = run;
+      if (at instanceof Element) return this.togglePop('gSer', at);
+      this._popTrack?.();
+      this.pop = 'gSer';
+      this.popDock = false;
+      this.popXY = { left: popLeft(at.x, 200), top: popTop(at.y, 130) };
+    },
+    gSerPick(scope) { const run = _gRun; _gRun = null; this.pop = null; run?.(scope); },
+    // start and end as Google takes them: a date (its end exclusive) or an instant in the event's own zone
+    _gSlot(g, s, e) {
+      const tz = (g.series ?? g.r).tz || Intl.DateTimeFormat().resolvedOptions().timeZone, at = v => v.length <= 10 ? { date: v } : { dateTime: new Date(v).toISOString(), timeZone: tz };
+      return { start: at(s), end: at(e.length <= 10 ? addMinutes(e, 1440, true) : e) };
+    },
+    // Google first, then the mirror: f (fields, slot) edits, null deletes. 'one': that occurrence (a repeat's instance: read
+    // it, then update it); 'all': the series, its time shifted as the occurrence's was; 'later': a series from that day with
+    // the edit, made before the old one ends the day before (data safety: a failed end deletes the new one).
+    // Returns the events Google answered, null on a failure (said, and nothing changes here).
+    // ceiling: the new half drops a COUNT and the old series keeps its moved days after the cut; revisit when a split of his repeats or doubles a day
+    async _gWrite(g, f, scope) {
+      const { r, cal, series } = g, api = (method, path = '', body) => this._gApi(cal.google_id, method, path, body), path = id => '/' + encodeURIComponent(id);
+      const { slot, ...fields } = f ?? {}, { cut, first, head, tail: rest } = series ? this._gCut(g) : {};
+      if (scope === 'later' && first) scope = 'all';
+      let got;
+      if (!series || scope === 'one') {
+        const q = series && !r.series_id && new URLSearchParams({ timeMin: new Date(gMs(cut)).toISOString(), timeMax: new Date(gMs(cut) + 60000).toISOString() });
+        const id = q ? (await api('GET', path(series.google_id) + '/instances?' + q))?.items?.find(x => gMs(x.originalStartTime.dateTime ?? x.originalStartTime.date) === gMs(cut))?.id : r.google_id;
+        got = id && [await (f ? api('PATCH', path(id), { ...fields, ...slot && this._gSlot(g, ...slot) }) : series ? api('PATCH', path(id), { status: 'cancelled' }) : api('DELETE', path(id)))];
+      } else if (scope === 'all') {
+        const day = series.all_day, s0 = day ? series.starts_at : localStamp(new Date(series.starts_at)), s = slot && addMinutes(s0, minutesBetween(g.at, slot[0]), day);
+        got = [await (!f ? api('DELETE', path(series.google_id)) : api('PATCH', path(series.google_id), { ...fields, ...slot && this._gSlot(g, s, addMinutes(s, minutesBetween(...slot), day)) }))];
+      } else {
+        const tail = f && { summary: series.title, description: series.notes, location: series.place, colorId: series.color, ...this._gSlot(g, ...slot ?? [g.at, g.end]), recurrence: rest, ...fields };
+        const made = tail && await api('POST', '', tail);
+        const ended = (!tail || made) && await api('PATCH', path(series.google_id), { recurrence: head });
+        if (made && !ended) await api('DELETE', path(made.id));
+        got = (!tail || made) && ended && [ended, made].filter(Boolean);
+      }
+      if (!got?.every(Boolean)) return void this.notify(f ? 'Couldn’t save to Google. Try again?' : 'Couldn’t delete in Google. Try again?');
+      await this._gMerge(g, got);
+      return got;
+    },
+    async _gMerge(g, got) {
+      if (got.length) await this.store.gcal.merge({ p_calendar: g.cal.id, p_events: got, p_seen: new Date().toISOString() });
+      this.gcalDraw();
+    },
+    // Signed out, Social asks to sign in and the invite waits. A refusal (400: used, yours, a bad id; 403) drops it;
+    // anything else (offline, 401, 404, 429, 5xx) keeps it for the next boot.
     async redeemInvite() {
       this.goSurface('social');
       if (!this.session) return;
@@ -1739,9 +1887,8 @@ document.addEventListener('alpine:init', () => {
       const now = performance.now(), gap = now - (s.t || 0); s.t = now;
       if (e.deltaY <= 0) { s.accum = 0; return; }          // scrolling up → reset
       if (this.navPop || this.navRename) { s.accum = 0; return; }   // a popover or rename layered above holds the overview open
-      // A nested list (the project/area/location roller) owns the gesture whenever it is scrollable — you
-      // over-scroll a short roller constantly, and that bounce must never dismiss the overview. Dismiss only
-      // fires from a down-scroll over the non-scrollable overview background.
+      // A scrollable nested list (the project/area/location roller) owns the gesture: a short roller's constant over-scroll
+      // bounce must never dismiss. Dismiss fires only from a down-scroll over the non-scrollable overview background.
       if (this._ownedByScroller(e.target, e.currentTarget, 'y')) { s.accum = 0; return; }
       if (gap > 500) { s.accum = 0; return; }              // fresh after idle → swallow the leading edge (inertial tail)
       s.accum = (s.accum || 0) + e.deltaY;
@@ -1796,8 +1943,9 @@ document.addEventListener('alpine:init', () => {
       if (e.target.closest('input, textarea, [contenteditable], .inp, .composer, code, .md-code, .cd-seg')) return;   // let native text interaction (and a view-strip tap) win
       if (this.drag.active) return;   // ignore extra touch points once a drag owns the pointer
       this.drag = { active: true, x0: e.clientX, y0: e.clientY, w: this.$refs.canvas.offsetWidth, t0: e.timeStamp || performance.now(), id: e.pointerId, axis: null, from: e.target };
-      // Holding the strip's ＋ = a new event on the shown day: the platform's 500ms, real time (motion.t zeroes it → every tap a hold); the slop below cancels it.
-      // A fired hold ends the drag (a mouse release lands on the editor's backdrop, missing canvasUp); the strip's @touchend eats a finger's release click, which would close it.
+      // Holding the strip's ＋ = a new event on the shown day: 500ms real time (motion.t would make every tap a hold);
+      // the slop below cancels it. A fired hold ends the drag (a mouse release lands on the editor's backdrop, missing
+      // canvasUp); the strip's @touchend eats a finger's release click, which would close it.
       if (e.target.closest('[data-act="add"]')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.clNewEvent(); }, 500);
       else if (e.target.closest('.jb-dest:not(.jb-day)')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.listHold = { hot: -1, x: e.clientX, y: e.clientY, moved: false }; this.openListTray(); }, 500);   // the lists tray: same hold and slop
     },
@@ -1807,8 +1955,8 @@ document.addEventListener('alpine:init', () => {
       if (!this.drag.axis && Math.hypot(dx, dy) > 8) {       // lock the axis once past the threshold
         clearTimeout(this.drag.hold);                         // …which is also a hold's slop
         this.drag.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-        // A real horizontal list owns its own axis — the same deference onCanvasWheel
-        // makes, or a finger pages the app where a trackpad scrolls the lane. Finger sign is inverted from wheel delta (drag left = scroll right), hence -dx.
+        // A real horizontal list owns its axis, as in onCanvasWheel, or a finger pages the app where a trackpad scrolls the lane.
+        // Finger sign is inverted from wheel delta (drag left = scroll right), hence -dx.
         if (this.drag.axis === 'x' && this._ownedByScroller(this.drag.from, e.currentTarget, 'x', -dx)) this.drag.axis = 'own';
         if (this.drag.axis === 'x' && this.phoneThread()) this.drag.axis = 'back';   // swipes back to the chats, not to Plan
         if (this.drag.axis === 'x') this.dragging = true;
@@ -1836,9 +1984,8 @@ document.addEventListener('alpine:init', () => {
       this.dragDx = 0;
       if (this.drag.axis === 'back') return this.threadRelease(e);
       if (!wasX) return;                                      // a tap or a vertical scroll — stay put
-      // Velocity from the EVENTS' own timestamps, not from when our handlers happened to run: a busy main
-      // thread delays the handler, not the finger, and clock-at-handler-time under-reports the speed — which
-      // silently swallows a real flick exactly when the app is loaded enough for one to matter.
+      // Velocity from the events' own timestamps: a busy main thread delays the handler, not the finger, and handler-time
+      // clocks under-report speed, swallowing a real flick exactly when the app is loaded.
       const vx = dx / Math.max(1, (e.timeStamp || performance.now()) - this.drag.t0);
       const targetIdx = this.snapTarget(dx, this.drag.w, vx, this.surfaceIndex(), this.surfaceOrder.length);
       this.goSurface(this.surfaceOrder[targetIdx]);
@@ -1859,12 +2006,11 @@ document.addEventListener('alpine:init', () => {
         social.classList.remove('back');   // the thread may be gone (‹ Chats mid-slide)
       });
     },
-    // Today's placed items, the Day view's timed set: an event a tinted block with its calendar glyph, a time block the
-    // same box bare, a task its ring. No shelf: on Lists the calendar's panel isn't up to hold this week's tasks.
-    // Memoized on the calendar's data version (blocks and block days bump it too) and _nowDay, so a tick of an undated
-    // row (which leaves _calDataV) groups nothing and midnight rolls the box to the new day.
+    // Today's placed items, the Day view's timed set: an event a tinted block with its calendar glyph, a time block the same box
+    // bare, a task its ring. No shelf: on Lists the calendar's panel can't hold this week's tasks. Memoized on the calendar's
+    // data version (blocks and block days bump it too) and _nowDay: an undated row's tick leaves _calDataV, midnight rolls the box.
     planBoxHtml() {
-      void this.events; void this.pcEvents; void this.tasks; void this.scheduleItems; void this.blocks; void this.blockDays; void this._rowV;   // the deps of _clGroup and _dayBlocks, read before the memo can skip them
+      void this.events; void this.pcEvents; void this.gcalEvents; void this.tasks; void this.scheduleItems; void this.blocks; void this.blockDays; void this._rowV;   // the deps of _clGroup and _dayBlocks, read before the memo can skip them
       const day = this._nowDay, key = day + '|' + _calDataV;
       if (_planBox.key === key) return _planBox.html;
       const timed = it => !it.allDay && it.start.length > 10 && it.start.slice(0, 10) === day;
@@ -1958,9 +2104,8 @@ document.addEventListener('alpine:init', () => {
     },
     _saveView() { localStorage.setItem('adherod.list.view', JSON.stringify({ sortBy: this.sortBy, sortDir: this.sortDir, groupBy: this.groupBy, qfImp: this.qfImp, qfAreas: this.qfAreas, qfDue: this.qfDue, qfOpen: this.qfOpen, qfArchived: this.qfArchived, secShut: this.secShut })); },
     setSort(key) { if (this.sortBy === key && key !== 'manual') this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc'; else { this.sortBy = key; this.sortDir = 'asc'; } this._saveView(); },
-    // Grouping lives in the SORT menu because it answers the same question ("how is this list arranged?") and
-    // the sentence only grows a clause once it has something to say — a permanent "sectioned by none" is a
-    // control shouting about a feature you aren't using.
+    // Grouping lives in the SORT menu: it answers the same question (how is this list arranged?), and the sentence grows
+    // a clause only when there is something to say.
     setGroup(key) { this.groupBy = key; this.secShut = []; this._saveView(); },
     groupWord() { return ({ project: 'projects', area: 'areas', due: 'dates', importance: 'importance', place: 'places' })[this.groupBy] || ''; },
     toggleSec(k) { this._toggleIn(this.secShut, k); this._saveView(); },   // no _rowV: visibleRows keys on secShut, nothing else reads it
@@ -1971,10 +2116,9 @@ document.addEventListener('alpine:init', () => {
     toggleQfArchived() { this.qfArchived = !this.qfArchived; this._saveView(); },
     lastLens(on) { return on && this.qfOpen + this.showCompleted + this.qfArchived === 1; },   // the one lit lens can't go dark: a list showing nothing
     clearQf() { this.qfImp = []; this.qfAreas = []; _qfGone = []; this.qfDue = null; this.qfOpen = true; this.qfArchived = false; this._saveView(); },
-    // The sentence is one shape per facet — [connective] then a token that opens the menu and clears itself —
-    // so this table IS the grammar: array order is reading order, and a new facet is one entry, not a 4th
-    // copy of the markup. A facet WITHOUT a `verb` key renders no connective (importance leads the line);
-    // due keeps one even when empty ('' for overdue), because the span is a flex item the spacing counts on.
+    // The sentence is one shape per facet: [connective] then a token that opens the menu and clears itself, so this table
+    // is the grammar: array order is reading order, a new facet one entry. A facet without `verb` renders no connective
+    // (importance leads the line); due keeps one even when empty ('' for overdue): the span is a flex item the spacing counts on.
     qfFragments() {
       const f = [], due = QF_DUE[this.qfDue];
       if (!this.qfOpen) f.push({ k: 'state', aria: 'showing', col: 'var(--muted)', icos: [this.showCompleted && 'i-check', this.qfArchived && 'i-archive'].filter(Boolean), label: [this.showCompleted && 'Done', this.qfArchived && 'Archived'].filter(Boolean).join(', ') });   // open off narrows the list, so it says so; done/archived beside open stay unsaid lenses
@@ -1986,10 +2130,9 @@ document.addEventListener('alpine:init', () => {
       if (this.qfDue) f.push({ k: 'due', aria: 'due', verb: due?.verb ?? '', col: due?.col, label: due?.label });
       return f;
     },
-    // The filter line's shed ladder (task-list.md §Filter line shed order). Where the line can't wrap, the search
-    // field yields first (CSS); then ONE rung at a time while a piece still runs past the sentence: `showing`, the
-    // sort word → ⇅, token labels → 6ch, then the labels of tokens whose color mark can stand in for them,
-    // then the tokens' × (a token still opens the menu, which clears it).
+    // The filter line's shed ladder (task-list.md §Filter line shed order). Where the line can't wrap, the search field yields
+    // first (CSS); then one rung at a time while a piece still runs past the sentence: `showing`, the sort word → ⇅, token
+    // labels → 6ch, labels of tokens whose color mark can stand in, then the tokens' × (a token still opens the menu, which clears it).
     // Measured, so a long area name sheds at 414 and a short one never does.
     _fitControls() {
       const lc = this.$refs.lc, sent = lc?.querySelector('.ls-sent');
@@ -2072,19 +2215,17 @@ document.addEventListener('alpine:init', () => {
       _qfToday = this._nowDay; const _t0 = new Date(_qfToday + 'T00:00'); _qfTmr = isoDate(new Date(_t0.getTime() + 864e5)); _qfWk = isoDate(new Date(_t0.getTime() + 6 * 864e5));   // once per recompute; relative to _nowDay for DST safety
       const filtering = this.filtering(), cmp = this.sibCmp();
       const fold = !this.sticky && !filtering && this.navSel.type !== 'filter';   // search, quick filters and saved filters show every match: no fold, no chevron
-      // Subproject sections: only INSIDE a container view (a project or Backlog). All/area scope by something other than
-      // containment, where a project is a legitimate row rather than the thing the list is about. Inside a container,
-      // grouping by project IS its subproject sections — the same view as grouping off.
+      // Subproject sections: only inside a container view (a project or Backlog); All/area scope by something other than
+      // containment, where a project is a row, not the thing the list is about. Grouping by project there is the same as grouping off.
       const inProj = this.navSel.type === 'project', inBox = inProj || this.navSel.type === 'backlog', group = inBox && this.groupBy === 'project' ? 'none' : this.groupBy, subSec = inBox && group === 'none';
       const { mkRow: build, byParent, byId } = this._mkRowFn(true, cmp); _visBP = byParent;
       // t (a re-read hands in new objects), depth, ctx, fold and collapsed are this pass's (sections shift depth, a filter marks ctx); no other row field reads them
       const mkRow = (t, depth) => { let r = _rowCache.get(t.id); if (!r) _rowCache.set(t.id, r = build(t, depth)); r.t = t; r.depth = depth; r.ctx = false; r.fold = fold; r.collapsed = !!this.collapsed[t.id]; return r; };
       let out = [], roots, walk; const done = [], seen = new Set();   // one row per id, even with cyclic cloud data
-      // Additive lenses: OPEN tasks always fill the main list; the 'done' lens adds completed tasks and the
-      // 'archived' lens adds archived tasks to the below-the-line section (both, when both are on).
-      // Filter view: matches + their ANCESTOR CHAIN as context rows (r.ctx), so a matched subtask keeps its parents
-      // and its project (never a match itself: matchQuery drops overview projects) still shows. Grouped, the
-      // project chain is All's sections instead, so the walk stops at the first project.
+      // Additive lenses: open tasks always fill the main list; 'done' adds completed and 'archived' adds archived tasks to the
+      // below-the-line section. Filter view: matches + their ancestor chain as context rows (r.ctx), so a matched subtask keeps
+      // its parents and its project (never a match itself: matchQuery drops overview projects). Grouped, the project chain is
+      // All's sections, so the walk stops at the first project.
       if (this.navSel.type === 'filter') {
         let rows = this.filterTasks();
         const kept = _keepRow?.at >= 0 && this.byId.get(_keepRow.id);
@@ -2123,16 +2264,15 @@ document.addEventListener('alpine:init', () => {
           for (const c of (byParent.get(t.id) || [])) if (keep.has(c.id)) walk(c, depth + 1);
         };
       } else {
-        // When narrowing (search or quick-filters), keep only scope roots that pass + their full subtrees.
-        // Subtask matches do NOT pull ancestors in — filters apply to top-level tasks only.
+        // Narrowing keeps scope roots that pass plus their full subtrees; a subtask match pulls no ancestors in
+        // (filters are top-level only).
         roots = this.scopeRoots(byParent); _visRoots = new Set(roots.map(t => t.id));
         let keep = null;
         if (filtering) {
           keep = new Set();
           const addSubtree = (id) => { if (keep.has(id)) return; keep.add(id); for (const c of (byParent.get(id) || [])) addSubtree(c.id); };
           for (const r of roots) if (this.rowPass(r)) addSubtree(r.id);
-          // Text search (not quick-filters) also surfaces matching SUBTASKS: add each text-matched task that
-          // clears the quick-filter gates, plus its ancestor chain for context. Quick-filters stay top-level-only.
+          // Text search (not quick-filters) also surfaces matching subtasks that clear the quick-filter gates, plus their ancestor chain.
           if (this.listQ.trim()) for (const t of this.tasks) {
             if (keep.has(t.id) || !this.listHit(t) || !this.qfPass(t)) continue;
             keep.add(t.id);
@@ -2145,8 +2285,8 @@ document.addEventListener('alpine:init', () => {
         const visitDone = (t, depth) => { if (seen.has(t.id)) return; seen.add(t.id); done.push(mkRow(t, depth)); if (fold && this.collapsed[t.id]) return; for (const c of (byParent.get(t.id) || [])) visitDone(c, depth + 1); };
         walk = (t, depth) => {
           if (keep && !keep.has(t.id)) return;
-          // A completed/archived ROOT or PROJECT CHILD (a section's row) (+ its subtree) goes to the Done section or is
-          // hidden. A completed/archived SUBTASK under an ACTIVE task stays inline (struck / dashed) so it keeps its place in the tree.
+          // A completed/archived root or project child (a section's row) and its subtree goes to the Done section or is hidden.
+          // A completed/archived subtask under an active task stays inline (struck / dashed) to keep its place in the tree.
           const top = !depth || this.isOverviewProject(byId.get(t.parent_id));
           const held = top && t.id === _keepRow?.id;
           if (held && _keepRow.done) { visitDone(t, 0); return; }
@@ -2168,15 +2308,14 @@ document.addEventListener('alpine:init', () => {
           }, 1);
           roots = roots.slice().sort((a, b) => (dfs.get(a.id) ?? dfs.size) - (dfs.get(b.id) ?? dfs.size));   // unreachable (cyclic) rows last
         }
-        // Subprojects sink BELOW the project's own tasks: they become section heads, and a head sitting mid-list
-        // reads as though the loose tasks after it belonged to it. sort is stable, so each group keeps its order.
+        // Subprojects sink below the project's own tasks: as section heads, one sitting mid-list reads as owning the loose tasks
+        // after it. sort is stable, so each group keeps its order.
         if (subSec) roots = roots.slice().sort(subLast);
       }
       // Sections come from the group, the order INSIDE one from the sort — so grouping never throws your sort away.
       if (group !== 'none') {
-        // inside a project's group, the project view's order, depth-first: a project's own rows (0), then each
-        // subproject's section (1) — every step ranked by its place among its own siblings (byParent, already in
-        // sort order), never by raw position
+        // inside a project's group, the project view's order, depth-first: own rows (0), then each subproject's section (1),
+        // each ranked by its place among its siblings (byParent, already sorted), never by raw position
         const ix = new Map(), at = (pid, id) => { let m = ix.get(pid); if (!m) ix.set(pid, m = new Map((byParent.get(pid) || []).map((c, i) => [c.id, i]))); return m.get(id) ?? 0; };
         const nth = new Map();   // group key → first-seen ordinal: two groups tied on rank must not interleave
         const key = (t, g) => {
@@ -2205,8 +2344,8 @@ document.addEventListener('alpine:init', () => {
       }
       if (group !== 'none') { const [secs, kept] = this._sectionize(out); _secMemo = secs; out = kept; }
       else if (this.navSel.type === 'filter') { const [secs, kept] = this._promoteSections(out, r => !r.depth && r.ctx); _secMemo = secs; out = kept; }
-      // Inside a project, its overview subprojects become section heads even with grouping OFF — a subproject is
-      // a container, and drawn as one more row it reads as a sibling of the tasks it actually holds.
+      // Inside a project, overview subprojects become section heads even with grouping off: drawn as a row, a container
+      // reads as a sibling of its tasks.
       else if (subSec) { const [secs, kept] = this._promoteSections(out, r => this.isOverviewProject(r.t)); _secMemo = secs; out = kept; }
       else _secMemo = [];
       _visKey = key; return this._linkRows(out, done);
@@ -2231,8 +2370,8 @@ document.addEventListener('alpine:init', () => {
     // Which section a ROOT task belongs to. rank orders the sections; the unset bucket always sinks last.
     _groupOf(t) {
       const LAST = 1e9, by = this.groupBy;
-      // project = the TOP project; `path` = the subprojects between it and t, outermost first — each one a section,
-      // as in the project view. t itself is a row even when it is a subproject (area view).
+      // project = the top project; `path` = the subprojects between it and t, outermost first, each a section as in the
+      // project view. t itself is a row even when it is a subproject (area view).
       if (by === 'project') { const def = this.store.defaultProject(), path = [];
         for (let p = this.byId.get(t.parent_id), n = 0; p?.overview && p.id !== def && n < 50; p = this.byId.get(p.parent_id), n++) path.unshift(p);   // n: cyclic cloud data
         const top = path.shift();
@@ -2250,8 +2389,8 @@ document.addEventListener('alpine:init', () => {
         : d === _qfTmr ? { k: 'tmr', label: 'Tomorrow', rank: 2 } : d <= _qfWk ? { k: 'week', label: 'This week', rank: 3 }
         : { k: 'later', label: 'Later', rank: 4 };
     },
-    // → [sections, keptRows]. A section head is INDEPENDENT of its rows (`at` = row index), so a shut section
-    // still shows its header with nothing under it — attaching the head to its first row would hide it too.
+    // → [sections, keptRows]. A section head is independent of its rows (`at` = row index): a shut section still shows its
+    // header with nothing under it; attaching the head to its first row would hide it too.
     _sectionize(rows) {
       const secs = [], kept = []; let cur = null, head = null, open = [];   // open: the subproject heads the row sits in, outermost first
       for (const r of rows) {
@@ -2275,13 +2414,11 @@ document.addEventListener('alpine:init', () => {
     },
     _secHead(key, label, at) { return { key, label, count: 0, shut: this.secShut.includes(key), at, ...this._secPie(key) }; },
     sections() { this.visibleRows(); return _secMemo; },
-    // When a section IS a project, its head wears the same conic pie the picker gives that project — "how far
-    // along is this" belongs where the project is being worked, not only where it's chosen. Keyed off byId, so
-    // it fires for project grouping and subproject sections alike and stays inert for date/area/importance keys.
+    // When a section is a project, its head wears the same conic pie the picker gives it: progress belongs where the project
+    // is worked. Keyed off byId: fires for project grouping and subproject sections, inert for date/area/importance keys.
     _secPie(k) { const p = this.byId.get(k); return p?.overview ? { pct: this.projectProgress(k, _secKids ??= childIndex(this.tasks)) / 100, pieColor: p.color || '' } : {}; },
-    // A row that `isHead` claims, sitting directly in the heads above it, becomes a section HEAD instead of a row,
-    // and its subtree shifts up a level per head so the indent still reads as the tree. Two callers, one idiom: a
-    // filter view promotes the root ancestors that only provide context (a root that MATCHED stays a row), a project
+    // A row `isHead` claims, sitting directly in the heads above it, becomes a section head, and its subtree shifts up a level
+    // per head. Two callers: a filter view promotes root ancestors that only give context (a matched root stays a row); a project
     // view promotes its overview subprojects at every depth, a nested one labeled by its path ("Sub › Deep", as _sectionize).
     _promoteSections(rows, isHead) {
       const secs = [], kept = [], open = [];   // open: the heads the row sits in, outermost first
@@ -2307,8 +2444,8 @@ document.addEventListener('alpine:init', () => {
     _secLi(g) {
       const up = g.up ? html`<span class="sec-up"><span>${g.up}</span></span>` : '';
       const li = html`<li class="sec-row flex items-center" data-id="${this._secKey(g)}" data-sec="${g.key}" style="order:${g.at * 2 - 1}">`;
-      // Desktop: the pie sits AFTER the count, never before the label: the chevron/label column is aligned to the row chevron and the
-      // Done head by deliberate convention (layout-lists asserts it), and a leading pie shifts the label 18px.
+      // Desktop: the pie sits after the count: the chevron/label column aligns to the row chevron and the Done head
+      // (layout-lists asserts it), and a leading pie shifts the label 18px.
       if (!document.documentElement.classList.contains('touch')) {
         const pie = g.pct == null ? '' : html`<span class="pring sec-pie" style="--p:${g.pct};--pc:${g.pieColor || 'var(--muted)'}"></span>`;
         return li + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg>`
@@ -2352,7 +2489,7 @@ document.addEventListener('alpine:init', () => {
     },
     mailWho(people) { return people.filter(Boolean).map(p => p.name && p.name !== p.address ? html`<b>${p.name}</b> <i>&lt;${p.address}&gt;</i>` : html`<b>${p.address || p.name}</b>`).join(', '); },
     mailWhen(iso) { return new Date(iso).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' + this.fmtTime(iso.slice(11, 16)); },
-    // An HTML mail in a frame that runs no script (this page can send mail); pictures from the web load only on his click.
+    // An HTML mail in a frame that runs no script (this page can send mail); pictures from the web load only on the user's click.
     mailView() {
       const key = this.mailOpened.html + this.mailPics;
       if (_mailView?.key === key) return _mailView;
@@ -2408,17 +2545,15 @@ document.addEventListener('alpine:init', () => {
     mailSize(bytes) { return bytes < 1048576 ? Math.max(1, Math.round(bytes / 1024)) + ' KB' : (bytes / 1048576).toFixed(1) + ' MB'; },
     mailDay(iso) { return new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }); },
     completedRows() { this.visibleRows(); return _doneMemo; },   // computed alongside visibleRows; the Done list below the add button
-    // Same pure row markup as listHtml (order + depth padding so it aligns with the active list), so the single
-    // composer can relocate into the Done list and open inline on a completed task. Edit styling via applyEditDom().
-    // Shared <li> builder — _entries (list/done: order + drag) and _clRowsHtml (tray, draggable always). Its 18px gutter
-    // holds the chevron left of the check on EVERY row, so checks line up with or without one.
+    // Same pure row markup as listHtml, so the single composer can relocate into the Done list and open inline on a completed task.
+    // Shared <li> builder: _entries (list/done: order + drag) and _clRowsHtml (tray, draggable always). Its 18px gutter holds
+    // the chevron left of the check on every row, so checks line up with or without one.
     _itemLi(r, { order = null, drag = '', after = false, ...body } = {}) {
       const t = r.t, style = (order == null ? '' : 'order:' + order + ';') + 'padding-left:calc(var(--gut) + ' + (r.depth * 22) + 'px);--d:' + r.depth;
       return html`<li class="item${t.completed_at ? ' done' : t.archived_at ? ' archived' : r.blocked ? ' waiting' : ''}${r.ctx ? ' ctx' : ''}${after ? ' after' : ''} flex gap-10" data-id="${t.id}" style="${style}"${raw(drag)}>${raw(this.rowBody(r, body))}</li>`;
     },
-    // Height estimate for a row that has NEVER been rendered (once one has, _hCache holds its real height).
-    // One flat guess against real 35/46/54+ rows makes the scrollbar lurch on the way down, so this
-    // tracks the same content the row builder renders.
+    // Height estimate for a row never rendered (after one, _hCache holds its real height). A flat guess makes the scrollbar
+    // lurch down rows of 35/46/54+, so this tracks the content the row builder renders.
     _rowEst(r, after, cx = this._rowCx()) {   // after: a phone's group gap opens this row (styles.css .item.after)
       // A Steps row's step line: 18px, less the 4px its text block rises; its desc 1+14, its preview 4+16 (styles.css .row-step, .step-desc, .step-next).
       const step = r.step && !r.t.completed_at ? 14 + (r.step.desc ? 15 : 0) + (r.next ? 20 : 0) : 0;
@@ -2430,12 +2565,10 @@ document.addEventListener('alpine:init', () => {
       return (touch ? (cx.narrow ? 50 + (after ? 28 : 0) : 44) : step ? 34 : 35) + step + meta + (r.t.notes && !step ? 17 : 0) + (n ? 4 + (n.rows.length + (n.more ? 1 : 0)) * (touch ? 28 : 24) : 0);
     },
     _rowChk(r) { return r.step || (r.collapsed && r.fold !== false) ? [] : (r.chk || r.t.checklist || []); },   // folded or Steps → no checklist drawn
-    // Desktop: how many WRAPPED rows the meta line will take (0 = none spent). Only _fit can KNOW, since it measures,
-    // but a row that has never rendered has no measurement — and guessing one line for a taller row
-    // makes the scrollbar lurch. Approximate from the same inputs the row builder has: title length
-    // against the width left over after the metadata, then how many rows that metadata needs. Deliberately
-    // cheap and slightly eager; _measure overwrites it with the real height the instant the row renders,
-    // so this only has to keep the scrollbar honest while the reader scrolls past.
+    // Desktop: how many wrapped rows the meta line will take (0 = none). Only _fit measures, but a never-rendered row has no
+    // measurement and a flat one-line guess makes the scrollbar lurch. Approximated from the row builder's inputs: title length
+    // against the width left after the metadata, then how many rows that metadata needs. Cheap and slightly eager; _measure
+    // overwrites it on render.
     _shedLines(r) {
       if (_listW < 0) return 0;
       const meta = (r.areas?.length ? 8 + r.areas.length * 46 : 0) + (r.projName && !r.depth ? 92 : 0) + (r.estSize ? 20 : 0)
@@ -2459,10 +2592,9 @@ document.addEventListener('alpine:init', () => {
       for (const w of items) { x += 11 + w; if (x > room && x > w) { lines++; x = w; } }   // items 11px apart (styles.css .typed .row-sub)
       return Math.min(3, lines);
     },
-    // Rows → ENTRIES: one per <li>, carrying its flex `order`, its HEIGHT and a builder. The height is why
-    // this shape exists — the render window and its two spacers are computed from these numbers, so a scroll
-    // frame never walks the DOM. Measured beats estimated: an estimate is only ever used for a row that has
-    // never rendered. Section heads interleave by their `at`; shut sections at the end still show their head.
+    // Rows → entries: one per <li>, carrying its flex `order`, its height and a builder. The render window and its two spacers
+    // are computed from these heights, so a scroll frame never walks the DOM. Measured beats estimated: an estimate is only
+    // for a row never rendered. Section heads interleave by their `at`; shut sections at the end still show their head.
     _entries(rows, drag = '', secs = null) {
       const ent = [], cx = this._rowCx(); let si = 0;
       const head = () => { const g = secs[si++], id = this._secKey(g); ent.push({ id, order: g.at * 2 - 1, h: _hCache.get(id) ?? SEC_H, html: '', mk: () => this._secLi(g) }); };
@@ -2476,16 +2608,15 @@ document.addEventListener('alpine:init', () => {
       while (secs && si < secs.length) head();
       return ent;
     },
-    // Entries → PARTS: [{ id, html }], one per <li>, NOT one string: keyed by id, each row's html IS its signature, so
-    // an unchanged row costs a string compare, not a re-parse of the whole list (6.8ms of a 9.8ms morph at 1000 rows).
-    // Built ONCE per entry, then handed out by reference: a scroll frame re-emits ~18 parts to change ~2, and the
-    // unchanged ones are the SAME string object, so renderRows' compare is a pointer hit and nothing is allocated.
+    // Entries → parts: [{ id, html }], one per <li>, not one string: keyed by id, each row's html is its signature, so an
+    // unchanged row costs a string compare, not a re-parse (6.8ms of a 9.8ms morph at 1000 rows). Built once per entry and
+    // handed out by reference: a scroll frame re-emits ~18 parts to change ~2, and the unchanged are the same string object.
     _parts(ent, s = 0, e = ent.length) { const out = []; for (let i = s; i < e; i++) { const p = ent[i]; out.push({ id: p.id, html: p.html || (p.html = p.mk()) }); } return out; },
-    // The cache is only stale when something OUTSIDE visibleRows() changes what a row renders, and chkOpen
-    // (the checklist "…N more" toggle) is the only such input — every other one busts the whole model.
+    // The cache is stale only when something outside visibleRows() changes what a row renders: chkOpen (the checklist
+    // "…N more" toggle) is the only such input; every other one busts the whole model.
     _dropRowHtml(id) { const e = _model?.ent[_model.ix.get(id)] || _doneModel?.ent[_doneModel.ix.get(id)]; if (e) e.html = ''; for (const m of [_model, _doneModel]) if (m) m.parts = null; },
-    // The active list's flat model, memoised on the visibleRows() identity (which already busts on every
-    // task/nav/filter/sort/collapse change). Rebuilt rarely; walked on every scroll frame.
+    // The active list's flat model, memoized on the visibleRows() identity (which busts on every task/nav/filter/sort/collapse
+    // change). Rebuilt rarely; walked on every scroll frame.
     _listModel() {
       const rows = this.visibleRows();
       this._releaseCloseRange(_closeRange && _closeRange.view !== _visKey.slice(_visKey.indexOf('|')));
@@ -2508,9 +2639,8 @@ document.addEventListener('alpine:init', () => {
     // ceiling: O(active + Done) per width change, i.e. every frame of a window-resize drag — 20k Done: 11.7 vs 7.8 est-ms a frame
     // with Done hidden. Re-estimate only the rows a window reaches if a resize drag stutters.
     _reEstimate() { const cx = this._rowCx(); for (const m of [_model, _doneModel]) if (m) { m.total = 0; for (const e of m.ent) m.total += e.h = _hCache.get(e.id) ?? (e.r ? this._rowEst(e.r, e.after, cx) : SEC_H); } },
-    // The list's first-entry position in scroll coordinates, READ off the DOM (the top spacer's own top)
-    // rather than computed: everything above the window that can change height — the controls, an open
-    // composer pulled up over its row, the whole active list above the Done one — is absorbed instead of guessed at.
+    // The list's first-entry position in scroll coordinates, read off the DOM (the top spacer's top) rather than computed:
+    // the controls, an open composer pulled over its row and the active list above Done are absorbed, not guessed at.
     _listOrigin(sc, sel) {
       const rowsEl = _staticEl(sel); if (!rowsEl) return 0;
       const el = rowsEl.firstElementChild || rowsEl.parentElement;
@@ -2519,14 +2649,11 @@ document.addEventListener('alpine:init', () => {
     // Scroller px per list px: the Windows note zooms its list (.8), so a row's offsetHeight and the scroller's scrollTop
     // differ in scale, and a window placed without it falls a fifth of the scroll depth behind the reader.
     _listZoom(sc, sel) { return (_staticEl(sel)?.parentElement.currentCSSZoom ?? 1) / (sc.currentCSSZoom ?? 1); },
-    // Fold the LIVE heights of the rendered entries back into the model: the list's size memory, without which
-    // the spacers, and so the scrollbar, drift.
-    // Measured ONCE per element per width generation (`_fitV`, same key _fit stamps with): a row's height is
-    // a function of its content and the width, and scrolling changes neither. That is not a micro-saving —
-    // this runs at the top of every pass, right after the previous pass wrote to the DOM, so ANY read here
-    // forces a whole layout. Skipping the read on a steady-state frame removes that layout entirely.
-    // A 0 height is a row hidden by an edit or a drag: don't cache the hole and don't stamp it, so it is
-    // measured for real once it is.
+    // Fold the live heights of the rendered entries back into the model: the list's size memory; without it the spacers and
+    // scrollbar drift. Measured once per element per width generation (`_fitV`, the key _fit stamps with): a row's height is
+    // a function of its content and the width, and scrolling changes neither. Not a micro-saving: this runs at the top of every
+    // pass, right after the previous pass wrote the DOM, so any read here forces a whole layout.
+    // A 0 height is a row hidden by an edit or drag: neither cached nor stamped, measured for real once it is.
     _measure(m) {
       const rowsEl = _staticEl(m.sel); if (!rowsEl) return;
       for (const el of rowsEl.children) {
@@ -2537,12 +2664,11 @@ document.addEventListener('alpine:init', () => {
         if (h !== m.ent[i].h) { _hCache.set(el.dataset.id, h); m.total += h - m.ent[i].h; m.ent[i].h = h; }
       }
     },
-    // The open edit composer sits in the run of rows, pulled up over entry k and `x` px taller than it, with k's
-    // subtree hidden under it: in SCROLL px, entry k spans the composer and its subtree spans nothing. `sp` is an
-    // entry's SPACER px (subtree zeroed; the composer is its own element). Modeling neither windows the rows past
-    // it far below the fold: a blank band.
-    // A DRAGGED task's subtree is out of the list until the drop, so it spans nothing too: counted, the window
-    // disagrees with the DOM and every re-window near the list's end flips its height (list-dnd "subtree stays hidden").
+    // The open edit composer sits in the run of rows, pulled up over entry k and `x` px taller than it, with k's subtree hidden
+    // under it: in scroll px, entry k spans the composer and its subtree spans nothing. `sp` is an entry's spacer px (subtree
+    // zeroed; the composer is its own element). Modeling neither windows the rows past it far below the fold: a blank band.
+    // A dragged task's subtree is out of the list until the drop, so it spans nothing too: counted, the window disagrees with
+    // the DOM and every re-window near the list's end flips its height (list-dnd "subtree stays hidden").
     _editShift(m) {
       const ent = m.ent, c = this.$refs.composer, k = _editPin != null && this.composer.open ? m.ix.get(_editPin) : undefined;
       const g = _dragDescs?.size ? _dragDescs : null, h = g ? i => g.has(ent[i].id) ? 0 : ent[i].h : i => ent[i].h;
@@ -2557,8 +2683,7 @@ document.addEventListener('alpine:init', () => {
     _winOf(m, E) {
       const sc = this._listScroller();
       if (!sc) return { s: 0, e: m.ent.length, top: 0, bot: 0 };
-      // A fling outruns a FIXED margin once one frame scrolls further than it (a slow phone frame at speed).
-      // Bands start once a frame outlasts margin ÷ speed (~75ms at 8000px/s), so the travel direction gets
+      // A fling outruns a fixed margin once one frame scrolls further than it (~75ms at 8000px/s), so the travel direction gets
       // _winRun ms of runway (capped at 2× the margin), at the speed the scroll listener measured.
       const z = this._listZoom(sc, m.sel), g = Math.min(2 * WIN_MARGIN, Math.abs(_winV) / z * _winRun), o = (sc.scrollTop - this._listOrigin(sc, m.sel)) / z, H = sc.clientHeight / z;
       const n = m.ent.length, { k, x, sp } = E, h = i => sp(i) + (i === k ? x : 0);
@@ -2567,9 +2692,9 @@ document.addEventListener('alpine:init', () => {
       // Either list: Done grows without bound (every completed task; app.perf seeds 20k).
       const span = (y0, y1) => { let y = 0, s = 0, e; while (s < n && y + h(s) <= y0) y += h(s++); for (e = s; e < n && y < y1; e++) y += h(e); return { s, e }; };
       const box = pad => span(o - pad - (_winV < 0 ? g : 0) - E.lead, o + H + pad + (_winV > 0 ? g : 0)), need = box(WIN_KEEP);
-      // HYSTERESIS: keep the rendered window while it still covers the box ± WIN_KEEP (+ runway). Any pass that
-      // changes the list's DOM pays a fixed style/layout/PrePaint bill however few rows it moved (~35ms of
-      // PrePaint alone at 16× CPU); sliding every frame would pay it every frame, this pays it every ~400px.
+      // Hysteresis: keep the rendered window while it still covers the box ± WIN_KEEP (+ runway). Any pass that changes the
+      // list's DOM pays a fixed style/layout/PrePaint bill (~35ms PrePaint at 16× CPU); sliding every frame would pay it every
+      // frame, this pays it every ~400px.
       let kept = _win.get(m);
       if (kept?.part || !(kept && kept.s <= need.s && kept.e >= need.e)) {
         const full = box(WIN_MARGIN);
@@ -2589,11 +2714,10 @@ document.addEventListener('alpine:init', () => {
       for (let i = 0; i <= e; i++) { if (i === s) top = y - (s > k ? x : 0); if (i < e) y += h(i); }
       return { s, e, top, bot: Math.max(0, m.total - E.d + x - y) };
     },
-    // WINDOWED parts for a list (the active one or Done): the rows near the viewport, bracketed by two spacer <li>s that hold
-    // the elided rows' summed height so the scrollbar stays honest. A spacer is omitted when its side is
-    // empty, which keeps `.sec-row:first-child` on the list's real first head.
-    // Pure over visibleRows() — deliberately does NOT read `editing`, so opening the composer never rebuilds
-    // the list; the edited-row crossfade + subtree-hide are stamped imperatively by applyEditDom().
+    // Windowed parts for a list (active or Done): the rows near the viewport, bracketed by two spacer <li>s holding the elided
+    // rows' summed height so the scrollbar stays honest. A spacer is omitted when its side is empty, which keeps
+    // `.sec-row:first-child` on the list's real first head. Pure over visibleRows(): it never reads `editing`, so opening the
+    // composer doesn't rebuild the list; applyEditDom() stamps the edited-row crossfade and subtree-hide imperatively.
     listHtml() { return this._winHtml(this._listModel()); },
     doneHtml() { return this._winHtml(this._doneListModel()); },
     _winHtml(m) {
@@ -2604,14 +2728,12 @@ document.addEventListener('alpine:init', () => {
       const key = _editPin == null && _dragGrab == null && !_dragDescs?.size && w.s + ' ' + w.e + ' ' + w.top + ' ' + w.bot;
       if (key && m.parts?.key === key) return m.parts;
       const out = this._parts(m.ent, w.s, w.e).filter(p => !_dragDescs?.has(p.id));
-      // data-id, like every other part: morphRows keys the reconciliation off it, and two elements sharing
-      // an undefined key collide: the spacer is orphaned into the list and its height double-counted.
+      // data-id like every other part: morphRows keys on it, and two elements sharing an undefined key collide: the spacer is
+      // orphaned into the list and its height double-counted.
       const pad = (id, order, h) => ({ id, html: html`<li class="win-pad" data-id="${id}" style="order:${order};height:${h}px"></li>` });
-      // The composer's flex order pins it to its row's slot. If that slot is elided into a spacer, the spacer
-      // would sort to the other side of the composer, and the composer's flow height (composerH - startH)
-      // would hop across _listOrigin's measurement point — flipping the very window decision that elided the
-      // row: a 2-frame flicker loop rippling through every row below. Split the spacer at the slot instead,
-      // so the composer stays sandwiched at its place on either side of the boundary.
+      // The composer's flex order pins it to its row's slot. If that slot is elided into a spacer, the spacer would sort to the
+      // other side of the composer, and its flow height (composerH - startH) would hop across _listOrigin's measurement point,
+      // flipping the window decision that elided the row: a 2-frame flicker loop. Split the spacer at the slot instead.
       const k = _editPin != null ? m.ix.get(_editPin) : undefined;
       const split = (from, to, idA, idB) => {   // spacer covering entries [from..to), split around entry k
         let hA = 0; for (let i = from; i <= k; i++) hA += E.sp(i);
@@ -2681,8 +2803,7 @@ document.addEventListener('alpine:init', () => {
       el.classList.add('cele', fx.mode, ...fx.leave ? ['leave'] : []);
       if (fx.ember) el.querySelector('.check')?.insertAdjacentHTML('beforeend', fx.ember);
     },
-    // The scroll-coordinate top of an entry, straight out of the model — a windowed list can be asked to go
-    // to a row that has no element at all.
+    // The scroll-coordinate top of an entry, straight out of the model: a windowed list can be asked to go to a row with no element.
     _modelTop(id) {
       const m = this._modelOf(id), sc = this._listScroller();
       if (!m || !sc) return null;
@@ -2691,16 +2812,13 @@ document.addEventListener('alpine:init', () => {
       for (let j = 0; j < i; j++) y += sp(j);
       return this._listOrigin(sc, m.sel) + y * this._listZoom(sc, m.sel);
     },
-    // Anything that MEASURES or TOUCHES a row by id must bring it into the DOM first — the window only holds
-    // the rows near the viewport. Jumps to the row's modeled position and re-windows SYNCHRONOUSLY: callers
-    // need the element in this tick (editTask measures startH/blockH off it, _paintKb stamps the ring), and a
-    // glide delivers a position over frames, not an element now. So this is the one place that writes
-    // scrollTop by hand — and it therefore stamps the scroller's TAKEOVER clock, exactly as a wheel does.
-    // This move IS the reader's (a keypress, a palette jump), and keyboard is not in GLIDE_YIELD: unstamped, a hold
-    // in flight reads the jump as layout drift and eases the reader back off the row just built for them, and the
-    // row unmounts under whoever asked for it, ring and all. The stamp ends an in-flight tween on its next frame (`sc._userAt > t0`). The open's in-view hold
-    // can't be made "live" instead: re-asserting a CONSTANT against layout drift is its whole job, and a target
-    // that re-reads scrollTop is a hold that holds nothing.
+    // Anything that measures or touches a row by id must bring it into the DOM first: the window holds only rows near the
+    // viewport. Jumps to the row's modeled position and re-windows synchronously: callers need the element this tick (editTask
+    // measures startH/blockH off it, _paintKb stamps the ring), and a glide delivers a position over frames. So this is the one
+    // place that writes scrollTop by hand, and it stamps the scroller's takeover clock as a wheel does: the move is the reader's
+    // (a keypress, a palette jump) and keyboard is not in GLIDE_YIELD, so unstamped, a hold in flight reads it as layout drift
+    // and eases the reader off the row just built. The stamp ends an in-flight tween next frame (`sc._userAt > t0`). The open's
+    // in-view hold can't re-read scrollTop instead: re-asserting a constant against layout drift is its whole job.
     _ensureRow(id) {
       const el = id && this._rowEl(id); if (el || !id) return el;
       const sc = this._listScroller(), y = this._modelTop(id); if (!sc || y == null) return null;
@@ -2710,13 +2828,11 @@ document.addEventListener('alpine:init', () => {
       this._paintRows();
       return this._rowEl(id);
     },
-    // Keyed morph of the parts into `container`, REUSING unchanged <li>s by data-id. A blanket
-    // `container.innerHTML = h` recreates every row on a single-field save, reflowing the list and
-    // teleporting the scroll; here only genuinely-changed rows are replaced and the rest keep their
-    // element identity, and thus their imperative classes (hover/select/edit persist through the render).
-    // `_sig` = the CLEAN template outerHTML at creation; imperative classes are added afterwards so they never
-    // enter the compare (a stale live class would otherwise force a needless replace).
-    // The window's spacers hold the list's total height, so a morph cannot change it or move the reader.
+    // Keyed morph of the parts into `container`, reusing unchanged <li>s by data-id. A blanket `container.innerHTML = h`
+    // recreates every row on a single-field save, reflowing the list and teleporting the scroll; here only changed rows are
+    // replaced and the rest keep their element identity and imperative classes (hover/select/edit persist through the render).
+    // `_sig` = the clean template outerHTML at creation; imperative classes are added afterwards so a stale live class never
+    // forces a needless replace. The window's spacers hold the list's total height, so a morph cannot change it or move the reader.
     // All 4 rows containers use this.
     renderRows(el, parts) {
       const prev = el._parts;
@@ -2745,9 +2861,8 @@ document.addEventListener('alpine:init', () => {
     morphRows(container, parts) {
       const old = new Map();
       for (const el of container.children) old.set(el.dataset.id, el);
-      // Drop what's LEAVING before placing what stays. A windowed list slides its range every frame, and with
-      // the departing rows still sitting in front of the cursor every surviving row gets insertBefore'd past
-      // them — a DOM move per row per frame (~12/frame of pure churn during a fling).
+      // Drop what's leaving before placing what stays: a windowed list slides its range every frame, and with departing rows
+      // in front of the cursor every survivor gets insertBefore'd past them (~12 DOM moves per frame during a fling).
       const want = new Set(); for (const p of parts) want.add(p.id);
       for (const [id, el] of old) if (!want.has(id)) { el.remove(); old.delete(id); }
       let cursor = container.firstElementChild, tpl = null; const made = [];
@@ -2807,8 +2922,7 @@ document.addEventListener('alpine:init', () => {
         chk: cl.map(chkParts),
         step: si >= 0 ? chkParts(cl[si], si) : null,
         next: si >= 0 ? (n => n >= 0 ? chkParts(cl[n], n) : null)(cl.findIndex((x, j) => j > si && !x.done)) : null,   // the preview: the next OPEN step after the current one
-        // The row shows the SIZE BUCKET as a glyph; est (the precise duration) survives only as its tooltip, so
-        // the row carries the scheduling decision at a glance and the exact number is still one hover away.
+        // The row shows the size bucket as a glyph; est (the precise duration) survives only as its tooltip.
         est: em ? this.durFmt(em) : '', estSize: sizeFromMinutes(em), estRollup: !t.est_minutes && em > 0,
         // specific clock time on the date — only for near dates (today/tomorrow/weekday badges)
         dueTime,
@@ -2818,7 +2932,7 @@ document.addEventListener('alpine:init', () => {
         rels,
         due: dueB,
         dueQ: dueB ? dueQuick(when, now) : '',   // the date word's color bucket
-        dl, dlSame: !!dl && !!dueB && dl.label === dueB.label + (dueTime ? ' ' + dueTime : ''),   // a deadline in the date's own word adds nothing (r3gen `dl != due`)
+        dl, dlSame: !!dl && !!dueB && dl.label === dueB.label + (dueTime ? ' ' + dueTime : ''),   // a deadline in the date's own word adds nothing
         projName: parent ? parent.content : '',
         projColor: parent?.color || '', projPie: parent && !depth && parent.id !== def ? this._projPie(parent.id) : 0,   // line 2's pie
         isDefaultProj: !!t.parent_id && t.parent_id === def,
@@ -2862,15 +2976,14 @@ document.addEventListener('alpine:init', () => {
       const cur = (_rowMap.get(this.focusId) ?? _rowMap.get(this.selAnchor))?.i ?? -1;
       this.selectRange(rows[Math.max(0, Math.min(rows.length - 1, cur + d))].t.id);
     },
-    // Paint .selected + run-position classes imperatively — O(selected) diff.
-    // Contiguous selected rows form a rounded group: sel-top/sel-mid/sel-bot/sel-single (mirrors .inblock rounding).
+    // Paint .selected + run-position classes (sel-top/mid/bot/single, mirrors .inblock rounding) imperatively: O(selected) diff.
     paintSel() {
       this.visibleRows();   // deps: the selection, and the rows (a run's neighbors)
       // a row folded, filtered, searched or deleted away leaves: the edit bar and a drag act on listed rows only
       const shown = this.sel.filter(id => _rowMap.has(id) || _doneMap.has(id));
       if (shown.length < this.sel.length) this.sel = shown;
       const ns = new Set(shown); if (!ns.size && !_selSet.size) return;
-      queueMicrotask(() => {   // not $nextTick: Alpine holds it while the edit bar's x-transition starts, so the highlight would paint a frame late
+      queueMicrotask(() => {   // not $nextTick: Alpine holds it during the edit bar's x-transition
         const RUN = ['sel-top', 'sel-mid', 'sel-bot', 'sel-single'];
         const byEl = new Map([...document.querySelectorAll('.surface-lists .list .item[data-id]')].map(el => [el.dataset.id, el]));   // the open list and the Done list
         for (const id of _selSet) if (!ns.has(id)) byEl.get(id)?.classList.remove('selected', ...RUN);
@@ -2882,14 +2995,14 @@ document.addEventListener('alpine:init', () => {
         _selSet = ns;
       });
     },
-    // Bulk actions — each routes through perform() as ONE composite op, so a single ⌘Z reverses the whole batch.
-    _nTasks(n) { return n + (n === 1 ? ' task' : ' tasks'); },   // labels show up verbatim in the Bin and the undo toast — "Deleted 1 tasks" is a tell
-    async _bulk(label, ops, keep) {   // a failed batch keeps its selection (the retry is one click), minus rows a partial one took; `keep`: a drag's keeps it either way
+    // Bulk actions: each is ONE composite op through perform(), so one ⌘Z reverses the batch.
+    _nTasks(n) { return n + (n === 1 ? ' task' : ' tasks'); },   // labels reach the Bin and the undo toast verbatim
+    async _bulk(label, ops, keep) {   // a failed batch keeps its selection minus rows a partial one took; `keep`: a drag's keeps it either way
       const sel = this.sel;   // a delete's rows leave sel while it runs; a failure's rollback puts them back
       if (ops.length && !await this.perform(label, { kind: 'composite', target: ops[0].target, ops }, { bin: true })) this.sel = sel.filter(id => this.byId.has(id));
       else if (!keep) this.clearSel();
     },
-    async selComplete(key) {   // x (key) on an all-done selection reopens it, and keeps the selection so x again flips it back, as the checklist's x does
+    async selComplete(key) {   // x on an all-done selection reopens it and keeps the selection, so x again flips it back
       const reopen = key && this.selTasks().every(t => t.completed_at);
       const ops = this.selTasks().filter(t => reopen ? !t.archived_at : !t.completed_at && !t.archived_at && !inNotes(t)).map(t => ({ kind: 'complete', target: 'task', mode: 'forward', fwd: { id: t.id, done: !reopen } }));
       await this._bulk(`${reopen ? 'Uncompleted' : 'Completed'} ${this._nTasks(ops.length)}`, ops, key);
@@ -2913,8 +3026,7 @@ document.addEventListener('alpine:init', () => {
       const ops = this.selTasks().filter(t => !(t.area_ids || []).includes(a.id)).map(t => ({ kind: 'update', target: 'task', id: t.id, after: { area_ids: [...(t.area_ids || []), a.id] } }));
       await this._bulk(`Tagged ${this._nTasks(ops.length)} with ${a.name}`, ops, keep);
     },
-    // shift each selected task's PLACEMENT by the SAME delta (relative spacing preserved); only placed tasks
-    // move — a repeat's recur_from is its rule anchor, not a date to drag, so it stays put.
+    // shift each selected task's placement by the same delta; a repeat's recur_from is its rule anchor, so it stays put.
     _shiftIso(iso, days) { const dateOnly = iso.length <= 10; const d = new Date(dateOnly ? iso + 'T00:00' : iso); d.setDate(d.getDate() + days); const day = isoDate(d); return dateOnly ? day : day + iso.slice(10); },
     async selShiftDue(days) {
       const ops = this.selTasks().map(t => this._siOf(t.id)).filter(Boolean)
@@ -3003,8 +3115,7 @@ document.addEventListener('alpine:init', () => {
     // Anchor the nav popover off a rail button in FIXED coords (escapes the roller's overflow clip), clamped so a 320px-tall pop never spills off screen.
     _navPopAt(r) { this.navPopXY = { x: popLeft(r.left, 230, 8), y: popTop(r.bottom + 6, 320) }; },
     navPopStyle() { return this.navPopXY && !this.phoneDock() ? `left:${this.navPopXY.x}px;top:${this.navPopXY.y}px` : ''; },   // a phone's opens as a sheet
-    // One step of nav ordering, for all three orderable kinds. Every one of them already stores a `position` and
-    // exposes reorder(ids) — this only has to pick the right sibling list, swap two ids in it, and reload.
+    // One step of nav ordering for all three orderable kinds: swap two ids in the sibling list and reload.
     // Projects order within their OWN parent, so an arrow never jumps a subproject out of its branch.
     _navSibs(kind, id) {
       if (kind === 'area') return this.areas;
@@ -3020,8 +3131,7 @@ document.addEventListener('alpine:init', () => {
       if (!await api.reorder(ids)) return this.toast('Failed reordering');
       await this._reloadFor(kind === 'area' || kind === 'filter' ? kind : 'task');
     },
-    // A new area is created named and then opened straight
-    // into its rename popover: an abandoned add leaves a real, visible, deletable area, never a half-made thing.
+    // A new area is created named, then opened into its rename popover: an abandoned add leaves a real, deletable area.
     async rollerAdd(kind, r) {
       if (kind === 'filter') return this.openFilterEditor();
       const a = await this.store.areas.create({ name: 'New area' });
@@ -3087,8 +3197,7 @@ document.addEventListener('alpine:init', () => {
     // The nav settings popover renders at the overview level (not inside the clipping roller) — resolve its entity here.
     navPopProj() { return this.navPop?.type === 'proj' ? this.byId.get(this.navPop.id) : null; },
     navPopArea() { return this.navPop?.type === 'area' ? this.areas.find(l => l.id === this.navPop.id) : null; },
-    // Ghost text doubles as find (uFuzzy, same matcher as the pickers): .chk-hit floats matches via
-    // flex order (the lane done rows sink through) — no DOM moves, stored order untouched, nothing hidden.
+    // Ghost text doubles as find (uFuzzy, as the pickers): .chk-hit floats matches via flex order, nothing moves or hides.
     // Steps don't: they are a sequence, and a typed step is only the next one.
     chkFind() {   // memo per (query, list length): item id → match ranges (null = hit without range info)
       if (this.chkSteps()) return null;   // first: steps' paint never subscribes to the typed ghost
@@ -3098,8 +3207,8 @@ document.addEventListener('alpine:init', () => {
       if (_chkQ?.key !== key) _chkQ = { key, map: chkHits(this.draft.checklist, q) };
       return _chkQ.map;
     },
-    // Row HTML while finding: raw text + <mark> sub-matches (md/:: styling pauses for the transient
-    // state; textContent contract for the caret still holds — mark wraps text only).
+    // Row HTML while finding: raw text + <mark> sub-matches (md/:: styling pauses; mark wraps text only,
+    // so the caret's textContent holds).
     chkHl(c) { const r = this.chkFind()?.get(c.id); return r?.length ? markTitle(c.text, r, c.text.length) : _memo(_chkHtml, c.text, () => chkLiveRender(c.text), 1000); },
     async deleteArea(id) {
       this.navPop = null;
@@ -3218,9 +3327,8 @@ document.addEventListener('alpine:init', () => {
       g.style.transition = card.style.transition = '';
       return [h, mt, ch];   // and the grown card's own box: the un-grown margins are others
     },
-    // The row becomes the card: opaque from the tap (no crossfade, so no double title); the card's fill goes from the
-    // row's to the panel's, its indent and gap from the row's to its own; subtask and checklist rows fly from where the
-    // list drew them; the bar rides the grow's bottom edge (CSS). `grow` is a getter: the element is read at rAF time.
+    // The row becomes the card: opaque from the tap (no crossfade, no double title); fill, indent and gap tween from the row's
+    // to the card's; subtask and checklist rows fly from where the list drew them. `grow` is a getter: read at rAF time.
     _growOpen(grow, start) {
       clearTimeout(this._t); _morphStop?.();
       if (this.reduceMotion()) { this.grown = true; this.clip = false; this.growH = null; return; }
@@ -3230,15 +3338,28 @@ document.addEventListener('alpine:init', () => {
       motion.run('grow', () => this.growH !== null);   // idle() spans the measuring frames + settle timer, which no CSS event reports
       const anims = [], sub = [], lined = [], far = new Set();   // far: the texts of rows that start and land over a screen below the view, which never fly
       let unhold = null;   // the list's scroll anchoring, off while the card is cut
+      let firstFar = null;   // the first far row: it and every row under it skip layout once the grow is measured
       const stop = _morphStop = () => {   // also what a close or re-open run on an open still under way
         _morphStop = null;
         for (const r of sub) r.classList.add('edit-hidden');
         for (const a of anims) a.cancel();
         for (const s of lined) { _uncut(s.x); s.x.style.mask = ''; }
         unhold?.();
+        firstFar?.classList.remove('far');
         const g = grow(); g?.classList.remove('morph'); if (g?.firstElementChild) g.firstElementChild.style.clipPath = '';
       };
-      const settle = () => { stop(); this.growH = null; this.clip = false; this._reflow(); };   // to auto; the list re-windows once, here
+      const settle = () => {   // to auto; the list re-windows once, here
+        stop(); this.growH = null; this.clip = false; this._reflow();
+        // rows the open never laid out sit at the placeholder height until drawn: laid out once at idle they keep their
+        // own, or the close lays them out above the view and the rows in it drop by the difference (a 310-item
+        // checklist: 3451 px) ceiling: one layout of every skipped row (a 310-item checklist: 21 ms, after the motion);
+        // revisit if a key typed right after an open lags
+        if (_morphMoved.some(m => !m[1])) _idle(() => {
+          const g = grow();
+          g?.classList.add('sizing');
+          requestAnimationFrame(() => requestAnimationFrame(() => g?.classList.remove('sizing')));   // drawn through a frame: a size is remembered when drawn, not on a forced layout
+        });
+      };
       // Each step bails once a re-open/close supersedes THIS open (`_t`): a stale measure strips the live
       // `grown` class for good (opacity 0), a stale growH pins the height.
       let t = this._t = --_growGen;   // this open's generation; becomes the settle timer once the grow starts
@@ -3257,9 +3378,6 @@ document.addEventListener('alpine:init', () => {
         card.style.setProperty('--from-bg', `color-mix(in srgb, rgb(${r} ${gr} ${b}) ${a * 100}%, var(--bg))`);
         card.style.setProperty('--indent', indent + 'px');
         card.style.setProperty('--lift', lift + 'px');
-        card.style.transition = 'none'; g.classList.add('morph'); card.offsetHeight; card.style.transition = '';   // the row's box at once, not a glide to it
-        row?.classList.add('morph-hide');
-        _morphMoved = [];
         // the row's notes line flies to the description, as a subtask or checklist row flies to its entry
         const dl = row?.querySelector('.row2 .desc-line'), desc = dl && card.querySelector('.desc'), db = desc?.getClientRects().length && dl.getBoundingClientRect();
         const src = db ? [[desc, desc, { ...db.toJSON(), fs: parseFloat(getComputedStyle(dl).fontSize), ink: _inkTop(dl) - db.top, one: true }]] : [];
@@ -3268,12 +3386,24 @@ document.addEventListener('alpine:init', () => {
           const txt = e.querySelector('.entry-txt'), s = txt?.textContent.trim() ?? '', f = drawn.find(([k]) => s.startsWith(k))?.[1];   // a subtask's text runs on into its chips
           if (f) src.push([e, txt, f]);
         }
-        for (const m of src) m.push(m[2].fs / parseFloat(getComputedStyle(m[1]).fontSize));   // the list draws checklist and notes text smaller
-        // a text that wraps in the card starts as its row's one line and opens to its lines on the flight (the rows are
-        // measured with it cut: wrapped at full height from the first frame, they overlapped at the list's spacing)
+        // checklist rows the list draws over a screen below the view never fly: they skip layout from before .morph lays every
+        // row out (a 310-item checklist: 16 of this frame's 41 ms), and the close measures one that comes into view
+        firstFar = src.find(([e, , f]) => e.matches('.entry.chk') && f.top > 2 * innerHeight)?.[0] ?? null;
+        const farRows = new Set();
+        for (let n = firstFar; n; n = n.nextElementSibling) if (n.matches('.entry.chk')) farRows.add(n);
+        if (src.some(([e, , f]) => farRows.has(e) && f.top <= 2 * innerHeight)) { firstFar = null; farRows.clear(); }   // the card's order isn't the list's
+        firstFar?.classList.add('far');
+        card.style.transition = 'none'; g.classList.add('morph'); card.offsetHeight; card.style.transition = '';   // the row's box at once, not a glide to it
+        row?.classList.add('morph-hide');
+        _morphMoved = [];
+        let farFs;   // a checklist's rows share one size: the skipped ones' styles aren't read one by one
+        for (const m of src) m.push(m[2].fs / parseFloat(farRows.has(m[0]) ? farFs ??= getComputedStyle(m[1]).fontSize : getComputedStyle(m[1]).fontSize));   // the list draws checklist and notes text smaller
+        // a text that wraps in the card starts as its row's one line and opens to its lines on the flight (measured cut:
+        // wrapped at full height from the first frame, rows overlap at the list's spacing)
         const tt = card.querySelector('.composer-title .content');
         // nothing flying (a phone's card): the title wraps at once and covers the row's lines under it, one line would show the dock there
-        lined.push(..._wraps([[tt, src.length && rt?.getBoundingClientRect().width], ...src.map(([, txt, f, k]) => [txt, f.one && f.width / k])]));
+        // a row starting over a screen below the view is far: never cut (cutting and measuring them cost a 310-item checklist 10 ms here)
+        lined.push(..._wraps([[tt, src.length && rt?.getBoundingClientRect().width], ...src.filter(([, , f]) => f.top <= 2 * innerHeight).map(([, txt, f, k]) => [txt, f.one && f.width / k])]));
         // the cut shortens the card: anchoring would scroll the list under the measure and every offset would land a line off
         const sc = lined.length ? this._editScroller() : null, anchor = sc?.style.overflowAnchor;
         if (sc) { sc.style.overflowAnchor = 'none'; unhold = () => { sc.style.overflowAnchor = anchor; unhold = null; }; }
@@ -3281,22 +3411,27 @@ document.addEventListener('alpine:init', () => {
         for (const s of lined) s.one = s.x.getBoundingClientRect().height;
         for (const s of lined) s.x.style.height = s.one + 'px';
         _morphH = new Map(tt ? [[tt, tt.getBoundingClientRect().height]] : []);
-        // every row's reads, then every row's writes: read and written row by row, each row's write forced the next row's layout (his 310-item checklist: 137 ms in this frame)
+        // the card fits more above it than the list did: it flies after all, so every row lays out
+        if (firstFar?.getBoundingClientRect().top <= 2 * innerHeight) { firstFar.classList.remove('far'); firstFar = null; farRows.clear(); }
+        // every row's reads, then every row's writes: read and written row by row, each row's write forced the next
+        // row's layout (a 310-item checklist: 137 ms in this frame)
         const at = src.map(([e, txt]) => {
+          if (farRows.has(e)) return { high: e.getBoundingClientRect().height };   // its own box: what the close's offsets under it rise by
           const ck = e.querySelector('.entry-chk > *, .chk-rect');
           return { high: e.getBoundingClientRect().height, r: txt.getBoundingClientRect(), ink: _inkTop(txt), ck, c: ck?.getBoundingClientRect() };
         });
         src.forEach(([e, txt, f, k], i) => {
-          const { high, r, ink, ck, c } = at[i], dx = f.left - r.left, dy = f.top - r.top, d = `${dx}px ${dy}px`;
+          const { high, r, ink, ck, c } = at[i];
           _morphH.set(e, high);   // before a description, its own box, scales
+          if (!r) { far.add(txt); _morphMoved.push([e, null, txt, k, 0, null, null, f.one && f.width / k, f.home, f]); return; }
+          const dx = f.left - r.left, dy = f.top - r.top, d = `${dx}px ${dy}px`;
           // the list's text sits lower in its padded box (a checklist's): the flight starts and ends on its ink, at the flight's scale; a description's ink sits as the row's
           const lift = f.ink - (ink - r.top) * k;
-          // a screen of spare: the open's glide scrolls the list by a view at most (his 310-item checklist flew 232 rows, 30 of them in view)
-          if (Math.min(f.top, r.top) > 2 * innerHeight) far.add(txt);
+          // a screen of spare: the open's glide scrolls the list by a view at most (a 310-item checklist flew 232 rows, 30 of them in view)
+          if (Math.min(f.top, r.top) > 2 * innerHeight) { far.add(txt); firstFar ??= e; }
           else { txt.style.transformOrigin = '0 0'; txt.style.scale = k; e.style.translate = d; if (e !== txt) txt.style.translate = `0px ${lift}px`; }
           // for the close: its check is the list's size, measured from where the flight starts
-          const fit = f.chk && c?.width ? [`${f.chk.x + f.chk.width / 2 - c.x - dx - c.width / 2}px ${f.chk.y + f.chk.height / 2 - c.y - dy - c.height / 2}px`, f.chk.width / c.width] : null;
-          _morphMoved.push([e, d, txt, k, lift, ck, fit, f.one && f.width / k, f.home]);   // the list's line in the card text's px, when the list draws it on one
+          _morphMoved.push([e, d, txt, k, lift, ck, _chkFit(f, c, dx, dy), f.one && f.width / k, f.home, f]);   // the list's line in the card text's px, when the list draws it on one
         });
         const fade = _morphMoved.length ? [...card.querySelectorAll(`${db ? '' : '.desc, '}.entry.ghost, .entry-or`)] : [];   // they sit where the flying rows start
         for (const el of fade) el.style.opacity = 0;
@@ -3317,7 +3452,8 @@ document.addEventListener('alpine:init', () => {
           if (this._t !== t) return;
           for (const s of lined) _uncut(s.x);   // the card grows to its height as-if-wrapped
           const [full, mt, ch] = this.fullGrow(g);
-          this.growH = full; this.grown = true;   // anchoring stays off until the settle: back on mid-grow, it held the caret's row to where it sat before the cut (a cut description dropped the list by its height)
+          firstFar?.classList.add('far');
+          this.growH = full; this.grown = true;   // anchoring stays off until the settle: on mid-grow it holds the caret's row where it sat before the cut
           const o = { duration: dur, easing: _openEase };
           // the box opens from the row's line (its first, up to the list's cut) to its lines on the flight's own ease, so what's
           // under it rides straight to its place; the rest fades in behind the opening edge
@@ -3358,14 +3494,17 @@ document.addEventListener('alpine:init', () => {
       // pins the live height, inline at once: .morph's size containment sizes an unpinned grow to 0 until the binding lands,
       // and a layout in that gap re-windows the list and scrolls it by the composer's height
       const anims = [], masked = [], fly = _morphMoved.length > 0, card = g.firstElementChild;
+      // rows that sit and land (the list's place under its row's top) over a screen below the view never fly home: they skip
+      // layout from the first frame, so they're found before .morph lays every row out
+      const rowAt = _morphRows.find(r => r.isConnected)?.getBoundingClientRect().top, farAt = _morphMoved.findIndex(m => m[0].isConnected && Math.min(m[0].getBoundingClientRect().top, rowAt + m[8]) > 2 * innerHeight);
+      const moved = farAt < 0 ? _morphMoved : _morphMoved.slice(0, farAt), firstFar = _morphMoved[farAt]?.[0];
+      firstFar?.classList.add('far');
       card.style.height = card.offsetHeight + 'px';   // and the card's: .morph floors it at the row's box, which a phone's card can settle under
       g.style.height = (this.growH = g.offsetHeight) + 'px'; this.clip = true; g.classList.add('morph');   // the card's box follows it again
       motion.run('grow', () => this.growH !== null);   // supersedes an open's; ends when the collapse unpins
-      const stop = _morphStop = () => { _morphStop = null; for (const a of anims) a.cancel(); for (const x of masked) { x.style.mask = ''; _join(x, false); } card.style.height = ''; g.classList.remove('morph', 'closing'); };
-      // the open run backwards: the parts fade first, as the open fades them in last, so the shrinking card never clips one
-      // still there (asst 10-30); then the card keeps its opaque box and shrinks with the grow to the row's, the rows go home,
-      // the title takes the row's color; what has no place in the row fades (his 10-30: "if elements disappear, they
-      // should be faded out, and text color should transition as well"). A subtask's chips are the card's: its row has its own.
+      const stop = _morphStop = () => { _morphStop = null; firstFar?.classList.remove('far'); for (const a of anims) a.cancel(); for (const x of masked) { x.style.mask = ''; _join(x, false); } card.style.height = ''; g.classList.remove('morph', 'closing'); };
+      // the open run backwards: parts fade first so the shrinking card never clips one; then the opaque card shrinks to the
+      // row's, rows go home, the title takes the row's color, and what has no place in the row fades. A subtask's chips are the card's.
       // a desk's dock is display: contents, where opacity does nothing: its boxes fade instead
       const boxes = el => getComputedStyle(el).display === 'contents' ? [...el.children].flatMap(boxes) : [el];
       const fade = [...g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or, .composer-dock, .entry:not(.ghost) .entry-txt > .nlp-pill')].flatMap(boxes).filter(el => !_morphMoved.some(m => m[0] === el));   // a flown description goes home instead
@@ -3375,13 +3514,23 @@ document.addEventListener('alpine:init', () => {
         // growH null: a starved frame landed past the settle below, and collapsing now would re-pin the closed grow
         if (!this._closingComposer || this.growH === null) return;
         const o = { duration: dur, delay: hold, easing: _closeEase, fill: 'backwards' }, of = { ...o, fill: 'both' }, h = g.offsetHeight;
-        // a text that wraps in the card shrinks to the list's one line before it moves (his 11-03: "shrink multi-line rows into
-        // one line before they like move into their place"): over the hold its first line stays, the rest fades as its box
+        // a text that wraps in the card shrinks to the list's one line before it moves: over the hold its first line stays,
+        // the rest fades as its box
         // closes up to that line; then it is the row's line, and the row's tail (more words, or the ellipsis) fades in
         const rt = rows[0]?.querySelector('.title'), ts = rt && getComputedStyle(rt), tt = card.querySelector('.composer-title .content');
-        const shrink = _wraps([[tt, rt?.getBoundingClientRect().width], ..._morphMoved.filter(m => m[0].isConnected).map(m => [m[2], m[7]])]);
-        const tops = new Map(), far = new Set(), rowTop = rows[0]?.getBoundingClientRect().top;   // far: the texts of rows that sit and land (the list's place under its row's top) over a screen below the view, which never fly home
-        const was = new Map([tt, ..._morphMoved.map(m => m[0])].map(x => { const r = x?.getBoundingClientRect(); tops.set(x, r?.top); return [x, r?.height]; }));
+        const shrink = _wraps([[tt, rt?.getBoundingClientRect().width], ...moved.filter(m => m[0].isConnected).map(m => [m[2], m[7]])]);
+        const tops = new Map(), far = new Set();   // far: the texts of rows that sit and land (the list's place under its row's top) over a screen below the view, which never fly home
+        const rowTop = (rows[0] ?? g).getBoundingClientRect().top;   // the grow sits in its row's place: the list windows a row scrolled a card's length away out
+        const was = new Map([tt, ...moved.map(m => m[0])].map(x => { const r = x?.getBoundingClientRect(); tops.set(x, r?.top); return [x, r?.height]; }));
+        // a row the open never measured (it opened over a screen below the view) and now in reach: measured here, at rest
+        const fresh = new Map(moved.filter(([e, d, , , , , , , home]) => !d && e.isConnected && Math.min(tops.get(e), rowTop + home) <= 2 * innerHeight).map(([e, , txt]) => {
+          const ck = e.querySelector('.entry-chk > *, .chk-rect');
+          return [e, { r: txt.getBoundingClientRect(), ink: _inkTop(txt), ck, c: ck?.getBoundingClientRect() }];
+        }));
+        // what one measured at rest misses: how far the card's content moves as it takes the row's box (its padding and the
+        // title's lift), read off the last row the open measured, at rest here. None: those rows don't fly
+        const cal = fresh.size ? moved.findLast(([e, d]) => d && e.isConnected) : null, calR = cal?.[2].getBoundingClientRect();
+        let sx = 0, sy = 0;
         for (const s of shrink) { Object.assign(s.x.style, _cutTo(s.w)); _join(s.x, true); }
         for (const s of shrink) s.one = s.x.getBoundingClientRect().height;   // its one line's box, unrounded: ten rows' rounding added up to 5px
         for (const s of shrink) _uncut(s.x);
@@ -3392,12 +3541,13 @@ document.addEventListener('alpine:init', () => {
         g.classList.add('closing');
         // once the collapse has under 8 px to go, the card turns see-through over the list's rows, which fade in; its fill
         // turns to the row's tint first, over at least 140 ms (its ease-out is within 1% by 120), or a short collapse
-        // switches it (asst 10-30)
+        // switches it
         let u = 0; while ((1 + u) * Math.exp(-u) * (h - end) > 8) u += .25;
         const tail = Math.min(Math.max(u / _closeW * 1000, 140), dur - 60), late = { delay: hold + tail, duration: dur - tail, easing: 'ease' };
         const from = parseFloat(card.style.getPropertyValue('--from')) || end, cs = getComputedStyle(card);
         // its own height on the grow's spring, not the grow's less --room: the rows going home never cross its edge
-        anims.push(card.animate({ height: [card.offsetHeight + 'px', from + 'px'] }, of),
+        const spring = card.animate({ height: [card.offsetHeight + 'px', from + 'px'] }, of);
+        anims.push(spring,
           card.animate([{ backgroundColor: cs.backgroundColor, easing: 'ease-out' }, { backgroundColor: cs.getPropertyValue('--from-bg'), offset: tail / dur }, { backgroundColor: 'transparent' }], { duration: dur, delay: hold, fill: 'both' }));   // linear: the offset is a time
         for (const r of fly ? rows : []) anims.push(r.animate({ opacity: [0, 1] }, { ...late, fill: 'backwards' }));
         // over the whole ride, not on the spring, which turns most of it in the first 50 ms and reads as a snap
@@ -3405,20 +3555,36 @@ document.addEventListener('alpine:init', () => {
           ...ts.textDecorationLine.includes('line-through') && { textDecorationLine: ['line-through', 'line-through'], textDecorationColor: ['transparent', ts.textDecorationColor] } }, { duration: hold + dur, easing: 'ease-in-out', fill: 'forwards' }));
         const rise = new Map(shrink.map(s => [s.x, s.high - s.one])), at = t => t / (hold + dur);   // how far each text closes up: what's under it rises by that in the card
         // back to the list's places: the un-grown layout is where the offsets were measured; text onto the list's line,
-        // each check to the list's (his 10-30: "sizes of the subtasks checkboxes should be transitioned")
+        // each check to the list's
         // how far what's under a box rises from where the open measured it
         const drop = (box, txt) => (_morphH.get(box) ?? was.get(box)) - was.get(box) + (rise.get(txt) ?? 0);
-        let up = drop(tt, tt);
-        for (const [e, d, txt, k, lift, ck, fit, w, home] of _morphMoved) if (e.isConnected) {
-          const [dx, dy] = d.split(' ').map(parseFloat);
-          if (Math.min(tops.get(e), rowTop + home) > 2 * innerHeight) { far.add(txt); up += drop(e, txt); continue; }
+        let up = drop(tt, tt), risen = rise.get(tt) ?? 0;   // risen: what's above has closed up by, all that moves a row measured at rest
+        // hid: what's above the view closes up by over the hold, which the rows in view would rise with (a card closed from deep in a
+        // long checklist rose its end through the view and left it blank)
+        let hid = tops.get(tt) < 0 ? risen : 0;
+        for (let [e, d, txt, k, lift, ck, fit, w, home, f] of moved) if (e.isConnected) {
+          let [dx, dy] = d?.split(' ').map(parseFloat) ?? [], to = dy + up;
+          if (e === cal?.[0]) { sx = dx - f.left + calR.left; sy = to - risen - rowTop - home + calR.top; }   // read even when it doesn't fly: a screen above the view
+          const out = Math.min(tops.get(e), rowTop + home) > 2 * innerHeight || !d && !cal;
+          if (out) far.add(txt);
+          // one that sits and lands over a screen above the view flies unseen: it still closes to its one line, which the rows under it rise by
+          if (out || Math.max(tops.get(e), rowTop + home) < -innerHeight) { up += drop(e, txt); risen += rise.get(txt) ?? 0; if (tops.get(e) < 0) hid += rise.get(txt) ?? 0; continue; }
+          const now = fresh.get(e);
+          if (now) {   // the open's offsets, from the list's text where it sits now
+            const { r, ink, c } = now;
+            dx = f.left - r.left + sx; to = rowTop + home - r.top + risen + sy; ck = now.ck;
+            txt.style.transformOrigin = '0 0';   // the open's flight set it on the rows it flew: scaled from its center, the text lands right of the list's
+            lift = f.ink - (ink - r.top) * k; fit = _chkFit(f, c, f.left - r.left, f.top - r.top);   // the check moves with its text: no card shift
+          }
           if (w && !rise.has(txt)) anims.push(txt.animate(_pin({ textWrapMode: 'nowrap' }), of));   // a one-liner stays one as the card's padding narrows its box
-          anims.push(e.animate({ translate: ['0px 0px', `${dx}px ${dy + up}px`], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], ...e !== txt && { translate: ['0px 0px', `0px ${lift}px`] } }, of));   // a description's lift rides its one translate
+          anims.push(e.animate({ translate: ['0px 0px', `${dx}px ${to}px`], backgroundColor: 'transparent' }, of), txt.animate({ scale: [1, k], ...e !== txt && { translate: ['0px 0px', `0px ${lift}px`] } }, of));   // a description's lift rides its one translate
           if (fit) anims.push(ck.animate({ translate: ['0px 0px', fit[0]], scale: [1, fit[1]] }, of));
-          up += drop(e, txt);
+          up += drop(e, txt); risen += rise.get(txt) ?? 0;
+          if (tops.get(e) < 0) hid += rise.get(txt) ?? 0;
         }
+        let shut;
         for (const s of shrink) if (!far.has(s.x)) {
-          const shut = s.x.animate({ height: [s.high + 'px', s.one + 'px'], overflow: ['hidden', 'hidden'] }, { duration: hold, easing: DESIGN.ease['in-out'], fill: 'forwards' });
+          shut = s.x.animate({ height: [s.high + 'px', s.one + 'px'], overflow: ['hidden', 'hidden'] }, { duration: hold, easing: DESIGN.ease['in-out'], fill: 'forwards' });
           shut.finished.then(() => _join(s.x, true), () => {});   // the cut's, from its start
           anims.push(shut,
             s.x.animate(_pin(_cutTo(s.w)), { delay: hold, duration: dur, fill: 'forwards' }),
@@ -3426,6 +3592,18 @@ document.addEventListener('alpine:init', () => {
             s.x.animate([{ '--tail': 1, easing: 'ease-out' }, { '--tail': 0, offset: at(hold * .6) }, { '--tail': 0, offset: at(hold), easing: 'ease-out' }, { '--tail': 1 }], { duration: hold + dur, fill: 'forwards' }));
           s.x.style.mask = _lineMask(s); masked.push(s.x);
         }
+        // the list holds against what closes above the view over the hold, scrolled in step with it, then lets go on the card's spring
+        const sc = hid && shut && this._listScroller();
+        let held = 0;
+        const hold_ = () => {
+          if (!this._closingComposer) return;
+          const p = spring.currentTime < hold ? shut.effect.getComputedTiming().progress : 1 - (spring.playState === 'finished' ? 1 : spring.effect.getComputedTiming().progress);
+          if (!(Math.abs(sc.scrollTop - sc._at) < 1)) sc._at = sc.scrollTop;   // the ride's accumulator, or a reader's write: from there
+          sc.scrollTop = sc._at -= hid * p - held;
+          held = hid * p;
+          if (spring.playState === 'running') requestAnimationFrame(hold_);
+        };
+        if (sc) requestAnimationFrame(hold_);
         for (const el of fade) anims.push(el.animate({ opacity: [1, 0] }, { duration: hold + 30, fill: 'forwards' }));   // linear: a fifth left when the clip starts
         // a phone's checklist stays put under the card: its box masks back up to the title's line, the open's unmask reversed
         // and up over its notes line too, which the card's one line (shrunk over the hold) no longer covers
@@ -3446,9 +3624,8 @@ document.addEventListener('alpine:init', () => {
       this._releaseView();
       this.notesOpen = !!this.editing && (this.editing === this.jotted || this._notesFit());   // a jotted task opens on its steps, a small one on its description and entries
       const focusBefore = document.activeElement, d = this.draft;
-      // If the tapped task's TOP is in view, DON'T scroll — grow it in place (its bottom may extend below the
-      // fold; the composer replaces it anyway). Only a task whose top is off-screen animates in. A close scrolls
-      // only for the list's end, so an in-view edit leaves the list put.
+      // A task whose top is in view grows in place, no scroll (its bottom may pass the fold). Only one with its top
+      // off-screen animates in. A close scrolls only for the list's end.
       if (!this.composer.open) {
         const sc = this.editing && this._editScroller(), r = sc && (this._inPanel() ? this._trayEl(this.editing) : this._rowEl(this.editing));
         const top = r ? r.getBoundingClientRect().top - sc.getBoundingClientRect().top : null;
@@ -3474,8 +3651,7 @@ document.addEventListener('alpine:init', () => {
       // Alpine's flush queues subtask hydration. Drain those writes before focus forces layout; still in this task,
       // before another key can arrive (unlike $nextTick, which starting transitions hold for a frame).
       queueMicrotask(() => queueMicrotask(() => {
-        // A task that ALREADY has entries opens with the caret in its "new item" ghost — the next thing you do to
-        // a list is add to it, not rename it. (Exactly one ghost renders in either non-empty case: sub or chk.)
+        // A task that already has entries opens with the caret in its "new item" ghost: you add to a list more than rename it.
         const kids = this.shownSubs().length, ghost = (kids || this.editing && (this.draft.checklist.length || this.editing === this.jotted)) && !this.notesHidden() && this._ghostEl(kids ? 'sub' : 'chk');
         const c = ghost || this.$refs.content;
         // Default focus must not steal a click/Tab that reached the composer before this deferred callback,
@@ -3494,9 +3670,8 @@ document.addEventListener('alpine:init', () => {
       const comp = this.$refs.composer, sc = this._editScroller(); if (!comp || !sc?.contains(comp)) return;   // hosted outside the list (the jot bar): its scroll is the reader's
       const start = sc.scrollTop, pad = this._seenTop(sc);
       this._glide(sc, () => {
-        // A live target has to survive the target MOVING: relocateComposer re-parents this element between
-        // surfaces/lists, and a detached node reports an all-zero rect — aiming at that drags the list to
-        // the top.
+        // A live target must survive the target MOVING: relocateComposer re-parents this element, and a detached
+        // node reports an all-zero rect, which drags the list to the top.
         const cr = comp.getBoundingClientRect();
         if (!this.composer.open || !comp.isConnected || !cr.height) return sc.scrollTop;
         const sr = sc.getBoundingClientRect(), H = this._seenH(sc), top = sc.scrollTop + cr.top - sr.top - 8, lift = top + cr.height - H + 20, aim = top - pad;
@@ -3524,9 +3699,8 @@ document.addEventListener('alpine:init', () => {
     },
     // Now has no editable list — editIndex positions the composer on Lists
     rowIndexOf(id) { this.visibleRows(); return (_rowMap.get(id) ?? _doneMap.get(id))?.i ?? -1; },
-    // A row that has just been DELETED (or filtered out) is in NEITHER list — -1 would send the composer to flex
-    // order -2, above every row, and the browser would drag the focused caret (and the scroll) up with it. Hold
-    // the last index the row had: the composer stays put for the frame or two before it collapses.
+    // A just-deleted (or filtered-out) row is in NEITHER list: -1 would put the composer at flex order -2, above every
+    // row, dragging the caret and scroll up. Hold the last index so it stays put until it collapses.
     editIndex() { const i = this.rowIndexOf(this.editing); if (i >= 0) _editIx = i; return _editIx; },
     editingDone() { return !!this.editing && this.completedRows().some(r => r.t.id === this.editing); },   // the edited task lives in the Done list
     // physically moved into the target .list on open; $refs survive; setNav/goSurface close it on switch
@@ -3603,7 +3777,7 @@ document.addEventListener('alpine:init', () => {
       }, { minimal: true, projAt: at });
     },
     // static body — shell <li> keeps reactive bindings
-    // Grouping by project already names it in the section head — repeating it on every row is noise.
+    // Grouping by project already names it in the section head: no repeat per row.
     // A Done root from a subproject names it inside the project or Backlog view (even grouped); a row of the viewed project itself doesn't.
     rowBody(r, opts) {
       return rowBodyHtml(r, { ...this._rowOpts(r), chkOpen: this.chkOpen.has(r.t.id), chkHeld: _chkHeld?.key === r.t.id ? _chkHeld.done : null, ...opts });
@@ -3612,7 +3786,7 @@ document.addEventListener('alpine:init', () => {
       const subDone = cx.box && r.depth === 0 && _doneMap?.get(r.t.id) === r && r.t.parent_id !== cx.box;
       return { navType: cx.navType, ...(subDone ? { proj: true } : cx.groupBy === 'project' ? { proj: false } : {}), ...(!cx.touch && { typed: false }), ...(cx.sticky && { proj: false, checklist: false, desc: false }) };   // desktop rows are one line, their chips shed by the ladder (only a phone's are typed); the note draws one line a task; a Steps row keeps its step
     },
-    // What every row's options and estimate read, read once a pass: through the proxy, per row, it was most of a 5k tick's estimate.
+    // What every row's options and estimate read, once a pass: per row through the proxy it dominated a 5k-row tick.
     _rowCx() {
       const type = this.navSel.type, box = type === 'backlog' ? this._defId : type === 'project' && this.navSel.id;
       return { navType: type, box, groupBy: this.groupBy, sticky: this.sticky, narrow: this.narrow, touch: document.documentElement.classList.contains('touch') };   // styles.css :where(.touch): 44px rows (a phone's 50), 28px checklist pitch
@@ -3631,7 +3805,7 @@ document.addEventListener('alpine:init', () => {
       // the checkbox OR its text toggles a checklist item; plain (uncheckable) items fall through to editTask
       const chk = e.target.closest('.chk-rect, .chk-txt')?.closest('.chk-row, .step-next');   // a Steps row's preview ticks by its node
       if (chk && !r.t.checklist_plain) return chk.matches('.step-next') && e.detail ? this._stepTick(r.t.id, true, r) : this.toggleChk(r.t.id, +chk.dataset.ci, e.detail ? r : null);
-      if (this.composer.open && !this._closingComposer && this.narrow && document.documentElement.classList.contains('touch')) return this.closeComposer();   // a phone's tap away from the open composer closes it, even on another row (his 11-11 item 1)
+      if (this.composer.open && !this._closingComposer && this.narrow && document.documentElement.classList.contains('touch')) return this.closeComposer();   // a phone's tap away from the open composer closes it, even on another row
       this.editTask(r.t, e);
     },
     // first swatch = clear; '' → null; shared by editors + nav popovers
@@ -3657,7 +3831,7 @@ document.addEventListener('alpine:init', () => {
       for (const d of _dragDescs) if (_rowMap.get(d)?.i > at) this._rowEl(d)?.classList.add('row-hidden');
       _liftTop = this._rowEl(grab)?.offsetTop ?? null;   // offsetTop: a held row's translate isn't the list's
       // Off until the drop (_clearDrag): _paintRows' pad restores the grab's place, and anchoring would add the rows' height again.
-      // The ghost's slot climbing past the row the browser anchors on would jump the list by the slot's height, every few rows.
+      // The ghost's slot passing the row the browser anchors on would jump the list by the slot's height.
       this._listScroller().style.overflowAnchor = 'none';
       this._reflow();
     },
@@ -3777,9 +3951,9 @@ document.addEventListener('alpine:init', () => {
       order.splice(at, 0, ...ids);
       return this._moveTask(ids, parentId, order);
     },
-    // A journaled move, keyed by the rows (several: one composite step): ⌘Z lands on it. `order` = the parent's children after the drop;
-    // they take the positions they hold (orderSlots), so the order write — and the entry — touch only rows whose position changes. A move
-    // keeps the row's position: a same-parent order write that fails leaves the list as it was. A row whose move fails stays put.
+    // A journaled move, keyed by the rows (several: one composite step): ⌘Z lands on it. `order` = the parent's children after the
+    // drop; they take the positions they hold (orderSlots), so only rows whose position changes are written or journaled. A failed
+    // same-parent order write leaves the list as it was; a row whose move fails stays put.
     async _moveTask(ids, parent, order, { label: name, bin = false } = {}) {
       const before = this.childTasks(parent).map(x => x.id), pos = x => this.byId.get(x)?.position ?? 0, home = x => (this.byId.get(x)?.parent_id ?? null) === parent, same = ids.every(home);
       const plan = rows => { const slots = orderSlots(rows.filter(home).map(pos), rows.length); return rows.flatMap((x, i) => pos(x) === slots[i] ? [] : [[x, slots[i]]]); };
@@ -3814,7 +3988,7 @@ document.addEventListener('alpine:init', () => {
     },
     // --- Peek Pane: drag a Lists row → today's real day column docks right; drop = schedule, list drop still reorders ---
     peekOn() { return this.surface === 'lists' && (!!this.dragId || this.peekPin); },
-    peekCol() { void this.tasks; void this.events; void this.blocks;   // register deps — the memos underneath may short-circuit
+    peekCol() { void this.tasks; void this.events; void this.pcEvents; void this.gcalEvents; void this.blocks;   // register deps — the memos underneath may short-circuit
       return this._clPack(this._clColumn(this.peekIso || isoDate(new Date())), 44); },   // 44: .peek-grid's --clhh, whatever Plan's scale
     _peekShow() {   // called from dragStart; scrolls the pane to now on first appearance
       if (!this.peekPin) this.peekIso = isoDate(new Date());
@@ -3896,16 +4070,15 @@ document.addEventListener('alpine:init', () => {
       await this._moveTask(ids, parentId, [...this.childTasks(parentId).flatMap(x => ids.includes(x.id) ? [] : [x.id]), ...ids]);
     },
     // --- The ONE list-surface scroll model ---
-    // The scroll STAYS. Opening an in-view task doesn't scroll (grow in place), so closing has nothing to
-    // un-do — we never write scrollTop on close. A close holds trailing space so shrinking the
-    // range cannot clamp the reader upward; release it only when the real range covers them. Within a list the ONLY
-    // deliberate scroll is `_revealRow`: bring a task in when it's OFF-SCREEN (an off-screen open, or Show on a
-    // save's "Moved" card). The list is windowed, so we never trust absolute scrollTop.
+    // The scroll STAYS: opening an in-view task grows in place, so close never writes scrollTop. A close holds trailing space
+    // so a shrinking range can't clamp the reader upward; released once the real range covers them. The only deliberate scroll
+    // within a list is `_revealRow`, for an OFF-SCREEN task (an off-screen open, or Show on a save's "Moved" card).
+    // The list is windowed: never trust absolute scrollTop.
     _releaseCloseRange(force = false) {
       if (!_closeRange) return;
-      const { sc, space, padding } = _closeRange;
+      const { sc, space } = _closeRange;
       if (!force && (_appRaw.composer.open || sc.scrollTop > Math.max(0, sc.scrollHeight - sc.clientHeight - space))) return;
-      sc.style.paddingBottom = padding;
+      sc.style.removeProperty('--held');
       _closeRange = null;
     },
     _listScroller() { return _staticEl('.surface-lists .app'); },
@@ -3919,17 +4092,13 @@ document.addEventListener('alpine:init', () => {
       return Math.min(sc.clientHeight - foot, visualViewport.offsetTop + visualViewport.height - top);
     },
     // --- The ONE scroll animation in the app ---
-    // The browser's smooth scroll has two gaps that stutter: it aims
-    // at a pixel computed ONCE — so a reflow mid-flight (the composer still growing, a row's measured height
-    // replacing its estimate, a list re-render) leaves you somewhere else — and we hold no handle on it, so
-    // a second request RACES the first and your own scroll fights it instead of stopping it. Both are closed
-    // here: `to` is a FUNCTION re-read every frame, and one tween per scroller owns the animation.
-    // A fresh wheel gesture, touch or press wins; momentum already running at the start doesn't.
-    // A CONSTANT target makes it a hold instead of a move — re-asserting the same position every frame is how
-    // we sit still through a re-render, and it stands down on the same user input. One primitive, both jobs.
-    // One passive record per scroller of the last fresh gesture. Yield to REAL input, never to a
-    // scrollTop delta: a row above the reader changing height moves scrollTop too, and reading that as
-    // "they took over" is how a reveal gives up half way.
+    // The browser's smooth scroll stutters twice: it aims at a pixel computed ONCE, so a reflow mid-flight (composer still
+    // growing, a measured row height replacing its estimate, a re-render) lands elsewhere; and it has no handle, so a second
+    // request RACES the first and your own scroll fights it. Here `to` is a FUNCTION re-read every frame and one tween per
+    // scroller owns the animation. A fresh wheel, touch or press wins; momentum already running at the start doesn't.
+    // A CONSTANT target makes it a hold: re-asserting the position every frame sits still through a re-render.
+    // One passive record per scroller of the last fresh gesture. Yield to REAL input, never to a scrollTop delta: a row above
+    // the reader changing height moves scrollTop too, and reading that as a takeover makes a reveal give up half way.
     _userAt(sc) {
       if (!sc._userArmed) {
         const wheel = sc._userArmed = {};
@@ -3945,9 +4114,8 @@ document.addEventListener('alpine:init', () => {
       if (!sc) return; this._userAt(sc);   // arm the hand-wins listeners
       sc._growGlide?.finish();
       const at = () => { const v = typeof to === 'function' ? to() : to; return Math.max(0, Math.min(sc.scrollHeight - sc.clientHeight, v)); };
-      // Zero motion does NOT mean zero protection: grow/collapse still reflows layout and scroll anchoring
-      // still drifts, so at scale 0 the glide JUMPS to the target immediately and then re-asserts the LIVE
-      // target each frame for the RAW duration — the reader's position is managed, nothing visibly animates.
+      // Zero motion isn't zero protection: grow/collapse still reflow and scroll anchoring still drifts, so at scale 0 the
+      // glide JUMPS to the target, then re-asserts the LIVE target each frame for the RAW duration.
       const zero = !ms || this.reduceMotion();
       if (!zero) ms = motion.t(ms);
       // keyed on the scroller: a second request SUPERSEDES the first (motion.run), re-easing from wherever we are
@@ -3955,13 +4123,10 @@ document.addEventListener('alpine:init', () => {
       let from = sc.scrollTop, mine = zero ? (sc.scrollTop = at()) : from;
       const step = now => {
         if (sc._userAt > t0) return false;   // ...and a hand arriving mid-flight ends it on the spot
-        // Movement without a fresh hand is carried momentum or LAYOUT: a long glide crosses rows that
-        // swap their ESTIMATED height for the real one as the window renders them,
-        // scrollHeight moves by hundreds of px and the browser's anchoring/clamping rewrites scrollTop to
-        // hold the content still; the browser also yanks the focused caret into view the instant you type into
-        // the composer we're still gliding to. Reading either as a takeover would abandon the glide (the composer
-        // up to 760px out of view). Absorb it: re-base and keep aiming at
-        // the LIVE target, which is where the reader has to end up either way.
+        // Movement without a fresh hand is carried momentum or LAYOUT: a long glide crosses rows that swap ESTIMATED height
+        // for real as the window renders them, so scrollHeight moves by hundreds of px and anchoring/clamping rewrites scrollTop;
+        // the browser also yanks the caret into view when you type into the composer being glided to. Reading either as a
+        // takeover would abandon the glide (composer up to 760px out of view). Absorb it: re-base, keep aiming at the LIVE target.
         if (Math.abs(sc.scrollTop - mine) > 24) { from += sc.scrollTop - mine; mine = sc.scrollTop; }
         const p = Math.max(0, Math.min(1, (now - t0) / ms)), was = mine;
         sc.scrollTop = mine = zero ? at() : from + (at() - from) * EASE_OUT(p);
@@ -4013,11 +4178,9 @@ document.addEventListener('alpine:init', () => {
     _revealRow(id, ms = 340) {
       if (!this._rowAway(id)) return;
       const sc = this._listScroller(), pad = this._seenTop(sc);
-      // ONE glide owns the scroller: a scrollTop written by hand loses to a hold still in flight. Outside the
-      // WINDOW the row has no rect, so the target comes off its MODELLED box, and both branches must land on the
-      // SAME pixel: the glide's own scrolling renders the row and hands over mid-flight, and any disagreement
-      // re-targets there and bounces. One formula, fed whichever box exists.
-      // (_ensureRow keeps its own clientHeight/3: it aims to RENDER a row for measurement, not to land.)
+      // ONE glide owns the scroller: a scrollTop written by hand loses to a hold still in flight. Outside the WINDOW the row
+      // has no rect, so the target comes off its MODELLED box; both branches must land on the SAME pixel (one formula, fed
+      // whichever box exists), or the mid-flight handover re-targets and bounces. (_ensureRow aims clientHeight/3: it renders.)
       this._glide(sc, () => {
         const el = this._rowEl(id);
         const H = this._seenH(sc);
@@ -4036,17 +4199,15 @@ document.addEventListener('alpine:init', () => {
     // A drag, a sort change, an undo or a save's Show ends here: carry the reader to the row if it left the viewport, and mark
     // which row took the edit. A save itself stays put.
     _landOn(id) { if (id) this.$nextTick(() => { this._revealRow(id); this._flashSaved(id); }); },
-    // A just-saved row morphs in place (keyed morph) with no motion cue — a brief warm wash marks WHICH row
-    // took the edit. Imperative (like hover/edit state) so it never enters the morph's _sig compare. Color-only, so
-    // it's reduced-motion-safe (comprehension aid, not movement). Re-trigger by removing+reflowing before re-adding.
+    // A just-saved row morphs in place with no motion cue: a brief warm wash marks WHICH row took the edit. Imperative, so it
+    // never enters the morph's _sig compare; color-only, so reduced-motion-safe. Re-trigger by removing+reflowing before re-adding.
     _flashSaved(id) {
       const el = this._rowEl(id); if (!el) return;
       el.classList.remove('just-saved'); void el.offsetWidth; el.classList.add('just-saved');
       el.addEventListener('animationend', () => el.classList.remove('just-saved'), { once: true });
     },
-    // "Action pending" spinner on a row's checkmark — but ONLY if the store op is actually slow (≥150ms), so instant
-    // local writes never flicker; a real wait (remote sync) morphs the check into a spinner until it resolves. Imperative,
-    // by data-id, matching the list's other interaction state. Wrap any per-task async store call: _withPending(id, fn).
+    // "Action pending" spinner on a row's checkmark, only if the store op is slow (≥150ms), so instant local writes never
+    // flicker. Imperative, by data-id, like the list's other interaction state. Wrap a per-task async call: _withPending(id, fn).
     _setCheckPending(id, on) { const c = this._rowEl(id)?.querySelector('.check'); if (c) c.classList.toggle('pending', on); },
     async _withPending(id, fn) {
       const t = setTimeout(() => this._setCheckPending(id, true), 150);
@@ -4058,9 +4219,8 @@ document.addEventListener('alpine:init', () => {
       if (task && !await this.perform('Deleted', { target: 'task', kind: 'delete', id: task.id })) return;   // failed: keep the composer and its edits
       if (this._live(d)) this.closeComposer(true);   // row is gone → the close holds scrollTop (anchoring off for its collapse), so the rows below close the gap
     },
-    // Deleting a task that has subtasks asks: delete them too, or move them to a destination
-    // (default = the parent's parent, i.e. the deleted task's parent; the top-level project if none).
-    // Returns true when it opened the prompt (the caller must stop and let the dialog finish the op).
+    // Deleting a task that has subtasks asks: delete them too, or move them to a destination (default: the deleted task's
+    // parent; the top-level project if none). Returns true when it opened the prompt (the caller stops; the dialog finishes the op).
     askDeleteTask(id, source) {
       if (!this.hasChildren(id)) return false;
       const task = this.byId.get(id); if (!task) return false;
@@ -4075,23 +4235,21 @@ document.addEventListener('alpine:init', () => {
       this._endDraft(saved);
       if (this.$refs.composer?.contains(document.activeElement)) document.activeElement.blur();   // a key during the collapse must not type into the closing draft
       this.draftRestored = false;
-      // A close scrolls only with its own shrink (below). Scroll anchoring sits the collapse
-      // out: scrolled INTO a tall composer, the anchor is a row below it, so the list would ride the collapse and
-      // the re-render, then glide back. Back on two frames after done: past the close's own layout, in time for the
-      // next measure pass, whose estimate→real corrections it absorbs invisibly. openComposer restores it too.
+      // A close scrolls only with its own shrink (below). Anchoring sits the collapse out: scrolled INTO a tall composer, the
+      // anchor is a row below it, so the list would ride the collapse and the re-render, then glide back. Back on two frames
+      // after done, in time for the next measure pass, whose estimate→real corrections it absorbs. openComposer restores it too.
       const sc = this._listScroller(), end = this.editing ? this.blockH : this._inPanel() ? 0 : _addSlot;   // the open's mirror: to 0, a list at its end dropped by the Add task row
       if (sc) sc.style.overflowAnchor = 'none';
       const grow = _staticEl('.composer-grow');   // $refs is empty in a popover's scope (its menu item is gone by the time an awaited action closes)
       const space = sc && grow && this.composer.open && !this._inPanel() ? Math.max(0, grow.offsetHeight - end) : 0;
       const held = space && sc.scrollTop > sc.scrollHeight - sc.clientHeight - space;   // only a collapse that would clamp the reader up
       if (held) {
-        _closeRange = { sc, space, padding: sc.style.paddingBottom, view: _visKey.slice(_visKey.indexOf('|')) };
-        sc.style.paddingBottom = (parseFloat(getComputedStyle(sc).paddingBottom) + space) + 'px';
+        _closeRange = { sc, space, view: _visKey.slice(_visKey.indexOf('|')) };
+        sc.style.setProperty('--held', space + 'px');
       }
-      // an open then close leaves the row where it was (his 11-04 web-48-4: "it would end at the same place"): the list scrolls
-      // in step with the shrink only by what its end would take back, so the view never ends on empty space, and a card
-      // scrolled past brings its row to the view's top (his "if you scroll down after you open the composer too"). By deltas,
-      // so a reader pin's or a hand's own scroll stays; the held space keeps the browser from clamping under it
+      // an open then close leaves the row where it was: the list scrolls in step with the shrink only by what its end would
+      // take back, so the view never ends on empty space, and a card scrolled past brings its row to the view's top.
+      // By deltas, so a reader pin's or a hand's own scroll stays; the held space keeps the browser from clamping under it
       const ride = space ? this._rideClose(sc, grow, space, held) : null;
       if (this.composer.open && this.editing && sc) _viewHold = true;
       _editEnd = end; this._reflow();   // before any row rises into view — the collapse itself never re-windows
@@ -4106,9 +4264,10 @@ document.addEventListener('alpine:init', () => {
     _rideClose(sc, grow, space, held) {
       const card = grow.getBoundingClientRect(), top = sc.getBoundingClientRect().top, g0 = card.height, end = g0 - space, extra = held ? space : 0;   // unrounded, as the open's glide leaves it mid-frame
       const sub = _morphRows.slice(1);   // the subtree unfolds under the shrinking card: the list loses only the block's shrink
-      const room = card.bottom - top + Math.round(sc.scrollHeight - extra - sc.scrollTop - card.bottom + top) - sc.clientHeight;   // the list below the card is whole rows: scrollHeight drops the card's fraction (a 1px drop at the end)
+      const room = card.bottom - top + Math.ceil(sc.scrollHeight - extra - sc.scrollTop - card.bottom + top - .5) - sc.clientHeight;   // the list below the card is whole rows: scrollHeight rounds the card's fraction, a .5 up (a 1px drop at the end)
       const above = Math.max(0, top + this._seenTop(sc) - card.top);   // a card the reader scrolled past: the rows in view hold until its row reaches the view's top
-      let rode = 0, at = sc.scrollTop, peak = g0;   // unrounded: a write rounds to the device pixel
+      let rode = 0, peak = g0;
+      sc._at = sc.scrollTop;   // unrounded, and shared with the close's hold: a write rounds to the device pixel, so a writer keeping its own drops the other's sub-pixel steps
       sc._growGlide?.finish();   // the open's hold, if still live, would pin the list where it was
       motion.stop(sc);
       const step = () => {
@@ -4117,8 +4276,8 @@ document.addEventListener('alpine:init', () => {
         peak = Math.max(peak, now);   // an open still growing under the close's hold grows into room below
         // the shrink's own (a row the save files elsewhere is not); a card scrolled past further than it shrinks moves the rows in view down, in step, so its row still lands at the top
         const lost = peak - now, by = Math.max(Math.min(lost, above), lost * above / Math.max(peak - end, 1), lost - room - (peak - g0));
-        if (Math.abs(sc.scrollTop - at) >= 1) at = sc.scrollTop;   // another write (a reader pin) moved it: from there
-        sc.scrollTop = at -= by - rode;
+        if (Math.abs(sc.scrollTop - sc._at) >= 1) sc._at = sc.scrollTop;   // another write (a reader pin) moved it: from there
+        sc.scrollTop = sc._at -= by - rode;
         rode = by;
       };
       const ride = new ResizeObserver(step);
@@ -4141,13 +4300,16 @@ document.addEventListener('alpine:init', () => {
       const t = this.byId.get(this.editing); if (!t || t.archived_at) return;   // an archived check is inert
       const was = this._keepOpen(t.id);
       if (inNotes(t) && !inNotes(this.draft) && !await this.rowNote(t)) return;   // a note the draft made a task: the check writes the type with it, else toggle skips a note
-      await this.toggle(this.byId.get(t.id));
-      this._rebaseDraft(was);
-      const now = this.byId.get(t.id);   // a checklist with unsaved edits finishes with the task, else its Save would reopen it
-      if (now?.completed_at && now.checklist?.length && now.checklist.every(c => c.done) && this._live(was.draft) && this.draft.checklist.some(c => !c.done)) {
-        for (const c of this.draft.checklist) c.done = true;
-        this.syncChkRows();
-      }
+      await this.toggle(this.byId.get(t.id), null, () => {   // after the write: a sweep ask's Complete all writes later
+        this._rebaseDraft(was);
+        const now = this.byId.get(t.id);   // unsaved checklist items and subtasks finish with the task, else its Save would reopen it
+        if (!now?.completed_at || !this._live(was.draft)) return;
+        for (const s of this.draft.subs) s.done = true;
+        if (now.checklist?.length && now.checklist.every(c => c.done) && this.draft.checklist.some(c => !c.done)) {
+          for (const c of this.draft.checklist) c.done = true;
+          this.syncChkRows();
+        }
+      });
     },
     // A task's stored fields → a fresh composer draft (shared by editTask + subtask editors).
     taskToDraft(t) {
@@ -4169,9 +4331,8 @@ document.addEventListener('alpine:init', () => {
     _inPanel() { return this.surface === 'plan' && this.clSideVisible(); },   // the calendar's panel hosts the composer itself
     _inBar() { return this.bar && this.narrow && (this.surface === 'lists' || this.phoneThread()); },   // …and the jot bar every task: a new one, its steps, an edit
     kaEdit() { return !!this.editing && this.editing !== this.jotted && this._inBar(); },   // KA-edit: a tapped task, its list and steps on a subline
-    // The composer IS a row in the visible list, so a task the current view doesn't hold (another project, a
-    // filtered-out one, opened from Now/search/a subtask chevron) has nothing to sit on. Navigate to a view that
-    // holds it; returns true when it moved, so the caller re-opens after Alpine's flush.
+    // The composer IS a row in the visible list, so a task the view doesn't hold (another project, filtered out, opened from
+    // Now/search/a chevron) has nothing to sit on: navigate to a view that holds it. True when it moved (re-open after the flush).
     goToTask(t) {
       if (!t || this._inPanel()) return false;
       if (this.surface === 'lists' && this.rowIndexOf(t.id) >= 0) return false;
@@ -4181,11 +4342,11 @@ document.addEventListener('alpine:init', () => {
       this.setNav(inProj ? 'project' : 'all', inProj ? root.id : null);   // setNav also moves the surface to Lists
       return true;
     },
-    // `routed` bounds the hop to ONE: a task with no row anywhere in Lists (a completed one while the done lens
-    // is off) would otherwise re-navigate forever and hang the page.
+    // `routed` bounds the hop to ONE: a task with no row anywhere in Lists (a completed one while the done lens is off)
+    // would otherwise re-navigate forever.
     editTask(t, ev, routed, ghost) {   // ghost: the finder's query, kept in the checklist ghost when a checklist item matches it
       if (this.sticky) return desktopWindow('openTask', t.id);   // the note is too small for the composer: the global composer's window opens it
-      if (!routed && this.goToTask(t)) return queueMicrotask(() => this.editTask(t, null, true, ghost));   // the row has to exist before it can be measured and covered: after Alpine's flush, not a $nextTick — the palette's closing transition holds that a frame, and keys typed in it reached the page
+      if (!routed && this.goToTask(t)) return queueMicrotask(() => this.editTask(t, null, true, ghost));   // the row must exist to be measured: after Alpine's flush, not $nextTick (the palette's closing transition holds that a frame; keys typed in it reached the page)
       this.jotted = routed === 'jot' ? t.id : null;
       _jumped = !ev;   // the in-place rule is for a row the reader TAPPED; a palette/keyboard open lifts the whole composer in
       // ev.currentTarget is the list (<ul>); resolve the actual row by id
@@ -4343,10 +4504,10 @@ document.addEventListener('alpine:init', () => {
       this.evMonth = false;   // the setter opens on its Day chips
       change();
     },
-    // Create-then-delete: a reconcile never leaves the user with fewer reminders than they authored. It removes only what the draft
-    // dropped from `base`, what the composer opened with: a reminder another tab added since was never on screen to remove. A removal
-    // joins the save's journal ops `j`, so ⌘Z brings it back; its Bin copy is stored first and, once `j` is journaled (`drops`), stays a Bin row.
-    // false: one didn't land — the draft keeps it staged, a landed add as saved.
+    // Create-then-delete: a reconcile never leaves fewer reminders than the user authored. It removes only what the draft dropped
+    // from `base` (what the composer opened with): one another tab added since was never on screen. A removal joins the save's
+    // journal ops `j`, so ⌘Z brings it back; its Bin copy is stored first and, once `j` is journaled (`drops`), stays a Bin row.
+    // false: one didn't land: the draft keeps it staged, a landed add as saved.
     async _saveReminders(taskId, d, base, j, drops) {
       const live = new Map(userReminders(this.reminders, taskId).map(r => [r.id, r])), keep = new Set(), left = [];   // derived rows are the brain's — never ours to delete
       const pick = r => ({ anchor: r.anchor, offset_minutes: r.offset_minutes ?? null, at: r.at ?? null, severity: r.severity, repeat: r.repeat, times: r.times, message: r.message || null, paused: !!r.paused });
@@ -4397,7 +4558,7 @@ document.addEventListener('alpine:init', () => {
           return obj ? { ...r, obj } : null;
         }).filter(Boolean);
         const results = [...nav, ...docs];   // nav/commands first (the "go/do" intent), then content matches
-        if (this.isFilterQuery(query)) results.push({ kind: 'cmd', type: 'command', id: 'save-filter', title: `Save "${query.trim()}" as filter`, icon: 'i-search' });   // appended, not unshifted — must not hijack Enter from a real result (e.g. "@home")
+        if (this.isFilterQuery(query)) results.push({ kind: 'cmd', type: 'command', id: 'save-filter', title: `Save "${query.trim()}" as filter`, icon: 'i-search' });   // appended: must not hijack Enter from a real result (e.g. "@home")
         return results;
       }, 1);
     },
@@ -4487,8 +4648,8 @@ document.addEventListener('alpine:init', () => {
       else if (id === 'locations') { this.locMgr = true; this.loadLocations(); }
     },
     draftFields(d = this.draft, editing = this.editing) {
-      // save-flush: catch a natural-language importance word the live pilling couldn't (prefix "focus
-      // on X" can't pill trailing) — only when none was set explicitly, so a pill/picker choice wins.
+      // save-flush: catch an importance word live pilling couldn't (prefix "focus on X" can't pill trailing), only when
+      // none was set explicitly, so a pill/picker choice wins.
       let content = d.content.trim(), importance = d.importance;
       if (importance === 'none') { const p = parseImportanceWords(content); if (p) { content = p.content; importance = p.importance; } }
       const fields = {
@@ -4525,20 +4686,20 @@ document.addEventListener('alpine:init', () => {
     // On a phone no menu floats (docs/ui/mobile-design-baseline.md §No floating menus): a composer's or an editor's docks in the keyboard's place, one opened from the page opens as a sheet
     popSheet() { return this.pop === 'clnav' && this.phoneDock(); },
     listSheet() { return ['add', 'sort'].includes(this.listMenu) && this.phoneDock(); },
-    liftWhileLeaving(el) {   // until x-show hides it; a :has(.sheet.lc-anim) on the track left a ticked Plan chip unrendered (plan-b "Needs a slot")
-      queueMicrotask(() => this.listSheetOn = true);   // set inside this x-effect's flush, the track's :class, already run, never reran (Alpine queueJob skips a job still in the queue)
+    liftWhileLeaving(el) {   // until x-show hides it; a :has(.sheet.lc-anim) on the track left a ticked Plan chip unrendered
+      queueMicrotask(() => this.listSheetOn = true);   // set inside this x-effect's flush, the track's :class already ran and never reruns (Alpine skips a queued job)
       const wait = () => el.style.display === 'none' || this.listSheet() ? this.listSheetOn = false : requestAnimationFrame(wait);
       requestAnimationFrame(wait);
     },
     outside(e, el) { return e.target.isConnected && !el.contains(e.target); },
     popAway(name, e) {
       if (this.pop !== name || e.target.closest('.pop')) return;
-      if (name === 'rem') this.remKeep();   // runs at capture, before the click it closes for (Save) reads the draft
+      if (name === 'rem') this.remKeep();   // runs at capture, before the closing click (Save) reads the draft
       this.pop = null;
       this.pzpop = null; this.pausePicking = false;
-      this.tpop = false;   // the date pop's time pop goes with it: its own .outside skips the same detached targets
+      this.tpop = false;   // the time pop goes with it: its .outside skips the same detached targets
     },
-    // Unified calendar pop (due / plan-nav) — mode driven by `pop`
+    // Unified calendar pop (due / plan-nav), mode set by `pop`
     calDayClassFor(c, ci) {
       if (this.pop === 'due') return this.calDayClass(c, ci);
       return { out: !c.cur, today: c.today, sel: this.clPopSel(c.iso), hot: this.clPopHot(c.iso) };
@@ -4548,8 +4709,8 @@ document.addEventListener('alpine:init', () => {
       else this.clPickDate(c.iso);
     },
     calDayMouseenterFor(c) { if (this.pop === 'clnav') this.clPopHoverWk = this.clView === 'week' ? this._clWkKey(c.iso) : ''; },
-    // The 42 days as html: built when the month or its ordinals change, restamped in place otherwise, so a pick, a drag or a
-    // walked focus never replaces the day under the pointer or the key.
+    // The 42 days as html: rebuilt when the month or ordinals change, else restamped in place so a pick, drag or
+    // walked focus never replaces the day under the pointer or key.
     calPaint(grid) {
       const cells = grid._cells = this.calCells(), due = this.pop === 'due', stop = this.calStop();
       const days = cells.map((c, i) => html`<button type="button" class="cal-day" data-i="${i}" aria-label="${c.label}"><span>${c.d}</span><i class="bar l"></i><i class="bar r"></i>${raw(due && c.ord ? `<b class="ordn">${c.ord}</b>` : '')}</button>`).join('');
@@ -4561,7 +4722,7 @@ document.addEventListener('alpine:init', () => {
         if (b.className !== cls) b.className = cls;
         if (b.tabIndex !== tab) b.tabIndex = tab;
       });
-      // a new month removed the focused day: the stop takes focus now, or the next held key lands on body
+      // a new month removed the focused day: the stop takes focus, or the next held key lands on body
       if (walking && !grid.contains(document.activeElement)) els[cells.findIndex(c => c.iso === stop)]?.focus();
     },
     calAt(e) { const b = e.target.closest?.('.cal-day'); return b && e.currentTarget._cells[b.dataset.i]; },
@@ -4569,53 +4730,49 @@ document.addEventListener('alpine:init', () => {
       if (this.pop === 'rem') this.remKeep();
       this.pop = this.pop === name ? null : name;
       this.calFocus = null;
-      // Kill any live anchor tracker before opening a new pop
       if (this._popTrack) { this._popTrack(); this._popTrack = null; }
-      this.popDock = this.phoneDock() && (!!anchor?.closest('.composer-dock, .event-editor, .block-editor') || name === 'clWhen');   // a phone's composer and editor pops open in the keyboard's place
+      this.popDock = this.phoneDock() && (!!anchor?.closest('.composer-dock, .event-editor, .block-editor') || name === 'clWhen');   // phone composer/editor pops open in the keyboard's place
       if (!this.pop || !anchor) return _keyboard();
-      const r = anchor.getBoundingClientRect(), m = 8, card = anchor.closest('.event-editor, .block-editor');   // an editor's pop hangs under its card, clear of Delete and Save
+      const r = anchor.getBoundingClientRect(), m = 8, card = anchor.closest('.event-editor, .block-editor');   // an editor's pop hangs under its card, clear of Delete/Save
       this.popXY = { left: r.left, top: (card ?? anchor).getBoundingClientRect().bottom + 5 };
-      // A chip's pop holds the chip's opening place in its row: chips reflow under an open pop (unsetting the date sends When to
-      // the row's end), and following the chip would make the pop jump. The row still carries it through scroll and the composer's growth.
+      // A chip's pop holds the chip's opening place in its row: chips reflow under an open pop, and following one would
+      // make the pop jump. The row still carries it through scroll and composer growth.
       // ceiling: the held place ignores the phone editors' sideways-scrolling chip row and a resize that re-wraps the row; follow the chip there once either shows up
       const row = anchor.closest('.composer-opts'), r0 = row?.getBoundingClientRect();
       const held = () => { const b = row.getBoundingClientRect(); return new DOMRect(r.left - r0.left + b.left, r.top - r0.top + b.top, r.width, r.height); };
-      // The handle is published SYNCHRONOUSLY even though the loop below only starts a tick later —
-      // otherwise two togglePops in one task both read _popTrack as null and leave TWO loops running,
-      // the stale one still writing popXY from its own anchor.
+      // Published synchronously, though the loop starts a tick later: two togglePops in one task would both
+      // read _popTrack as null and leave two loops running.
       let rafId = null, dead = false;
       const cleanup = () => { dead = true; cancelAnimationFrame(rafId); if (this._popTrack === cleanup) this._popTrack = null; };
       this._popTrack = cleanup;
-      queueMicrotask(() => {   // after the flush that mounts it: a $nextTick held by a starting x-transition painted it a frame unplaced (uncapped, or below when it flips up)
+      queueMicrotask(() => {   // after the flush that mounts it: a $nextTick held by an x-transition painted it a frame unplaced
         if (dead) return;
-        const el = document.querySelector('body > .pop');   // the teleported one: list menus are .pop too, drawn through their leave
+        const el = document.querySelector('body > .pop');   // the teleported one: list menus are .pop too
         if (!el) return;
-        if (el.matches('.cl-pop, .rem-pop, .kind-pop') && anchor.matches(':focus-visible')) (el.querySelector('.ev-when input') ?? el.querySelector('input, button:enabled'))?.focus();   // opened from the keyboard: its first field next, not 8 Tabs on. future-guard (Chrome puts a click's focus back on the chip): a tap must not raise a date field's keyboard
-        const scroll = getComputedStyle(el).overflowY === 'visible';   // a pop with its own scroller (the reminders') keeps it
+        if (el.matches('.cl-pop, .rem-pop, .kind-pop') && anchor.matches(':focus-visible')) (el.querySelector('.ev-when input') ?? el.querySelector('input, button:enabled'))?.focus();   // opened from the keyboard: first field next, not 8 Tabs on. future-guard: a tap must not raise a date field's keyboard
+        const scroll = getComputedStyle(el).overflowY === 'visible';   // a pop with its own scroller (reminders') keeps it
         const _pos = (ar) => {
-          // Vertically this one FLIPS rather than clamping — above the anchor (an editor's: its card) if the pop would
-          // overflow the bottom edge, or if it's marked data-pos="up". Fitting neither side it takes the roomier one and
-          // scrolls: clamped to the top it would cover its own chip. Horizontally it's the shared clamp.
-          const own = scroll ? 0 : Math.max(0, ...[...el.querySelectorAll('.rem-body')].map(b => b.scrollHeight - b.clientHeight));   // its own scroller hides what the cap cut: counting it holds a capped pop capped, not flipping every frame
+          // Vertically it flips above the anchor (an editor's: its card) when it would overflow the bottom or is
+          // data-pos="up". Fitting neither side it takes the roomier one and scrolls: clamped to the top it would
+          // cover its own chip. Horizontally it's the shared clamp.
+          const own = scroll ? 0 : Math.max(0, ...[...el.querySelectorAll('.rem-body')].map(b => b.scrollHeight - b.clientHeight));   // counts what its own scroller hides, so a capped pop stays capped instead of flipping every frame
           const vh = innerHeight - _kb, ph = el.scrollHeight + el.offsetHeight - el.clientHeight + own, box = card?.getBoundingClientRect() ?? ar;   // its uncapped height
           const below = vh - m - box.bottom - 5, above = box.top - 5 - m;
           const up = (el.dataset.pos === 'up' || ph > below) && (ph <= above || above > below), room = up ? above : below;
           return { left: popLeft(ar.left, el.offsetWidth + m, m), top: up ? box.top - 5 - Math.min(ph, room) : box.bottom + 5, maxH: ph > room ? room : 0, scroll };
         };
-        // Follow the anchor every frame: scroll, resize AND any layout move (the composer growing under its chips).
-        // Recompute only when the placed rect changed: an at-rest pop costs one rect read per frame, a chip row's pop two and a DOMRect.
+        // Follow the anchor every frame (scroll, resize, layout moves); recompute only when the placed rect changed.
         let prev = '', zeroRects = 0;
         const follow = () => {
           rafId = requestAnimationFrame(follow);
           if (!this.pop || !el.isConnected) { _keyboard(); return cleanup(); }
-          // The pop's own size is part of the key: a filtered list that shrinks under a STATIONARY anchor otherwise leaves the
-          // pop hanging where the taller version ended (6px → 38px gap), and content that widens it after placement runs it flush to the edge.
-          const vh = window.innerHeight, vw = document.documentElement.clientWidth;   // in the key: a window that shrinks under a still anchor moves its room
+          // The pop's own size is in the key: a filtered list shrinking under a still anchor would leave the pop
+          // hanging where the taller one ended, and content that widens it would run it flush to the edge.
+          const vh = window.innerHeight, vw = document.documentElement.clientWidth;   // in the key: a shrinking window moves the room
           const a = anchor.getBoundingClientRect(), h = row ? held() : a, k = `${h.top},${h.left},${a.width},${el.offsetHeight},${el.offsetWidth},${_kb},${vh},${vw}`;
           if (k === prev) return;
           if (!a.width && !a.height) {
-            // A parent still mid-show (an x-transition enter) reports a zero rect for a frame or two: allow a
-            // few frames. A removed anchor or a lasting zero rect closes.
+            // A parent mid-show (x-transition enter) reports a zero rect for a frame or two; a removed anchor or lasting zero rect closes.
             if (!anchor.isConnected || ++zeroRects >= 4) { this.pop = null; return cleanup(); }
             return;
           }
@@ -4623,25 +4780,24 @@ document.addEventListener('alpine:init', () => {
           if (h.bottom < 0 || h.top > vh || h.right < 0 || h.left > vw) { this.pop = null; return cleanup(); }
           prev = k;
           if (!this.popDock) this.popXY = _pos(h);
-          else if (_keyboard() && anchor.closest('.composer')) {   // lift the card over the panel, as the caret reveal does over the keyboard; never its top off screen. An editor's card rides --kb (styles.css)
-            const card = anchor.closest('.composer'), r = card.getBoundingClientRect(), over = Math.min(r.bottom - (vh - _kb), r.top), sc = card.closest('.app');   // not $refs: a pop's own item (···'s Size) has none
-            if (over > 0 && sc) sc.scrollTop += over;   // the jot bar's sheet sits outside the list and rides the keyboard itself
+          else if (_keyboard() && anchor.closest('.composer')) {   // lift the card over the panel, never its top off screen. An editor's card rides --kb (styles.css)
+            const card = anchor.closest('.composer'), r = card.getBoundingClientRect(), over = Math.min(r.bottom - (vh - _kb), r.top), sc = card.closest('.app');   // not $refs: a pop's own item has none
+            if (over > 0 && sc) sc.scrollTop += over;   // the jot bar's sheet rides the keyboard itself
           }
         };
         follow();
       });
     },
-    // translateX keeps absolute-positioned pickers in viewport (used by _positionPicker + log-when-pop)
+    // translateX keeps absolute-positioned pickers in the viewport
     clampX(el) {
       if (!el) return;
       el.style.transform = '';
       const r = el.getBoundingClientRect(), m = 8, vw = document.documentElement.clientWidth;
-      // Measured while the surface canvas is still gliding sideways, the whole box reads as off-screen, and clamping
-      // that snapshot bakes in a permanent shift. It's already positioned against its own parent, so when the
-      // parent isn't on screen, leave it alone.
+      // Measured while the surface canvas still glides sideways, the box reads as off-screen and clamping bakes in a
+      // permanent shift: with the parent off screen, leave it alone.
       const pr = el.offsetParent?.getBoundingClientRect();
       if (pr && (pr.right < m || pr.left > vw - m)) return;
-      const dx = popLeft(r.left, r.width + m, m) - r.left;   // same clamp as the fixed pops, applied as a delta
+      const dx = popLeft(r.left, r.width + m, m) - r.left;   // the fixed pops' clamp, as a delta
       if (dx) el.style.transform = `translateX(${Math.round(dx)}px)`;
     },
     projectPath(p, sep = ' / ') {
@@ -4657,8 +4813,8 @@ document.addEventListener('alpine:init', () => {
     pickerMatches(candidates, query = this.pickerQ) {
       const q = query.trim();
       if (!q) return candidates;
-      // The haystack only changes when task data does; rebuilt per keystroke it walks EVERY candidate's
-      // parent chain (20k chain-walks a key). Cached per id, dropped on _rowV.
+      // The haystack only changes with task data; per keystroke it would walk every candidate's parent chain.
+      // Cached per id, dropped on _rowV.
       if (_hayV !== this._rowV) { _hayV = this._rowV; _hay.clear(); _hayOf = new WeakMap(); }
       let pool = _hayOf.get(candidates);
       if (!pool) _hayOf.set(candidates, pool = { low: null, hay: candidates.map(t => { let s = _hay.get(t.id); if (s === undefined) _hay.set(t.id, s = t.content + ' ' + this.projectPath(t)); return s; }) });
@@ -4668,19 +4824,18 @@ document.addEventListener('alpine:init', () => {
       const f = q.toLowerCase(), low = pool.low ??= pool.hay.map(s => s.toLowerCase());
       return candidates.filter((_, i) => _seqIn(low[i], f));   // short-fragment fallback
     },
-    // Projects you can file under: overview projects (even empty) and any parent task; minus the default.
-    // Overview projects first (stable within groups); task-projects (tasks acting as containers) trail.
-    // own: the row being filed (the delete dialog's), whose subtree can't take it.
+    // Projects you can file under: overview projects (even empty) and any parent task, minus the default.
+    // Overview projects first; task-projects trail. own: the row being filed, whose subtree can't take it.
     filteredProjects(own = this.editing) {
       const def = this.store.defaultProject();
-      // pool per _relIdx (data × editing): a keystroke reuses its haystack; the copy keeps the sort off the cached pool (an empty query returns it as is)
+      // pool per _relIdx: a keystroke reuses its haystack; the copy keeps the sort off the cached pool
       const idx = own === this.editing ? this._relIdx() : {};
-      if (!idx.projs) { const mine = new Set(own ? descendantIds(this.tasks, own) : []), shelved = this._shelved();   // filing a task under its own subtree is a cycle the store refuses
+      if (!idx.projs) { const mine = new Set(own ? descendantIds(this.tasks, own) : []), shelved = this._shelved();   // filing under its own subtree is a cycle the store refuses
         idx.projs = this.tasks.filter(t => !mine.has(t.id) && !shelved.has(t.id) && (t.id === def || t.overview || this.hasChildren(t.id))); }
       return [...this.pickerMatches(idx.projs)].sort((a, b) => (b.overview === true || b.id === def ? 1 : 0) - (a.overview === true || a.id === def ? 1 : 0));
     },
     taskProj(p) { return !p.overview && p.id !== this.store.defaultProject(); },   // container task, not an overview project
-    // The project picker's rows, ticked at sel: task-projects read as the TASKS they are (checkbox + title + areas), the rest as # rows
+    // The project picker's rows, ticked at sel: task-projects read as tasks (checkbox, title, areas), the rest as # rows
     projRowsHtml(list, sel) {
       return list.map(p => { const tick = raw(p.id === sel ? html`<svg class="tick ico"><use href="#i-check"/></svg>` : ''), tint = p.color ? `color:${p.color}` : '';
         return this.taskProj(p) ? html`<button type="button" class="pop-item task-line" data-pid="${p.id}">${raw(this.taskLine(p))}${tick}</button>`
@@ -4710,8 +4865,7 @@ document.addEventListener('alpine:init', () => {
       this.pickProject(project);
     },
     toggleArea(id) { const i = this.draft.areas.indexOf(id); if (i >= 0) this.draft.areas.splice(i, 1); else this.draft.areas.push(id); },
-    // Find-or-create an area by NAME → its id. Store dedups (trim + reuse), so re-typing a name never
-    // duplicates; the server also has areas_user_name_idx as the backstop.
+    // Find-or-create an area by name → its id. The store dedups (trim + reuse); areas_user_name_idx backstops it.
     async ensureAreaId(name) {
       const nm = (name || '').trim(); if (!nm) return null;
       const found = this.areas.find(a => a.name === nm);
@@ -4721,17 +4875,17 @@ document.addEventListener('alpine:init', () => {
       return area?.id ?? null;
     },
     async createAndToggleArea() {
-      const d = this.draft, id = await this.ensureAreaId(this.newAreaName);   // held: the tag goes on the draft it was typed in, not one opened meanwhile
+      const d = this.draft, id = await this.ensureAreaId(this.newAreaName);   // held: the tag goes on the draft it was typed in
       if (id && !d.areas.includes(id)) d.areas.push(id);
       this.newAreaName = '';
     },
-    // Areas cluster: usage-weighted size tier (s1 big → s3 small) by rank thirds over tasks touching
-    // the area in the last 30 LOCAL days. Ties share the better tier; flat usage → all s2.
+    // Areas cluster: size tier (s1 big → s3 small) by rank thirds over tasks touching the area in the last 30 local
+    // days. Ties share the better tier; flat usage → all s2.
     areaTier(id) {
       const use = _memo(_areaUseMemo, this._rowV, () => {
         const cut = new Date(); cut.setHours(0, 0, 0, 0); cut.setDate(cut.getDate() - 30);
         const use = Object.fromEntries(this.areas.map(l => [l.id, 0])), since = cut.toISOString();
-        // raw + an ISO string compare: a Date parse and two proxy traps per task, ×5000, on every _rowV bump
+        // raw + ISO string compare: a Date parse and proxy traps per task on every _rowV bump
         for (const t of window.Alpine.raw(this.tasks)) if ((t.updated_at || t.created_at || '') >= since)
           for (const a of t.area_ids || []) if (a in use) use[a]++;
         return use;
@@ -4742,29 +4896,27 @@ document.addEventListener('alpine:init', () => {
       return 's' + (Math.min(Math.floor(ranked.findIndex(r => use[r] === use[id]) / third), 2) + 1);
     },
     endPicking: false, tpop: false, pzpop: null, pausePicking: false, linkUrl: '', calFocus: null, tpopStyle: '', _calDn: null, calH: null, _calDragged: false, calPulse: false, hdrPulse: false, repIdx: 0, repNum: null,
-    // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (placement, amber,
-    // saved as a schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). Set by the chip
-    // that opened it: the date chip opens 'on', the flag chip 'by'.
+    // Which register the When pop's day taps speak (§11): 'on' = a schedule intention (amber, saved as a
+    // schedule-item), 'by' = the deadline wall (available_from→deadline_at, red). The date chip opens 'on', the flag chip 'by'.
     dreg: 'on',
     repRules() { return recRules(this.draft.recurrence); },
-    // the statement the spatial controls act on (headers, ordinals, time popover) — last-touched zone
+    // the statement the spatial controls act on (headers, ordinals, time popover): the last-touched zone
     curRule() { const rs = this.pop === 'due' && this.dreg === 'by' ? [] : this.repRules(); return rs[Math.min(this.repIdx, rs.length - 1)] || null; },
     _calTo(iso) { const d = new Date(iso.slice(0, 10) + 'T00:00'); this.cal = { y: d.getFullYear(), m: d.getMonth() }; },
-    // draft.on is the ON register's date outside repeat mode (saved as a schedule-item, never as tasks.recur_from)
-    // and the rule ANCHOR inside it; deadline_at is the BY register. The pop's type-a-date field follows suit.
+    // draft.on is the ON register's date outside repeat mode (a schedule-item, never tasks.recur_from) and the rule
+    // anchor inside it; deadline_at is the BY register. The type-a-date field follows.
     _dateKey() { return this.dreg === 'by' ? 'deadline_at' : 'on'; },
     openDate(name, anchor, reg = 'on') {
       this.togglePop(name, anchor);
       if (this.pop !== name) return;
-      this.dreg = reg;   // a deadline still shows as its red day in the date pop (calDayClass paints both registers)
+      this.dreg = reg;   // calDayClass paints both registers: a deadline still shows as its red day
       this.endPicking = false; this.tpop = false; this.pzpop = null; this.pausePicking = false; this.repNum = null; this._typedN = 1; this._typedFrom = '';
       this.draft.dateText = '';   // both pops share the field: what was typed in one never lands in the other
       this._calTo((reg === 'by' && (this.draft.deadline_at || this.draft.available_from)) || this.draft.on || this.draft.deadline_at || isoDate(new Date()));
-      this.$nextTick(() => this.pop === name && !this.popDock && !document.activeElement?.closest('.pop.cal') && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it. A held tick lands late: a Tab already in the pop keeps its place
+      this.$nextTick(() => this.pop === name && !this.popDock && !document.activeElement?.closest('.pop.cal') && this.$refs.calType?.focus());   // docked, it stands in for the keyboard: a tap on the field brings it. A Tab already in the pop keeps its place
     },
-    // Pause asks when it comes back first, in a pop on press; the line goes in after.
-    // A repeat resumed after falling behind starts again at its next date from today, not the pile it missed;
-    // one still ahead keeps its date.
+    // Pause asks when it comes back first, in a pop on press. A repeat resumed after falling behind restarts at its
+    // next date from today, not the pile it missed; one still ahead keeps its date.
     repPause(r, ev) {
       if (!r.paused) return this.togglePausePop(ev, r);
       r.paused = false;
@@ -4786,7 +4938,7 @@ document.addEventListener('alpine:init', () => {
       if (was) return;
       this.repIdx = this.repRules().indexOf(r);
       const b = ev.currentTarget.getBoundingClientRect(), x = ev.detail ? ev.clientX : b.left;   // at the pointer
-      const y = b.bottom + 184 <= innerHeight ? `top:${Math.round(b.bottom + 4)}px` : `top:auto; bottom:${Math.round(innerHeight - b.top + 4)}px`;   // under the control, above it near the window's foot: never over the value clicked
+      const y = b.bottom + 184 <= innerHeight ? `top:${Math.round(b.bottom + 4)}px` : `top:auto; bottom:${Math.round(innerHeight - b.top + 4)}px`;   // under the control, above it near the window's foot, never over the value clicked
       this.pzpop = { style: this.popDock ? this._dockHeight() : `left:${Math.round(popLeft(x, 200))}px; ${y};` };
     },
     // For a week / two weeks / a month: back on its first date on or after that day
@@ -4813,7 +4965,7 @@ document.addEventListener('alpine:init', () => {
     // Recompute the next-occurrence due whenever the recurrence rule changes (anchored at the current due, else today).
     refreshRecurrenceDue() {
       if (!this.repRules().length) return;
-      // An existing due date (even a past one) is the rule's ANCHOR — never overwrite it; only seed when empty.
+      // An existing due date (even a past one) is the rule's anchor: seed only when empty.
       if (this.draft.on) {
         this._calTo(this.draft.on);
         return;
@@ -4860,7 +5012,7 @@ document.addEventListener('alpine:init', () => {
       this.setRepeatFreq(freq);
       if (freq === 'month') r.month_day = new Date((this.draft.on || isoDate(new Date())).slice(0, 10) + 'T00:00').getDate();
     },
-    repNumTap(k) { this.repNum = this.repNum === k ? null : k; },   // a phone's repeat number: its picker stands in the calendar's place
+    repNumTap(k) { this.repNum = this.repNum === k ? null : k; },   // a phone's repeat number picker stands in the calendar's place
     // "on [...]" chip label: weekly day set / monthly day-of-month / yearly anniversary; null when inapplicable (day freq)
     repDaysLabel(r) {
       if (!r) return null;
@@ -4892,23 +5044,21 @@ document.addEventListener('alpine:init', () => {
         this.repRules().forEach(x => { x.gen_due = false; });   // hand-set due: stays accent even while paused
         return;
       }
-      // ON register (§11): the tap is an INTENTION — one all-day placement, re-tap to move it, re-tap the
-      // same day to unplace. It never touches the window/deadline, so flipping registers loses nothing.
+      // ON register (§11): the tap is an intention, one all-day placement; re-tap the same day to unplace.
+      // It never touches the window/deadline, so flipping registers loses nothing.
       if (this.dreg === 'on') { this.draft.on = this.draft.on === c.iso ? '' : c.iso; return; }
       this.calDayBy(c);
     },
-    // BY register, nearest-endpoint model: fresh tap = THE deadline.
-    // With something set, a tap grows the window at whichever endpoint the day is nearer (only a deadline:
-    // earlier = start, later = deadline moves). Re-tapping an endpoint collapses to deadline-only that day —
-    // so a degenerate from==deadline window can't exist. Drag (calUp) writes the same two fields.
-    // Also the RIGHT-CLICK accelerator from any register (the By segment wears the mouse glyph for it).
+    // BY register, nearest-endpoint model: a fresh tap is the deadline; otherwise a tap grows the window at the nearer
+    // endpoint (a lone deadline: earlier = start, later = moves it). Re-tapping an endpoint collapses to
+    // deadline-only, so a from==deadline window can't exist. Drag (calUp) writes the same two fields.
+    // Also the right-click accelerator from any register.
     calDayBy(c) {
       const keepT = t => t + (this.draft.deadline_at || '').slice(10);   // a date tap never eats a set deadline time
       _dlAuto = '';   // any tap is a chosen date, even on the derived day
       const f = (this.draft.available_from || '').slice(0, 10), dl = (this.draft.deadline_at || '').slice(0, 10);
       if (c.iso === dl || c.iso === f) {
-        // same-day cycle: a window endpoint collapses to by-that-day; by → ONLY (walls both
-        // sides — vote day, birthday call); only → clear. Each state is voiced live on the chip.
+        // same-day cycle: a window endpoint collapses to by-that-day; by → only (walls both sides); only → clear
         if (f === dl && f === c.iso) { this.draft.deadline_at = ''; this.draft.available_from = ''; return; }
         if (!f && c.iso === dl) { this.draft.available_from = c.iso; return; }
         this.draft.deadline_at = keepT(c.iso); this.draft.available_from = ''; return;
@@ -4925,28 +5075,27 @@ document.addEventListener('alpine:init', () => {
     calDayClass(c, ci) {
       const f = (this.draft.available_from || '').slice(0, 10), dl = (this.draft.deadline_at || '').slice(0, 10);
       const a = this._calDn, hh = this.calH ?? a, drag = a != null && hh !== a;   // in-gesture range previews as the committed look
-      // amber cap = draft.on: the rule anchor in repeat mode, the ON placement outside it. Painted in
-      // BOTH registers — flipping to By must not hide a placement the user can still see on the chip.
+      // amber cap = draft.on: the rule anchor in repeat mode, the ON placement outside it. Painted in both
+      // registers: flipping to By must not hide a placement still on the chip.
       return { out: !c.cur, today: c.today, sel: !drag && !!this.draft.on && c.iso === this.draft.on, occ: c.occ, 'occ-h': c.occh, 'occ-g': c.occg, end: c.end, h: c.endh,
-        dsel: drag ? ci === Math.max(a, hh) : c.iso === dl,   // the window's END is the deadline — closing bracket ⌉
-        fsel: drag ? ci === Math.min(a, hh) : !!f && c.iso === f,   // the window's START — opening bracket ⌈
+        dsel: drag ? ci === Math.max(a, hh) : c.iso === dl,   // the window's end is the deadline: closing bracket ⌉
+        fsel: drag ? ci === Math.min(a, hh) : !!f && c.iso === f,   // the window's start: opening bracket ⌈
         only: !drag && !!f && f === dl && c.iso === dl,   // collapsed window: both walls red
         wnd: drag ? ci >= Math.min(a, hh) && ci < Math.max(a, hh) : !!f && !!dl && c.iso >= f && c.iso < dl,
         gz: c.iso === this.draft.on && this.repRules().some(r => r.paused && r.gen_due) };
     },
-    _dockHeight() { return `height:${document.querySelector('body > .pop.dock:not(.tpop, .pz-pop)').offsetHeight}px`; },   // a docked pop standing in for the date or reminders pop keeps its height
-    // --- time popover: opened only by a repeat statement's [at …] chip (index.html) — fixed to the viewport, not absolute inside the teleported `.pop` ---
+    _dockHeight() { return `height:${document.querySelector('body > .pop.dock:not(.tpop, .pz-pop)').offsetHeight}px`; },   // a docked pop keeps the height of the date or reminders pop it replaces
+    // --- time popover: opened by a repeat statement's [at …] chip; fixed to the viewport, not inside the teleported `.pop` ---
     toggleTimePop(ev) {
       if (this.tpop) { this.tpop = false; return; }
-      const b = ev.currentTarget.getBoundingClientRect();   // BOTTOM-anchored (it sits above its trigger) — the only one
+      const b = ev.currentTarget.getBoundingClientRect();   // bottom-anchored: it sits above its trigger
       this.tpopStyle = this.popDock ? this._dockHeight() : `left:${Math.round(popLeft(b.left, 218))}px; bottom:${Math.round(innerHeight - b.top + 6)}px;`;
       this.tpop = true;
-      this.$nextTick(() => this.tpop && !this.popDock && this.$refs.tpopIn?.focus());   // docked, it stands in for the keyboard, as the date pop
+      this.$nextTick(() => this.tpop && !this.popDock && this.$refs.tpopIn?.focus());   // docked, it stands in for the keyboard
     },
-    // the time the popover edits: the active statement's own `at`, else the By register's deadline time (never the On
-    // time — By shows and clears only the deadline), else the On time
+    // the time the popover edits: the active statement's `at`, else the By deadline time (By never shows the On time), else the On time
     timeGet() {
-      if (this.pop === 'rem' && this.remEd) return this.remTimes()[this.remTi] || '';   // the reminder setter's time chip (remTi; past the end = + time)
+      if (this.pop === 'rem' && this.remEd) return this.remTimes()[this.remTi] || '';   // the reminder setter's time chip (remTi past the end = + time)
       const r = this.curRule();
       return r ? (r.at || '') : this._dateKey() === 'deadline_at' ? timeOf(this.draft.deadline_at || '') : (this.draft.dueTime || '');
     },
@@ -4960,7 +5109,7 @@ document.addEventListener('alpine:init', () => {
       }
       const r = this.curRule(), by = this._dateKey() === 'deadline_at', dl = by && this.draft.deadline_at;
       if (r) { if (v) r.at = v; else delete r.at; }
-      // "by" IS the deadline: until a date is chosen, every pick re-derives its next occurrence and "no time" drops the unchosen date
+      // "by" is the deadline: until a date is chosen, a pick re-derives the next occurrence and "no time" drops the unchosen date
       else if (by && (!dl || dl === _dlAuto)) this.draft.deadline_at = _dlAuto = v ? nextTimeAt(v) : '';
       else if (dl) this.draft.deadline_at = dl.slice(0, 10) + (v ? 'T' + v : '');
       else if (!by) { this.draft.dueTime = v; if (v) this.draft.part = ''; }   // a clock time replaces the day-part, as typed
@@ -5015,8 +5164,9 @@ document.addEventListener('alpine:init', () => {
       // a key held or typed ahead walks on from calFocus while focus is still on its way; a new month's cells render first
       requestAnimationFrame(() => document.querySelector(`.pop.cal .cal-day[aria-label="${DAY_NAME.format(new Date(this.calFocus + 'T00:00'))}"]`)?.focus());
     },
-    // HAZARD: args must be string literals ('eventEdit'/'blockEdit'), never reactive values — a reactive arg changes the x-html string on state updates, causing re-render that kills the input caret mid-typing.
-    // A week strip (a month grid behind its button), the start and end fields, an hour grid and quarters that set the picked one
+    // HAZARD: args must be string literals ('eventEdit'/'blockEdit'): a reactive arg changes the x-html string and the
+    // re-render kills the input caret. A week strip (month grid behind its button), start and end fields, an hour grid
+    // and quarters setting the picked one
     evWhenHtml(key) {
       const ev = key === 'eventEdit';
       const sugs = BLOCK_PRESETS.map((p, i) => html`<button type="button" class="pop-item sug" style="--sug: ${p.color}" @click="clBlockPreset(${i})"><svg class="ico"><use href="#i-${p.icon}"/></svg><span>${p.title}</span><span class="rt">${p.hint}</span></button>`).join('');
@@ -5026,7 +5176,7 @@ document.addEventListener('alpine:init', () => {
         <template x-if="!${key}.all_day">${this.evTimesHtml(key)}</template>
         <button type="button" class="pop-item ev-allday" :class="{ on: ${key}.all_day }" :aria-pressed="${key}.all_day" @click="${key}.all_day = !${key}.all_day"><svg class="ico"><use href="#i-sun"/></svg><span>All day</span></button>`;
     },
-    // typed: "130p", "1:30pm", "13:30" (Enter or leaving the field); ↑/↓ 15 min. A phone's field takes the keyboard on its second tap: the first picks it
+    // typed: "130p", "1:30pm", "13:30" (Enter or leaving the field); ↑/↓ 15 min. A phone's field takes the keyboard on its second tap
     evTimesHtml(key) {
       const field = (f, name, more = '') => `<label class="ev-time" :class="{ on: evPick === '${f}' }"><input aria-label="${name}" autocomplete="off" :readonly="phoneDock() && evPick !== '${f}'" :value="evLabel(${key}.${f === 's' ? 'start' : 'end'})" @focus="evPick = '${f}'; if (!document.documentElement.classList.contains('touch')) { $el.select(); $el._sel = true }" @mouseup="$el._sel && $event.preventDefault(); $el._sel = false" @change="evType(${key}, '${f}', $el)" @keydown.enter.prevent="evType(${key}, '${f}', $el)" @keydown.up.prevent="evNudge(${key}, '${f}', 15)" @keydown.down.prevent="evNudge(${key}, '${f}', -15)">${more}</label>`;
       return `<div class="ev-times" x-init="evPick = 's'"><div class="ev-fields flex items-center">${field('s', 'Start')}<span class="ev-dash">–</span>${field('e', 'End', `<em x-text="evLen(${key})"></em>`)}</div>
@@ -5046,7 +5196,7 @@ document.addEventListener('alpine:init', () => {
     },
     evLabel(t) { return this.fmtTime(t).replace(/^\d+(?=[ap])/, '$&:00'); },   // 1:00pm, as typed
     evLen(o) {
-      const m = (o.multi ? o.span * 1440 : 0) + this._hm(o.end) - this._hm(o.start), len = o.multi || m >= 0 ? m : m + 1440, d = Math.floor(len / 1440);   // as _evRange: a single-day end before the start is the next day
+      const m = (o.multi ? o.span * 1440 : 0) + this._hm(o.end) - this._hm(o.start), len = o.multi || m >= 0 ? m : m + 1440, d = Math.floor(len / 1440);   // as _evRange: a single-day end before the start is next day
       return len <= 0 ? '' : (d ? d + 'd' : '') + (d && len % 1440 ? ' ' : '') + this.durFmt(len % 1440);
     },
     // the picked field's day: an event's end day when End is picked
@@ -5068,14 +5218,15 @@ document.addEventListener('alpine:init', () => {
         return { iso, d: day.getDate(), label: DAY_NAME.format(day), cls: { out: day.getMonth() !== m, today: iso === today, sel: iso === on } };
       });
     },
-    // End picked on an event: the day is its end day (a multi-day event, kept as picked: Save refuses one before the start); else the start's, which the end follows
+    // End picked on an event: the day is its end day (Save refuses one before the start); else the start's, which the end follows
     evPickDay(o, iso, ev) {
       if (ev && this.evPick === 'e' && !o.all_day) Object.assign(o, { multi: true, span: Math.round((new Date(iso) - new Date(o.date)) / 864e5) });
       else o.date = iso;
       this.evMonth = false;
       this._clFollow(o);
     },
-    // a draft's card rests on its tile (styles.css --cl-draft): a day picked off the shown page turns the page there, at the same hour, or both leave the screen
+    // a draft's card rests on its tile (styles.css --cl-draft): a day picked off the shown page turns the page there,
+    // or both leave the screen
     _clFollow(o) {
       if (o !== this.clDraft() || (this.clView !== 'day' && this.clView !== 'week')) return;
       const day = new Date(this._draftOn(o) + 'T00:00');
@@ -5083,17 +5234,17 @@ document.addEventListener('alpine:init', () => {
       this.clAnchor = isoDate(this.clView === 'week' ? this._clWeekStart(day) : day);
       this.clRecalcPages(); this._clScrollToPeriod(8, this._clHour(), true);
     },
-    // the foot holds the item's one decision (a new one's kind: the standard .seg, its picked segment drawn as the tile) and the go
+    // the foot holds the item's one decision (a new one's kind: the standard .seg) and the go
     evActionsHtml(key) {
       const ev = key === 'eventEdit', del = ev ? 'clDeleteEvent' : 'clDeleteBlock', save = ev ? 'clSaveEvent' : 'clSaveBlock';
-      return `<div class="dialog-actions cl-card-foot flex items-center gap-8"><template x-if="!${key}.id"><div class="seg cl-kind"><button type="button" :class="{ on: ${ev} }" :aria-pressed="${ev}" @click="clSetKind('event')">Event</button><button type="button" :class="{ on: ${!ev} }" :aria-pressed="${!ev}" @click="clSetKind('block')">Block</button></div></template>
+      return `<div class="dialog-actions cl-card-foot flex items-center gap-8" x-show="!${key}.g?.ro"><template x-if="!${key}.id"><div class="seg cl-kind"><button type="button" :class="{ on: ${ev} }" :aria-pressed="${ev}" @click="clSetKind('event')">Event</button><button type="button" :class="{ on: ${!ev} }" :aria-pressed="${!ev}" @click="clSetKind('block')">Block</button></div></template>
         <template x-if="${ev} && eventEdit.id && eventEdit.day >= _nowDay"><div class="cl-going flex items-center gap-8"><span>Going?</span><div class="seg"><button type="button" :class="{ on: eventEdit.going === true }" :aria-pressed="eventEdit.going === true" @click="clSetGoing(true)">Going</button><button type="button" :class="{ on: eventEdit.going === false }" :aria-pressed="eventEdit.going === false" @click="clSetGoing(false)">Not going</button></div></div></template>
-        <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id && !${key}.pc" @click="${del}($el)" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
-        <button type="button" class="primary cl-go" :style="${key}.color ? 'background: var(--mark)' : ''" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
+        <span class="spacer"></span><button type="button" class="del-btn inline-flex items-center" x-show="${key}.id && !${key}.pc && !${key}.g?.ro" @click="${del}($el)" title="Delete"><svg class="ico"><use href="#i-trash"/></svg></button>
+        <button type="button" class="primary cl-go" x-show="!${key}.g?.ro" :style="${key}.color ? 'background: var(--mark)' : ''" @click="${save}()" :title="${key}.id ? 'Save' : 'Add'" :aria-label="${key}.id ? 'Save' : 'Add'"><svg class="ico"><use :href="${key}.id ? '#i-check' : '#i-send'"/></svg></button></div>`;
     },
     calCells() {
       const { y, m } = this.cal, lead = new Date(y, m, 1).getDay(), todayIso = isoDate(new Date());
-      // Preview upcoming occurrences of the draft's recurrence as subtle dots — visible month only (cheap).
+      // Preview upcoming occurrences as subtle dots, visible month only.
       const rules = this.repRules();
       const marks = new Map();   // iso → 'occ' | 'occh' | 'occg' (solid > hollow > grey across statements)
       let ord = null, wall = null, wallh = false;
@@ -5108,9 +5259,8 @@ document.addEventListener('alpine:init', () => {
           }
         }
         const cur = this.curRule();
-        // Ordinals follow the ACTIVE statement: while end-picking (a date-end and a count-end are the same tap)
-        // AND whenever a count end is set — the calendar shows which repetition lands on which day.
-        // Armed picking ignores the rule's current ends: ALL candidate days get numbers (a tap swaps count → date).
+        // Ordinals follow the active statement while end-picking and whenever a count end is set, showing which
+        // repetition lands on which day. Armed picking ignores the rule's ends: all candidate days get numbers.
         if (cur && (this.endPicking || cur.ends?.count)) {
           const probe = this.endPicking ? { ...cur, ends: null } : cur;
           ord = new Map(occurrencesInRange(probe, anchor, anchor, last).map((s, i) => [s.slice(0, 10), i + 1]));
@@ -5137,7 +5287,7 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       if (rec) {
-        const { time } = parseDateText(this.draft.dateText);   // "every 2 days at 5pm" — the time rides along
+        const { time } = parseDateText(this.draft.dateText);   // "every 2 days at 5pm": the time rides along
         const rules = [].concat(rec), arr = [...this.repRules()];   // "first and third sunday" is two rules
         if (time) rules.forEach(r => { r.at = time; });
         arr.splice(Math.min(this.repIdx, arr.length - 1), this._typedN, ...rules);   // the phrase replaces the statement(s) it set on the last keystroke
@@ -5159,8 +5309,8 @@ document.addEventListener('alpine:init', () => {
       }
       if (close) { this.draft.dateText = ''; this.pop = null; }
     },
-    // Grounded scheduling suggestions: clock-facts only (today/tomorrow/weekend/nextweek).
-    // Suppressed by similarity (same day as draft.on); deduped. On Sat/Sun "weekend" means the next one (weekend of the coming Monday).
+    // Scheduling suggestions from clock facts only (today/tomorrow/weekend/nextweek), deduped, dropped when the same day as draft.on.
+    // On Sat/Sun "weekend" means the next one.
     _sugs() {
       const now = new Date();
       const weekendNext = [0, 6].includes(now.getDay());
@@ -5177,8 +5327,8 @@ document.addEventListener('alpine:init', () => {
       const hint = (iso, long) => new Date(iso + 'T00:00').toLocaleDateString([], long ? { weekday: 'short', month: 'short', day: 'numeric' } : { weekday: 'short' });
       return this._sugs().filter(s => { if (s.iso === on || seen.has(s.iso)) return false; seen.add(s.iso); return true; }).map(s => ({ ...s, hint: hint(s.iso, s.long) }));
     },
-    // The date chip's [icon, color]: a day a suggestion names wears that row's filled icon and color, any other set
-    // date a filled calendar, a deadline alone a flag. Never red for a placement, even a past one.
+    // The date chip's [icon, color]: a day a suggestion names wears that row's filled icon and color, any other date
+    // a filled calendar, a deadline alone a flag. Never red for a placement, even a past one.
     dueLook() {
       const d = this.draft, on = d.on?.slice(0, 10), s = on && this._sugs().find(s => s.iso === on);
       if (s) return [this._inBar() ? 'i-cal-fill' : 'i-' + s.icon + '-fill', `var(--q-${s.key})`];   // the jot bar's chip is a filled calendar in the day's color
@@ -5189,7 +5339,7 @@ document.addEventListener('alpine:init', () => {
       else this.setDeadlineDay(iso);
       this.pop = null;
     },
-    barFit(opts) {   // the jot bar's values show their word whole or only the icon, the last first; the date tries "Tmr" before its icon
+    barFit(opts) {   // the jot bar's values show their word whole or only the icon, the last first; the date tries "Tmr" first
       const fit = new ResizeObserver(() => {
         const chips = [...opts.querySelectorAll(':scope > .field > .chip.set:not(.chip-notes)')];
         for (const chip of chips) chip.classList.remove('short', 'bare');
@@ -5200,34 +5350,33 @@ document.addEventListener('alpine:init', () => {
       for (const el of [opts, ...opts.querySelectorAll('.chip > span')]) fit.observe(el);   // never a field or chip: the fit resizes them
     },
     dueLabel(short) {
-      // Recurring: show each rule + its ending (until <date> / N×) so a repeat's end is visible on the
-      // button without opening the picker; every rule in a multi-repeat carries its own end.
+      // Recurring: each rule + its ending (until <date> / N×) shows on the button; every rule in a multi-repeat carries its own end.
       const rs = this.repRules();
       if (rs.length) {
         const lbl = r => this.recurrenceLabel(r) + (r.at ? ', ' + this.fmtTime(r.at) : '') + (r.ends?.date ? ', until ' + this.fmt(r.ends.date) : r.ends?.count ? ', ' + r.ends.count + '×' : '');
         return rs.map(lbl).join(' + ');
       }
       // the do date alone: the deadline has its own chip (dlLabel)
-      const on = this.draft.on?.slice(0, 10);   // the jot bar names the day as its title's pill does, tomorrow in full
+      const on = this.draft.on?.slice(0, 10);   // the jot bar names the day as its title's pill does
       if (!on) return 'When';
       return this.draft.part && !this.draft.dueTime ? this.partLabel(on, this.draft.part) : (!this._inBar() ? this.fmt(this.draft.on) : on === quickDate('tomorrow') && !short ? 'Tomorrow' : dueBadge(on).label) + (this.draft.dueTime ? ' ' + this.fmtTime(this.draft.dueTime) : '');
     },
-    dlSet() { const f = this.draft.available_from?.slice(0, 10); return !!this.draft.deadline_at || !!f && f !== this.draft.on?.slice(0, 10); },   // a typed day's "from" is that day itself: no window, the flag stays bare
+    dlSet() { const f = this.draft.available_from?.slice(0, 10); return !!this.draft.deadline_at || !!f && f !== this.draft.on?.slice(0, 10); },   // a typed day's "from" is that day: no window, the flag stays bare
     dlLabel() {   // the flag chip: the deadline, or the window that ends at it
       const dl = this.draft.deadline_at, f = this.draft.available_from?.slice(0, 10), day = dl?.slice(0, 10);
-      if (f && day === f) return 'only ' + this.fmt(day);   // one-day world-window — walled on both sides
+      if (f && day === f) return 'only ' + this.fmt(day);   // a one-day window, walled on both sides
       if (f && dl) return this.fmt(f) + ' – ' + this.fmt(day);
       if (f && this.dlSet()) return 'from ' + this.fmt(f);
       return dl ? this.fmt(day) + (timeOf(dl) ? ' ' + this.fmtTime(timeOf(dl)) : '') : '';
     },
     recurrenceLabel(rec) { return recurrenceLabel(rec); },
-    // from→due range: drag directly on the due calendar (tap = due, unchanged); the fchip is a readout + hint
+    // from→due range: drag on the due calendar (a tap sets due); the fchip is a readout + hint
     calXi(e) { const g = e.currentTarget, gr = g.getBoundingClientRect(), fr = g.querySelector('.cal-day').getBoundingClientRect();
       const col = Math.max(0, Math.min(6, Math.floor((e.clientX - gr.left) / gr.width * 7)));
-      const rowH = (gr.bottom - fr.top) / 6;   // dow header row sits above the 6 day rows
+      const rowH = (gr.bottom - fr.top) / 6;   // the dow header sits above the 6 day rows
       const row = Math.max(0, Math.min(5, Math.floor((e.clientY - fr.top) / rowH)));
       return row * 7 + col; },
-    calDown(e) { if (this.pop !== 'due' || this._calDn != null || this.dreg === 'on') return; this._calDragged = false; this._calDn = this.calXi(e); this.calH = this._calDn; },   // no range-drag in the On register: a placement is one day, and a drag there would silently write the other register
+    calDown(e) { if (this.pop !== 'due' || this._calDn != null || this.dreg === 'on') return; this._calDragged = false; this._calDn = this.calXi(e); this.calH = this._calDn; },   // no range-drag in the On register: a drag there would silently write the other register
     calMove(e) { if (this._calDn == null || this.pop !== 'due') return; const i = this.calXi(e); if (i === this.calH) return;
       this.calH = i; try { e.currentTarget.setPointerCapture(e.pointerId); } catch {} },
     calUp(e) { if (this._calDn == null) return; const cs = this.calCells(), a = this._calDn, z = this.calXi(e); this._calDn = null; this.calH = null;
@@ -5236,7 +5385,7 @@ document.addEventListener('alpine:init', () => {
       this._calDragged = true;   // eat the trailing click so calDayTap doesn't re-fire/close
       _dlAuto = '';   // a dragged range is a chosen date, even ending on the derived day
       this.draft.available_from = lo.iso; this.draft.deadline_at = hi.iso + (this.draft.deadline_at || '').slice(10); },
-    // the date pop's "from" belongs to the deadline: a tap there opens the deadline pop, where a drag sets it
+    // the "from" belongs to the deadline: a tap opens the deadline pop, where a drag sets it
     calFromTap() {
       if (this.dreg === 'by') return this.pulseCal();
       this.pop = null;
@@ -5247,8 +5396,8 @@ document.addEventListener('alpine:init', () => {
     _nlpEl() { return _nlpFocus?.el || this.$refs.content; },
     _nlpDraft() { return _nlpFocus?.draft || this.draft; },
     // --- Inline-pill editor (contenteditable title) ---
-    // draft.content = the editor's TEXT nodes only (pills excluded), whitespace-collapsed. WYSIWYG: this
-    // is the title verbatim; fields come only from pills, never a submit-time re-parse.
+    // draft.content = the editor's text nodes only (pills excluded), whitespace-collapsed: the title verbatim;
+    // fields come only from pills, never a submit-time re-parse.
     syncTitle(composing, track = true) {
       const el = this._nlpEl(), d = this._nlpDraft(); if (!el) return;
       if (!composing) this._pillDraw(el);   // an IME's text draws at compositionend
@@ -5258,22 +5407,22 @@ document.addEventListener('alpine:init', () => {
       const empty = !el.querySelector('.nlp-pill') && d.content === '';
       if (track) this._nlpTrack(el);
       if (!_nlpFocus) this.titleEmpty = empty;   // titleEmpty is title-only placeholder state
-      else if (_nlpFocus.ghost) this.subGhost = el.textContent.trim();   // ghost's active-state + submit-flush + autosave mirror
-      if (empty && el.childNodes.length) {     // emptied (stray <br>/whitespace) → reset clean, caret to start
+      else if (_nlpFocus.ghost) this.subGhost = el.textContent.trim();   // ghost's active state, submit flush and autosave mirror
+      if (empty && el.childNodes.length) {     // emptied (stray <br>/whitespace): reset, caret to start
         el.textContent = '';
         this._caret(el, 0);
       }
     },
-    setEditorText(text) { const el = this.$refs.content; if (el) { el.innerHTML = titleLive(text); this.titleEmpty = !el.querySelector('.nlp-pill') && (text || '') === ''; this._noPillOnce = false; el._hist = { undo: [], redo: [], prev: this._nlpSnap(el, el.contains(document.activeElement)) }; } },   // unfocused: no caret to keep, and reading the selection would force a layout mid-open
-    // Minting/removing a pill is ONE ⌘Z step together with the raw text it consumed: snapshot a pill editor (title,
-    // subtask row) after every edit into its own el._hist. ⌘Z outside the field never touches it: a wholesale restore would wipe later words.
+    setEditorText(text) { const el = this.$refs.content; if (el) { el.innerHTML = titleLive(text); this.titleEmpty = !el.querySelector('.nlp-pill') && (text || '') === ''; this._noPillOnce = false; el._hist = { undo: [], redo: [], prev: this._nlpSnap(el, el.contains(document.activeElement)) }; } },   // unfocused: no caret to keep, and reading the selection would force a layout
+    // Minting/removing a pill is one ⌘Z step with the raw text it consumed: a pill editor (title, subtask row)
+    // snapshots after every edit into its own el._hist. ⌘Z outside the field never touches it: a restore would wipe later words.
     _nlpSnap(el, caret = true) { return { html: el.innerHTML, sig: [...el.querySelectorAll('.nlp-pill')].map(p => p.dataset.kind + ':' + p.dataset.value).join('|'), f: Object.fromEntries(PILL_KINDS.map(k => [k, PILL_SPEC[k].snapshot(this, this._nlpDraft())])), caret: caret ? this._caretOffset(el) : null }; },
     _nlpTrack(el) {
       const snap = this._nlpSnap(el), h = el._hist ||= { undo: [], redo: [] }, kind = this._tKind, caret = this._tCaret; this._tKind = this._tCaret = null;
       this._histStep(h, snap, h.prev && h.prev.html !== snap.html, h.prev?.sig === snap.sig && kind, caret);   // a chip change is its own step
     },
-    // In-field ⌘Z steps (title, subtask rows, description): one per word typed (its space included) or run of ⌫/⌦; a caret
-    // jump or any other edit starts a new one. `caret`: where this edit began, where its undo lands.
+    // In-field ⌘Z steps (title, subtask rows, description): one per word typed or run of ⌫/⌦; a caret jump or
+    // other edit starts a new one. `caret`: where this edit began, where its undo lands.
     _histStep(h, snap, changed, kind, caret) {
       if (changed) {
         const run = /^(insertText|insertComposition|deleteContent|space)/.test(kind) ? kind : null, prev = h.prev;
@@ -5282,9 +5431,9 @@ document.addEventListener('alpine:init', () => {
       }
       h.prev = snap;
     },
-    // ⌘Z/⌘⇧Z in a pill editor restore its exact snapshots (html + pill fields). Never native undo: it can't see pill edits
-    // made through the DOM and replays stale steps around them (duplicated text, chips glued to words).
-    nlpHistory(dir, target) {   // target: the key's own editor — a slow row save aims the engine at the title meanwhile
+    // ⌘Z/⌘⇧Z in a pill editor restore its snapshots (html + pill fields). Native undo can't see DOM-made pill edits
+    // and replays stale steps around them.
+    nlpHistory(dir, target) {   // target: the key's own editor; a slow row save aims the engine at the title meanwhile
       const el = this._nlpEl(), h = el._hist, s = target === el && h?.[dir < 0 ? 'undo' : 'redo'].pop();
       if (!s) return;
       h[dir < 0 ? 'redo' : 'undo'].push(this._nlpSnap(el)); h.run = null;
@@ -5292,7 +5441,7 @@ document.addEventListener('alpine:init', () => {
       this._nlpRestore(s, el); this._setCaret(el, s.caret ?? 1e9);
     },
     _nlpRestore(s, el) {
-      // Only kinds whose chips differ: a popover's later edit to another field (Size, date…) must survive the undo.
+      // Only kinds whose chips differ: a popover's later edit to another field must survive the undo.
       const chips = (sig, k) => sig.split('|').filter(x => x.startsWith(k + ':')).join('|'), now = this._nlpSnap(el).sig;
       el.innerHTML = s.html;
       for (const k of PILL_KINDS) if (chips(now, k) !== chips(s.sig, k)) this._restoreField(k, s.f[k]);
@@ -5301,12 +5450,12 @@ document.addEventListener('alpine:init', () => {
     // --- The description is live Markdown, focused or not (mdLive): a token's markers show only while the caret touches it
     // (liveReveal), and an edit redraws what changed (onDescInput). A trailing <br> gives an empty last line a caret home;
     // textContent ignores it, so the DOM always holds the exact source. ---
-    // A huge one renders as blocks of whole lines that skip layout and paint off screen (.desc-block). Only the first and the
-    // always laid out last start with their markdown; the rest get theirs near the screen (init), so opening it styles about a screen, not 70K spans.
+    // A huge one renders as blocks of whole lines that skip layout and paint off screen (.desc-block). Only the first and
+    // last start with their markdown; the rest get theirs near the screen (init), so opening it styles a screen, not 70K spans.
     // Few top-level nodes also keep Alpine's MutationObserver cheap: it tests each removed node against each added one,
-    // so reopening a 500K one (70K spans replaced by 70K) would hang for ~46s. A block not yet drawn holds the height _descSize estimates.
+    // so reopening a 500K one would hang ~46s. An undrawn block holds the height _descSize estimates.
     _descHtml(text) {
-      const tail = text.endsWith('\n') ? '<br>' : '';   // inside the last block, so a redraw of it keeps the closing line
+      const tail = text.endsWith('\n') ? '<br>' : '';   // inside the last block, so its redraw keeps the closing line
       if (text.length <= DESC_BLOCK) return mdLiveRender(text) + tail;
       let out = '';
       for (let at = 0, end; at < text.length; at = end) {
@@ -5351,8 +5500,8 @@ document.addEventListener('alpine:init', () => {
     },
     // Repaint every idle row's text from the draft (after undo/restore rewrote it wholesale).
     syncChkRows() { this.paintChk(document.querySelector('.composer-entries .entry-list > .entry.chk.ghost')?.parentElement, true); },
-    // An edit redraws the field (a huge one: the caret's block; a typed or deleted character: its line) only when its markdown
-    // changed, so plain typing keeps its nodes. The caret is kept by offset. Never mid-composition: an IME's text redraws at compositionend.
+    // An edit redraws the field (a huge one: the caret's block; one typed or deleted character: its line) only when its markdown
+    // changed, so plain typing keeps its nodes. The caret is kept by offset. Never mid-composition (an IME redraws at compositionend).
     onDescInput(e) {
       if (e?.isComposing) return;
       const el = this.$refs.desc; if (!el) return;
@@ -5362,16 +5511,16 @@ document.addEventListener('alpine:init', () => {
       if (part !== el || !this._lineRedraw(el, prev, text, e)) this._redraw(part, part === el ? this._descHtml(text) : this._blockHtml(part), part === el && (frag => this._descPaint(el, text, frag)));
       this._liveStep(el, text, e);
     },
-    // A typed or deleted character changes only the caret's line, and outside a fence mdLive draws line by line: compare and
-    // redraw that line alone. false: the edit can reach past it (a paste, Enter, a fence), so the whole field's path runs.
-    // Unblocked, the field holds no .desc-block for _descPaint's _descSize to size, and liveReveal right after resets _liveOn.
+    // A typed or deleted character changes only the caret's line, and outside a fence mdLive draws line by line: redraw
+    // that line alone. false: the edit can reach past it (a paste, Enter, a fence), so the whole field's path runs.
+    // Unblocked, the field holds no .desc-block for _descSize to size, and liveReveal right after resets _liveOn.
     _lineRedraw(el, prev, text, e) {
       if (!/^(insertText|delete)/.test(e?.inputType) || e.data?.includes('\n') || text.length > DESC_BLOCK || el.firstElementChild?.matches('.desc-block') || prev.includes('```') || text.includes('```')) return false;
       const off = this._caretOffset(el); if (off == null) return false;
       const from = off && text.lastIndexOf('\n', off - 1) + 1; let to = text.indexOf('\n', off); if (to < 0) to = text.length;
       if (to === text.length && (text.endsWith('\n') || el.lastChild?.nodeName === 'BR')) return false;   // the closing <br> is the field's
       for (const t of _liveOn) t.classList.remove('on');
-      // The line's top-level nodes: a line break sits only in top-level text here, so an element is wholly in or out.
+      // The line's top-level nodes: a line break sits only in top-level text, so an element is wholly in or out.
       const r = document.createRange(); let html = '', at = 0, first = true;
       for (const n of el.childNodes) {
         const end = at + n.textContent.length, isText = n.nodeType === 3;
@@ -5396,7 +5545,7 @@ document.addEventListener('alpine:init', () => {
     _redraw(part, html, paint) {
       for (const t of _liveOn) t.classList.remove('on');
       const now = part.innerHTML;
-      if (now === html) return;   // plain typing: the drawn markup already reads back verbatim, no parse
+      if (now === html) return;   // plain typing: the drawn markup reads back verbatim
       _canon.innerHTML = html;   // parsed, so it compares as the DOM serializes
       if (now === _canon.innerHTML) return;
       const off = this._caretOffset(part);
@@ -5480,13 +5629,11 @@ document.addEventListener('alpine:init', () => {
       this._descBefore = null;
     },
     descKeydown(e) {
-      // ArrowDown out of an EMPTY description continues the ladder into the entry rows; with text in it, down
-      // still moves the caret through the lines (the field owns the key).
+      // ArrowDown out of an empty description continues into the entry rows; with text, the field owns the key.
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { if (!this.$refs.desc?.textContent.trim() && (e.key === 'ArrowDown' ? this.focusFirstEntry() : this._focusEntry(this.$refs.content))) e.preventDefault(); return; }
       const dir = this._undoKey(e);
       if (dir) { e.preventDefault(); return this.liveHistory(this.$refs.desc, dir); }
-      // Enter AND Shift+Enter both newline here — a description is multi-line, and only ⌘/Ctrl+Enter ever saves
-      // (caught by the composer's capture handler before this runs, so there's no modifier case left to handle).
+      // Enter and Shift+Enter both newline: only ⌘/Ctrl+Enter saves, caught by the composer's capture handler first.
       if (e.key !== 'Enter' || e.metaKey || e.ctrlKey) return;
       e.preventDefault();
       this.insertPlainText('\n');
@@ -5506,7 +5653,7 @@ document.addEventListener('alpine:init', () => {
       const s = getSelection(); if (!s || !s.rangeCount) return null;
       const r = s.getRangeAt(0); if (!el.contains(r.endContainer)) return null;
       const pre = r.cloneRange(); pre.selectNodeContents(el); pre.setEnd(r.endContainer, r.endOffset);
-      let len = pre.toString().length;   // a chip counts as ONE caret step (its label length varies), as in _setCaret
+      let len = pre.toString().length;   // a chip counts as one caret step (its label length varies), as in _setCaret
       for (const p of el.querySelectorAll('.nlp-pill')) if (pre.intersectsNode(p)) len -= p.textContent.length - 1;
       return len;
     },
@@ -5525,7 +5672,7 @@ document.addEventListener('alpine:init', () => {
     openTaskLink(url) {
       const id = url.slice('adherod://task/'.length), t = this.byId.get(id), sc = this._listScroller();
       if (!t) return this.toast("Can't open this task");
-      // a row away from view: the list glides to it, then the composer opens there; opened at once, _ensureRow jumped the list
+      // a row away from view: the list glides to it, then the composer opens there; opened at once, _ensureRow jumps the list
       if (this.surface !== 'lists' || this._inPanel() || this.isOverviewProject(t) || this.rowIndexOf(id) < 0 || !this._rowAway(id)) return this.openTaskById(id);
       this._revealRow(id);
       const open = () => motion.running(sc) ? requestAnimationFrame(open) : this.openTaskById(id);
@@ -5572,15 +5719,15 @@ document.addEventListener('alpine:init', () => {
       const [anchor, focus] = ends.map(end => typeof end === 'number' ? this._pointAt(el, end) : end);
       getSelection().setBaseAndExtent(...anchor, ...focus);
     },
-    // Set caret: off == null → collapse to end of n (selectNodeContents); else → setStart at offset.
+    // Set caret: off == null → collapse to the end of n; else at offset.
     _caret(n, off) { const r = document.createRange(); if (off == null) { r.selectNodeContents(n); r.collapse(false); } else { r.setStart(n, off); r.collapse(true); } const s = getSelection(); s.removeAllRanges(); s.addRange(r); },
     commitPill(kind, v) { PILL_SPEC[kind].commit(this, this._nlpDraft(), v); },
-    // Revert the field a removed pill had set. `raw` is the pill's data-value (string form).
+    // Revert the field a removed pill had set.
     clearPillField(kind, r) { PILL_SPEC[kind].clear(this, this._nlpDraft(), r); },
-    // Snapshot the draft field(s) a `kind` pill owns — stored on the pill at insert, restored on backspace.
+    // Snapshot the draft field(s) a `kind` pill owns: stored on the pill at insert, restored on backspace.
     _fieldSnapshot(kind) { return PILL_SPEC[kind].snapshot(this, this._nlpDraft()); },
     _restoreField(kind, s) { PILL_SPEC[kind].restore(this, this._nlpDraft(), s); },
-    // Build a configured pill span (no DOM insertion). Single source of truth for pill markup.
+    // Build a configured pill span (no DOM insertion): the one source of pill markup.
     makePill(kind, value, token, frag) {   // frag: the off-DOM fragment a paste builds its chips in
       const pill = document.createElement('span');
       pill.className = 'nlp-pill inline-flex items-center'; pill.dataset.kind = kind;
@@ -5588,13 +5735,12 @@ document.addEventListener('alpine:init', () => {
       pill.dataset.token = token; pill.contentEditable = 'false'; pill.textContent = PILL_SPEC[kind].label(this, value);
       // A repeat multi chip adds nothing, so it shares its twin's pre-chip list: its own would hold the twin's value.
       const q = `.nlp-pill[data-kind="${kind}"][data-value="${CSS.escape(pill.dataset.value)}"]`, twin = PILL_SPEC[kind].multi && (this._nlpEl()?.querySelector(q) || frag?.querySelector(q));
-      pill.dataset.prior = twin ? twin.dataset.prior : JSON.stringify(this._fieldSnapshot(kind));   // field value BEFORE this chip — restored on backspace (non-destructive)
+      pill.dataset.prior = twin ? twin.dataset.prior : JSON.stringify(this._fieldSnapshot(kind));   // field value before this chip, restored on backspace
       pill.dataset.at = Date.now();   // creation order, for _settlePills
       return pill;
     },
-    // Build + insert a pill span replacing text [start..end) of the caret's text node, KEEPING the tail
-    // after `end` so a token pilled mid-title doesn't eat the words after it. `token` is the source text
-    // restored on un-chipify. Caret lands right after the pill (start of the tail node).
+    // Insert a pill span replacing text [start..end) of the caret's text node, keeping the tail after `end` so a token
+    // pilled mid-title doesn't eat the words after it. `token` is the source text restored on un-chipify.
     insertPill(textNode, start, kind, value, token, end = textNode.textContent.length) {
       const el = this._nlpEl();
       const before = document.createTextNode(textNode.textContent.slice(0, start));
@@ -5630,14 +5776,14 @@ document.addEventListener('alpine:init', () => {
       const sel = getSelection(), node = sel.anchorNode;
       if (node?.nodeType === 3 && sel.anchorOffset === 0 && /^\s/.test(node.data)) node.deleteData(0, 1);
     },
-    // Pill the token ENDING AT THE CARET (not the node's end) — so editing/re-typing a word mid-title
-    // re-recognizes just like typing at the end. `off` is the caret offset; text after it is preserved.
+    // Pill the token ending at the caret (not the node's end), so re-typing a word mid-title re-recognizes
+    // like typing at the end. Text after the caret is preserved.
     pillifyTrailing(end) {   // end: where the word ends, the caret by default
       const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return false;
       const node = sel.anchorNode, off = end ?? sel.anchorOffset;
       if (!node || node.nodeType !== 3) return false;
-      // The caret is the authority on which editor is live. Aiming at a stale target (a subtask row that lost
-      // focus without the title's @focus firing to reset it) must not bail silently: re-point at the title, not drop the keystroke.
+      // The caret decides which editor is live: a stale target (a subtask row that lost focus without the title's
+      // @focus firing) re-points at the title instead of dropping the keystroke.
       if (node.parentNode !== this._nlpEl()) { if (node.parentNode !== this.$refs.content) return false; this.focusTitle(); }
       const pending = node.textContent.slice(0, off);
       const tok = matchTrailingToken(pending, new Date(), this.locNames());
@@ -5647,23 +5793,22 @@ document.addEventListener('alpine:init', () => {
       if ((!tok || tok.kind === 'date') && start >= 0 && this.swallowIntoPrevDate(node, start, pending.slice(start), off)) return true;   // [next week] + "sun" → [next week sunday]
       if (!tok || !this._nlpTakes(tok)) return false;
       const token = pending.slice(tok.start);
-      if (tok.kind === 'area') return this.pillifyArea(node, tok, token, off);         // area tokens carry a NAME → resolve to an id first; the promise lets Enter wait
+      if (tok.kind === 'area') return this.pillifyArea(node, tok, token, off);         // area tokens carry a name: resolve to an id first; the promise lets Enter wait
       this.insertPill(node, tok.start, tok.kind, tok.value, token, off);
       return true;
     },
-    // Typed "@name" parses to an area NAME; resolve it to an area id (reuse or create) before inserting the
-    // pill, so area pills always carry an id (dupes stay distinct). Async, like the @-picker's create path.
+    // Typed "@name" resolves to an area id (reuse or create) before the pill goes in, so area pills always carry an id.
     async pillifyArea(node, tok, token, end) {
       const id = await this.ensureAreaId(tok.value);
       if (!id) return;
-      // the node/caret may have shifted while awaiting the store — only pill if the token text is still there
+      // the node/caret may have shifted while awaiting the store: pill only if the token text is still there
       if (node.parentNode !== this._nlpEl() || node.textContent.slice(tok.start, end) !== token) return;
       this.insertPill(node, tok.start, 'area', id, token, end);
       return true;
     },
-    // Space mints per word, so a rule's head pills before the rest arrives: "sunday" as a date, "every month" as a bare rule.
-    // When the chip just before the caret, its words and the prose around it read as ONE rule, that rule takes them all.
-    // `prose` is the text typed past the chip that no token claims: with none ("every weekday [2pm]"), the chips stay apart.
+    // Space mints per word, so a rule's head pills before the rest arrives ("sunday" as a date, "every month" as a bare rule).
+    // When the chip before the caret, its words and the prose around it read as one rule, that rule takes them all.
+    // `prose`: text past the chip that no token claims; with none ("every weekday [2pm]"), the chips stay apart.
     absorbIntoRule(node, off, prose) {
       let pill = node.previousSibling, gap = '';
       while (pill?.nodeType === 3 && !pill.textContent.trim()) { gap = pill.textContent + gap; pill = pill.previousSibling; }
@@ -5681,8 +5826,8 @@ document.addEventListener('alpine:init', () => {
       this.insertPill(node, tok.start, 'rec', tok.value, text.slice(tok.start), text.length);
       return true;
     },
-    // A word right after a date pill MERGES into it when foldIntoDate reads "<pill token> <word>" as one date:
-    // swap the pill for the combined one and drop the word. [next week] + "sun" → next week's Sunday.
+    // A word right after a date pill merges into it when foldIntoDate reads "<pill token> <word>" as one date:
+    // the pill is swapped for the combined one. [next week] + "sun" → next week's Sunday.
     swallowIntoPrevDate(node, start, token, end = node.textContent.length) {
       if (node.textContent.slice(0, start).trim() !== '') return false;          // the word must sit directly after the pill
       let prev = node.previousSibling;
@@ -5691,29 +5836,28 @@ document.addEventListener('alpine:init', () => {
       const fold = foldIntoDate(prev.dataset.token, token.trim(), new Date(), this.locNames());
       if (!fold) return false;
       const merged = this.makePill('date', fold.value, fold.token);
-      // One chip now holds both words: removing it returns to the date before the first, never to that word's date.
+      // One chip holds both words: removing it returns to the date before the first.
       merged.dataset.prior = prev.dataset.prior; merged.dataset.at = prev.dataset.at;
       this._nlpEl().replaceChild(merged, prev);
-      node.textContent = node.textContent.slice(end);   // word now inside the pill; keep any tail. No space: a chip owns none, so one ⌫ un-chips
+      node.textContent = node.textContent.slice(end);   // the word is in the pill; keep any tail. No space: a chip owns none, so one ⌫ un-chips
       this._caret(node, 0);
-      this._restoreField('date', JSON.parse(prev.dataset.prior ?? 'null'));   // the merged chip replaces the first: "4:00" committed 04:00's day, "p.m." makes it 16:00's
+      this._restoreField('date', JSON.parse(prev.dataset.prior ?? 'null'));   // "4:00" committed 04:00's day, "p.m." makes it 16:00's
       this.commitPill('date', fold.value); this.syncTitle();
       return true;
     },
-    // backspace after a pill → restore token text + clear field; second backspace then edits normally
+    // backspace after a pill restores its token text and clears the field; a second edits normally
     unchipPillBefore() {
       const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return false;
       const r = sel.getRangeAt(0); const node = r.startContainer;
       let prev = null;
-      // Only revert when nothing REAL sits to the caret's left (a space is a real char → let native delete it first).
+      // Revert only when nothing real sits left of the caret (a space is real: native deletes it first).
       if (node.nodeType === 3) { if (r.startOffset === 0) prev = node.previousSibling; }
       else if (node === this._nlpEl() && r.startOffset > 0) prev = node.childNodes[r.startOffset - 1];
-      // Skip zero-width text nodes — typing past a chip leaves an empty node between the pill and the new text,
-      // so the caret's previousSibling is that empty node, not the pill (backspace would strand the chip).
+      // Skip empty text nodes: typing past a chip leaves one between the pill and the new text, and backspace would strand the chip.
       while (prev && prev.nodeType === 3 && prev.textContent === '') prev = prev.previousSibling;
       if (!prev || !(prev instanceof HTMLElement) || !prev.classList.contains('nlp-pill')) return false;
       this._unchip(prev, true);
-      this._noPillOnce = true;   // just un-chipped on purpose → the next space must NOT re-chip it
+      this._noPillOnce = true;   // just un-chipped on purpose: the next space must not re-chip it
       return true;
     },
     // Replace a pill with its token text (asText) or nothing; fields revert to the pills left, else to its prior value.
@@ -5727,9 +5871,9 @@ document.addEventListener('alpine:init', () => {
       this._caret(text, token.length);   // caret at the end of the restored token text
       this.syncTitle();
     },
-    // Fields after chips leave the DOM. A removed multi chip takes its value along, unless the value predates it (Areas
-    // button, the saved task) — else Save strips it. A single kind replays the chips left; with none, it returns to what
-    // it held before the OLDEST removed chip (by creation time: a chip typed mid-title sits before older ones).
+    // Fields after chips leave the DOM. A removed multi chip takes its value along unless the value predates it (Areas
+    // button, the saved task), else Save strips it. A single kind replays the chips left; with none, it returns to what
+    // it held before the oldest removed chip (by creation time: a chip typed mid-title sits before older ones).
     _settlePills(pills) {
       for (const p of pills) if (PILL_SPEC[p.dataset.kind].multi && !JSON.parse(p.dataset.prior ?? 'null')?.includes(p.dataset.value)) this.clearPillField(p.dataset.kind, p.dataset.value);
       const kinds = new Set(pills.map(p => p.dataset.kind));
@@ -5740,9 +5884,9 @@ document.addEventListener('alpine:init', () => {
         this._restoreField(k, JSON.parse(oldest.dataset.prior ?? 'null'));
       }
     },
-    // A title chip mirrors the field it set (x-effect on the title). el._hist.prev.f is the fields as the title's own last edit
-    // left them, so a difference is a picker's write: the newest chip of that kind relabels to it, a cleared field drops its chips,
-    // a multi kind drops the chips whose value left its list. The relabel is a title ⌘Z step: the undo puts chip and field back.
+    // A title chip mirrors the field it set (x-effect on the title). el._hist.prev.f holds the fields as the title's own last
+    // edit left them, so a difference is a picker's write: the newest chip of that kind relabels, a cleared field drops its
+    // chips, a multi kind drops chips whose value left its list. The relabel is a title ⌘Z step.
     mirrorPills(el = this.$refs.content, d = this.draft) {
       const now = PILL_KINDS.map(k => JSON.stringify(PILL_SPEC[k].snapshot(this, d)));   // reads every field: the effect's deps
       const f = el?._hist?.prev?.f; if (!f) return;
@@ -5758,8 +5902,8 @@ document.addEventListener('alpine:init', () => {
       });
       if (hit && !_nlpFocus) this._nlpTrack(el);
     },
-    // Clear the touched single kinds, then replay every surviving pill so fields reflect exactly the pills left
-    // in the DOM (a multi kind keeps its list: _settlePills took the removed chips' values out).
+    // Clear the touched single kinds, then replay every surviving pill so fields match the pills left
+    // (a multi kind keeps its list: _settlePills took the removed chips' values out).
     _recommitPills(kinds) {
       for (const k of kinds) if (!PILL_SPEC[k].multi) this.clearPillField(k, null);
       for (const p of this._nlpEl().querySelectorAll('.nlp-pill')) {
@@ -5767,19 +5911,19 @@ document.addEventListener('alpine:init', () => {
         this.commitPill(kind, pillValue(kind, pr));
       }
     },
-    // Deletions route through beforeinput, NOT keydown: it fires for hardware keys AND soft-keyboard/IME
-    // input (Android sends deleteContentBackward with no 'Backspace' keydown), on both Blink and WebKit. Own
-    // any delete that would touch a pill so native deletion never strands a pill's field or eats the block.
+    // Deletions route through beforeinput, not keydown: it also fires for soft-keyboard/IME input (Android sends
+    // deleteContentBackward with no 'Backspace' keydown). Owns any delete touching a pill so native deletion never
+    // strands a pill's field or eats the block.
     onEditorBeforeInput(e) {
       const type = e.inputType || '';
-      // ⌘Z is nlpHistory: the Edit menu / context menu land here, keys in _pillKeydown
-      // Unfocused: Chrome aims Edit ▸ Undo at the last-edited editor even after focus left it — words typed since would go.
+      // ⌘Z is nlpHistory: the Edit and context menus land here, keys in _pillKeydown.
+      // Unfocused: Chrome aims Edit ▸ Undo at the last-edited editor even after focus left it, and words typed since would go.
       if (type.startsWith('history')) { e.preventDefault(); return e.target === document.activeElement && this.nlpHistory(type === 'historyUndo' ? -1 : 1, e.target); }
       if (type === 'insertParagraph') { e.preventDefault(); return e.target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })); }   // a soft keyboard's Enter (keydown 229, dropped at the document) acts as the hardware key
       this._tKind = type === 'insertText' && /\s/.test(e.data) ? 'space' : type; this._tCaret = this._caretOffset(this._nlpEl());
       if (!type.startsWith('delete')) return;
       const sel = getSelection(); if (!sel.rangeCount) return;
-      if (sel.isCollapsed && type === 'deleteContentBackward' && this.unchipPillBefore()) return e.preventDefault();   // pill before caret → non-destructive revert
+      if (sel.isCollapsed && type === 'deleteContentBackward' && this.unchipPillBefore()) return e.preventDefault();   // pill before caret: revert it
       const t = sel.isCollapsed ? e.getTargetRanges()[0] : sel.getRangeAt(0); if (!t) return;
       const range = document.createRange(); range.setStart(t.startContainer, t.startOffset); range.setEnd(t.endContainer, t.endOffset);
       const pills = [...this._nlpEl().querySelectorAll('.nlp-pill')].filter(p => range.intersectsNode(p));
@@ -5796,8 +5940,7 @@ document.addEventListener('alpine:init', () => {
       this._settlePills(pills); this.syncTitle();
     },
     _seqMatch(name, frag) { return _seqIn(name.toLowerCase(), frag.toLowerCase()); },
-    // Rank/filter over the area OBJECTS (by id), not names — so duplicate names stay distinct and the @ menu
-    // renders the same deduped set as the id-keyed popups. fuzzyRank returns indices into this.areas.
+    // Rank/filter over the area objects (by id), so duplicate names stay distinct. fuzzyRank returns indices into this.areas.
     areaMatches() {
       const frag = this.areaPicker.frag; if (!frag) return this.areas;
       const names = this.areas.map(t => t.name);
@@ -5807,25 +5950,24 @@ document.addEventListener('alpine:init', () => {
       // Subsequence fallback for short abbreviations uFuzzy won't match.
       return this.areas.filter(a => this._seqMatch(a.name, frag));
     },
-    // "#" means file it under a project — overview projects + the default, not every task that happens to have children.
-    projMatches() { if (!this.projPicker.open) return []; const def = this.store.defaultProject(); const shelved = this._shelved(); return this.pickerMatches(this._relIdx().proj ??= this.tasks.filter(t => t.overview && !shelved.has(t.id) || t.id === def), this.projPicker.frag); },   // closed → [] (every open resets the picker, re-running its hidden x-for)
+    // "#" files under a project: overview projects + the default, not every task with children.
+    projMatches() { if (!this.projPicker.open) return []; const def = this.store.defaultProject(); const shelved = this._shelved(); return this.pickerMatches(this._relIdx().proj ??= this.tasks.filter(t => t.overview && !shelved.has(t.id) || t.id === def), this.projPicker.frag); },   // closed → []: every open resets the picker, re-running its hidden x-for
     locMatches() { const q = this.locPicker.frag.trim().toLowerCase(); return this.locations.filter(l => !q || l.name.toLowerCase().includes(q)); },
-    // Dependencies autocomplete over EXISTING open tasks — a dependency on something that doesn't exist yet
-    // is a note, and notes already have a field.
+    // Dependencies autocomplete over existing open tasks: one on something that doesn't exist yet is a note.
     linkMatches(frag) { const def = this.store.defaultProject(); return this.pickerMatches(this._relIdx().link ??= this.tasks.filter(t => t.id !== this.editing && !t.overview && t.id !== def && !t.completed_at && !t.archived_at), frag).slice(0, 8); },   // pool per _relIdx: a keystroke reuses its haystack
-    // needs/needed-by share ONE popup (never open together): these aim it at whichever is live.
+    // needs/needed-by share one popup (never open together): aim it at whichever is live.
     _linkType() { return this.needsPicker.open ? 'needs' : this.nbyPicker.open ? 'neededBy' : null; },
     linkPicker() { const t = this._linkType(); return t ? this[PICKERS[t].key] : null; },
-    // Rows, not bare tasks: a candidate is shown with its OWN checkbox (importance color, progress arc, lock)
-    // and project, so "which task am I linking?" is answered the same way the list answers it. ≤8 rows.
+    // Rows, not bare tasks: each candidate shows its own checkbox (importance color, progress arc, lock) and project,
+    // as the list does. ≤8 rows.
     linkOptions() { const t = this._linkType(); if (!t) return []; const { mkRow } = this._mkRowFn(false); return PICKERS[t].matches(this).map(x => mkRow(x, 0)); },
     rowCheckHtml(r) { return checkHtml(r, 'span'); },
     pickLink(id) { const t = this._linkType(); if (t) this.pickPill(t, id); },
     // Click-only (no Enter): "Meet Sam at 5pm" + Enter must submit the task, never invent a place called "5pm".
     async createLocFromPicker() { const nm = this.locPicker.frag.trim(); if (!nm) return; await this.addLocation(nm); this.pickPill('loc', nm); },
     locOpenCount(id) { return this.tasks.filter(t => !t.completed_at && !t.archived_at && !inNotes(t) && (t.location?.ids || []).includes(id)).length; },
-    // Open, then immediately re-derive at/frag from the node — the trigger keydown lands before its own character
-    // is inserted, so anything already typed past it (a paste, a fast burst) would otherwise be missed.
+    // Open, then re-derive at/frag from the node: the trigger keydown lands before its character is inserted,
+    // so anything already typed past it (a paste, a fast burst) would be missed.
     openPicker(type, node, at) { if (_nlpFocus?.cal) return; const sp = PICKERS[type], p = this[sp.key]; Object.assign(p, { open: true, frag: '', sel: 0, node, at, left: 0, top: 0 }); this._refreshPicker(p, sp, sp.sel); },
     refreshPicker(type) { const sp = PICKERS[type]; this._refreshPicker(this[sp.key], sp, sp.sel); },
     pickPill(type, id) {
@@ -5834,12 +5976,12 @@ document.addEventListener('alpine:init', () => {
       p.open = false;
       if (_nlpFocus?.c) this._nlpEl().focus();
     },
-    // Keys while an autocomplete popup is open (the ONE popup key ladder — every picker is a PICKERS spec).
-    // `grid` adds ←/→ to the ladder (the area menu wraps); `noSpace` lets Space type through (those fragments
-    // contain spaces); Enter with nothing to pick falls through to the spec's create path.
+    // Keys while an autocomplete popup is open (the one key ladder for every PICKERS spec).
+    // `grid` adds ←/→ (the area menu wraps); `noSpace` lets Space type through (those fragments contain spaces);
+    // Enter with nothing to pick falls through to the spec's create path.
     pickerKeydown(type, e) {
       const sp = PICKERS[type], p = this[sp.key]; if (!p.open) return false;
-      const s = getSelection();   // the query runs from the trigger to the caret: moved off its end (arrows, End), Enter would pick the title's words
+      const s = getSelection();   // the query runs from the trigger to the caret: moved off its end, Enter would pick the title's words
       if (s.anchorNode !== p.node || !s.isCollapsed || s.anchorOffset !== p.at + sp.char.length + p.frag.length) { p.open = false; return false; }
       if (e.key === 'Escape') { p.open = false; return true; }
       const matches = sp.matches(this);
@@ -5850,8 +5992,8 @@ document.addEventListener('alpine:init', () => {
       return false;
     },
     refreshPickers() {
-      // The caret's anchorNode can be the editor ELEMENT (fresh/empty row), whose mixed textContent indexes wrong
-      // and whose text pickPill would overwrite — so walk down to the text node that actually holds the char.
+      // The caret's anchorNode can be the editor element (fresh/empty row), whose textContent indexes wrong and
+      // whose text pickPill would overwrite: walk down to the text node holding the char.
       const key = _trigKey; _trigKey = null; let node = key && getSelection()?.anchorNode;
       if (node?.nodeType === 1) { const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT); let n; while ((n = w.nextNode())) if (n.textContent.includes(key)) { node = n; break; } }
       const at = node ? node.textContent.lastIndexOf(key) : -1;
@@ -5863,7 +6005,7 @@ document.addEventListener('alpine:init', () => {
       if (!p.node) return;
       const body = this.$refs.content.closest('.composer-body'); if (!body) return;
       const base = body.getBoundingClientRect();
-      if (this.phoneDock()) { p.left = 0; p.top = body.closest('.composer').getBoundingClientRect().top; return; }   // a strip across the screen on the composer's top edge (.strip, fixed: the jot bar's host would clip it)
+      if (this.phoneDock()) { p.left = 0; p.top = body.closest('.composer').getBoundingClientRect().top; return; }   // a strip across the composer's top edge (.strip, fixed: the jot bar's host would clip it)
       const r = document.createRange();
       r.setStart(p.node, Math.min(p.at, p.node.textContent.length)); r.collapse(true);
       const rect = r.getBoundingClientRect();
@@ -5871,7 +6013,7 @@ document.addEventListener('alpine:init', () => {
       requestAnimationFrame(() => {
         const el = document.querySelector(sel);
         this.clampX(el);
-        if (el?.dataset.pos === 'up') p.top = rect.top - base.top - 4 - el.offsetHeight;   // above its trigger, as a data-pos="up" pop opens
+        if (el?.dataset.pos === 'up') p.top = rect.top - base.top - 4 - el.offsetHeight;   // above its trigger, as a data-pos="up" pop
       });
     },
     pickerStyle(p) { return p ? `display:flex;left:${p.left}px;top:${p.top}px` : 'display:none'; },
@@ -5879,13 +6021,13 @@ document.addEventListener('alpine:init', () => {
     _refreshPicker(p, sp, sel) {
       if (!p.open || !p.node) return;
       const s = getSelection(); if (s?.anchorNode !== p.node) { p.open = false; return; }
-      const txt = p.node.textContent.slice(0, s.anchorOffset), idx = sp.find ? sp.find(txt) : txt.lastIndexOf(sp.char);   // the query ends at the caret: never the title's words after it
+      const txt = p.node.textContent.slice(0, s.anchorOffset), idx = sp.find ? sp.find(txt) : txt.lastIndexOf(sp.char);   // the query ends at the caret, never the title's words after it
       if (idx < 0) { p.open = false; return; }
       p.at = idx; p.frag = txt.slice(idx + sp.char.length); p.sel = 0;
       this._positionPicker(p, sel);
     },
     async createAreaFromPicker() {
-      const id = await this.ensureAreaId(this.areaPicker.frag);   // reuse-or-create by name → id
+      const id = await this.ensureAreaId(this.areaPicker.frag);   // reuse-or-create by name
       if (id) this.pickPill('area', id);
     },
     // Pill-editor keydown shared by the title + every subtask row: pickers, trigger chars, and space→pill.
@@ -5894,18 +6036,17 @@ document.addEventListener('alpine:init', () => {
       const dir = this._undoKey(e);
       if (dir) { e.preventDefault(); this.nlpHistory(dir, e.target); return true; }
       for (const t in PICKERS) if (this[PICKERS[t].key].open && this.pickerKeydown(t, e)) { e.preventDefault(); e.stopPropagation(); return true; }
-      // Trigger chars open their picker on their own input event — the char isn't in the DOM when keydown fires,
-      // and a deferred tick can run after later keys (a transition holds $nextTick), opening on an older '@'.
+      // Trigger chars open their picker on their own input event: the char isn't in the DOM at keydown, and a
+      // deferred tick can run after later keys (a transition holds $nextTick), opening on an older '@'.
       if (e.key === '@' || e.key === '#' && !_nlpFocus) { _trigKey = e.key; return true; }   // a subtask files under its parent: no # there
-      // "at "/"needs "/"needed by " open their picker, so the phrase teaches itself — the trigger is the
-      // space that ends the word.
+      // "at "/"needs "/"needed by " open their picker: the trigger is the space that ends the word.
       if (e.key === ' ') {
         if (!this._noPillOnce && this.pillifyTrailing()) e.preventDefault();
         else this.$nextTick(() => this._wordPicker());
         this._spaceKeyed = !e.defaultPrevented;   // an unprevented space inserts and fires input: pillAfterSpace must not run it again
         this._noPillOnce = false;
       }
-      else if (e.key.length === 1) { this._noPillOnce = false; }   // typing fresh content re-enables space→pill (Backspace/Delete → onEditorBeforeInput)
+      else if (e.key.length === 1) { this._noPillOnce = false; }   // typing re-enables space→pill (Backspace/Delete: onEditorBeforeInput)
       return false;
     },
     // Enter pills the word it ends on, as a space would ("call mom tmrw" saves dated; an un-chipped word stays text), then saves.
@@ -5914,33 +6055,35 @@ document.addEventListener('alpine:init', () => {
       if (this.sticky && this._stickyKey(e)) return;
       if (this._pillKeydown(e)) return;
       if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this._pillThen(() => this.submitComposer()); return; }
-      // ArrowDown ladder: the title wraps, so down means "next field" only from its last line. A caret that measures 0×0 (empty title, beside a chip) counts as there.
+      // the title wraps, so down means "next field" only from its last line. A caret measuring 0×0 (empty title, beside
+      // a chip) counts as there.
       const caret = e.key === 'ArrowDown' && !e.shiftKey && getSelection().rangeCount && getSelection().getRangeAt(0).getBoundingClientRect();
       if (caret && (!caret.height || caret.bottom > e.target.getBoundingClientRect().bottom - caret.height / 2)) { const d = this.$refs.desc; if (d) { e.preventDefault(); d.focus(); this._setCaret(d, 0); } }
-      // ↑ in an untouched add composer fixes the task just added: an empty title has no caret to move, and any typed field keeps the key
+      // ↑ in an untouched add composer fixes the task just added: any typed field keeps the key
       const last = e.key === 'ArrowUp' && !e.shiftKey && !this.editing && this._draftSig() === this._draftBase && this.byId.get(_lastAdded);
       if (last) { e.preventDefault(); this.editTask(last); }
     },
     // An add owns its slot. Edits queue their captured drafts; repeated presses of the same draft save once.
     async submitComposer(extra, close, lead) {
       if (this.pop === 'rem') this.remKeep();   // ⌘⏎ with the setter open
-      if (!this.editing) return !this._closingComposer && this._submit(extra, close);   // ⌘⏎ handed this draft on at its press, the bar's Send cleared it: a 2nd press finds nothing to add
+      if (!this.editing) return !this._closingComposer && this._submit(extra, close);   // ⌘⏎ handed this draft on at its press: a 2nd press finds nothing to add
       const sid = this._draftSid;
       if (_submitting.has(sid)) return false;
       _submitting.set(sid, { base: _saveBase });
       try { return await this._submit(extra, close, lead); } finally { _submitting.delete(sid); }
     },
-    // extra: fields that ride the same save (Show in Overview's flag) — one write, one ⌘Z. close: a new task closes, not resets.
-    // lead: [label, op] steps that came before (a convert), taken out once this save journals them, as its first steps and under the first's label. Returns true ONLY once it saved.
+    // extra: fields that ride the same save (Show in Overview's flag): one write, one ⌘Z. close: a new task closes, not
+    // resets. lead: [label, op] steps from before (a convert), taken out once this save journals them as its first
+    // steps under the first's label. Returns true only once it saved.
     async _submit(extra, close, lead = []) {
-      if (!this.draft.content.trim()) {   // contenteditable has no `required`; nothing typed at all = nothing to lose
+      if (!this.draft.content.trim()) {   // contenteditable has no `required`; nothing typed = nothing to lose
         if (this._draftSig() === this._draftBase) return true;
         this.toast('Add a title to save'); return false;
       }
       const sc = this._listScroller(), sid = this._draftSid, d = this.draft;
       if (this.editing && this.subGhost.trim() && this.commitSubGhost() === false) return false;   // Save takes the ghost's typing as a row, Enter or not
-      if (this.chkGhost.trim() && this.chkGhost !== _chkSeed) this.commitChkGhost();   // save in-progress ghost inputs on Save, even without Enter
-      this.draft.checklist = this.draft.checklist.filter(c => (c.text || '').trim());   // prune whitespace-only items (transient while editing)
+      if (this.chkGhost.trim() && this.chkGhost !== _chkSeed) this.commitChkGhost();   // ghost typing saves on Save, even without Enter
+      this.draft.checklist = this.draft.checklist.filter(c => (c.text || '').trim());   // prune whitespace-only items
       if (!this.editing) {
         const fields = this.draftFields();
         if (!fields.project && !fields.parent_id && !this.store.defaultProject()) {
@@ -5949,15 +6092,14 @@ document.addEventListener('alpine:init', () => {
         }
       }
       if (this.editing) {
-        // Capture before close (closeComposer resets draft/editing async via _growClose callback)
+        // Capture before close: closeComposer resets draft/editing async via _growClose
         const editId = this.editing, draft = this.draft, base = this._draftBase, from = _draftFrom, save = _submitting.get(sid), previous = _submitting.get(from);
-        // A save is ALWAYS slow enough to warrant feedback (the collapse and reload dominate, not the store write, so
-        // the 150ms only-if-slow gate wouldn't trip). Spin the checkmark IMMEDIATELY for the whole save: the post-save
-        // morph re-renders the row (clearing it) exactly when the saved data shows.
+        // A save is always slow enough to warrant feedback (the collapse and reload dominate, so the 150ms only-if-slow
+        // gate wouldn't trip): spin the checkmark at once; the post-save morph re-renders the row, clearing it, as the saved data shows.
         this._setCheckPending(editId, true);
-        // Where the row sits: its list (completing moves it to Done) and the flat rows either side, OUTSIDE its own subtree. Not its
-        // INDEX — a row added or removed above shifts that while the row stays put — nor its parent or siblings (a new project in the
-        // All view is not a move; its siblings are not its neighbors there). A move changes both neighbors, a neighbor's change one.
+        // Where the row sits: its list (completing moves it to Done) and the flat rows either side, outside its own subtree.
+        // Not its index (a row added above shifts that) nor its parent or siblings (a new project in the All view is not a
+        // move). A move changes both neighbors, a neighbor's change one.
         const at = () => { this.visibleRows(); const o = _rowMap.get(editId), r = o ?? _doneMap.get(editId), rows = o ? _visMemo : _doneMemo;
           let n = (r?.i ?? -2) + 1; while (rows[n]?.depth > r?.depth) n++;   // past its own subtree
           return [!o, rows[r?.i - 1]?.t.id, rows[n]?.t.id]; }, at0 = at();
@@ -5967,15 +6109,16 @@ document.addEventListener('alpine:init', () => {
           // only what this draft changed: a field edited elsewhere since it opened (another device, a list drag) keeps that edit.
           // ceiling: a field both changed is last-write-wins (areas, goals, places, a checklist item's tick or text); add per-field conflict notices once a user reports an edit lost to another device's
           const fields = this._childPatch({ ...this.draftFields(draft, editId), ...extra }, this.draftFields(saveBase, editId));
-          // the draft's checklist written: an item another tab or device added since open was never on screen to delete, so it stays
+          // the draft's checklist written: an item another tab or device added since open stays (never on screen to delete)
           if (fields.checklist === draft.checklist) { const seen = new Set([...saveBase.checklist, ...draft.checklist].map(c => c.id));
             fields.checklist = [...(before.checklist || []).filter(c => !seen.has(c.id)), ...draft.checklist]; }
-          // draft.wasDone: set by a save whose checklist landed but completion failed — its retry must still complete, while the task is as that save left it
+          // draft.wasDone: set by a save whose checklist landed but completion failed; its retry must still complete
+          // while the task is as that save left it
           const wasDone = draft.savedAt && draft.savedAt === before.updated_at ? draft.wasDone : !!(before.checklist?.length && before.checklist.every(c => c.done));
-          // The edit and the completion it triggers land as ONE entry; an edit that landed stays undoable though its completion failed.
+          // The edit and the completion it triggers land as one entry; an edit that landed stays undoable though its completion failed.
           const label = lead[0]?.[0] ?? 'Saved task', j = lead.splice(0), opts = { ops: j, fail: null }, drops = [];   // the failure branch below says it, once
-          // a save that may finish the task (every subtask or checklist item ticked) rewards it as the list's tick does: the
-          // subtasks it ticks and the task, or the task alone for a checklist. Each start keeps only what finished.
+          // a save that may finish the task (every subtask or checklist item ticked) rewards it as the list's tick does:
+          // the subtasks it ticks and the task, or the task alone for a checklist. Each start keeps only what finished.
           const ticked = draft.subs.filter(s => !this.byId.get(s.id)?.completed_at), all = list => list.length && list.every(x => x.done);
           const finishing = !before.completed_at && this.celebrations !== 'off' && (draft.subs.length ? ticked.length && all(draft.subs) : all(draft.checklist));
           const rewarded = finishing ? ticked.map(s => _rowMap.get(s.id)).filter(Boolean) : [];
@@ -5986,30 +6129,31 @@ document.addEventListener('alpine:init', () => {
           // Only a newly finished checklist advances recurrence; later text edits must not complete it again.
           const completes = landed && !updated.checklist_plain && !this.hasChildren(editId) && cl.length && (updated.completed_at ? !done : done && !wasDone);
           const saved = landed && (!completes || await this._journalRowChange('Saved task', 'task', editId, () => this.store.tasks.setCompleted(editId, done), opts));
-          // the ON register lands as a date-item, never as recur_from; a date the draft didn't change keeps one moved elsewhere. fail: null — the failure branch says it, once
+          // the ON register lands as a date-item, never recur_from; a date the draft didn't change keeps one moved elsewhere
           const added = draft.subs.some(s => s.add && !this.byId.has(s.id)), subbed = saved && await this._saveSubs(editId, draft, saveBase, j, drops);
           const when = x => [x.on, x.dueTime, !x.recurrence].join('|'), placed = subbed && (when(draft) === when(saveBase) || await this._saveSched(editId, draft, null, j, null) !== false);
           let unarc;   // the Unarchive the draft holds joins this save's entry, its passed-dates card with it
           const kept = subbed && await this._saveReminders(editId, draft, saveBase, j, drops) && placed   // a lost date is a failed save: its draft comes back
             && (!draft.unarchive || await this.archive(editId, false, (ok, actions) => { unarc = actions; return ok; }, j) !== false);
-          // landed: this draft is the stored task now, but for a date that didn't land — the base a later save of it diffs against, so an edit undone is written back
+          // landed: this draft is the stored task now, but for a date that didn't land: the base a later save diffs
+          // against, so an undone edit is written back
           const nextBase = landed ? { ...JSON.parse(JSON.stringify(draft)), ...!placed && { on: saveBase.on, dueTime: saveBase.dueTime, recurrence: saveBase.recurrence }, reminders: saveBase.reminders,
             subs: subbed ? draft.subs.map(s => ({ id: s.id, done: s.done })) : saveBase.subs, subMoves: {} } : saveBase;
           if (kept) await this._applyDraftLinks(editId, draft, j);
           if (kept) for (const s of draft.subs) if (s.links && this.byId.has(s.id)) await this._applyDraftLinks(s.id, { content: this.byId.get(s.id).content, ...s.links }, j);
           // a new subtask: an add's Bin row, so a ⌘Z puts it in the Bin (a deleted one has its own, _saveSubs)
-          // kept with no journal ops: nothing the task row changed (signed in, an empty write stamps nothing), still said. A move re-labels this card below
+          // kept with no journal ops: nothing the task row changed, still said. A move re-labels this card below
           const saveCard = j.length ? this._pushOps(unarc && j.length === 1 ? j[0][0] : label, 'task', j, { silent: !kept, bin: subbed && added, restored: subbed && added, actions: unarc?.() }) : kept ? this.notify('Saved task') : null;
           for (const drop of drops) drop();
           for (const start of starts) start();
           save.base = nextBase;
           if (_draftFrom === sid) _saveBase = nextBase;   // the open draft continues this one (reopened mid-save): after every await, any reopen
           if (!kept) {
-            // Save failed — the user's unsaved edits come back so nothing is silently lost: the composer reopens with them, or,
-            // when another composer is open (being typed in), they go to the Bin — a reopen would steal its typing mid-word.
+            // Save failed: the unsaved edits come back, in the reopened composer or, when another is open (being typed
+            // in), in the Bin, since a reopen would steal its typing mid-word.
             this._setCheckPending(editId, false);   // drop the spinner; the composer takes over again
             if (landed) Object.assign(draft, { wasDone, savedAt: updated.updated_at });
-            // the open draft continues this one (restored from it mid-save) and holds its typing: nothing to keep apart
+            // the open draft continues this one (restored mid-save) and holds its typing: nothing to keep apart
             const binned = this.composer.open && !this._closingComposer && _draftFrom !== sid;
             this.toast(binned ? `${!saved ? landed ? 'Failed completing' : 'Failed saving' : !subbed ? 'Failed saving the subtasks of' : placed ? 'Failed saving the reminders of' : 'Failed scheduling'} “${before.content}”. Kept in the Bin` : !saved ? 'Failed saving. Try again?' : !subbed ? 'Failed saving subtasks. Try again?' : placed ? 'Failed saving a reminder. Try again?' : 'Failed scheduling. Try again?');
             if (binned) this._pushDraftBin(editId, { editing: editId, ...this._draftState({ draft }), base: nextBase, sid, ts: Date.now() });
@@ -6020,15 +6164,14 @@ document.addEventListener('alpine:init', () => {
             this.openComposer();
             return false;
           } else {
-            // No scroll-hold: closeComposer turns anchoring OFF for the collapse and back on two
-            // frames after, when it absorbs a later re-render. Spinner + flash are cosmetic: on once the write is confirmed.
-            this._clearPending(editId, sid, this._draftSig({ draft }));   // saved → discard the pending draft so it can't resurrect over the save
+            // No scroll-hold: closeComposer turns anchoring off for the collapse and on again two frames after.
+            // Spinner and flash are cosmetic: on once the write is confirmed.
+            this._clearPending(editId, sid, this._draftSig({ draft }));   // saved: discard the pending draft so it can't resurrect over the save
             if (from) this._clearPending(editId, from);   // this draft continues that one: its rows are superseded
             this._viewFree().then(() => this.$nextTick(() => { this._setCheckPending(editId, false); this._flashSaved(editId); }));   // the row re-renders as the collapse ends
-            // A save never scrolls (composer.md §STAY rule): a row the SAVE moved off-screen gets a card whose Show
-            // carries the reader to it. A tall row you had scrolled past is off-screen too, so only a move counts. Judged once
-            // the save has landed AND the collapse settled (a signed-in save outlasts it), and after any reward has let the row go.
-            // Lists only: Plan's panel has no list to show.
+            // A save never scrolls (composer.md §STAY rule): a row the save moved off-screen gets a card whose Show
+            // carries the reader to it. A tall row already scrolled past is off-screen too, so only a move counts. Judged once
+            // the save has landed and the collapse settled, and after any reward has let the row go. Lists only.
             const judge = () => { if (_cele.has(editId)) return requestAnimationFrame(judge);
               const a = at();
               if (this.surface !== 'lists' || a[0] === at0[0] && (a[1] === at0[1] || a[2] === at0[2]) || !this._rowAway(editId)) return;
@@ -6048,51 +6191,50 @@ document.addEventListener('alpine:init', () => {
     onKey(e) {
       this.kbd = true;
       if (this.sticky && this._stickyKey(e)) return;
-      // A real scrolling key we leave to the browser (PageUp/Down, Home/End, ⌥↓, Space, Tab's focus scroll) drops our step's
-      // target, so the settle never pulls that scroll back. Read after this handler, so our own keys keep a pending step. Any
-      // other key (Escape, z, a bare Shift) scrolls nothing: the glide runs on, and a settle due mid-glide still lands its target.
+      // A real scrolling key left to the browser (PageUp/Down, Home/End, ⌥↓, Space, Tab's focus scroll) drops our step's
+      // target, so the settle never pulls that scroll back. Read after this handler, so our own keys keep a pending step.
+      // Other keys scroll nothing: the glide runs on and a settle due mid-glide still lands.
       // ceiling: find-in-page and screen-reader scrolls send no event, so a step pending then still pulls them back — clear the target on a scroll heading away from it if that's reported.
       if (this.clView === 'month' && e.isTrusted && /^(Arrow\w+|Page(Up|Down)|Home|End|Tab| )$/.test(e.key)) queueMicrotask(() => e.defaultPrevented || (this._clMTo = null));
       const tag = (e.target.tagName || '').toLowerCase();
-      // ⌘/Ctrl+Z in a field is the field's own: native text undo, or nlpHistory in a pill editor (_pillKeydown);
-      // the app undo stack only takes over outside fields (list-level actions: complete, delete, move…).
+      // ⌘/Ctrl+Z in a field is the field's own (native undo, or nlpHistory in a pill editor); the app undo stack
+      // takes over outside fields.
       const inField = tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable;
       const dialogs = OVERLAYS.filter(([open, , dialog]) => dialog && open(this)).length;
-      const draft = !!this.clDraft(), modal = this.modalOpen() || draft;   // a grid draft has no backdrop, yet its editor owns the keys as a dialog's does
-      // The ? sheet teaches its keys: one it lists closes it and runs, like its ↗ launchers. Settings and any other dialog keep them dead.
+      const draft = !!this.clDraft(), modal = this.modalOpen() || draft;   // a grid draft has no backdrop, yet its editor owns the keys like a dialog
+      // The ? sheet's listed keys close it and run, like its ↗ launchers. Settings and other dialogs keep them dead.
       const sheetOnly = this.shortcutsOpen && !this.settingsOpen && dialogs === 1;
       if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
         if (inField) return;   // let the browser's native text undo/redo run
         e.preventDefault();   // Chrome's own Undo would rewrite the last-edited editor, focused or not
         // A modal keeps ⌘Z off what's behind it; the Bin, block editor and places manager journal their own controls' actions.
         if (modal && !sheetOnly && !(dialogs + draft === 1 && (this.trashOpen || this.blockEdit || this.locMgr))) return;
-        // composer open → only its OWN draft edits step; task-level ones stay blocked. A closing one (open stays true through the 240ms collapse) is shut.
+        // composer open: only its own draft edits step. A closing one (open stays true through the collapse) is shut.
         if (this.composer.open && !this._closingComposer && !DRAFT_KINDS.includes(this._journalPeek(e.shiftKey ? 1 : -1)?.kind)) return;
         e.shiftKey ? this.redo() : this.undo();   // ⌘⇧Z = redo
         return;
       }
       if ((e.key === 'Backspace' || e.key === 'Delete') && this.composer.open && !modal && this.chkDelSel(e)) return;
       if (e.key === 'x' && !e.metaKey && !e.ctrlKey && !e.altKey && this.composer.open && !modal && this.chkTickSel(e)) return;
-      // ⌘/Ctrl+Enter saves & closes the open composer from anywhere but the palette, whose ↵ is its own, and a dialog's field — no input focus needed.
+      // ⌘/Ctrl+Enter saves and closes the open composer from anywhere but the palette (its ↵ is its own) and a dialog's field.
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && this.composer.open && !this.palette.open && !(inField && e.target.closest('[role=dialog]'))) { e.preventDefault(); this.submitAndClose(); return; }
-      // ⌘/Ctrl+K opens the everything-nav palette from anywhere but a modal, even mid-typing (Space does it outside typing).
+      // ⌘/Ctrl+K opens the palette from anywhere but a modal, even mid-typing (Space does it outside typing).
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); if (sheetOnly) this.shortcutsOpen = false; if (!this.modalOpen() && !draft) this.openPalette(); return; }   // read after the sheet closes
       // ⌘/Ctrl+F on Lists is `/`, even mid-typing: the Done list windows its rows, so the browser's find misses them.
-      // An open composer or modal keeps the browser's find; in the search, it selects the query, as the find bar does.
+      // An open composer or modal keeps the browser's find; in the search, it selects the query.
       if ((e.metaKey || e.ctrlKey) && e.key === 'f' && !e.shiftKey && !e.altKey && this.listView() && !this.composer.open && (!modal || sheetOnly)) { e.preventDefault(); this.shortcutsOpen = false; return this.openListSearch(true); }
-      // Plan claims ⌘/Ctrl+↑/↓ as well: the native binding is "scroll to the end of the document", and the
-      // month scroller is virtualized to ~670k px, so it reads as an uncontrollable fling. One period, morphed —
-      // the same readable jump as Shift.
+      // Plan claims ⌘/Ctrl+↑/↓ too: natively it scrolls to the document's end, and the month scroller is virtualized to
+      // ~670k px, an uncontrollable fling. One period, morphed, like Shift.
       // (no composer guard: the composer lives on Lists, and a stale-open one must not hand the fling back)
       if ((e.metaKey || e.ctrlKey) && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && this.surface === 'plan'
           && (!modal || sheetOnly) && !this.overview) {
         e.preventDefault(); this.shortcutsOpen = false; this.clStep(e.key === 'ArrowDown' ? 1 : -1, true, e.timeStamp); return;
       }
-      // Single-key shortcuts — only when not typing, composing, or under a modal (Settings or a dialog), and unmodified.
+      // Single-key shortcuts: only when not typing, composing, under a modal, and unmodified.
       if (e.metaKey || e.ctrlKey || e.altKey || this.composer.open || (modal && !sheetOnly)
           || (sheetOnly && e.key === 'Enter' && e.target.closest?.('button'))   // a sheet control's Enter is its own (↗, ×), as natively
           || tag === 'input' || tag === 'textarea' || tag === 'select') return;
-      if (this.surface === 'social' && this.chat.open && !this.overview && !sheetOnly && e.key.length === 1 && !this.surfaceOrder[e.key - 1] && !(e.key === ' ' && e.target.closest?.('button, [role=button], a, summary'))) return (this.$refs.chatBar ?? this.$refs.chatInput)?.focus();   // an open thread's keys are its message, never an app shortcut; the key lands in the box
+      if (this.surface === 'social' && this.chat.open && !this.overview && !sheetOnly && e.key.length === 1 && !this.surfaceOrder[e.key - 1] && !(e.key === ' ' && e.target.closest?.('button, [role=button], a, summary'))) return (this.$refs.chatBar ?? this.$refs.chatInput)?.focus();   // an open thread's keys are its message, never an app shortcut
       if (this.overview) {   // the overview deck owns the keys while it's open
         if (this.ovSel === 0 && ['ArrowDown', 'j'].includes(e.key)) { e.preventDefault(); return this.rollerMove(1); }
         if (this.ovSel === 0 && ['ArrowUp', 'k'].includes(e.key))   { e.preventDefault(); return this.rollerMove(-1); }
@@ -6101,7 +6243,7 @@ document.addEventListener('alpine:init', () => {
         else if (e.key === 'Enter') { e.preventDefault(); this.ovSel === 0 ? this.rollerOpen() : this.diveTo(this.surfaceOrder[this.ovSel]); }
         else if (this.surfaceOrder[e.key - 1]) { e.preventDefault(); this.diveTo(this.surfaceOrder[e.key - 1]); }   // 1..n: the shipped surfaces (SURFACES)
         else if (e.key === 'o') { e.preventDefault(); this.closeOverview(); }
-        if (!['?', ' ', 'q', 'n', 'b', 'g', 'a'].includes(e.key)) {   // the sheet's Global keys still run: the help opens over the deck, the rest leave it
+        if (!['?', ' ', 'q', 'n', 'b', 'g', 'a'].includes(e.key)) {   // the sheet's Global keys still run: help opens over the deck, the rest leave it
           if (sheetOnly && e.defaultPrevented) this.shortcutsOpen = false;   // a deck key the sheet lists closes it, as below
           return;
         }
@@ -6109,20 +6251,19 @@ document.addEventListener('alpine:init', () => {
       }
       if (e.key === 'q') { e.preventDefault(); this.quickAdd(); }
       else if (e.key === 'n') { e.preventDefault(); this.quickAdd(true); }
-      else if (e.key === 'b') { e.preventDefault(); this.trashOpen = true; }   // Bin (Recently Deleted) — recover anything
+      else if (e.key === 'b') { e.preventDefault(); this.trashOpen = true; }   // Bin (Recently Deleted)
       else if (e.key === 'g') { e.preventDefault(); this.setNav('backlog'); }
       else if (e.key === 'a') { e.preventDefault(); this.setNav('all'); }
-      // d / w / m switch the calendar's view, Plan-only — the same letters as the on-screen switcher, so the
-      // keys teach themselves. The Bin is `b`, so `d` is free.
+      // d / w / m switch the calendar's view, Plan only: the on-screen switcher's letters.
       else if (this.surface === 'plan' && 'dwm'.includes(e.key)) { e.preventDefault(); this.clSetView({ d: 'day', w: 'week', m: 'month' }[e.key]); }
-      // A focused month day walks the days: the month is one Tab stop, so this is how the keyboard reaches the rest.
+      // A focused month day walks the days: the month is one Tab stop, so this reaches the rest.
       else if (e.target.classList?.contains('cl-date') && !e.shiftKey && CL_WALK[e.key]) { e.preventDefault(); this.clWalkDay(CL_WALK[e.key]); }
-      // Plan has no list of rows to walk, so ↑/↓ drive the timeline itself — and by a UNIT you can name (an
-      // hour, a week row), never a raw pixel nudge, so you always land somewhere you can read off the gutter.
+      // Plan has no rows to walk, so ↑/↓ drive the timeline by a unit you can name (an hour, a week row), never a
+      // raw pixel nudge, so you land somewhere readable off the gutter.
       else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && this.surface === 'plan') {
         e.preventDefault(); const dir = e.key === 'ArrowDown' ? 1 : -1;
-        // Shift travels a whole period and MORPHS, like a view switch: a deliberate jump should read as
-        // movement. A held plain arrow's period steps turn the page as the wheel does.
+        // Shift travels a whole period and morphs, like a view switch, so a deliberate jump reads as movement.
+        // A held plain arrow's period steps turn the page as the wheel does.
         e.shiftKey ? this.clStep(dir, true, e.timeStamp) : this.clArrow(dir, e.repeat);
       }
       else if (e.shiftKey && e.key === 'ArrowDown') { e.preventDefault(); this.selExtend(1); }   // Shift+↑/↓ extends the multi-select
@@ -6131,15 +6272,15 @@ document.addEventListener('alpine:init', () => {
       else if ((e.key === 'k' || e.key === 'ArrowUp') && this.listView()) { e.preventDefault(); this.moveFocus(-1); }
       else if ((e.key === 'Enter' || e.key === 'e') && this.focusId) { e.preventDefault(); this.openFocused(); }
       else if (e.key === 'x' && this.sel.length > 1 && this.listView()) { e.preventDefault(); this.selComplete(true); }
-      else if (e.key === 'x' && this.focusId && this.listView()) { e.preventDefault(); this.toggleFocused(); }   // complete focused row (Space opens the palette)
+      else if (e.key === 'x' && this.focusId && this.listView()) { e.preventDefault(); this.toggleFocused(); }   // complete focused row
       else if (e.key === '?') { e.preventDefault(); this.shortcutsOpen = true; }
       else if (e.key === '/' && this.listView()) { e.preventDefault(); this.openListSearch(); }
-      else if (e.key === 'f' && this.listView()) { e.preventDefault(); if (this.sel.length) this.clearSel(); this.listMenu = this.listMenu === 'add' ? null : 'add'; }   // f → filter sentence menu (clears a selection, as / does)
-      else if (this.surfaceOrder[e.key - 1]) { e.preventDefault(); this.goSurface(this.surfaceOrder[e.key - 1]); }   // 1..n jump to a surface; only digits index it
+      else if (e.key === 'f' && this.listView()) { e.preventDefault(); if (this.sel.length) this.clearSel(); this.listMenu = this.listMenu === 'add' ? null : 'add'; }   // the filter sentence menu (clears a selection, as / does)
+      else if (this.surfaceOrder[e.key - 1]) { e.preventDefault(); this.goSurface(this.surfaceOrder[e.key - 1]); }   // 1..n jump to a surface
       else if (e.key === 'ArrowLeft') { e.preventDefault(); this.goSurface(this.surfaceOrder[Math.max(0, this.surfaceIndex() - 1)]); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); this.goSurface(this.surfaceOrder[Math.min(this.surfaceOrder.length - 1, this.surfaceIndex() + 1)]); }
-      else if (e.key === ' ' && !e.target.isContentEditable && !e.target.closest?.('button, [role=button], a, summary')) { e.preventDefault(); this.openPalette(); }   // Space → the everything-nav palette; a focused control keeps its own Space
-      else if (e.key === 'o') { e.preventDefault(); this.openOverview(); }   // o → zoom-out overview deck
+      else if (e.key === ' ' && !e.target.isContentEditable && !e.target.closest?.('button, [role=button], a, summary')) { e.preventDefault(); this.openPalette(); }   // Space opens the palette; a focused control keeps its own Space
+      else if (e.key === 'o') { e.preventDefault(); this.openOverview(); }   // o: zoom-out overview deck
       if (sheetOnly && e.defaultPrevented && e.key !== '?') this.shortcutsOpen = false;
     },
     _syncHist() {   // exactly one history entry while any overlay is open (init's popstate)
@@ -6148,15 +6289,15 @@ document.addEventListener('alpine:init', () => {
       else if (!open && history.state?.overlay && !_histPop) { _histPop = true; history.back(); }   // hand the entry back without navigating
     },
     // The sticky note's keys (contract: ops/shared/sticky-typing-contract.md): from the title ↓ walks the matches; on a
-    // match Space completes, Enter opens, ↑ off the first returns, any other key types into the title again. Esc clears the
+    // match Space completes, Enter opens, ↑ off the first returns, any other key types into the title. Esc clears the
     // title; on an empty one it hands the foreground back. Its composer is always open, so onKey's list keys never run.
     // IME: composing keydowns never get here (init's capture listener stops them).
     _stickyKey(e) {
       const title = this.$refs.content, inTitle = e.target === title;
       if (e.metaKey || e.ctrlKey || e.altKey || (inTitle && Object.values(PICKERS).some(p => this[p.key].open))) return false;   // an open # / @ picker keeps its keys
       const take = () => { e.preventDefault(); e.stopPropagation(); return true; };
-      if (document.documentElement.classList.contains('folded')) return take();   // folded, the rows and line are hidden: no key acts on them unseen
-      // Esc's clear is one ⌘Z step in the line: the pre-clear snapshot goes onto the fresh editor's history
+      if (document.documentElement.classList.contains('folded')) return take();   // folded, the rows and line are hidden: no key acts unseen
+      // Esc's clear is one ⌘Z step: the pre-clear snapshot goes onto the fresh editor's history
       if (inTitle && e.key === 'Escape') { if (this.titleEmpty) desktopWindow('back'); else { const was = this._nlpSnap(title); this.resetDraft(); this.setEditorText(''); title._hist.undo.push(was); } return take(); }
       if (inTitle && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && this.visibleRows().length) { title.blur(); this.moveFocus(e.key === 'ArrowDown' ? 1 : -1); return take(); }   // the line sits under the rows: ↑ takes the one above it, ↓ the first
       if (inTitle) return false;
@@ -6164,13 +6305,13 @@ document.addEventListener('alpine:init', () => {
       if (this.focusId && e.key === ' ') { this.toggleFocused(); return take(); }
       if (this.focusId && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { this.moveFocus(e.key === 'ArrowDown' ? 1 : -1); return take(); }
       if (this.focusId && e.key === 'Enter') { this.openFocused(); return take(); }
-      // any other key types into the line — never an app shortcut: the line is the note's only keyboard target
+      // any other key types into the line, never an app shortcut
       if (e.key.length === 1) { this._setKbFocus(null); title.focus(); getSelection().selectAllChildren(title); getSelection().collapseToEnd(); }   // the key lands there
       return false;
     },
     escape(back = false) {
-      // Escape from inside a menu hands focus back to its trigger — the control that says it is expanded.
-      // ceiling: the FIRST expanded trigger in DOM order — the filter menu has three, so Escape may land on "everything",
+      // Escape from inside a menu hands focus back to its trigger, the control that says it is expanded.
+      // ceiling: the first expanded trigger in DOM order; the filter menu has three, so Escape may land on "everything",
       // not the chip that opened it; remember the opener per menu if that is reported or a menu shares triggers across rows.
       const trigger = document.activeElement?.closest('.pop:not(.tpop)') && document.querySelector('[aria-haspopup][aria-expanded="true"]');   // the time pop's Escape keeps its date pop, so no trigger
       const o = OVERLAYS.find(([open]) => open(this));
@@ -6181,7 +6322,7 @@ document.addEventListener('alpine:init', () => {
     fmt(ts) {
       if (!ts) return '';
       const dateOnly = ts.length <= 10, d = new Date(dateOnly ? ts + 'T00:00' : ts);
-      const day = d.toLocaleDateString([], { month: 'short', day: 'numeric' });   // no year, timed or not — these are near-term dates
+      const day = d.toLocaleDateString([], { month: 'short', day: 'numeric' });   // no year: near-term dates
       return dateOnly ? day : day + ', ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     },
     partLabel(iso, part) { return iso === isoDate(new Date()) ? (part === 'evening' ? 'Tonight' : 'This ' + part) : dueBadge(iso).label + ' ' + part; },
@@ -6193,8 +6334,8 @@ document.addEventListener('alpine:init', () => {
     },
     today() { return new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }); },
 
-    // unreachable: keep the last good rows (the failed write says so itself). The rows a write or realtime changed land
-    // through _patchTask; anything it can't patch (a row added or gone, a moved one) replaces the list.
+    // unreachable: keep the last good rows. Rows a write or realtime changed land through _patchTask; anything it
+    // can't patch (a row added, gone or moved) replaces the list.
     async loadTasks() {
       const tasks = await this.store.tasks.list().catch(() => null); if (!tasks) return;
       const gen = ++_tasksGen;
@@ -6204,14 +6345,14 @@ document.addEventListener('alpine:init', () => {
       const had = window.Alpine.raw(this.byId), changed = tasks.length === had.size && tasks.filter(t => { const o = had.get(t.id); return o !== t && JSON.stringify(o) !== JSON.stringify(t); });
       if (changed && (!changed.length || this._patchTask(changed))) return;
       _rowStale = changed && _visBP && changed.every(r => had.get(r.id) && had.get(r.id).parent_id === r.parent_id) ? this._rowsReading(changed.map(r => r.id), true) : null;   // a move or a row not seen before: rebuild all
-      const pm = this._placedMap(), cal = !changed || changed.some(r => !had.get(r.id) || onCalendar(r, pm) || onCalendar(had.get(r.id), pm));   // as _patchTask: an undated edit leaves every calendar memo standing (today's plan on Lists included)
+      const pm = this._placedMap(), cal = !changed || changed.some(r => !had.get(r.id) || onCalendar(r, pm) || onCalendar(had.get(r.id), pm));   // as _patchTask: an undated edit leaves every calendar memo standing
       this._rowV++;
       if (cal) _calDataV++;
       this.tasks = tasks; this.byId = new Map(tasks.map(t => [t.id, t])); this.parentIds = new Set(tasks.map(t => t.parent_id).filter(Boolean));
       if (this.navSel.type === 'project' && !this.byId.has(this.navSel.id)) this.setNav('all');   // its project went (another device's delete)
     },
     // Ids of the rows that read these tasks: their own, their subtrees' (project name, Notes), every row they block and,
-    // with `up`, their ancestors' (progress, rolled-up estimate). Reads the index of the rows as rendered, so call it before a _rowV bump.
+    // with `up`, their ancestors' (progress, rolled-up estimate). Call before a _rowV bump: it reads the rendered index.
     _rowsReading(ids, up) {
       const out = new Set(), inv = this._taskIdx().inv;
       const down = id => { if (out.has(id)) return; out.add(id); for (const c of _visBP.get(id) || []) down(c.id); };
@@ -6225,8 +6366,7 @@ document.addEventListener('alpine:init', () => {
       }
       return out;
     },
-    // The rows reading a task's ancestors: each one's own (progress, rolled-up estimate) and every shown un-nested row
-    // whose line-2 pie counts the task (a nested row draws none).
+    // The rows reading a task's ancestors: each one's own, and every shown un-nested row whose line-2 pie counts the task.
     _upRows(id, out) {
       for (const a of this._chain(this.byId.get(id)?.parent_id)) {
         out.add(a);
@@ -6235,7 +6375,7 @@ document.addEventListener('alpine:init', () => {
       return out;
     },
     async loadAreas() { const areas = await this.store.areas.list(); this._rowV++; this.areas = areas; this._pruneQfAreas(); },
-    _pruneQfAreas() {   // a gone area left in the filter hides every task (here, elsewhere, or under another account)
+    _pruneQfAreas() {   // a gone area left in the filter hides every task
       const has = id => this.areas.some(a => a.id === id), all = [...this.qfAreas, ..._qfGone.filter(id => !this.qfAreas.includes(id))];
       const live = all.filter(has);
       _qfGone = all.filter(id => !has(id));
@@ -6249,21 +6389,18 @@ document.addEventListener('alpine:init', () => {
         return `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}">${a.icon ? '' : `<b class="ltr">${escHtml([...a.name || ''][0] || '')}</b>`}<svg class="ico" style="--fit:${fit[icon] ?? 1};--sx:${x};--sy:${y}"><use href="#${icon}"/></svg></i>`;
       }).join('');
     },
-    // Never a blank button: an id whose area is gone (deleted elsewhere, not yet loaded) resolves to nothing, so the
-    // label keys off the resolved names, not draft.areas.length.
+    // An id whose area is gone resolves to nothing, so the label keys off the resolved names, never a blank button.
     areaLabel() { return this.areaObjs(this.draft.areas).map(a => a.name).filter(Boolean).join(', ') || 'Areas'; },
-    // The ONE map from a data kind to the narrowest re-read that covers it — shared by our own writes
-    // (_reloadFor) and by realtime (_subscribeStore), so the two paths can never disagree about what's current.
-    // reloadAll() (a whole-account pull: the cloud `bootstrap` RPC) is the cold start and the fallback, not a
-    // step in every save. Kinds are the journal's singular target names; the store's channel speaks the same set.
+    // The ONE map from a data kind to the narrowest re-read that covers it, shared by our writes (_reloadFor) and
+    // realtime (_subscribeStore) so they can't disagree. reloadAll() is the cold start and the fallback, not a step in every save.
     _loaders() {
       const st = this.store;
       return {
         task: () => this.loadTasks(), area: () => this.loadAreas(), message: () => this.chatReload(),
-        event: () => this.loadEvents(), block: () => this.loadBlocks(),
+        event: () => this.loadEvents(), block: () => this.loadBlocks(), gcalEvent: () => this.gcalDraw(), gcalCal: () => this.gcalDraw(),
         filter: () => this.loadFilters(),
         location: async () => { this.locations = await st.locations.list(); this._rowV++; this.homeLocationId = st.homeLocationId(); this.currentRegion = st.currentRegion(); },   // _rowV: rows bake rowLoc's place name into the row cache
-        // a date-item IS a row's date: only the rows whose placement changed repaint — all of them when the view sorts or groups by date
+        // a date-item IS a row's date: only the rows whose placement changed repaint (all when the view sorts or groups by date)
         scheduleItem: async () => {
           const si = await st.scheduleItems.list(), was = this._placedMap(); _calDataV++; this.scheduleItems = si;
           const now = this._placedMap(), ids = new Set([...was.keys(), ...now.keys()].filter(id => was.get(id) !== now.get(id)));
@@ -6278,21 +6415,19 @@ document.addEventListener('alpine:init', () => {
         blockDay: async () => { const bd = await st.blockDays.list(); _calDataV++; this.blockDays = bd; },   // bump first: an effect running on the write must miss clBlocks' memo
       };
     },
-    // An unknown kind falls back to the whole account — and 'all' is exactly that on purpose: it's what the
-    // store sends when realtime dropped and came back, i.e. the one moment we know there may be a hole.
-    // A failed re-read keeps its list's last good rows, never throws past the caller (realtime, a save's journal write or
-    // toast), and is said + retried by the minute tick, as reloadAll's.
+    // An unknown kind falls back to the whole account; 'all' is what the store sends when realtime dropped and came back,
+    // the one moment there may be a hole. A failed re-read keeps the list's last good rows, never throws past the caller,
+    // and the minute tick says it and retries.
     _reloadFor(kind) { return (this._loaders()[kind] || (() => this.reloadAll()))().catch(() => { if (!this._loadFailed) this.toast('Couldn’t load, retrying'); this._loadFailed = true; }); },
-    // After _apply: each list its ops touched, once — never the whole account. An op carrying rows (a reinsert, or the remove
-    // taking one back) moved rows out or in, and with them what points at them: a delete's cascade or scrub (Postgres FKs and
-    // delete_area/delete_location, LocalStore's prune), a reinsert's `also`.
+    // After _apply: each list its ops touched, once. An op carrying rows (a reinsert, or the remove taking one back) moved
+    // rows, and with them what points at them: a delete's cascade or scrub, a reinsert's `also`.
     async _reloadAfter(inv) {
       const deps = o => o.kind === 'reinsert' || o.rows ? { task: ['task', 'scheduleItem', 'reminder'], block: ['block', 'scheduleItem', 'blockDay', 'reminder'],
         area: ['area', 'task', 'block'], location: ['location', 'task', 'block', 'event'] }[o.target] || [o.target] : [o.target];
       await Promise.all([...new Set((inv.kind === 'composite' ? inv.ops : [inv]).flatMap(deps))].map(k => this._reloadFor(k)));
     },
     areaById(id) { return byIdIn(this.areas).get(id); },
-    // The ? sheet's rows — also the coach's key lookup (_coach), so a tip can't drift from the sheet.
+    // The ? sheet's rows, also the coach's key lookup (_coach), so a tip can't drift from the sheet.
     shortcutGroups() {
       return [
         {l:'Global',r:[['<kbd>␣</kbd>','Go to anything'],['<kbd>⌘</kbd><kbd class=sk-letter>k</kbd>','Go to anything (works while typing)'],...this.surfaceOrder.map((s, i) => ['<kbd>' + (i + 1) + '</kbd>', 'Go to ' + SURF_META[s].label]),['<kbd class=sk-arrow>←</kbd><kbd class=sk-arrow>→</kbd>','Step surfaces'],['<kbd class=sk-letter>q</kbd>','New task'],['<kbd class=sk-letter>n</kbd>','New note'],['<kbd class=sk-letter>g</kbd>','Backlog'],['<kbd class=sk-letter>a</kbd>','All'],['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd> or <kbd>⌘</kbd><kbd class=sk-mod>⇧</kbd><kbd class=sk-letter>z</kbd>','Undo / redo'],['<kbd class=sk-letter>b</kbd>','Bin'],['<kbd class=sk-letter>o</kbd>','Overview'],['<kbd>?</kbd>','This help'],['<kbd>esc</kbd>','Close any open overlay']]},
@@ -6332,7 +6467,7 @@ document.addEventListener('alpine:init', () => {
       return this.shortcutGroups().map(g => html`<div class="${g.r ? 'sheet-grp' : 'sk-section'}"><div class="section-label">${g.l}</div>${raw((g.r || []).map(([k, d]) =>
         html`<div class="sk flex items-center gap-6 muted-12"><span>${raw(k.replaceAll('⌘', this.mod))}</span><span>${d}</span></div>`).join(''))}</div>`).join('');
     },
-    // The 2nd mouse use of one action in a session shows its key — once ever per action, never blocking.
+    // The 2nd mouse use of one action in a session shows its key, once ever per action.
     _coach(data) {   // the control's dataset: sk = its sheet label, skKey = its own key where the row lists several (d/w/m)
       const label = data?.sk;
       _skKeys ??= new Map(this.shortcutGroups().flatMap(g => g.r || []).map(([k, d]) => [d, keyTip(k, this.mod)]));
@@ -6346,13 +6481,13 @@ document.addEventListener('alpine:init', () => {
     },
     setFlag(key, on) { this[key] = on; localStorage.setItem('adherod.' + key, on ? '1' : '0'); },   // a Settings On/Off
     setCelebrations(mode) { this.celebrations = mode; localStorage.setItem('adherod.celebrations', mode); },
-    toast(msg) { return this.notify(msg); },   // thin wrapper: a plain message with no actions
-    // Push a card onto the bottom-right stack. With action buttons it lingers longer (8s) so the Undo is reachable.
-    notify(msg, { actions = [], timeout = actions.length ? 8000 : 4000 } = {}) {
+    toast(msg) { return this.notify(msg); },
+    // Push a card onto the bottom-right stack; with actions it lingers (8s) so the Undo is reachable.
+    notify(msg, { actions = [], timeout = actions.length ? 8000 : 4000, done } = {}) {   // done: runs as the card leaves, after any action it ran
       const id = crypto.randomUUID();
-      this.notifs.push({ id, msg, actions, leaving: false });
-      // cap the visible stack (a leaving card is already going), never the card just pushed — the user must see it:
-      // oldest older card without Undo/Redo first (plain, a tip), an Undo card only when all older ones carry one (⌘Z still reaches it)
+      this.notifs.push({ id, msg, actions, done, leaving: false });
+      // cap the visible stack, never the card just pushed: drop the oldest card without Undo/Redo first, an Undo card only
+      // when all older ones carry one (⌘Z still reaches it)
       const older = this.notifs.filter(n => !n.leaving && n.id !== id);
       if (older.length > 2) this._dismissNotif((older.find(n => !n.actions.some(a => a.jid)) || older[0]).id);
       _notifTimers.set(id, { left: timeout, holds: new Set(document.hidden ? ['hidden'] : []) });
@@ -6360,7 +6495,7 @@ document.addEventListener('alpine:init', () => {
       return id;
     },
     _notifRun(id) { const t = _notifTimers.get(id); t.at = Date.now(); t.timer = setTimeout(() => this._dismissNotif(id), t.left); },
-    // The pointer on a card, focus in it or a hidden tab holds its timer: it must not vanish mid-reach and drop its focused Undo to the page.
+    // The pointer on a card, focus in it or a hidden tab holds its timer, so it can't vanish mid-reach.
     _notifHold(id, why, on) {
       const t = _notifTimers.get(id); if (!t) return;
       if (on && !t.holds.size) { clearTimeout(t.timer); t.left -= Date.now() - t.at; }
@@ -6370,23 +6505,24 @@ document.addEventListener('alpine:init', () => {
     _dismissNotif(id) {
       clearTimeout(_notifTimers.get(id)?.timer); _notifTimers.delete(id);
       const n = this.notifs.find(x => x.id === id); if (!n || n.leaving) return;
-      n.leaving = true;                                                    // triggers the exit transition
+      n.leaving = true;
+      n.done?.();
       setTimeout(() => { this.notifs = this.notifs.filter(x => x.id !== id); }, 260);
     },
-    _runNotifAction(n, a) { a.fn(); this._dismissNotif(n.id); },           // action fires, then the card leaves
+    _runNotifAction(n, a) { a.fn(); this._dismissNotif(n.id); },
     // --- Composer draft safety ---
-    // Nothing typed is ever lost to a mispress: the whole draft is persisted (adherod.draftPending,
-    // keyed by editing id or this tab's _newKey) on EVERY change while the composer is open (x-effect → persistDraft).
-    // Closing a dirty+unsaved draft KEEPS it (persisted) + makes it ⌘Z-undoable; reopening restores it.
+    // Nothing typed is lost to a mispress: the whole draft is persisted (adherod.draftPending, keyed by editing id or
+    // this tab's _newKey) on every change while the composer is open. Closing a dirty unsaved draft keeps it and makes it
+    // ⌘Z-undoable; reopening restores it.
     _pendingMap() { try { return JSON.parse(localStorage.getItem('adherod.draftPending')) || {}; } catch { return {}; } },
     _writePending(map, item = 'adherod.draftPending') {
       try { localStorage.setItem(item, JSON.stringify(map)); this._pSaveFailed = false; return true; }
       catch { if (!this._pSaveFailed) this.toast('Storage is full. This draft won’t survive a reload'); this._pSaveFailed = true; return false; }
     },
-    // Clearing a pending draft with its `sid` means THAT draft LANDED (saved, or reverted to the saved state) → its pending
-    // slot and bin rows are stale: a "Restore" that re-applies text already on the task is worse than no row at all. Another
-    // draft's — and every row when there's no sid (the explicit Discard) — stay: the bin may hold their only copy.
-    // saved: the landed draft's sig — any copy of exactly that under key is stale too (an open one turns clean)
+    // Clearing with `sid` means THAT draft landed (saved, or reverted to saved): its pending slot and bin rows are stale,
+    // and a "Restore" re-applying text already on the task is worse than no row. Another draft's rows, and every row when
+    // there's no sid (the explicit Discard), stay: the bin may hold their only copy.
+    // saved: the landed draft's sig; any copy of exactly that under key is stale too (an open one turns clean)
     _clearPending(key, sid, saved) {
       const m = this._pendingMap(), same = (p, k = key) => p?.sid === sid || !!saved && k === key && this._draftSig(p) === saved;
       if (key in m && (!sid || same(m[key]))) { delete m[key]; this._writePending(m); }
@@ -6397,23 +6533,20 @@ document.addEventListener('alpine:init', () => {
       if (hit) this._journalSave();
     },
     _draftKey() { return this.editing || this._newKey(); },
-    _newKey(acct = this._acct()) { return (acct ? 'new:' + acct : 'new') + '@' + _tab; },   // per account and tab: task ids are already unique
-    _live(d) { return this.composer.open && !this._closingComposer && this.draft === d; },   // after every composer await: still draft d, open? (its object: a restored draft shares its sid)
-    // The full composer input state — draft fields PLUS the uncommitted ghost buffers. This is the unit of
-    // loss-protection: everything the user has typed, committed or not. Reading it also subscribes the
-    // x-effect to all three, so persistDraft re-fires when you type in a ghost box (not just the draft).
+    _newKey(acct = this._acct()) { return (acct ? 'new:' + acct : 'new') + '@' + _tab; },   // per account and tab
+    _live(d) { return this.composer.open && !this._closingComposer && this.draft === d; },   // after a composer await: still draft d, open? (compares the object: a restored draft shares its sid)
+    // The full composer input state: draft fields plus the uncommitted ghost buffers, the unit of loss-protection.
+    // Reading it subscribes the x-effect to all three, so persistDraft re-fires on a ghost-box keystroke.
     _draftState(s = this) { return { draft: s.draft, chkGhost: s === this && s.chkGhost === _chkSeed ? '' : s.chkGhost || '', subGhost: s.subGhost || '' }; },   // the finder's carried query is no draft
     _draftSig(s) { return JSON.stringify(this._draftState(s)); },   // s: a pending entry (default: the live composer)
-    // TWO x-effects on the composer re-run this on any edit: persistDraft() on the li subscribes to every draft field +
-    // both ghost buffers + editing, and persistDraft(true) on .composer-grow to the checklist alone — so a title
-    // keystroke never walks a 120-item checklist (stringifying the whole draft is ~1ms a key at 4× CPU).
-    // Writes are debounced (~300ms) to avoid N serializations per keystroke; flush fires synchronously on pagehide/
-    // visibilitychange (registered in init below) so no data is lost when the page closes between keystrokes.
+    // TWO x-effects re-run this: persistDraft() on the li subscribes to every draft field, both ghost buffers and editing;
+    // persistDraft(true) on .composer-grow to the checklist alone, so a title keystroke never walks a 120-item checklist
+    // (~1ms a key at 4x CPU). Writes are debounced (~300ms); flush fires synchronously on pagehide/visibilitychange (init).
     persistDraft(chk) {
       const cl = this.draft.checklist;
       if (chk) _touch(cl); else { _touch(this._draftState(), cl); void this.editing; }
-      // open flips to false only in the async grow-close callback, so guard the whole close window here —
-      // otherwise a save/close that just cleared the pending gets it re-written by this effect mid-animation.
+      // open flips to false only in the async grow-close callback: guard the whole close window, or a save/close that just
+      // cleared the pending gets it re-written by this effect mid-animation.
       if (!this.composer.open || this._closingComposer) return;
       clearTimeout(_draftT);
       _draftT = setTimeout(() => this._flushDraftNow(), 300);
@@ -6423,29 +6556,27 @@ document.addEventListener('alpine:init', () => {
       if (!this.composer.open || this._closingComposer) return;
       const s = this._draftSig(), map = this._pendingMap(), key = this._draftKey();
       if (s !== this._draftBase) map[key] = this._draftEntry();
-      else if (map[key]?.sid === this._draftSid) delete map[key]; else return;   // clean → drop this draft's stale copy; another tab's composer on the same task shares the key
+      else if (map[key]?.sid === this._draftSid) delete map[key]; else return;   // clean: drop this draft's stale copy; another tab's composer on the same task shares the key
       this._writePending(map);
     },
-    // Ends the open draft — on a close, and before a composer opens over it (editTask/startAdd/_reopenDraft swap the
-    // draft in place). A drop that ISN'T a save/delete keeps unsaved edits pending, so reopening restores them; a
-    // saved/handled one clears the pending draft so it can't resurrect over the save.
+    // Ends the open draft, on a close and before a composer opens over it. A drop that isn't a save/delete keeps unsaved
+    // edits pending so reopening restores them; a saved one clears the pending draft so it can't resurrect over the save.
     _endDraft(saved) {
       if (this.composer.open && !this._closingComposer) {
-        // Make the pending map EXACT before branching: the debounce may still hold the last <300ms of typing
-        // (or the cleanup flush that marks a re-cleaned draft), and every branch below reads the map's truth.
+        // Make the pending map exact first: the debounce may still hold the last <300ms of typing, and every branch reads it.
         clearTimeout(_draftT); this._flushDraftNow();
         const key = this._draftKey();
         if (saved === true || this._draftSig() === this._draftBase) this._clearPending(key, this._draftSid);
         else if (saved === 'drop') { this._clearPending(key, this._draftSid); this._pushDraftBin(key); }   // Esc: the next open is blank; the fresh row is ⌘Z's
-        // dropped-but-kept dirty draft → a recoverable "Draft" bin row + ⌘Z reopen (pending autosave stays too)
+        // dropped-but-kept dirty draft: a recoverable "Draft" bin row + ⌘Z reopen (pending autosave stays too)
         else if (saved !== 'pre') this._pushDraftBin(key);
-        // 'pre': save in progress — don't consume journal entry; caller calls _clearPending on confirmed success
+        // 'pre': save in progress; don't consume the journal entry, the caller calls _clearPending on confirmed success
       }
       if (_keepRow) { _keepRow = null; this._rowV++; }   // the held row goes where it belongs (a closing composer's view hold keeps it through the collapse)
       this._closingComposer = true;   // stop persistDraft re-writing it (the async grow-close; an open re-arms it) — and a 2nd end is a no-op
     },
-    // Called from startAdd/editTask AFTER the pristine draft is built: record the baseline, then restore a
-    // newer unsaved draft for this key if one exists (and it actually differs from the pristine state).
+    // Called after the pristine draft is built: record the baseline, then restore a newer unsaved draft for this key
+    // if it differs from the pristine state.
     _initDraftSafety() {
       this._draftBase = this._draftSig();
       const m = this._pendingMap(), key = this._draftKey();
@@ -6456,9 +6587,8 @@ document.addEventListener('alpine:init', () => {
       const raw = _handoff?.key === key ? _handoff.payload : m[key], p = raw && { ...raw, draft: fill(raw.draft, true) };
       const r = p && this._draftSig(p) !== this._draftBase;
       if (_handoff?.key === key) _handoff = null;
-      // THIS draft's identity (every add-composer has editing === null, so a task id can't tell two blank drafts
-      // apart); a restored draft keeps its own, so saving it retires the Bin row its close left — unless that draft
-      // is mid-save: then this is another draft, whose rows that save mustn't retire
+      // THIS draft's identity (every add-composer has editing === null); a restored draft keeps its own, so saving it
+      // retires the Bin row its close left, unless it is mid-save: then this is another draft whose rows that save mustn't retire
       const mid = r && _submitting.has(p.sid);
       this._draftSid = r && !mid && p.sid || crypto.randomUUID(); _draftFrom = mid ? p.sid : null;
       _saveBase = r && p.base ? fill(p.base) : base;   // an entry from before `base`: the task as stored now
@@ -6484,16 +6614,16 @@ document.addEventListener('alpine:init', () => {
       this.$nextTick(() => this.syncChkRows());
     },
     // --- Recently deleted (persistent trash bin) ---
-    // A VIEW over the journal (trashView, recovery.js): any bin:true, unrestored entry ≤30d old, of this account (_mine).
+    // A VIEW over the journal (trashView, recovery.js): any bin:true, unrestored entry <=30d old of this account (_mine).
     // Restore applies the entry's inverse out-of-band and detaches it so linear ⌘Z can't re-touch it.
     trashItems() {   // reactive on _jV
       void this._jV; let rem, dated, siIds;
-      // a removed reminder or checklist item that is live again (⌘Z, another copy put back) is no deletion: hidden, kept for when it goes again.
-      // An item gone from the open draft (deleted, not yet saved) is shown: Put it back returns it there.
+      // a removed reminder or checklist item that is live again (⌘Z, another copy put back) is no deletion: hidden, kept for
+      // when it goes again. An item gone from the open draft (not yet saved) is shown: Put it back returns it there.
       const has = (cl, id) => !!cl?.some(c => c.id === id), chkBack = ({ taskId, item }) => has(this.byId.get(taskId)?.checklist, item.id) && (this.editing !== taskId || has(this.draft.checklist, item.id));
       // a save's deleted subtasks' copy (_saveSubs) too; a task's own Bin row keeps its older copy over a live row (Already back)
       const ids = e => e.target === 'reminder' ? rem ??= new Set(this.reminders.map(x => x.id)) : e.label === 'Deleted subtask' && this.byId;
-      // a small change whose task no longer holds what it changed to (⌘Z, a later edit, the task gone): nothing to undo, hidden.
+      // a small change whose task no longer holds what it changed to (⌘Z, a later edit, the task gone): hidden.
       // A date compares its day only: a time-only move makes no row, so it must not hide the day's. One task → date-item Map per call.
       const siOf = id => (dated ??= new Map(this.scheduleItems.filter(x => !x.block_id && x.date && x.task_id).reverse().map(x => [x.task_id, x]))).get(id) ?? null;
       const day = (e, v) => e.payload.field === 'date' && v ? v.slice(0, 10) : v;
@@ -6509,11 +6639,11 @@ document.addEventListener('alpine:init', () => {
       const h = Math.round(m / 60); if (h < 24) return h + 'h ago'; const d = Math.round(h / 24);
       return d === 1 ? 'yesterday' : d + 'd ago';
     },
-    _entryOps(e) { return e.op?.ops || (e.op ? [e.op] : []); },   // composite → its ops; single op → a one-item list; nothing → empty
-    // Bulk multi-select DELETE (≥2 reinsert ops — the journal stores a delete as its reinsert inverse).
+    _entryOps(e) { return e.op?.ops || (e.op ? [e.op] : []); },   // composite → its ops; single op → [op]; none → []
+    // Bulk multi-select DELETE (>=2 reinsert ops; the journal stores a delete as its reinsert inverse).
     _bulkOps(e) { const ops = this._entryOps(e).filter(o => o.kind === 'reinsert'); return ops.length >= 2 ? ops : null; },   // a convert's checklist update rides along
-    // A bin row is either a LOSS (it's gone) or a CHANGE (it still exists, moved or edited). Only losses earn red text
-    // and "Put it back" — a move rendered as a deletion is alarming, and its Restore button ambiguous.
+    // A bin row is a LOSS (gone) or a CHANGE (moved or edited). Only losses earn red text and "Put it back": a move shown
+    // as a deletion is alarming.
     trashIsChange(e) {
       const ops = this._entryOps(e);
       return ops.length > 0 && ops.every(o => o.kind === 'update' || o.kind === 'move' || o.kind === 'complete');
@@ -6522,11 +6652,11 @@ document.addEventListener('alpine:init', () => {
       if (this.trashIsChange(e)) return 'i-edit';
       return { task: 'i-circle', 'checklist-item': 'i-check', project: 'i-proj', area: 'i-tag-tag', event: 'i-cal', block: 'i-cal', filter: 'i-search', location: 'i-pin', draft: 'i-clipboard' }[e.target] || 'i-trash';
     },
-    // ONE chronological list: the row says which kind it is (icon, red text vs muted, and this verb) — sections by kind
-    // would throw away the only order the bin exists to show, "what did I just do?".
+    // ONE chronological list: the row says its kind (icon, red vs muted, verb); sections by kind would lose the order
+    // that answers "what did I just do?".
     trashVerb(e) { return this.trashIsChange(e) ? 'Undo' : 'Put it back'; },
-    // A Restore that CANNOT work must not look like it works: a checklist item or reminder whose task is gone (never saved,
-    // or since deleted) has nowhere to go back to → name the reason in the row and disable the button.
+    // A Restore that CANNOT work must not look like it does: a checklist item or reminder whose task is gone has nowhere
+    // to go back to, so the row names the reason and disables the button.
     trashBlocked(e) {
       const gone = e.kind === 'checklist-item' || e.kind === 'held-sub' ? !this.byId.get(e.payload?.taskId) : e.target === 'reminder' && this._entryOps(e).some(o => o.rows?.some(r => r.ref_id && !this.byId.has(r.ref_id)));
       return gone ? 'its task is gone' : '';
@@ -6544,8 +6674,8 @@ document.addEventListener('alpine:init', () => {
       }
       return days;
     },
-    // Read-only preview for a bin row: { title, detail (kind · its task · counts), peek: ONE line of what comes back, [{ text, cls }] }.
-    // Color is the text's own: trash-del = gone (red), trash-add = a dropped draft that was being added (green), '' = a change (muted).
+    // Read-only preview for a bin row: { title, detail, peek: ONE line of what comes back, [{ text, cls }] }.
+    // Color is the text's own: trash-del = gone (red), trash-add = a dropped draft being added (green), '' = a change (muted).
     trashPreview(e) {
       const clip = (s, n = 72) => { s = (s ?? '').toString().replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
       const peek = (texts, cls) => texts.map(t => clip(t)).filter(Boolean).slice(0, 8).map(text => ({ text, cls }));   // a single truncated line: 8 is past its width
@@ -6561,14 +6691,14 @@ document.addEventListener('alpine:init', () => {
         return out(clip(e.payload?.item?.text), [e.kind === 'held-sub' ? 'Unsaved subtask' : 'Checklist item', this.trashBlocked(e) || clip(task, 40)].filter(Boolean).join(', '));
       }
       const opRow = op => (op.rows && op.rows[0]) || this._rowById(op.target || 'task', op.id ?? op.fwd?.id) || {}, name = r => r.content ?? r.name ?? r.title ?? r.body;
-      // a change (move / priority / completion): the rows still exist — the label's own sentence and the muted names it touched, never red
+      // a change (move / priority / completion): the rows still exist, so the label's own sentence and the muted names, never red
       if (this.trashIsChange(e)) return out(e.label, 'Changed', peek(this._entryOps(e).map(op => name(opRow(op)) || '(untitled)'), ''));
       if (e.target === 'reminder') {   // a save's removed reminders: one task's, named by it and each one's time
         const rows = this._entryOps(e).flatMap(o => o.rows || []);
         return out(clip(this.byId.get(rows[0]?.ref_id)?.content), [rows.length > 1 ? rows.length + ' reminders' : 'Reminder', this.trashBlocked(e)].filter(Boolean).join(', '), peek(rows.map(r => this.remWhen(r, this.byId.get(r.ref_id) || {})), 'trash-del'));
       }
-      // Bulk multi-select delete (≥2 ops): the COUNT + every affected item. Single-entity deletes model children re-parenting as
-      // mixed-kind ops, so they fall through to the row preview below.
+      // Bulk multi-select delete (>=2 ops): the COUNT + every affected item. Single-entity deletes fall through to the row
+      // preview below (children re-parenting appear as mixed-kind ops).
       const bulk = this._bulkOps(e);
       if (bulk) { const k = bulk.length, tgt = e.op.target || 'task'; return out(`${k} ${tgt}${k > 1 ? 's' : ''}`, k < this._entryOps(e).length ? e.label : 'Deleted', peek(bulk.map(op => name(opRow(op)) || '(untitled)'), 'trash-del')); }
       // every other bin entry is a deletion: its subtasks, checklist and description peek in red
@@ -6593,22 +6723,21 @@ document.addEventListener('alpine:init', () => {
       if (field === 'checklist') show = q;   // its item's text
       return [{ text: { date: 'date', deadline_at: 'deadline', importance: 'priority', area_ids: 'area', checklist: 'checklist' }[field] + ' ' }, { text: show(old), cls: 'trash-del' }, { text: ' → ' }, { text: show(now), cls: 'trash-add' }];
     },
-    // Append a journal entry: truncate any live redo tail, push (merging defaults), save (it moves the cursor).
-    // callers read reactive deps before calling; pass only what differs from {id,ts,restored:false}.
-    // Truncation must NEVER destroy a bin row: bin retention is independent of journal position, and the cursor can
-    // walk OVER a skipped entry (a draft-kind delete with the composer shut) whose bin row is the only copy left.
-    // Survivors are re-appended `detached` — still in the bin, permanently out of the linear ⌘Z timeline.
+    // Append a journal entry: truncate any live redo tail, push (merging defaults), save. Callers read reactive deps first;
+    // pass only what differs from {id,ts,restored:false}. Truncation must NEVER destroy a bin row: bin retention is independent of
+    // journal position, and the cursor can walk OVER a skipped entry (a draft-kind delete, composer shut) whose bin row is the
+    // only copy. Survivors are re-appended `detached`: still in the bin, out of the linear ⌘Z timeline.
     _journalPush(e) {
       const kept = this.journal.slice(this.cursor).filter(x => !this._ownTab(x) || x.bin && !x.restored && (x.detached = true));   // another tab's: never this one's redo tail
       this.journal.length = this.cursor;
       this.journal.push(...kept, { id: crypto.randomUUID(), ts: _jTs = Math.max(Date.now(), _jTs + 1), restored: false, acct: this._acct(), tab: _tab, ...e });
       this._journalSave();
     },
-    // An edit to the open composer draft. Undoable ONLY while that same draft is on screen (_jSkip) — these
-    // entries mutate this.draft, so applying one to a different (or no) composer would corrupt it.
+    // An edit to the open composer draft. Undoable ONLY while that draft is on screen (_jSkip): applying one to another
+    // composer would corrupt it.
     _pushDraftEdit(label, kind, op) { this._journalPush({ label, target: 'draft', kind, op, bin: false, detached: false, editing: this.editing, sid: this._draftSid }); },
-    // One checklist item (or held subtask: kind 'held-sub') added / renamed / deleted. A DELETE is ALSO a bin row so it survives
-    // the composer closing — kind 'checklist-item'/'held-sub' is what the bin label + restore path key off. detached: bin-only.
+    // One checklist item (or held subtask: kind 'held-sub') added / renamed / deleted. A DELETE is also a bin row so it
+    // survives the composer closing; the kind keys the bin label + restore path. detached: bin-only.
     _pushChkItem(item, index, before, after, { kind = after == null ? 'checklist-item' : 'chk-item', taskId = this.editing, detached = false } = {}) {
       const del = after == null;
       this._journalPush({ label: del ? item.text : 'Checklist item', target: kind === 'held-sub' ? 'task' : 'checklist-item', kind,
@@ -6630,15 +6759,14 @@ document.addEventListener('alpine:init', () => {
       if (move) this.cursor = dir < 0 ? i + 1 : i;
       return this.journal[i];
     },
-    // A dropped-but-kept dirty composer draft → a bin row that is ALSO in the linear ⌘Z timeline (detached:false),
-    // so ⌘Z or "Restore" reopens the composer with the draft. The pending autosave stays as the same-composer restore.
-    // detached: another tab's draft — in the Bin only, never this tab's ⌘Z.
+    // A dropped-but-kept dirty composer draft → a bin row also in the linear ⌘Z timeline (detached:false), so ⌘Z or Restore
+    // reopens the composer with it. The pending autosave stays as the same-composer restore. detached: another tab's draft, Bin only.
     _pushDraftBin(key, p = this._draftEntry(), detached = false) {   // p: an explicit draft to bin instead of the open one (live: a failed autosave leaves storage stale)
       const label = 'Draft: ' + ((p.draft.content || '').trim() || (p.chkGhost || p.subGhost || '').trim() || 'Untitled draft');
       this._journalPush({ label, target: 'draft', kind: 'draft', op: null, payload: { key, ...p }, bin: true, detached, acct: p.acct ?? this._acct() });   // a swept save slot's row is its account's
     },
-    // Through the pending slot, so the open restores the draft with its own sid. The pending draft it displaces is
-    // binned first, unless the Bin already holds it.
+    // Through the pending slot, so the open restores the draft with its own sid. The pending draft it displaces is binned
+    // first, unless the Bin already holds it.
     _inBin(sig) { return this.journal.some(e => e.kind === 'draft' && e.bin && !e.restored && this._draftSig(e.payload) === sig); },
     _reopenDraft(payload) {
       this._endDraft();   // an open composer's draft first — the map below must hold its last <300ms of typing
@@ -6682,7 +6810,7 @@ document.addEventListener('alpine:init', () => {
     },
     _kept(op) { return [op, ...op.ops || []].some(o => o.kept); },
     // What a reinsert couldn't bring back, read off the reloaded lists: a block attachment whose block went, a link whose
-    // other task went, a reminder the store refused as past. '' when all of it is back.
+    // other task went, a reminder the store refused as past. '' when all is back.
     _skipNote(op) {
       const raw = window.Alpine.raw, ids = {}, has = (k, id) => (ids[k] ??= new Set(k === 'task' ? raw(this.byId).keys() : (raw(this[k + 's']) || []).map(r => r.id))).has(id);
       const n = { scheduleItem: 0, reminder: 0, noTask: 0 }, edges = new Map(), s = (c, one, many) => c > 1 ? many : one; let moved = 0, home;
@@ -6707,8 +6835,8 @@ document.addEventListener('alpine:init', () => {
       // the stored row, not the lists': an item another device added since (a realtime gap can hide it) stays
       const t = await this.store.tasks.get(payload.taskId); if (!t) return false;
       const cl = (t.checklist || []).slice(), at = list => Math.min(payload.index ?? list.length, list.length);
-      // The STORED row can still hold the item while the open draft has dropped it (deleted, not yet saved): skip
-      // the write but still put it back in the draft, or Restore looks like it did nothing and the next save deletes it.
+      // The STORED row can still hold the item while the open draft has dropped it (not yet saved): skip the write but still
+      // put it back in the draft, or Restore looks like it did nothing and the next save deletes it.
       const kept = cl.some(c => c.id === payload.item.id);
       if (!kept) {
         cl.splice(at(cl), 0, payload.item);
@@ -6730,8 +6858,8 @@ document.addEventListener('alpine:init', () => {
     // --- Inverse-op journal (recovery engine; ⌘Z/⌘⇧Z drive undo()/redo() below). ---
     _res(t) { return t === 'message' ? messageStore(sbClient()) : this.store[t === 'identity' ? 'identities' : t + 's']; },                 // task→tasks, area→areas, event→events, block→blocks, filter→filters, location→locations
     _rowById(t, id) { return t === 'task' ? this.byId.get(id) : (t === 'message' ? this.chat.msgs : this[t + 's'] ?? []).find(r => r.id === id); },   // a message: the open thread's
-    // What a task delete takes beyond its rows (the DB cascades, LocalStore prunes): links in from outside, schedule items, reminders.
-    // ix: the refs keyed by the id they point at — one pass per action (a bulk delete shares it), not a scan per removed task.
+    // What a task delete takes beyond its rows (the DB cascades, LocalStore prunes): links in from outside, schedule items,
+    // reminders. ix: the refs keyed by the id they point at, one pass per action (a bulk delete shares it).
     _taskRefs(rows, ix = this._refIndex()) {
       const gone = new Set(rows.map(r => r.id)), at = k => JSON.parse(JSON.stringify(rows.flatMap(r => ix[k].get(r.id) || [])));
       return { links: at('links').filter(([a]) => !gone.has(a)), also: [['scheduleItem', at('scheduleItem')], ['reminder', at('reminder')]] };
@@ -6746,7 +6874,7 @@ document.addEventListener('alpine:init', () => {
       return ix;
     },
     // The references the store scrubs a deleted area or place from (store.js areas/locations.remove), as restore ops. was = the
-    // scrubbed value: the entry is bin:true, restored out-of-band, so a later edit to that field is never overwritten.
+    // scrubbed value: the entry is restored out-of-band, so a later edit to that field is never overwritten.
     _stripRefs(t, id) {
       const drop = ids => ids.filter(x => x !== id), copy = v => JSON.parse(JSON.stringify(v));
       const op = (target, r, k, was) => ({ kind: 'update', target, id: r.id, after: { [k]: copy(r[k]) }, was: { [k]: was } });
@@ -6769,8 +6897,8 @@ document.addEventListener('alpine:init', () => {
       this.toast(`Saved “${t.content}” without its ${t.lost.map(k => k.replaceAll('_', ' ')).join(', ')}`);
       delete t.lost; return t;
     },
-    // Indexed now, as loadTasks would: a tick during its reload (a slow signed-in list) sweeps it and journals it.
-    // Already there when another write's reload landed first.
+    // Indexed now, as loadTasks would: a tick during its reload sweeps it and journals it. Already there if another
+    // write's reload landed first.
     _indexNew(row) {
       if (!row || this.byId.has(row.id)) return;
       this._rowV++; _calDataV++; this.tasks.push(row); this.byId.set(row.id, row); if (row.parent_id) this.parentIds.add(row.parent_id);
@@ -6791,8 +6919,8 @@ document.addEventListener('alpine:init', () => {
       return this._jQueue(() => this._journalWrite());
     },
     _jQueue(run) { return _jChain = _jChain.then(run).catch(err => this._jFail(err)); },   // a step that throws fails alone: the next one still runs
-    // A closing page drops an unfinished IndexedDB write: what this tab hasn't stored also goes, synchronously, to its own key
-    // (never the shared one: two tabs closing at once) for the next boot's jMigrate. Removed once a write stores it all.
+    // A closing page drops an unfinished IndexedDB write: what this tab hasn't stored also goes, synchronously, to its own
+    // key (never the shared one: two tabs closing at once) for the next boot's jMigrate; removed once a write stores it all.
     // dropped: ids it dropped, so a truncated redo tail or a settled delete's Bin copy can't come back.
     _journalStash() {
       const key = 'adherod.journal.' + _tab, { put: entries, del: dropped } = this._jChanges(true);
@@ -6800,15 +6928,15 @@ document.addEventListener('alpine:init', () => {
       try { entries.length || dropped.length ? localStorage.setItem(key, JSON.stringify({ epoch: _jEpoch, entries, dropped })) : localStorage.removeItem(key); } catch {}   // full: storage keeps what it committed
       this._journalFlush();   // the next write that lands clears the key
     },
-    // What this tab added or changed since it last read or wrote, stamped `mt` (a stale copy elsewhere can't replace it), and the ids it dropped.
-    // copy: a stash stamps copies — a live entry an in-flight write serialized must keep matching what that write snaps.
+    // What this tab added or changed since it last read or wrote, stamped `mt` (a stale copy elsewhere can't replace it), and
+    // the ids it dropped. copy: a stash stamps copies; a live entry an in-flight write serialized must keep matching its snap.
     _jChanges(copy) {
       const live = new Set(this.journal.map(e => e.id)), put = this.journal.filter(e => JSON.stringify(e) !== _jSnap.get(e.id)).map(e => copy ? { ...e } : e);
       for (const e of put) e.mt = _jMt = Math.max(Date.now(), _jMt + 1);
       return { put, del: [..._jSnap.keys()].filter(id => !live.has(id)) };
     },
-    // One record per entry: this tab puts only the entries it added or changed and deletes only those it dropped since it last
-    // read or wrote them — never another tab's copy. ceiling: one JSON pass over the journal per write; mark entries dirty where they change if a write shows in a profile.
+    // One record per entry: this tab puts only entries it added or changed and deletes only those it dropped, never another
+    // tab's copy. ceiling: one JSON pass over the journal per write; mark entries dirty where they change if a write shows in a profile.
     async _journalWrite() {
       const { put, del } = this._jChanges(), json = put.map(e => JSON.stringify(e)), stashes = _jStashes;
       try {
@@ -6822,8 +6950,8 @@ document.addEventListener('alpine:init', () => {
         this._jSaveFailed = false;
       } catch (err) { this._jFail(err); }
     },
-    // Storage is the truth for every entry this tab hasn't changed since it last read or wrote it. After a wipe ("Delete local
-    // data", any tab) only what this tab added since and a running delete's Bin copy stay.
+    // Storage is the truth for every entry this tab hasn't changed since it last read or wrote it. After a wipe ("Delete
+    // local data", any tab) only what this tab added since and a running delete's Bin copy stay.
     async _journalSync(boot) {
       let read;
       try { read = await jRead(); } catch (err) { this._jFail(err); return false; }
@@ -6861,8 +6989,8 @@ document.addEventListener('alpine:init', () => {
     // a card's Undo/Redo steps the cursor: only while its entry is the next step that way does it take back what the card says
     _jDeadCards() { for (const n of this.notifs) if (n.actions.some(a => a.jid && this._journalPeek(a.dir)?.id !== a.jid)) n.actions = n.actions.filter(a => !a.jid); },   // a save's Show outlives its Undo
 
-    // Diff helper for completion fx: which tasks' FX_FIELDS changed, before and after — only those keys, so the inverse writes
-    // just what the action changed. seen: a row an earlier part of the same batch already restores is left to it.
+    // Diff helper for completion fx: which tasks' FX_FIELDS changed, so the inverse writes only what the action changed.
+    // seen: a row an earlier part of the same batch already restores is left to it.
     _fxDiff(byId, before, seen = new Set()) {
       const changed = [], pick = (o, ks) => Object.fromEntries(ks.map(k => [k, o[k]]));
       for (const [id, b] of before) {
@@ -6874,9 +7002,10 @@ document.addEventListener('alpine:init', () => {
     // Reverse a captured completion delta: reopen every changed row. A field edited since (rows = the state it was captured
     // against, default the lists) keeps the edit. False = a reopen failed; the list then shows the store's truth.
     async _reverseFx(fx, rows = this.byId, completion = false) {
-      // no after: an entry journaled before it was kept — only what the action wrote goes back, never its whole before-state: an
-      // auto-complete writes completed_at, a completion DONE_FIELDS only on a row whose rule was active (store.js setCompleted).
-      // ceiling: that legacy branch is dead once JOURNAL_MAX_AGE_MS passes after fx kept `after` — delete it on 2026-10-30. A row deleted since has nothing to reopen.
+      // no after: an entry journaled before it was kept; only what the action wrote goes back, never its whole
+      // before-state (an auto-complete writes completed_at, a completion DONE_FIELDS only on a row whose rule was
+      // active: store.js setCompleted). ceiling: that legacy branch is dead once JOURNAL_MAX_AGE_MS passes after fx
+      // kept `after`; delete it on 2026-10-30. A row deleted since has nothing to reopen.
       const writes = (fx?.changed || []).filter(c => rows.has(c.id)).map(c => [c.id, c.after ? guardedFields(c.before, rows.get(c.id), c.after)
         : Object.fromEntries((completion && recActive(c.before.recurrence) ? DONE_FIELDS : ['completed_at']).filter(k => k in c.before).map(k => [k, c.before[k]]))]);
       const moved = writes.filter(([, f]) => 'position' in f);   // one write for every position: a LocalStore update re-serializes every task
@@ -6899,29 +7028,30 @@ document.addEventListener('alpine:init', () => {
         const f = !(ctx?.exact && op.rows) && this._rowsForDelete('task', op.id), rows = this._notMoved(f?.length ? f : op.rows || [], ctx?.moving);   // fresh: what goes now, incl. subtasks added since
         return { op, rows, fx: this._fxSnap(this._chain(this.byId.get(op.id)?.parent_id)), refs: this._taskRefs(rows, ix) };
       });
-      // whole groups, top row first: a store reads a list's first id as its root, and a rollback's rows can be siblings under a root it skipped
+      // whole groups, top row first: a store reads a list's first id as its root, and a rollback's rows can be siblings
+      // under a skipped root
       const groups = rows => { const byId = new Map(rows.map(r => [r.id, r])), out = new Map();
         for (const r of rows) { let top = r; while (byId.has(top.parent_id)) top = byId.get(top.parent_id); if (!out.has(top.id)) out.set(top.id, [top.id]); if (r !== top) out.get(top.id).push(r.id); }
         return [...out.values()]; };
       const lists = parts.flatMap(p => groups(p.rows));
       const live = lists.length > 0 && !await this.store.tasks.remove(lists) && await this.store.tasks.list().catch(() => null), still = live && new Set(live.map(t => t.id));
-      // a lost answer can hide a landed delete: unless a fresh read still has its rows, journal it; no read either: may not have landed.
-      // Its rows, not its root: a rollback's are only what it put back, and the root may be a newer version it skipped
+      // a lost answer can hide a landed delete: unless a fresh read still has its rows, journal it; no read either: may not
+      // have landed. Its rows, not its root: a rollback's are only what it put back, and the root may be a newer skipped version
       return parts.map(({ op, rows, fx, refs }) => still && rows.some(r => still.has(r.id)) ? null : { kind: 'reinsert', target: 'task', id: op.id, rows, _fxCapture: fx, ...refs, ...live === null && { unsure: true } });
     },
-    // Applies one op, returns the op that reverses it. The reverse is what gets applied on the opposite action (undo↔redo toggle).
-    // A task complete/move/remove's reverse carries `_fxCapture` until the caller has reloaded: _finalizeFx turns it into fx.
-    // ctx: the composite running op — `back` holds every row it has put back, which the app's lists don't show until the reload; `ix` its _refIndex; `moving` the ids it moves;
-    // `exact`: a rollback — it removes only the rows it put back, never a subtask whose move back out failed (its inverse is dropped).
+    // Applies one op, returns the op that reverses it (applied on the opposite action: undo↔redo). A task complete/move/remove's
+    // reverse carries `_fxCapture` until the caller has reloaded: _finalizeFx turns it into fx. ctx: the composite running op:
+    // `back` = rows it has put back (not in the lists until the reload); `ix` its _refIndex; `moving` the ids it moves;
+    // `exact`: a rollback; it removes only rows it put back, never a subtask whose move back out failed (its inverse is dropped).
     async _apply(op, ctx) {
       // A composite, or a lone reinsert/move carrying fx: every part lands, THEN the fx reverses once. All or nothing: a failed
-      // part or reopen takes back what landed, and every completion captured goes back exactly — incl. what the store reopened
-      // or re-completed on the way. The entry keeps its op for a retry. A complete's fx is its whole action: it reverses its own.
+      // part or reopen takes back what landed, and every completion captured goes back exactly, incl. what the store reopened or
+      // re-completed on the way. The entry keeps its op for a retry. A complete's fx is its whole action: it reverses its own.
       if (op.kind === 'composite' || op.fx && !ctx && op.kind !== 'complete') {
         const one = op.kind !== 'composite', parts = one ? [op] : op.ops, invs = [];
         const fx = { changed: (one ? parts : [op, ...parts]).flatMap(o => o.kind !== 'complete' && o.fx?.changed || []) };   // a part's own: journaled before fx moved up
-        // a move back out can leave its parent only done subtasks, and the store's move-out rule closes it and up: each open one stays open.
-        // Not under a row this op removes: that remove's closes are its own (a redo's fx), and a write to a removed row fails the op.
+        // a move back out can leave its parent only done subtasks, and the store's move-out rule closes it and up: each open one
+        // stays open. Not under a row this op removes: that remove's closes are its own (a redo's fx), and writing a removed row fails.
         const moving = this._moving(parts), act = { back: new Set(), ix: op._ix, moving }, held = new Set(fx.changed.map(c => c.id)), done = t => t.completed_at || t.archived_at;
         const gone = new Set(parts.flatMap(o => o.kind === 'remove' || o.kind === 'delete' ? [o.id] : []));
         for (const p of new Set([...moving].map(id => this.byId.get(id)?.parent_id))) {
@@ -6932,7 +7062,7 @@ document.addEventListener('alpine:init', () => {
         // the ancestors of what comes back — a task whose parent went since, the default project's (it's re-homed there)
         const rs = parts.flatMap(o => o.kind === 'reinsert' && o.target === 'task' ? o.rows : []), mine = new Set(rs.map(r => r.id));
         const above = new Set(rs.flatMap(r => this._chain(!r.parent_id || this.byId.has(r.parent_id) || mine.has(r.parent_id) ? r.parent_id : this.store.defaultProject())));
-        // cap: the rollback's — every row a part's fx, or the store's reopen over a restored row, can change; own: the inverse's fx
+        // cap: the rollback's, every row a part's fx or the store's reopen over a restored row can change; own: the inverse's fx
         const cap = this._fxSnap([...[op, ...parts].flatMap(o => o.fx?.changed || []).map(c => c.id), ...above]).before, own = new Map();
         let ok = true;
         // a bulk delete: one store remove for every part, not one per task. Its failed part may sit beside landed ones: each goes to the rollback
@@ -6950,7 +7080,7 @@ document.addEventListener('alpine:init', () => {
         let whole = true; const again = { back: new Set(), exact: true }, out = [];   // one action too: its rows' links find each other
         // ceiling: a nested composite that failed drops out of `out` — revisit with the first composite built inside a composite
         for (const i of landed.ops) if (!await this._apply(i, again)) { whole = false; if (i.kind === 'reinsert') out.push(i); }
-        await this._reloadAfter(landed);   // the rollback moved the store: the screen, and a retry's "already back?" check, read its truth
+        await this._reloadAfter(landed);   // the rollback moved the store: the screen and a retry's "already back?" check read its truth
         if (!await this._reverseFx(this._fxDiff(this.byId, cap))) whole = false;
         // couldn't take it all back — the caller says so; `landed` = only rows still out, so a Bin Restore never re-removes one
         if (!whole) throw Object.assign(new Error('partly applied'), { partly: true }, out.length && { landed: { ...landed, ops: out } });
@@ -6962,8 +7092,9 @@ document.addEventListener('alpine:init', () => {
         if (op.target === 'task') return (await this._removeTasks([op], ctx))[0];
         const f = !(ctx?.exact && op.rows) && this._rowsForDelete(op.target, op.id), refs = op.target === 'block' && this._blockRefs(op.id), res = this._res(op.target);
         const strip = ctx ? [] : this._stripRefs(op.target, op.id);   // in a composite (a redo), its sibling updates carry them
-        // ceiling: a reference added between ⌘Z and ⌘⇧Z of an area/place delete is scrubbed by the redo and not restored by the next ⌘Z — revisit if a user loses one
-        // as _removeTasks: a lost answer can hide a landed delete — unless the store's fresh read still has the row, journal it; no read either: may not have landed
+        // ceiling: a reference added between ⌘Z and ⌘⇧Z of an area/place delete is scrubbed by the redo, not restored
+        // by the next ⌘Z; revisit if a user loses one as _removeTasks: a lost answer can hide a landed delete: unless
+        // the fresh read still has the row, journal it
         const live = !await res.remove(op.id) && (!res.get || await res.get(op.id).then(Boolean, () => null));
         const back = !live && { kind: 'reinsert', target: op.target, id: op.id, rows: f?.length ? f : op.rows || [], ...refs, ...live === null && { unsure: true } };
         return back && strip.length ? { kind: 'composite', target: op.target, ops: [back, ...strip] } : back;
@@ -6974,8 +7105,8 @@ document.addEventListener('alpine:init', () => {
         return row && { kind: 'remove', target: op.target, id: row.id };
       }
       if (op.kind === 'reinsert') {
-        // a failed write can land rows without their edges: the entry keeps exactly the edges not written, so a retry
-        // links those and never one the user removed since
+        // a failed write can land rows without their edges: the entry keeps exactly the edges not written, so a retry links those
+        // and never one the user removed since
         const links = op.links || [], keep = ls => { op.links = ls; this._journalSave(); return null; };
         const back = ctx?.back ?? new Set(), has = id => this.byId.has(id) || back.has(id); for (const r of op.rows) back.add(r.id);
         let refIds, unread = false;
@@ -6990,8 +7121,8 @@ document.addEventListener('alpine:init', () => {
             if (rehome) rehomed.add(r.id);
             return rehome ? { ...r, parent_id: this.store.defaultProject() } : k !== 'reminder' ? r : isPassed(r) ? { ...r, paused: true } : { ...r, at: nextAt(r) };   // a reminder whose time went by never fires late
           });
-          // the store checks what's stored, never the lists or a cache: a write their re-read missed (another tab's, a realtime gap) leaves them stale.
-          // A row already stored stays as it is (live): this entry's own earlier try, or another version — compared as this restore writes it
+          // the store checks what's stored, never the lists or a cache: a write their re-read missed (another tab's, a realtime gap)
+          // leaves them stale. A row already stored stays live: this entry's own earlier try, or another version, compared as written
           const live = new Set();
           if (!await (k === 'message' ? this._res(k) : this.store).reinsert(k, rows, live)) return keep([...k === 'task' ? rows.filter(r => !live.has(r.id)).flatMap(r => ['blocked_by', 'relates'].flatMap(e => (r[e] || []).map(x => [r.id, x, e]))) : [], ...links]);
           // a removed reminder's own Bin row: the store's answer decides it landed — it drops one whose task went unseen, or (signed in) one long past
@@ -7008,12 +7139,12 @@ document.addEventListener('alpine:init', () => {
       if (op.kind === 'update') {
         const res = this._res(op.target), guard = row => op.was ? guardedFields(op.after, row, op.was) : op.after;   // guard on reversal, full-apply on forward
         const listed = this._rowById(op.target, op.id) || {}, shown = guard(listed), next = { ...listed, ...shown };
-        // the reopen shows at once, off the lists' row: the fresh read below gates only the write, and the caller's reload settles a wrong guess
+        // the reopen shows at once, off the lists' row: the fresh read gates only the write, and the caller's reload settles a wrong guess
         if (Object.keys(shown).length && op.target === 'task' && !next.completed_at && !next.archived_at) this._reopenNow(next.parent_id);
         // a reversal guards against the stored row where the store reads one fresh: another device's edit the lists missed stays
         let cur; try { cur = (op.was && res.get ? await res.get(op.id) : listed) || {}; } catch { await this._reloadFor(op.target); return null; }   // unread: not undone, never a guess
         const before = {}; for (const k in op.after) before[k] = JSON.parse(JSON.stringify(cur[k] ?? null));
-        // nothing left to write (the row went, or was edited since): skip it — an empty write fails on a gone row and rolls back the whole restore
+        // nothing left to write (row gone, or edited since): skip; an empty write fails on a gone row and rolls back the whole restore
         const fields = guard(cur), write = Object.keys(fields).length > 0, data = k => k !== 'updated_at';   // a row-change entry carries the stamp: no edit of anyone's
         const left = Object.keys(op.after).some(k => data(k) && !(k in fields));
         if (write && !await res.update(op.id, fields)) { await this._reloadFor(op.target); return null; }   // reload: reconcile the optimistic reopen
@@ -7031,7 +7162,7 @@ document.addEventListener('alpine:init', () => {
         return { kind: 'move', target: 'task', id: op.id, after: before, was: op.after, _fxCapture: fx };
       }
       if (op.kind === 'complete') {
-        // Forward: (re)run setCompleted, capturing the full completion delta so the reverse can undo the whole sweep, not just the target.
+        // Forward: (re)run setCompleted, capturing the full completion delta so the reverse undoes the whole sweep, not just the target.
         if (op.mode === 'forward') {
           const { id, done } = op.fwd, chain = this._chain(this.byId.get(id)?.parent_id);
           const reopens = [id, ...chain].filter(x => recActive(this.byId.get(x)?.recurrence)).flatMap(x => descendantIds(this.tasks, x, this._kidsOf(x)));   // a repeating occurrence reopens its subtasks
@@ -7050,7 +7181,8 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    // The [label, op]s an `ops` collector gathered, as ONE `target` entry (a save's lone date part too). A composite part (a date's) flattens in: its ops are already in undo order.
+    // The [label, op]s an `ops` collector gathered, as ONE `target` entry (a save's lone date part too). A composite
+    // part flattens in: its ops are already in undo order.
     _pushOps(label, target, j, opts) { if (j.length) return this._pushEntry(label, j.length > 1 || j[0][1].target !== target ? { kind: 'composite', target, ops: j.map(x => x[1]).reverse().flatMap(o => o.kind === 'composite' ? o.ops : o) } : j[0][1], opts); },
     _pushEntry(label, entryOp, { bin = false, silent = false, restored = false, msg = label, actions = [] } = {}) {
       this._journalPush({ label, target: entryOp.target, kind: entryOp.kind, op: entryOp, bin: !!bin, restored });
@@ -7059,25 +7191,24 @@ document.addEventListener('alpine:init', () => {
       if (!bin && !restored) this._pushSmall(entryOp);
       return card;
     },
-    // A task field's live value as a small change records it; 'date' = its date-item's day (+ 'T' start); item = that checklist item's text.
-    // undefined: the task (or item) is gone.
+    // A task field's live value as a small change records it ('date' = its date-item's day + 'T' start); undefined: gone.
     _smallVal(field, id, item, siOf = x => this._siOf(x)) {
       const t = this.byId.get(id), si = t && field === 'date' && siOf(id);
       return !t ? undefined : item ? t.checklist?.find(c => c.id === item)?.text : field !== 'date' ? t[field] ?? null : si ? si.date + (si.start ? 'T' + si.start : '') : null;
     },
-    // ONE task's field edits are ALSO quiet Bin rows (kind 'small', bin-only): one per task + field per day — a repeat edit folds into it
-    // (first old value, latest new), and one edited back to where it began leaves. Undo = restoreTrash → _apply of the op, guarded.
+    // One task's field edits are also quiet Bin rows (kind 'small'): one per task + field per day. A repeat edit folds into it
+    // (first old value, latest new); one edited back to where it began leaves. Undo = restoreTrash → _apply of the op, guarded.
     _pushSmall(entryOp) {
       const ops = entryOp.ops || [entryOp], si = id => this.scheduleItems.find(x => x.id === id), row = o => o.kind === 'reinsert' ? o.rows?.[0] : si(o.id);
       const dated = ops.filter(o => o.target === 'scheduleItem' && (o.kind !== 'update' || 'date' in o.after) && row(o)?.date && !row(o).block_id);
       const edits = ops.filter(o => o.target === 'task' && o.kind === 'update' && o.was), ids = new Set([...edits.map(o => o.id), ...dated.map(o => row(o).task_id)]);
       if (ids.size !== 1) return;   // a bulk change is a full Bin row already
       const [id] = ids, eq = (a, b) => JSON.stringify(a) === JSON.stringify(b), changes = [];
-      // a checklist counts only when an item's TEXT changed in place: a tick, an add, a removal or a reorder is no small change
+      // a checklist counts only when an item's text changed in place
       const same = (a = [], b = []) => a.length === b.length && a.every((x, i) => x.id === b[i].id);
       for (const o of edits) for (const field of SMALL_FIELDS) if (field in o.after && (field !== 'checklist' || same(o.after.checklist, o.was.checklist))) {
         if (field !== 'checklist') changes.push({ field, old: o.after[field], now: o.was[field], op: { kind: 'update', target: 'task', id, after: { [field]: o.after[field] }, was: { [field]: o.was[field] } } });
-        else for (const [i, c] of o.was.checklist.entries()) if (c.text !== o.after.checklist[i].text) changes.push({ field, item: c.id, old: o.after.checklist[i].text, now: c.text, op: { kind: 'update', target: 'task', id } });   // one per renamed item; Undo builds its op off the live list
+        else for (const [i, c] of o.was.checklist.entries()) if (c.text !== o.after.checklist[i].text) changes.push({ field, item: c.id, old: o.after.checklist[i].text, now: c.text, op: { kind: 'update', target: 'task', id } });   // one per renamed item
       }
       const back = dated.find(o => o.kind !== 'remove'), was = back && (back.kind === 'reinsert' ? back.rows[0] : { ...si(back.id), ...back.after });
       if (dated.length) changes.push({ field: 'date', old: was ? was.date + (was.start ? 'T' + was.start : '') : null, now: this._smallVal('date', id), op: { kind: 'composite', target: 'scheduleItem', ops: dated } });
@@ -7094,7 +7225,7 @@ document.addEventListener('alpine:init', () => {
         else this._journalPush({ label: 'Small change', target: change.op.target, kind: 'small', op: change.op, payload: { taskId: id, field: change.field, item: change.item, old: change.old, now: change.now }, bin: true, detached: true });
       }
     },
-    // Two date edits' inverses as one, newer first: a row the newer put back that the older removes cancels out; two updates of a row merge.
+    // Two date edits' inverses as one, newer first: a put-back and a removal cancel; two updates of a row merge.
     _foldParts(parts) {
       const out = [];
       for (const part of parts) {
@@ -7108,19 +7239,18 @@ document.addEventListener('alpine:init', () => {
     },
     // A card's Undo/Redo acts only while its entry is the next step that way: closing the composer moves that without a save
     _cardStep(dir, jid) { return { label: dir < 0 ? 'Undo' : 'Redo', fn: () => this._serial('journal', () => this._journalPeek(dir)?.id === jid && this._journalStep(dir)), jid, dir }; },
-    // Wrap ANY in-place mutation of one saved row: run it, diff before/after, journal only what changed —
-    // a failed one too: a write that partly landed (signed in, one of several) stays undoable.
-    // Use for edits/archive/complete/etc. A mutate returning the task fields it wrote is patched in place if the list's shape allows.
-    // ops: collect [label, entryOp] instead of pushing, so a caller can land several writes as ONE entry
-    // id: one row, or several one write changes (a cascade) — journaled as one entry.
-    // only: the ids the write changed, read after it (false: unknown, so every row) — a held write skips rows another device changed, which aren't this step's to undo.
+    // Wrap any in-place mutation of one saved row: run it, diff before/after, journal only what changed, a failed one
+    // too (a partly landed write stays undoable). A mutate returning the task fields it wrote is patched in place if
+    // the list's shape allows. ops: collect [label, entryOp] instead of pushing, so a caller can land several writes as
+    // one entry. id: one row, or several one write changes (a cascade). only: the ids the write changed, read after it
+    // (false: every row); a held write skips rows another device changed.
     async _journalRowChange(label, target, id, mutate, { bin = false, silent = false, ops, only, actions, fail = `Failed saving “${label}”. Try again?` } = {}) {
       const ids = [id].flat(), befores = ids.map(x => JSON.parse(JSON.stringify(this._rowById(target, x) || {})));
       const row = await mutate(); if (!(target === 'task' && this._patchTask([row]))) await this._reloadFor(target);
       const failed = row === false || row === null, keep = only?.();
       const parts = ids.map((x, i) => {
         const before = befores[i], after = this._rowById(target, x) || {};
-        // normalize: treat missing array fields as empty so undefined→[] isn't a spurious diff
+        // a missing array field is empty: undefined→[] isn't a diff
         for (const k of Object.keys(after)) if (before[k] === undefined && Array.isArray(after[k])) before[k] = [];
         const rollback = {}, forward = {};
         for (const k of new Set([...Object.keys(before), ...Object.keys(after)]))
@@ -7132,15 +7262,13 @@ document.addEventListener('alpine:init', () => {
       if (failed && fail) this.toast(kept ? `“${label}” didn’t fully save. The list shows what’s saved` : fail);
       return !failed;
     },
-    // Saved rows merged into their live tasks IN PLACE — instead of re-reading the whole table and rebuilding
-    // every row (one 600ms+ task at 5000 tasks on a phone) — when the saves left the list's shape alone. Rebuilt per row:
-    // its own, its subtree's (project name / Notes context), every row naming it as a blocker and, when it was done or
-    // archived, its parent's (the progress roll-up). Done/archived moves only a scope ROOT (or a project's child): one leaving for a hidden Done
-    // list drops out with its subtree; any other move reloads (ceiling: so does a root into a SHOWN Done list or back —
-    // a full rebuild; splice it in if ticking with Done shown lags). A position change re-lays its parent's children,
-    // rebuilding no row — only under a rendered parent in a flat list. false → the caller reloads. The store reopens a
-    // completed ancestor of an open task (the resolver): a batch without that ancestor reloads. So does any _rowV bump
-    // the memo hasn't rendered yet (other than an earlier patch, which this one joins): a patch must never hide it.
+    // Saved rows merged into their live tasks in place (a full rebuild is 600ms+ at 5000 tasks on a phone) when the saves
+    // left the list's shape alone. Rebuilt per row: its own, its subtree's, every row naming it as a blocker and, when it was
+    // done or archived, its parent's (progress roll-up). Done/archived moves only a scope root (or a project's child): one leaving
+    // for a hidden Done list drops out with its subtree; any other move reloads (ceiling: so does a root into a shown Done list or
+    // back; splice it in if ticking with Done shown lags). A position change re-lays its parent's children, rebuilding no row,
+    // only under a rendered parent in a flat list. false → the caller reloads, as when the store reopened a completed ancestor
+    // missing from the batch, or on any _rowV bump the memo hasn't rendered (an earlier patch excepted): a patch must never hide it.
     _patchTask(rows) {
       if (!this._canPatch()) return false;
       const shape = [...SHAPE, ...VIEW_KEYS[this.sortBy] || [], ...VIEW_KEYS[this.groupBy] || []], fold = ['completed_at', 'archived_at'];
@@ -7175,9 +7303,8 @@ document.addEventListener('alpine:init', () => {
     },
     // A shown root leaving for a hidden Done list, in a flat list: the patch drops it with its subtree.
     _dropsRoot(id, arch, done) { return (arch ? !this.qfArchived : done ? !this.showCompleted : !this.qfOpen) && !_secMemo.length && this.navSel.type !== 'area' && _rowMap.get(id)?.depth === 0; },
-    // A search or quick filter reads anything, so an edit never patches under one; an exit edits nothing, so it still drops its rows.
-    // A saved filter never patches: its exits from under a section head drop nothing anyway. Nor while a _rowV bump the memo hasn't rendered
-    // stands (a patch must never hide it).
+    // A search or quick filter reads anything, so an edit never patches under one (an exit edits nothing, so it still drops
+    // its rows). A saved filter never patches. Nor while a _rowV bump the memo hasn't rendered stands.
     _canPatch(exit) { return !!_visKey && this.navSel.type !== 'filter' && (exit || !this.filtering()) && (_rowPatch ? _rowPatch.v : +_visKey.slice(0, _visKey.indexOf('|'))) === this._rowV; },
     // The next visibleRows rebuilds only these rows (+ an unrendered earlier patch's); the tray drops just their html.
     _patchRows(ids, drop = new Set(_rowPatch?.drop), sort = new Set(_rowPatch?.sort)) {
@@ -7192,7 +7319,7 @@ document.addEventListener('alpine:init', () => {
       if (!settled) return false;
       let entryOp, partial;
       try { entryOp = await this._apply(op); } catch (e) { entryOp = e.landed; partial = e.partly; }   // a rollback that failed leaves what landed for the Bin
-      // no entry to undo: nothing happened — or, partly applied with no rows left out, part may stand (a created row), so no "try again" (a retry could duplicate it)
+      // no entry to undo: nothing happened, or part may stand (a created row), so no "try again" (a retry could duplicate it)
       if (!entryOp) { settled(); await this._reloadFor(op.target); if (partial || fail) this.toast(partial ? `“${label}” didn’t fully save. The list shows what’s saved` : fail); return false; }
       partial ||= [entryOp, ...entryOp.ops || []].some(o => o.unsure);
       await this._reloadAfter(entryOp);
@@ -7202,11 +7329,11 @@ document.addEventListener('alpine:init', () => {
       if (partial) this.toast(`“${label}” didn’t fully save. What went is in the Bin`);
       return !partial;
     },
-    // Write-ahead: the rows a delete takes are stored as a Bin row before it runs, so a page that dies mid-delete or during its
-    // re-read keeps them. Returns the drop for once it settles — null when storage refused the copy: the delete must not run.
+    // Write-ahead: the rows a delete takes are stored as a Bin row before it runs, so a page dying mid-delete keeps them.
+    // Returns the drop for once it settles; null when storage refused the copy (the delete must not run).
     // only: the rows a lone delete takes, when not its whole subtree.
     async _binAhead(label, op, only) {
-      let ix;   // op._ix: the delete reuses it — one read of the lists per action
+      let ix;   // op._ix: the delete reuses it
       const moving = this._moving(op.ops || []), ops = [op, ...op.ops || []].filter(o => o.kind === 'delete' || o.kind === 'remove').flatMap(o => {
         const rows = only ?? this._notMoved(this._rowsForDelete(o.target, o.id), moving), refs = o.target === 'task' ? this._taskRefs(rows, ix ??= this._refIndex()) : o.target === 'block' && this._blockRefs(o.id);
         return rows.length ? [{ kind: 'reinsert', target: o.target, id: o.id, rows, ...refs }, ...this._stripRefs(o.target, o.id)] : [];
@@ -7225,9 +7352,9 @@ document.addEventListener('alpine:init', () => {
       drop(); this.toast(this._jFull ? `Storage is full. “${label}” didn’t run: the Bin couldn’t keep a copy` : `Failed reaching saved history. “${label}” didn’t run. Try again?`);
       return null;
     },
-    // Deferred fx: captured before the write, diffed once the caller has reloaded — one reload per action, not per op.
+    // Deferred fx: captured before the write, diffed once the caller has reloaded (one reload per action).
     _finalizeFx(e) { const seen = new Set(); for (const o of [e, ...e.ops || []]) { if (o._fxCapture) o.fx = this._fxDiff(this.byId, o._fxCapture.before, seen); delete o._fxCapture; } },
-    // The rows a complete/move/remove can change — target, its sweep, the ancestor chains, a move's siblings (pos: their order too).
+    // The rows a complete/move/remove can change: target, its sweep, ancestor chains, a move's siblings (pos: their order too).
     _fxSnap(ids, pos) { return { before: new Map(ids.filter(id => this.byId.has(id)).map(id => [id, FX_FIELDS(this.byId.get(id), pos)])) }; },
     // Shared undo/redo body; dir=-1 = undo, dir=1 = redo. Draft branch is asymmetric: undo reopens, redo skips.
     async _journalStep(dir) {
@@ -7236,7 +7363,7 @@ document.addEventListener('alpine:init', () => {
       let note = '';
       if (DRAFT_KINDS.includes(e.kind)) {
         const was = dir < 0 ? e.op.before : e.op.after;
-        // a row in neither snapshot came in outside this step (a Bin "Put it back"): it stays where it is
+        // a row in neither snapshot came in outside this step (a Bin put-back): it stays
         const snap = (now, k) => { const at = x => k ? x[k] : x, ids = new Set([...at(e.op.before), ...at(e.op.after)].map(x => x.id)), rows = JSON.parse(JSON.stringify(at(was)));
           now.forEach((x, i) => { if (!ids.has(x.id)) rows.splice(Math.min(i, rows.length), 0, x); }); return rows; };
         if (e.kind === 'chk-multi') this.draft.checklist = snap(this.draft.checklist);
@@ -7255,8 +7382,8 @@ document.addEventListener('alpine:init', () => {
         this._journalSave();
       } else {
         const verb = dir < 0 ? 'undo' : 'redo', applied = e.op; let inverse, partial;
-        const was = this._savedDraft(), all = await this._binAhead(e.label, { ...e.op });   // a redone delete (an undone add): its rows stored before they go. A copy: _ix stays off the entry
-        // a save's removed reminders: its entry is no Bin row and the cap can evict it, so their copy stays its own Bin row, as the save's (_saveReminders)
+        const was = this._savedDraft(), all = await this._binAhead(e.label, { ...e.op });   // a redone delete: its rows stored before they go. A copy keeps _ix off the entry
+        // a save's removed reminders: its entry can be evicted by the cap, so their copy stays its own Bin row (_saveReminders)
         const rem = all && await this._binAhead('Removed reminder', { kind: 'composite', target: 'reminder', ops: [applied, ...applied.ops || []].filter(o => o.target === 'reminder' && (o.kind === 'delete' || o.kind === 'remove')) });
         if (!rem) return all?.();
         const settled = (keep) => { all(); rem(keep); };
@@ -7281,8 +7408,7 @@ document.addEventListener('alpine:init', () => {
       }
       this.notify(e.label + (dir < 0 ? ' undone' : '') + note, { actions: [this._cardStep(-dir, e.id)] });
     },
-    // One at a time per key: a run waits for the one queued before it — overlapping, a step or tick reads the row the last
-    // one is still writing, and its write is lost.
+    // One at a time per key: overlapping runs read a row the last is still writing, and lose its write.
     _serial(key, fn) {
       const run = (_serialQ.get(key) || Promise.resolve()).then(fn, fn), drop = () => _serialQ.get(key) === run && _serialQ.delete(key);
       _serialQ.set(key, run); run.then(drop, drop);
@@ -7290,15 +7416,15 @@ document.addEventListener('alpine:init', () => {
     },
     async undo() { await this._serial('journal', () => this._journalStep(-1)); },
     async redo() { await this._serial('journal', () => this._journalStep(1)); },
-    // Shared transient flash: `this[prop] = id` for `ms`. A re-flash restarts it — off, then on next frame
-    // (keyframes replay) — and clears the old timer so it can't end the new pulse early.
+    // Shared transient flash: `this[prop] = id` for `ms`. A re-flash restarts it (off, then on next frame so keyframes
+    // replay) and clears the old timer so it can't end the new pulse early.
     flash(prop, timerProp, id, ms) {
       this[prop] = null; clearTimeout(this[timerProp]);
       requestAnimationFrame(() => { this[prop] = id; this[timerProp] = setTimeout(() => { this[prop] = null; }, ms); });
     },
     async loadFilters() {
-      this.filters = await this.store.filters.list(); this._rowV++;   // a filter's query drives the filter view's rows — invalidate the visibleRows memo
-      if (this.navSel.type === 'filter' && !this.activeFilter()) this.setNav('backlog');   // its filter went (an undone add, a redone delete)
+      this.filters = await this.store.filters.list(); this._rowV++;   // a filter's query drives the view's rows: invalidates the visibleRows memo
+      if (this.navSel.type === 'filter' && !this.activeFilter()) this.setNav('backlog');   // its filter went
     },
     async loadLocations() { await this._reloadFor('location'); },
     isHomeLocation(id) { return this.homeLocationId === id; },
@@ -7318,8 +7444,8 @@ document.addEventListener('alpine:init', () => {
     locName(id) { return this.locations.find(x => x.id === id)?.name ?? ''; },   // a place not loaded yet (a synced task ahead of its place) reads as no place, as rowLoc: never its id
     // Row badge: first pinned location's name (+N when several), '' when the task isn't location-scoped or names aren't loaded.
     rowLoc(t) {
-      // The PICKED SET is what makes a task location-scoped — an empty set is "anywhere", whatever `mode` says
-      // (the same rule as locPolarity): trusting mode would hide the badge on every task saved with the default 'any'.
+      // The picked set makes a task location-scoped: an empty set is "anywhere" whatever `mode` says (as locPolarity);
+      // trusting mode would hide the badge on every task saved with the default 'any'.
       const byId = byIdIn(this.locations), names = (t.location?.ids || []).map(id => byId.get(id)?.name).filter(Boolean);   // a place not loaded yet isn't counted, as locChipLabel
       return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0] ?? '';
     },
@@ -7329,8 +7455,8 @@ document.addEventListener('alpine:init', () => {
       this.togglePop('loc', anchor);
       if (this.pop !== 'loc') return;
       this.locNew = null; this.locExpanded = [];
-      // Freeze chip order for this open: selected-first AT OPEN. Toggling must never reorder mid-interaction —
-      // keyed DOM moves while the fill transition runs leave stale orange/checkmarks, and jumping chips break spatial stability.
+      // Freeze chip order for this open, selected-first. Toggling must never reorder: keyed DOM moves while the
+      // fill transition runs leave stale orange/checkmarks.
       const sel = new Set(this.draft.location?.ids || []);
       this.locOrder = {};
       for (const region of this.regions()) {
@@ -7338,19 +7464,18 @@ document.addEventListener('alpine:init', () => {
         this.locOrder[region] = [...locs.filter(l => sel.has(l.id)), ...locs.filter(l => !sel.has(l.id))].map(l => l.id);
       }
     },
-    // 'any' (no places picked) | 'only' | 'except' — empty set IS anywhere; "any" is not a mode you pick
+    // 'any' (no places picked) | 'only' | 'except'
     locPolarity() { const L = this.draft.location; return !L?.ids?.some(id => this.locName(id)) ? 'any' : (L.mode === 'except' ? 'except' : 'only'); },   // only loaded places count: the chip reads unset until they load
-    // the seg: the picked set's polarity, else the mode chosen before a place (an empty set still reads as anywhere elsewhere)
+    // the seg: the picked set's polarity, else the mode chosen before a place
     locMode() { const p = this.locPolarity(), m = this.draft.location?.mode; return p !== 'any' ? p : (m === 'only' || m === 'except' ? m : 'any'); },
     setLocMode(mode) { this.draft.location = { mode, ids: mode === 'any' ? [] : [...this.draft.location?.ids || []] }; },
-    // "here" = the CURRENT BLOCK's location, the app's only location source
+    // "here" = the current block's location, the app's only location source
     hereLocationId() {
       const now = new Date(), iso = isoDate(now);
       const inst = blocksInRange(this.blocks || [], iso, iso).find(i => i.location_id && (i.allDay ? i.start.slice(0, 10) <= iso && iso <= i.end : new Date(i.start) <= now && now < new Date(i.end)));
       return inst?.location_id ?? null;
     },
-    // Region rows: order frozen at open (see openLoc) — toggles flip the flag, never the position.
-    // Ghosts cap at 5 per region; a selected chip can never be hidden by the cap.
+    // Region rows: order frozen at open (see openLoc). Ghosts cap at 5 per region; a selected chip is never hidden by it.
     locRegionRows() {
       const CAP = 5, hereId = this.hereLocationId(), sel = new Set(this.draft.location?.ids || []);
       const byId = new Map(this.locations.map(l => [l.id, l]));
@@ -7364,8 +7489,7 @@ document.addEventListener('alpine:init', () => {
         return { region, chips: visible.map(l => ({ id: l.id, name: l.name, sel: sel.has(l.id) })), more: ordered.length - visible.length, open };
       });
     },
-    // Chip visual state straight from the draft (object syntax = idempotent toggles): the x-for item's
-    // `sel` snapshot can lag a rapid toggle — never bind selection visuals to it.
+    // Chip state straight from the draft: the x-for item's `sel` snapshot can lag a rapid toggle.
     locChipCls(id) {
       const on = !!this.draft.location?.ids?.includes(id);
       return { sel: on && this.draft.location.mode !== 'except', selx: on && this.draft.location.mode === 'except', ghosty: !on };
@@ -7376,7 +7500,7 @@ document.addEventListener('alpine:init', () => {
       if (!name?.trim()) return;
       await this.addLocation(name.trim(), region);
       const l = this.locations.find(x => x.name === name.trim() && (x.region || 'Home') === region);
-      if (l) pick(l);   // created from the picker = you meant it → selected
+      if (l) pick(l);   // created from the picker: selected
     },
     locChipLabel() {
       const L = this.draft.location, names = (L?.ids || []).map(id => this.locName(id)).filter(Boolean);
@@ -7393,7 +7517,7 @@ document.addEventListener('alpine:init', () => {
     openLocManager() { this.pop = null; this.locMgr = true; this.loadLocations(); },
     toggleLocId(id) { const ids = new Set(this.draft.location?.ids || []); ids.has(id) ? ids.delete(id) : ids.add(id); this.draft.location = { mode: this.draft.location?.mode === 'except' ? 'except' : 'only', ids: [...ids] }; },   // 'any' is truthy: `|| 'only'` would store picked places as unscoped
     regions() { return [...new Set(this.locations.map(l => l.region || 'Home'))]; },
-    // Manager grouping (string model): regions in use + any just-created empty ones.
+    // Manager grouping: regions in use + any just-created empty ones.
     displayRegions() { return [...new Set([...this.regions(), ...this.pendingRegions])]; },
     locationsIn(r) { return this.locations.filter(l => (l.region || 'Home') === r); },
     addRegion(name) { name = name?.trim(); if (name && !this.displayRegions().includes(name)) this.pendingRegions.push(name); },
@@ -7413,7 +7537,7 @@ document.addEventListener('alpine:init', () => {
       const q = (this.palette.q || '').trim(); if (!q || !this.isFilterQuery(q)) return;
       this.palette.open = false; this.openFilterEditor({ name: q, query: q });
     },
-    // clone-on-open so textarea edits don't mutate the saved object live
+    // cloned so textarea edits don't mutate the saved object
     openFilterEditor(filter = null) {
       this.filterEdit = filter ? { ...filter } : { name: '', query: '', color: null };
       this.navPop = null;
@@ -7427,7 +7551,7 @@ document.addEventListener('alpine:init', () => {
         const created = await this.store.filters.add(fields); await this._reloadFor('filter');
         if (!created) return this.toast('Failed saving “Added filter”. Try again?');
         this._pushEntry('Added filter', { kind: 'remove', target: 'filter', id: created.id, rows: [created] });
-        this.setNav('filter', created.id);   // a brand-new filter navigates to itself
+        this.setNav('filter', created.id);   // a new filter navigates to itself
       }
       this.filterEdit = null;
     },
@@ -7443,7 +7567,7 @@ document.addEventListener('alpine:init', () => {
       const chat = this.fromChat; close ||= !!chat;   // a chat's task closes back to the chat
       const d = this.draft, sid = this._draftSid, fields = this.draftFields(d), key = 'save:' + sid, jot = !close && this._inBar();   // the bar clears at the press like a rapid add, and hands on to the task below
       // One save = one slot: the draft moves to save:<sid> before the composer lets go of it. Refused (storage full: toasted),
-      // the add still runs and the in-memory slot carries a failure back — only a reload mid-save loses it
+      // the add still runs and the in-memory slot carries a failure back; only a reload mid-save loses it
       const slot = JSON.parse(JSON.stringify({ ...this._draftEntry(), acct: this._acct() })), m = this._pendingMap();
       m[key] = slot; delete m[this._newKey()];
       this._writePending(m);
@@ -7452,9 +7576,8 @@ document.addEventListener('alpine:init', () => {
       else {
         this.resetDraft(); this._draftBase = this._draftSig();
         this.setEditorText(''); this.setDescText('');   // now, not next tick: the next key is the next draft's
-        // Rapid add never scrolls away: the reader's place is the composer they're still typing in. A sort files the
-        // new row anywhere, and gliding to it, then the next key's caret-scroll yanking the list back, is a spurious
-        // scroll. Only keep the whole composer in view (the row it adds may push it down).
+        // Rapid add never scrolls away: a sort files the new row anywhere, and gliding to it, then the next key's
+        // caret-scroll yanking back, is spurious. Only keep the whole composer in view (the new row may push it down).
         this.$refs.content?.focus({ preventScroll: true });   // now: deferred, it would take the title back from a ↓ already pressed into the rows (Alpine holds $nextTick behind a starting transition)
         this.$nextTick(() => this._showComposer());
       }
@@ -7477,8 +7600,8 @@ document.addEventListener('alpine:init', () => {
       const reload = () => Promise.all(['task', 'area', d.on && 'scheduleItem', d.reminders?.length && 'reminder'].filter(Boolean).map(k => this._reloadFor(k)));
       if (!ok && await this.store.tasks.remove(id)) { for (const o of reopen) await this._apply(o); await reload(); return this._addFailed(slot); }   // whole or not at all: the reopened ancestors too
       if (!ok) this.toast(`Added “${row.content}”, but couldn’t attach everything. Check it`);   // the take-back failed: it's added, and ⌘Z removes it
-      // Checklist items deleted while this draft was still unsaved left bin rows with no task to restore into
-      // (this.editing was null). The task exists now — bind them, or the bin holds a Restore that can never work.
+      // Checklist items deleted while this draft was unsaved left bin rows with no task (this.editing was null);
+      // bind them now, or the bin holds a Restore that can never work.
       let bound = false;
       for (const e of this.journal) if (e.kind === 'checklist-item' && e.sid === sid && e.payload && !e.payload.taskId) { e.payload.taskId = id; bound = true; }
       if (bound) this._journalSave();
@@ -7487,8 +7610,8 @@ document.addEventListener('alpine:init', () => {
       for (const f of this.attach) if (f.sid === sid && !f.taskId) f.taskId = id;
       await this._attachFiles(id, true);
       await reload();   // _reloadFor task + area, and the date/reminders it wrote
-      // ONE silent entry (no toast): ⌘Z reopens what the completion swept, deletes the task (its date, reminders and
-      // links go with it), and re-completes the ancestors the add reopened
+      // One silent entry: ⌘Z reopens what the completion swept, deletes the task (its date, reminders and links go
+      // with it), and re-completes the ancestors the add reopened
       const entry = { kind: 'composite', target: 'task', ops: [...ok && done ? [{ kind: 'complete', target: 'task', mode: 'reverse', fwd: { id, done: true }, _fxCapture: fx }] : [],
         { kind: 'remove', target: 'task', id, rows: this._rowsForDelete('task', id) }, ...reopen] };
       // Bin-backed, rows present (restored): its ⌘Z is a delete, so the Bin keeps the task past the next action, as any delete's
@@ -7508,8 +7631,8 @@ document.addEventListener('alpine:init', () => {
       }
       return row;
     },
-    // A failed add comes back whole, once: into the composer when none is open or the open one is a blank add (nothing
-    // typed since the press), else into the Bin — taking over would steal what's being typed. Its slot goes once it's home.
+    // A failed add comes back whole, once: into the composer when none is open or the open one is a blank add,
+    // else into the Bin (taking over would steal what's being typed). Its slot goes once it's home.
     _addFailed(entry) {
       const key = 'save:' + entry.sid, open = this.composer.open && !this._closingComposer;
       if (open && (this.editing || this._draftSig() !== this._draftBase)) { this.toast(`Failed adding “${entry.draft.content.trim()}”. Kept in the Bin`); return this._binSave(key, entry); }
@@ -7520,8 +7643,8 @@ document.addEventListener('alpine:init', () => {
     // Bin first, slot after: a refused journal write keeps save:<sid>, which the next boot bins again (worst case a duplicate)
     async _binSave(key, entry, detached) { this._pushDraftBin(this._newKey(), entry, detached); await this._journalFlush(); if (!this._jSaveFailed) this._clearPending(key); },
 
-    // ONE pass per data version (_rowV bumps on every tasks write): children in position order + whom each task blocks.
-    // Saves ~7 full scans per composer open (each childTasks template, the progress ring, descendants, relations).
+    // One pass per data version (_rowV bumps on every tasks write): children in position order + whom each task blocks.
+    // Saves ~7 full scans per composer open.
     _taskIdx() {
       return _memo(_taskIdxMemo, this._rowV, () => { const inv = new Map(), arch = [], tasks = this.tasks;
         for (const o of window.Alpine.raw(tasks)) {   // ids only: no proxy per row
@@ -7541,13 +7664,13 @@ document.addEventListener('alpine:init', () => {
       if (this.phoneDock()) queueMicrotask(() => { const box = this._ghostEl('chk')?.closest('.composer-entries'); if (box) box.scrollTop = at ? box.scrollHeight : 0; });   // after its paint: the new row in view beside the ghost, however far the list was scrolled
     },
     // Bucket only the display: unchecking restores the item's saved position. Steps keep stored order.
-    // find (a ghost query) opens the fold: a done item it matches floats up like any other
+    // find (a ghost query) opens the fold.
     checklistView() { return this.chkSteps() ? { rows: this.draft.checklist, hidden: 0, more: 0 } : chkVisible(this.draft.checklist, this.chkPlain(), this.chkOpen.has(this.editing ?? 'draft') || !!this.chkFind(), _chkHeld?.key === 'draft' ? _chkHeld.done : null); },
-    // reveal/re-hide the folded done items; the row repaints here: no effect may have read chkOpen for it
+    // reveal/re-hide the folded done items; the row repaints here since no effect may have read chkOpen
     chkFold(id) { this.chkOpen.has(id) ? this.chkOpen.delete(id) : this.chkOpen.add(id); this._dropRowHtml(id); this._paintRows(); },
-    // The composer's entry rows are plain DOM, not x-fors: mounting ~12 Alpine directives per row makes a long list the
-    // open's longest frame. One effect per list paints them keyed by id, after the list's ghost; a row keeps its element
-    // and rewrites only what changed. Every row renders: drag, ↓/Tab, the grow's measure, zebra, copy and find read them all.
+    // The composer's entry rows are plain DOM, not x-fors: ~12 Alpine directives per row make a long list the open's
+    // longest frame. One effect per list paints them keyed by id, after the list's ghost; a row keeps its element and
+    // rewrites only what changed. Every row renders: drag, ↓/Tab, the grow's measure, zebra, copy and find read them all.
     _paintKeyed(list, items, mk, set, exit) {
       const want = new Set(items.map(x => x.id)), old = new Map();
       for (const el of [...list.children]) {   // leavers first: no row shuffles past them
@@ -7555,19 +7678,19 @@ document.addEventListener('alpine:init', () => {
         if (el.dataset.out) want.has(el.dataset.out) && el.remove();   // brought back (⌘Z) mid-exit: one row, the new one
         else if (id) want.has(id) ? old.set(id, el) : exit?.has(id) ? this._rowOut(el) : el.remove();
       }
-      let at = list.querySelector(':scope > .ghost') || list.firstElementChild;   // the sub ghost's x-if may mount after this paint: its <template> anchors, and it mounts right after that
+      let at = list.querySelector(':scope > .ghost') || list.firstElementChild;   // the sub ghost's x-if may mount after this paint: its <template> anchors it
       for (const x of items) {
         let el = old.get(x.id);
         if (!el) { el = mk(); el.dataset.id = x.id; }
         set(el, x);
-        // Moving the row being typed in would blur it: move the unplaced rows ahead of it instead (later steps place them).
+        // Moving the row being typed in would blur it: move the unplaced rows ahead of it instead.
         if (el.contains(document.activeElement)) while (at.nextElementSibling !== el && at.nextElementSibling?.dataset.id) el.after(at.nextElementSibling);
         if (at.nextElementSibling !== el) at.after(el);
         at = el;
       }
     },
     // A row the pointer deleted fades where it stood, out of the flow (the rows below slide up: _slideEntries), then goes.
-    // Unreadable meanwhile: no data-id (data-out keeps who it was), inert, last in the DOM (a first step's rail follows its next row), and the readers skip .chk-out.
+    // Unreadable meanwhile: no data-id (data-out keeps who it was), inert, last in the DOM (a first step's rail follows its next row).
     _rowOut(el) {
       const { offsetTop, offsetLeft, offsetWidth } = el;
       el.dataset.out = el.dataset.id; delete el.dataset.id; el.inert = true;
@@ -7579,14 +7702,14 @@ document.addEventListener('alpine:init', () => {
     },
     _entryTops(els, key = el => el.dataset.id) { return new Map(els.map(el => [key(el), el.getBoundingClientRect().top])); },
     _slideEntries(els, before, key = el => el.dataset.id) {
-      const tops = els.map(el => el.getBoundingClientRect().top);   // all reads first: an animate() between two reads forces a layout each
-      for (const [i, el] of els.entries()) {   // the one slide, each row from where it showed; one arriving ("…N more") fades in
+      const tops = els.map(el => el.getBoundingClientRect().top);   // all reads first: an animate() between reads forces a layout each
+      for (const [i, el] of els.entries()) {   // one slide, each row from where it showed; one arriving fades in
         const from = before.get(key(el)), dy = from - tops[i];
         if (from == null || dy) motion.soften(el.animate(from == null ? { opacity: [0, 1] } : { translate: [`0 ${dy}px`, '0 0'] }, { duration: 200, easing: DESIGN.ease['in-out'] }));
       }
     },
     paintChk(list, force) {
-      const exit = _chkExit; _chkExit = null;   // one pointer delete's ids: every other removal leaves at once
+      const exit = _chkExit; _chkExit = null;   // one pointer delete's ids; every other removal leaves at once
       if (!list?.isConnected) return;
       _chkDraftList = list;
       if (this.notesHidden()) return;
@@ -7601,7 +7724,7 @@ document.addEventListener('alpine:init', () => {
         el._r.classList.toggle('done', done); el._r.classList.toggle('plain', plain);
         if (!g !== !el._g) g ? el.prepend(el._g = CHK_GRIP.cloneNode(true)) : (el._g.remove(), el._g = null);
         // text is read raw: tracked, a row read before it took focus would re-run this whole paint on its first key.
-        // Text written outside the row's own editor (undo) repaints via syncChkRows.
+        // Text written outside the row's editor (undo) repaints via syncChkRows.
         if (!el._t.contains(ae)) { const h = this.chkHl(window.Alpine.raw(item)); if (force || el._t._h !== h) el._t.innerHTML = el._t._h = h; }
       }, exit);
       if (!view.more) list._fold?.remove();
@@ -7614,7 +7737,7 @@ document.addEventListener('alpine:init', () => {
     },
     // The draft's subtask rows: stored ones still stored (another device may delete one), and new ones.
     shownSubs() { return this.editing ? this.draft.subs.filter(s => s.add || this.byId.has(s.id)) : []; },
-    // A row's pill editor hydrates once per draft (a reopen re-reads the store), then shows the draft's edit of it; later store writes re-hydrate via syncSubRows.
+    // A row's pill editor hydrates once per draft, then shows the draft's edit of it; later store writes re-hydrate via syncSubRows.
     paintSubs(list) {
       if (!list?.isConnected || this.notesHidden()) return;
       const sid = this._draftSid, fresh = [];
@@ -7627,7 +7750,7 @@ document.addEventListener('alpine:init', () => {
       // untracked: the pill build reads (and writes) state this paint must not depend on
       if (fresh.length) queueMicrotask(() => { for (const [t, c, s] of fresh) { if (c) this.hydrateSubEditor(t, c); else t._base = null; if (s.html) t.innerHTML = s.html; } });
     },
-    // The painted subtask rows' events, delegated from the list (the ghost has no data-id and keeps its own handlers).
+    // The painted subtask rows' events, delegated from the list (the ghost keeps its own handlers).
     subRowEv(e) {
       const el = e.target.closest?.('.entry[data-id]'), s = el && this.draft.subs.find(x => x.id === el.dataset.id), c = s && this.byId.get(s.id), t = el?._t, y = e.type; if (!s) return;
       if (y === 'click') return e.target.closest('.entry-chk') ? this.tickSub(s, c) : e.target.closest('.entry-kids') ? (e.stopPropagation(), c && this.editTask(c)) : e.target.closest('.entry-del') && this.removeChild(s);
@@ -7644,7 +7767,7 @@ document.addEventListener('alpine:init', () => {
       if (inNotes(c ?? s.fields) || c?.archived_at) return;   // a note's tack and an archived check are inert, as the list's
       const before = this._subsSnap(), tick = () => { s.done = !s.done; this._pushSubs('Ticked subtask', before); }; return !s.done && c ? this.confirmSweep(c.id, tick).then(asked => asked || tick()) : tick(); },
     _chkItem(el) { return el.closest?.('.entry.chk')?._item ?? null; },
-    // The painted rows' events, delegated from the list (the ghost row has no data-id and keeps its own handlers).
+    // The painted rows' events, delegated from the list (the ghost keeps its own handlers).
     chkRowEv(e) {
       if (e.type === 'click' && e.target.closest('.chk-more')) return this.chkFold(this.editing ?? 'draft');
       const item = this._chkItem(e.target); if (!item) return;
@@ -7664,21 +7787,21 @@ document.addEventListener('alpine:init', () => {
       else if (e.key === 'Escape') this.entryEscape(e, () => txt.innerHTML = txt._h = this.chkHl(item));
       e.stopPropagation();   // the row's keys are its own
     },
-    // Uncheckable: the checklist renders as a plain notes list (no boxes, no done styling) everywhere
+    // Uncheckable: the checklist renders as a plain notes list (no boxes, no done styling)
     chkPlain() { return this.draft.checklist_plain; },
     chkSteps() { return !this.draft.checklist_plain && this.draft.task_type === 'steps'; },
     phoneDock() { return this.narrow && (document.documentElement.classList.contains('touch') || this._inBar()); },   // the composer's one-row dock: the 640 block's .touch and jot-bar rules
     notesHidden() { return this.phoneDock() && !this.notesOpen; },
-    // A phone hides only a large description and checklist (his 11-11 "only hide the checklists and desc if they're large"): over 6 rows the
-    // composer passes ~360px at 390, more than an S22 Ultra keeps above its keyboard. ~40 characters a description line at a phone's width.
-    // Subtasks stay behind the chip: his words name the checklist, and a phone's open folds their list rows away (composer-d).
+    // A phone hides only a large description and checklist: over 6 rows the composer passes ~360px at 390, more than an
+    // S22 Ultra keeps above its keyboard. ~40 characters a description line at a phone's width.
+    // Subtasks stay behind the chip: a phone's open folds their list rows away.
     _notesFit() {
       const d = this.draft, lines = d.notes.trim() ? d.notes.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / 40)), 0) : 0;
       const view = this.checklistView(), rows = lines + view.rows.length + (view.more ? 1 : 0);   // the rows the checklist draws, a fold row for 3+ done
       return !this.shownSubs().length && rows > 0 && rows <= 6;
     },
     // The bar's sheet gives its entries the room the rest leaves, so they scroll under their ghost while the title and send stay put.
-    // rest excludes the entries, so a cap never changes it: one pass settles. Never under 120px (~4 rows): a taller rest scrolls the sheet.
+    // rest excludes the entries, so a cap never changes it. Never under 120px (~4 rows): a taller rest scrolls the sheet.
     fitEntries(sheet) {
       const box = this.$refs.composer.querySelector('.composer-entries'), on = sheet.classList.contains('open') && sheet.contains(box);
       const room = on && sheet.getBoundingClientRect().bottom - sheet.offsetParent.getBoundingClientRect().top - parseFloat(getComputedStyle(sheet).getPropertyValue('--sp-24')) - (sheet.scrollHeight - box.offsetHeight);
@@ -7703,7 +7826,8 @@ document.addEventListener('alpine:init', () => {
       this.notesOpen = !this.notesOpen;
       queueMicrotask(() => queueMicrotask(() => this.notesOpen && this.composer.open && (this.phoneDock() ? this._focusEntry(this._ghostEl(this.entryPick() === 'sub' ? 'sub' : 'chk')) : this.focusFirstEntry())));   // after Alpine's flush shows them and its queued subtask writes: a list's ghost, else First step; a phone's sits last, its picked one
     },
-    // Steps is picked by typing into the empty composer's "First step" ghost; it and the plain toggle are draft, like every field: nothing lands before Save. Plain and Steps exclude each other.
+    // Steps is picked by typing into the empty composer's "First step" ghost; it and the plain toggle are draft:
+    // nothing lands before Save. Plain and Steps exclude each other.
     toggleChecklistPlain(asked) {
       if (!asked && this.chkSteps()) return this.askConfirm({ message: 'Turn these steps into an uncheckable list?', confirmLabel: 'Make list uncheckable', onConfirm: () => this.toggleChecklistPlain(true) });   // Steps leave only through a confirm
       const d = this.draft, before = this._shapeSnap(); d.checklist_plain = !d.checklist_plain; if (d.checklist_plain) this.setTaskType(null);
@@ -7717,14 +7841,14 @@ document.addEventListener('alpine:init', () => {
       else delete d.typeBeforeNote;   // absent = null on the way back, and keeps the draft equal to its base
       if (type) d.checklist_plain = false;
     },
-    // Phone: one ghost row whose box opens a menu (checklist · subtask · steps) in place of the desktop's ghost OR ghost trio
+    // Phone: one ghost row whose box opens a menu (checklist · subtask · steps) in place of the desktop's ghosts
     entryPick() {   // an empty draft leads with steps; a note has none
       if (this.shownSubs().length || this.subGhost.length) return 'sub';
       if (this.draft.checklist.length || this.chkGhost.length) return this.chkSteps() ? 'steps' : 'chk';
       return this.entryKind || (this.typeFront(true) ? 'chk' : 'steps');
     },
     typeOff() { const typing = this.subGhost.length > 0; return { chk: typing, sub: !this.editing || this.draft.checklist.length > 0 || this.chkGhost.length > 0, steps: typing || !!this.typeFront(true) }; },   // booleans: :disabled sets on a 0
-    kindBox: {   // x-bind on each ghost box: a phone's opens the kind menu, by tap or Enter/Space; a desktop's stays a mark
+    kindBox: {   // x-bind on each ghost box: a phone's opens the kind menu; a desktop's stays a mark
       ':role'() { return this.phoneDock() ? 'button' : null; },
       ':tabindex'() { return this.phoneDock() ? 0 : null; },
       ':aria-label'() { return this.phoneDock() ? 'Type' : null; },
@@ -7734,18 +7858,18 @@ document.addEventListener('alpine:init', () => {
       '@click'(e) { this.phoneDock() && this.togglePop('kind', e.currentTarget); },
       '@keydown'(e) { if (!this.phoneDock() || (e.key !== 'Enter' && e.key !== ' ')) return; e.preventDefault(); e.stopPropagation(); this.togglePop('kind', e.currentTarget); },
     },
-    typePick(t) {   // typed rows retype in place: checklist ↔ steps or subtasks → items, through convertTo and its confirm
+    typePick(t) {   // typed rows retype in place through convertTo and its confirm
       this.pop = null;
       if (t === this.entryPick()) return;
-      this.entryKind = t;   // an empty draft only shows the picked ghost: typing into it sets the type, as on desktop
+      this.entryKind = t;   // an empty draft only shows the picked ghost; typing into it sets the type
       if (t !== 'sub' && (this.shownSubs().length || this.draft.checklist.length)) this.convertTo(t);
       else if (this.chkGhost.length) this.setTaskType(t === 'steps' ? 'steps' : null);   // a half-typed first row follows the pick
       this.$nextTick(() => this.composer.open && !this.confirm && this._focusEntry(this._ghostEl(t === 'sub' ? 'sub' : 'chk')));   // held till the picked ghost's fade-in shows it; a convert's confirm keeps focus
     },
     toggleChecklistItem(item) { this._holdChk('draft', item.id, !!item.done); item.done = !item.done; },
     removeChecklistItem(item) { const i = this.draft.checklist.indexOf(item); if (i >= 0) this.draft.checklist.splice(i, 1); if ((item.text || '').trim()) this._pushChkItem(item, i, item.text, null); },
-    // Backspace on an empty entry row (checklist item or subtask) deletes it and lands the caret on the neighboring entry.
-    // A fresh press only: the caret lands at the end of the row above, so a held key would erase and delete up the list.
+    // Backspace on an empty entry row deletes it and lands the caret on the neighboring entry.
+    // A fresh press only: a held key would erase and delete up the list.
     entryBackspace(e, remove) {
       if (e.repeat) return;
       // A title-less subtask can still carry chips. Before them, Backspace removes the row; after them it un-chips.
@@ -7755,7 +7879,7 @@ document.addEventListener('alpine:init', () => {
       this.moveEntryFocus(e.target, -1) || this.moveEntryFocus(e.target, 1);
       remove();
     },
-    // Backspace/Delete with ≥2 tinted (chk-sel) rows deletes them all as ONE ⌘Z step. Rows call it first; onKey
+    // Backspace/Delete with ≥2 tinted (chk-sel) rows deletes them all as one ⌘Z step. Rows call it first; onKey
     // too, since a drag that started off every row leaves focus outside them. Returns true when it took the key.
     chkDelSel(e) {
       const selRows = document.querySelectorAll('.composer-entries .entry.chk.chk-sel');
@@ -7769,7 +7893,7 @@ document.addEventListener('alpine:init', () => {
         return true;
       }
     },
-    // x with ≥2 tinted rows ticks them all (any still open) or reopens them all, as ONE ⌘Z step; same callers as chkDelSel.
+    // x with ≥2 tinted rows ticks them all (any still open) or reopens them all, as one ⌘Z step; same callers as chkDelSel.
     chkTickSel(e) {
       const selRows = document.querySelectorAll('.composer-entries .entry.chk.chk-sel');
       if (selRows.length < 2 || this.chkPlain()) return;
@@ -7780,18 +7904,18 @@ document.addEventListener('alpine:init', () => {
       this._pushDraftEdit(done ? 'Checked checklist items' : 'Unchecked checklist items', 'chk-multi', { before, after: JSON.parse(JSON.stringify(this.draft.checklist)) });
       return true;
     },
-    // Bin-only row per deleted item (detached: ⌘Z steps over it; trashView/restoreTrash handle each), so it stays
-    // restorable after the undo stack ages out. A null taskId is late-bound on save.
+    // Bin-only row per deleted item (detached: ⌘Z steps over it), restorable after the undo stack ages out.
+    // A null taskId is late-bound on save.
     _binChkItems(taskId, list, items) { for (const it of items) this._pushChkItem(it, list.indexOf(it), it.text, null, { taskId, detached: true }); },
-    // chkInput writes item.text on every keystroke, so the pre-edit value comes from the focus snapshot — blur is the commit boundary (one ⌘Z step per edit session).
+    // chkInput writes item.text on every keystroke, so the pre-edit value comes from the focus snapshot; blur commits
+    // (one ⌘Z step per edit session).
     renameChecklistItem(item, text) { text = text.trimStart(); if (!text.trim()) return; if (this._chkBefore != null && text !== this._chkBefore) this._pushChkItem(item, this.draft.checklist.indexOf(item), this._chkBefore, text); item.text = text; this._chkBefore = null; },
     // Checklist rows are plain, page-selectable text until clicked into, so a vertical drag selects across rows (a
-    // per-row contenteditable would trap it in one row). A click enters edit mode at the caret; a drag keeps the
-    // multi-row selection for chkCopy. Keyboard focus edits via the row's @focus handler.
+    // per-row contenteditable would trap it). A click enters edit mode at the caret; a drag keeps the selection for
+    // chkCopy. Keyboard focus edits via the row's @focus handler.
     chkRowDown(e) { this._chkDownAt = { x: e.clientX, y: e.clientY }; this._chkPointer = true; },
-    // A drag that STARTS in the row you're already typing in is confined to that editable host, so it can't reach
-    // siblings. Once it leaves the row's own band, drop the row out of edit mode mid-drag and the selection spans
-    // rows again — an in-row drag (select a word to retype it) never leaves the band, so that row keeps editing.
+    // A drag that starts in the row being typed in is confined to that editable host. Once it leaves the row's band,
+    // the row drops out of edit mode mid-drag so the selection spans rows; an in-row drag never leaves the band.
     chkDragOut(e) {
       const a = document.activeElement;
       if (!this._chkDownAt || !e.buttons || !a?.isContentEditable || !a.matches('.entry.chk:not(.ghost) .entry-txt')) return;
@@ -7800,44 +7924,44 @@ document.addEventListener('alpine:init', () => {
     },
     chkRowUp(el, e) {
       const d = this._chkDownAt; this._chkDownAt = null; this._chkPointer = false;
-      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;   // a drag-select (or one begun off this row) → keep the selection, don't edit
+      if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;   // a drag-select keeps the selection
       if (e.target.closest('a.dm-link')) return;   // its link card opens instead
-      if (el.isContentEditable) return;   // already editing (2nd click of dblclick) — let browser word-select natively
+      if (el.isContentEditable) return;   // already editing (2nd click of dblclick): the browser word-selects
       const r = document.caretRangeFromPoint?.(e.clientX, e.clientY);
       if (r && el.contains(r.startContainer)) { const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
       const off = this._caretOffset(el);   // the clicked source position, kept through the live redraw
       this.chkFocus(el); el.focus(); this._setCaret(el, off);
     },
-    // Rows are tabbable so Tab reaches the item title, but a MOUSE press must not enter edit mode on focus (it would
-    // trap a cross-row drag-select in one contenteditable). Keyboard focus (no pointer) enables editing.
+    // Rows are tabbable so Tab reaches the item title, but a mouse press must not enter edit mode on focus (it would
+    // trap a cross-row drag-select). Keyboard focus enables editing.
     chkFocus(el) {
-      if (this._chkPointer || el.isContentEditable) return;   // mouse path: chkRowUp decides click-to-edit vs drag
+      if (this._chkPointer || el.isContentEditable) return;   // mouse path: chkRowUp decides
       el.contentEditable = 'plaintext-only';
       el.innerHTML = this._rowHtml(el.textContent);   // a find hit's highlight gives way to the live markdown
-      el._hist = { undo: [], redo: [], prev: { text: el.textContent, caret: null } };   // its own ⌘Z, fresh each edit (liveHistory)
+      el._hist = { undo: [], redo: [], prev: { text: el.textContent, caret: null } };   // its own ⌘Z (liveHistory)
       // A div made editable while focused has no caret, so keys do nothing: put one at the end.
       this._caret(el);
     },
-    // Enter → sibling item below · Shift+Enter → plain newline · ⌘/Ctrl+Enter → save & close.
+    // Enter → sibling item below, Shift+Enter → newline, ⌘/Ctrl+Enter → save & close.
     chkEnter(e, item) {
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) return this.submitAndClose();
       if (!e.shiftKey) return this.insertChkAfter(item);
       this.insertPlainText('\n');
     },
-    // Checklist ghost: Shift+Enter falls through to the native newline; Enter commits and keeps the caret there (survives the empty→list swap:
-    // a microtask, since the swap's x-transitions hold $nextTick and keys typed meanwhile hit the page).
+    // Checklist ghost: Shift+Enter falls through to the native newline; Enter commits and keeps the caret there (a microtask
+    // survives the empty→list swap: its x-transitions hold $nextTick and keys typed meanwhile hit the page).
     ghostEnter(e) { if (e.shiftKey) return; e.preventDefault(); if (e.metaKey || e.ctrlKey) this.submitAndClose(); else { this.commitChkGhost(); queueMicrotask(() => this._ghostEl('chk')?.focus()); } },
-    // Enter on a checklist row inserts a new empty OPEN item just below it and focuses it. A new open item can't
-    // live in the done bucket, so a row Entered from the done bucket lands at the end of the open bucket (the stable re-sort pulls it up).
+    // Enter on a checklist row inserts a new empty open item just below it and focuses it. A new open item can't
+    // live in the done bucket, so one Entered there lands at the end of the open bucket (the stable re-sort pulls it up).
     insertChkAfter(item) {
       const it = { id: crypto.randomUUID(), text: '', done: false };
       this.draft.checklist.splice(this.draft.checklist.indexOf(item) + 1, 0, it);
       queueMicrotask(() => document.querySelector(`.composer-entries .entry.chk[data-id="${it.id}"] .entry-txt`)?.focus());   // after Alpine's flush draws the row; $nextTick waits on a starting x-transition and the next keys type into the item above
     },
-    // --- Subtask rows are pill editors too: the SAME title engine, aimed via _nlpFocus at the focused row. ---
-    // On focus, point the engine at this row and rebuild its sub-draft from the pills already in its DOM (the
-    // DOM is the record — survives blur→picker-click→re-focus). c = the child row; null = the "new subtask" ghost.
+    // --- Subtask rows are pill editors too: the same title engine, aimed via _nlpFocus at the focused row. ---
+    // On focus, point the engine at this row and rebuild its sub-draft from the pills in its DOM (the DOM is the
+    // record, surviving blur→picker-click→re-focus). c = the child row; null = the "new subtask" ghost.
     focusSubEditor(el, c) {
       _nlpFocus = { el, draft: this.subDraft = this._rowDraft(el, c), ghost: !c, c };
       this.syncTitle();                     // mirrors subGhost for the ghost
@@ -7846,22 +7970,21 @@ document.addEventListener('alpine:init', () => {
     _rowDraft(el, c, track = true) {
       const prev = _nlpFocus, d = emptyDraft();
       d.goal_ids = [...(c?.goal_ids || [])];   // goals have no pill: carry the row's own, else a commit writes [] over them
-      // No area fallback from the task: a row hydrated before its areas were set diffs [] vs [] (nothing written, see
-      // _childPatch), while one the user un-chipped must write []; a fallback would make removing an area chip a no-op.
+      // No area fallback from the task: a row hydrated before its areas were set diffs [] vs [] (see _childPatch), while
+      // one the user un-chipped must write []; a fallback would make removing an area chip a no-op.
       _nlpFocus = { el, draft: d, c }; this._recommitPills(PILL_KINDS); this.syncTitle(false, track); _nlpFocus = prev;
       return d;
     },
-    focusTitle() { _nlpFocus = null; },     // title regains the default target when it (re)gains focus
+    focusTitle() { _nlpFocus = null; },     // the title is the default target again
     _nlpTakes(tok) { return _nlpFocus?.cal ? this._clTakes(tok) : !_nlpFocus || tok.kind !== 'proj'; },   // a subtask's "#word" stays text
     // pillInput: the focus an Undo from outside brings (focusin lands after its input). A row's focus handler re-tracks
-    // the undone DOM before the input, so its history is kept as it stood.
+    // the undone DOM before the input, so its history is kept.
     markFocus(e) {
       const el = e.target;
       el._focusFrom = { el: e.relatedTarget || document.body, hist: el._hist && { ...el._hist, undo: [...el._hist.undo] } };
       setTimeout(() => el._focusFrom = null);
     },
-    // The ghost editor carries no x-model — mirror the (kept/restored) subGhost text into its DOM when it's idle
-    // (x-effect on the row: re-runs when subGhost changes, but never clobbers what the user is actively typing).
+    // The ghost editor has no x-model: mirror the kept/restored subGhost text into its DOM when idle, never clobbering typing.
     subGhostSync(el) { if (document.activeElement !== el && (el.textContent || '') !== (this.subGhost || '')) el.textContent = this.subGhost || ''; },
     _resetSubDraft() { this.subDraft = emptyDraft(); if (_nlpFocus) _nlpFocus.draft = this.subDraft; },
     _ghostEl(kind) {   // the "new subtask" / "new item" prompt row's editor; an empty Steps draft types into "First step"
@@ -7869,8 +7992,8 @@ document.addEventListener('alpine:init', () => {
       return document.querySelector('.composer-entries .entry' + (kind === 'sub' ? ':not(.chk)' : chk) + '.ghost .entry-txt');
     },
     _clearEditor(el) { if (el) { el.textContent = ''; el._hist = null; } },   // a fresh ghost: ⌘Z must not bring back the subtask just added
-    // Pill editors (title, subtask rows). Chrome undoes a native ⌫/typing run with no beforeinput — only this input. Put
-    // our snapshot back, then step our own history; an Undo from outside focused the editor in this same task: focus goes back.
+    // Pill editors (title, subtask rows). Chrome undoes a native ⌫/typing run with no beforeinput, only this input: put
+    // our snapshot back, then step our own history. An Undo from outside focused the editor in this task: focus goes back.
     pillInput(e) {
       const el = e.target, history = e.inputType?.startsWith('history');
       const from = history && (el._focusFrom || document.activeElement !== el && { el: document.activeElement, hist: el._hist });   // Chrome can aim it here without focusing
@@ -7881,10 +8004,10 @@ document.addEventListener('alpine:init', () => {
         else if (from.el === document.body) el.blur();
         else from.el.focus();
       } else {
-        el._focusFrom = null;   // typing proves the focus was the user's, so a later Undo is in-field (input can run ahead of markFocus's timer)
+        el._focusFrom = null;   // typing proves the focus was the user's (input can run ahead of markFocus's timer)
         this.syncTitle(e.isComposing);
         if (!e.isComposing && /\s$/.test(e.data ?? '')) this.pillAfterSpace();
-        else if (e.data && !e.isComposing) this._noPillOnce = false;   // fresh content re-enables space→pill, as a keydown does
+        else if (e.data && !e.isComposing) this._noPillOnce = false;   // fresh content re-enables space→pill
         if (/^[@#]$/.test(e.data) && (e.data === '@' || !_nlpFocus)) _trigKey = e.data;   // a soft keyboard's '@' has no keydown to arm it
       }
       this.refreshPickers();
@@ -7893,27 +8016,27 @@ document.addEventListener('alpine:init', () => {
       if (this._pillKeydown(e)) return;
       if (e.key === 'Enter' && !e.shiftKey && !e.metaKey && !e.ctrlKey) { e.preventDefault(); this._pillThen(() => c ? this.focusEntryGhost(e.target) : this.commitSubGhost()); }
     },
-    // A sub-draft → child task fields. A subtask's parent is the editing task (not a project); it has no checklist of its own.
+    // A sub-draft → child task fields. A subtask's parent is the editing task; it has no checklist of its own.
     _subFields(d) { const f = this.draftFields(d); delete f.project; delete f.project_id; delete f.checklist; f.parent_id = this.editing; return f; },
-    // The ghost's typing → a new row at the head of the draft (right under the ghost). Its own row, never merged into the
-    // ghost, or "sub1 30m" + "sub2 1h" becomes ONE task and drops the 30m.
+    // The ghost's typing → a new row at the head of the draft. Its own row, never merged into the ghost, or
+    // "sub1 30m" + "sub2 1h" becomes one task and drops the 30m.
     commitSubGhost() {
       const el = this._ghostEl('sub');
-      // Rebuild the sub-draft from the ghost's DOM — covers Save, where focus may never have entered the row.
+      // Rebuild the sub-draft from the ghost's DOM: Save may never have focused the row.
       if (el) this.focusSubEditor(el, null);
       const d = this.subDraft, s = { id: crypto.randomUUID(), add: true, done: false, html: el?.innerHTML || '', fields: this._subFields(d), sd: { on: d.on, dueTime: d.dueTime, recurrence: d.recurrence }, links: this._subLinks(d) };
       s.text = s.fields.content;
       if (!s.text && el?.textContent.trim()) { this.toast('Add a title to the subtask'); this._focusEntry(el); return false; }
       this.subGhost = '';
-      // Enter leaves you typing in this same element. Re-aim the engine at the row here too — .focus() on an already-focused
-      // element fires no focus event, so nothing else re-points it and the typing would land in the task title.
+      // Enter leaves you typing in this same element: .focus() on an already-focused element fires no focus event, so
+      // re-aim the engine here or the typing lands in the task title.
       this._clearEditor(el); this._resetSubDraft();
       if (el && document.activeElement === el) this.focusSubEditor(el, null); else _nlpFocus = null;
       if (this.editing && s.text) { const before = this._subsSnap(); this.draft.subs.unshift(s); this._pushSubs('Added subtask', before); }
     },
     // Fill an existing child row's editor with its content text + a pill per stored field (inverse of the parser).
-    // Fields come from the pills, exactly like the title: a throwaway draft during the build gives each pill a correct
-    // pre-chip `prior` snapshot (empty→accumulate) so backspace-revert works; the row's live draft is rebuilt on focus.
+    // A throwaway draft during the build gives each pill a correct pre-chip `prior` snapshot so backspace-revert works;
+    // the row's live draft is rebuilt on focus.
     hydrateSubEditor(el, c) {
       const prev = _nlpFocus;
       _nlpFocus = { el, draft: emptyDraft(), c };
@@ -7921,7 +8044,7 @@ document.addEventListener('alpine:init', () => {
       const add = (kind, value) => { el.appendChild(this.makePill(kind, value, '')); this.commitPill(kind, value); };
       const min = c.est_minutes || 0;
       if (c.importance && c.importance !== 'none') add('imp', c.importance);
-      const si = c.recurrence ? null : this._siOf(c.id);   // the placement is the date fact; recur_from is only a rule anchor
+      const si = c.recurrence ? null : this._siOf(c.id);   // the placement is the date fact; recur_from only anchors a rule
       if (si || c.recur_from) add('date', { iso: si?.date || c.recur_from.slice(0, 10), time: si ? si.start || '' : timeOf(c.recur_from), from: c.available_from || null, ...partOf(c.possible?.bands) && { part: partOf(c.possible.bands) } });
       if (c.deadline_at) add('deadline', { iso: (c.deadline_at || '').slice(0, 16) });
       if (c.recurrence) add('rec', c.recurrence);
@@ -7929,13 +8052,13 @@ document.addEventListener('alpine:init', () => {
       for (const a of (c.area_ids || [])) add('area', a);
       if (c.location?.ids?.length) { const nm = this.locations.find(l => l.id === c.location.ids[0])?.name; if (nm) add('loc', (c.location.mode === 'except' ? 'away from ' : '') + nm); }   // the picked set scopes it, whatever `mode` says (rowLoc)
       _nlpFocus = prev;
-      el._hist = null;   // history restarts at the stored row: ⌘Z must not bring back what the store replaced (a blur would write it over)
+      el._hist = null;   // history restarts at the stored row: ⌘Z must not bring back what the store replaced
       // No caret/history read between hydration writes; focus initializes the editor history.
-      el._base = this._rowDraft(el, c, false); el._html = el.innerHTML;   // what the row showed as filled — a commit writes only what differs from it
+      el._base = this._rowDraft(el, c, false); el._html = el.innerHTML;   // what the row showed as filled: a commit writes only what differs
     },
-    // Rows keep their element across reloads → refresh each idle child editor's pills from the store. Only rows still as
+    // Rows keep their element across reloads: refresh each idle child editor's pills from the store. Only rows still as
     // filled, plus `id` (the row just saved or reverted): a row holding an unsaved or failed edit keeps it, else a
-    // sibling's save re-hydrating it wipes the text its toast promised to keep.
+    // sibling's save wipes the text its toast promised to keep.
     syncSubRows(id) {
       if (!this.editing) return;
       document.querySelectorAll('.composer-entries .entry[data-id] .entry-txt.sub-ce').forEach(el => {
@@ -7944,12 +8067,12 @@ document.addEventListener('alpine:init', () => {
         if (c && (id === c.id || el.innerHTML === el._html)) this.hydrateSubEditor(el, c);
       });
     },
-    // The fields a draft changed against its base (a child row's, or the composer's on Save): an untouched one writes
-    // nothing, and an edit never nulls what a row can't show (description, a from-date without a date chip).
+    // The fields a draft changed against its base: an untouched one writes nothing, and an edit never nulls what a row
+    // can't show (description, a from-date without a date chip).
     _childPatch(a, b) {
       return Object.fromEntries(Object.keys(a).filter(k => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null)).map(k => [k, a[k]]));
     },
-    // A row's editor → its draft row: what differs from the stored task (a new row: all of it); an edit undone leaves nothing to save.
+    // A row's editor → its draft row: what differs from the stored task (a new row: all of it).
     // Emptied: on blur it shows again what it showed when focused (never a blank title).
     _snapSub(el, c, s, done) {
       const d = this._rowDraft(el, c || s), f = this._subFields(d), b = el._base;
@@ -7960,16 +8083,16 @@ document.addEventListener('alpine:init', () => {
       const patch = this._childPatch(f, this._subFields(b)), moved = d.on !== b.on || d.dueTime !== b.dueTime, edited = moved || Object.keys(patch).length > 0;
       Object.assign(s, { html: edited ? el.innerHTML : undefined, text: edited ? f.content : undefined, patch: edited ? patch : undefined, sd: moved ? sd : undefined, links });
     },
-    // a row's typed "needs …" / "needed by …": hydrateSubEditor shows no stored links, so these are only new ones, linked by the save
+    // a row's typed "needs …" / "needed by …": hydrateSubEditor shows no stored links, so these are only new ones
     _subLinks(d) { return d.needs.length || d.neededBy.length ? { needs: [...d.needs], neededBy: [...d.neededBy] } : undefined; },
-    // The draft's rows as ONE part of the save: creates first, then edits, moves and ticks, deletes last. All or nothing:
-    // a failed part takes back what landed, so the stored subtasks stay as they were and the draft comes back.
+    // The draft's rows as one part of the save: creates first, then edits, moves and ticks, deletes last. All or nothing:
+    // a failed part takes back what landed and the draft comes back.
     async _saveSubs(id, draft, base, j, drops) {
-      // fresh: a new row not stored yet — one whose create landed (a failed save's retry, its Bin draft, a reopen mid-save) is never created twice
+      // fresh: a new row not stored yet; one whose create landed (a retry, a Bin draft, a reopen mid-save) is never created twice
       const subs = draft.subs.filter(s => s.add || this.byId.has(s.id)), fresh = s => s.add && !this.byId.has(s.id), keep = new Set(subs.map(s => s.id)), was = new Map(base.subs.map(s => [s.id, s.done]));
       const adds = subs.filter(fresh), gone = base.subs.filter(s => !keep.has(s.id) && this.byId.has(s.id)).map(s => s.id), kept = base.subs.filter(s => keep.has(s.id));
-      const order = adds.length > 0 || subs.filter(s => !fresh(s)).some((s, i) => s.id !== kept[i]?.id);   // else positions stay as stored: untouched rows write nothing
-      // a new subtask reopens this task and its completed ancestors: journaled as part of it, so ⌘Z completes them again
+      const order = adds.length > 0 || subs.filter(s => !fresh(s)).some((s, i) => s.id !== kept[i]?.id);   // else positions stay as stored
+      // a new subtask reopens this task and its completed ancestors: journaled with it, so ⌘Z completes them again
       const ops = adds.length ? this._reopenIds(id).map(r => ({ kind: 'update', target: 'task', id: r, after: { completed_at: null } })) : [], ticks = [];
       let arrival = 0;
       subs.forEach((s, position) => {
@@ -7980,7 +8103,7 @@ document.addEventListener('alpine:init', () => {
       });
       for (const g of gone) { const to = draft.subMoves?.[g]; if (to) ops.push(...this.childTasks(g).map(k => ({ kind: 'move', target: 'task', id: k.id, after: { parent: to, pos: k.position } }))); }   // "Move them" answered at delete
       ops.push(...ticks, ...gone.map(g => ({ kind: 'delete', target: 'task', id: g })));
-      // the deleted rows' own Bin row (Put it back: just them), kept until the save's entry holds them — as _saveReminders'
+      // the deleted rows' own Bin row, kept until the save's entry holds them (as _saveReminders)
       const copy = await this._binAhead('Deleted subtask', { kind: 'composite', target: 'task', ops });   // its deletes, less the rows its moves take out
       if (!copy) return false;   // storage refused it: nothing runs
       const ok = !ops.length || await this.perform('Saved task', { kind: 'composite', target: 'task', ops }, { ops: j, fail: null, bin: false });
@@ -7988,13 +8111,13 @@ document.addEventListener('alpine:init', () => {
       return ok;
     },
     commitChkGhost() { const v = this.chkGhost.trim(); this.chkGhost = ''; if (v) this.addChecklistItem(v); },
-    // Up/Down hop editing focus to the prev/next entry row, but only when the caret is already at the text boundary.
-    // Handles both <input> (subtask/ghost) and the checklist item's contenteditable (live "::" editor).
+    // Up/Down hop editing focus to the prev/next entry row, only when the caret is already at the text boundary.
+    // Handles both <input> (subtask/ghost) and the checklist item's contenteditable.
     entryKey(e) {
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       const el = e.target, ce = el.isContentEditable;
-      // A selection spanning whole rows makes the ROW the keydown target, not an editor — it has no caret to
-      // reason about (and no .value: reading it throws and kills ⌘C over a multi-item selection).
+      // A selection spanning whole rows makes the row the keydown target: no caret, and reading .value throws
+      // and kills ⌘C over a multi-item selection.
       if (!ce && typeof el.value !== 'string') return;
       const down = e.key === 'ArrowDown', s = getSelection();
       if (ce ? !s?.isCollapsed : el.selectionStart !== el.selectionEnd) return;
@@ -8007,14 +8130,14 @@ document.addEventListener('alpine:init', () => {
       } else if (el.selectionStart !== (down ? el.value.length : 0)) return;
       if (down ? this.moveEntryFocus(el, 1) : this.moveEntryFocus(el, -1) || this._focusEntry(this.$refs.desc)) e.preventDefault();
     },
-    // Every shown entry field in VISUAL order, across the lists (subtasks → checklist; ghost → open → done bucket): by
-    // on-screen band, so CSS order beats DOM order; fields side by side in one band (the empty state's row) keep DOM order.
+    // Every shown entry field in visual order across the lists (subtasks → checklist; ghost → open → done): by on-screen
+    // band, so CSS order beats DOM order; fields side by side in one band keep DOM order.
     _entryFields() {
       const fields = [...document.querySelectorAll('.composer-entries .entry-txt')].filter(el => !el.closest('.chk-out') && el.getClientRects().length).map(el => [el, el.getBoundingClientRect()]);
       return fields.sort(([, a], [, b]) => a.bottom <= b.top ? -1 : b.bottom <= a.top ? 1 : 0).map(([el]) => el);
     },
-    // One rung of the focus ladder (entries ↔ description ↔ title), either direction. The caret always lands at the
-    // END: on the way UP you're arriving from below, where the down-ladder lands it at 0.
+    // One rung of the focus ladder (entries ↔ description ↔ title), either direction. The caret lands at the end:
+    // going up you arrive from below, where the down-ladder lands it at 0.
     _focusEntry(next) {
       if (!next) return false;
       next.focus();
@@ -8022,15 +8145,15 @@ document.addEventListener('alpine:init', () => {
       else { const n = next.value.length; next.setSelectionRange?.(n, n); }
       return true;
     },
-    // Escape in an entry field: revert the edit and step out to the composer. An EMPTY field has nothing to
-    // revert and nothing to step back to, so it skips straight to closing (these fields @keydown.stop, so the
-    // window handler never sees it).
+    // Escape in an entry field: revert the edit and step out to the composer. An empty field has nothing to revert,
+    // so it closes (these fields @keydown.stop, so the window handler never sees it).
     entryEscape(e, revert) {
       const el = e.target;
       if (!(el.value ?? el.textContent).trim()) return this.escape();
       revert?.(); el.blur();
     },
-    // The ghost under a list's items doubles as find: Esc with text clears it as a native edit (⌘Z brings it back); empty, it's entryEscape's. The empty list's ghosts have nothing to find: their Esc keeps the draft.
+    // The ghost under a list's items doubles as find: Esc with text clears it as a native edit (⌘Z brings it back);
+    // empty, it's entryEscape's. The empty list's ghosts keep the draft.
     chkGhostEsc(e) {
       if (!e.target.value) return this.entryEscape(e);
       e.target.select();
@@ -8040,10 +8163,9 @@ document.addEventListener('alpine:init', () => {
       const fields = this._entryFields(), i = fields.indexOf(el);
       return i >= 0 && this._focusEntry(fields[i + dir]);
     },
-    // Bottom rung of the ArrowDown ladder (title → description → entries): the first entry field shown; a note has
-    // none, so down stays put.
+    // Bottom rung of the ArrowDown ladder (title → description → entries): the first entry field; a note has none.
     focusFirstEntry() { return this._focusEntry(this._entryFields()[0]); },
-    // Enter on a subtask row: commit (blur → rename) and jump to the ghost "new subtask" prompt.
+    // Enter on a subtask row: commit (blur → rename) and jump to the ghost prompt.
     focusEntryGhost(input) { input.closest('.entry-list')?.querySelector('.entry.ghost .entry-txt')?.focus(); },
     // Never repaint an active editor: native typing/selection/undo own its DOM until blur.
     chkInput(item, e) {
@@ -8055,14 +8177,13 @@ document.addEventListener('alpine:init', () => {
     },
     // paste multiline text → new items split ONLY at bullet markers ("- "/"* "). Lines without a bullet are
     // continuations that join the current item (space-joined) — so a wrapped/multi-line sentence isn't torn apart.
-    // Bullet-less multiline collapses to ONE item. Single line → normal inline paste. item=null ⇒ ghost (append).
+    // Bullet-less multiline collapses to one item. Single line → normal inline paste. item=null ⇒ ghost (append).
     chkPaste(e, item = null) {
       const text = e.clipboardData?.getData('text') || '';
       if (!/\r?\n/.test(text.trim())) return;   // single line → let the browser paste inline
-      // ⌘/Ctrl+Shift+V pastes VERBATIM — the newlines land inside one item (Shift+Enter makes the same shape).
-      // The default below reads bullet-less lines as wrapped prose and space-joins them: right for a pasted
-      // paragraph, wrong when the breaks were the point. Chrome fires an ordinary paste event for the shortcut,
-      // so the intent is remembered from the keydown that just preceded it (see init).
+      // ⌘/Ctrl+Shift+V pastes verbatim: the newlines land inside one item (Shift+Enter makes the same shape).
+      // The default below space-joins bullet-less lines as wrapped prose. Chrome fires an ordinary paste event for
+      // the shortcut, so the intent is remembered from the keydown just before it (see init).
       if (this._rawPaste) { e.preventDefault(); this._rawPaste = false; return this._chkPasteRaw(e.target, item, text); }
       const bulletRe = /^\s*[-*]\s+/;
       const lines = text.split(/\r?\n/);
@@ -8080,7 +8201,7 @@ document.addEventListener('alpine:init', () => {
       const at = item ? this.draft.checklist.indexOf(item) + 1 : this.chkSteps() ? this.draft.checklist.length : 0;
       const before = JSON.parse(JSON.stringify(this.draft.checklist));
       this.draft.checklist.splice(at, 0, ...items);
-      this._pushDraftEdit('Pasted checklist items', 'chk-multi', { before, after: JSON.parse(JSON.stringify(this.draft.checklist)) });   // ONE ⌘Z step for the whole paste, not one per item
+      this._pushDraftEdit('Pasted checklist items', 'chk-multi', { before, after: JSON.parse(JSON.stringify(this.draft.checklist)) });   // one ⌘Z step for the whole paste
     },
     // Splice text in at the caret, verbatim. item=null ⇒ the ghost (a textarea on x-model), else a live item editor.
     _chkPasteRaw(el, item, text) {
@@ -8093,7 +8214,7 @@ document.addEventListener('alpine:init', () => {
     // tint the checklist rows a cross-row selection spans — previews what ⌘C will copy (chkCopy kicks in at ≥2 rows)
     _chkSelTint() {
       const sel = getSelection(), r = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null;
-      if (!this.composer.open || !r && !_chkTinted) return;   // collapsed caret, nothing tinted = every keystroke: skip the row query
+      if (!this.composer.open || !r && !_chkTinted) return;   // collapsed caret, nothing tinted: skip the row query on every keystroke
       const rows = document.querySelectorAll('.composer-entries .entry.chk:not(.ghost, .chk-out)');
       const hit = r ? [...rows].filter(el => r.intersectsNode(el.querySelector('.entry-txt'))) : [];
       const on = hit.length >= 2 ? new Set(hit) : null;
@@ -8110,7 +8231,7 @@ document.addEventListener('alpine:init', () => {
       e.preventDefault();
     },
     // Task → markdown: a checkbox line per task, description indented under it, checklist items and subtasks
-    // nested below. Copies what's ON SCREEN (the draft, in the display's open-first order), so an edit you can see is an edit you paste.
+    // nested below. Copies what's on screen (the draft, in the display's open-first order).
     taskMd(t, depth = 0) {
       const pad = '  '.repeat(depth), box = (d) => d ? '[x]' : '[ ]';
       const out = [`${pad}- ${box(!!t.completed_at)} ${t.content}`];
@@ -8126,7 +8247,7 @@ document.addEventListener('alpine:init', () => {
       return this._copyText(md, 'Copied as markdown');
     },
     // A row out of the draft: Save deletes it. A new row exists nowhere else, so it goes to the Bin too. One with its own
-    // subtasks asks first (askDeleteTask); `to`: the answer — where they move, null = they go with it.
+    // subtasks asks first (askDeleteTask); `to`: where they move, null = they go with it.
     removeChild(s, to) {
       const c = this.byId.get(s.id), subs = this.draft.subs, i = subs.indexOf(s), text = s.text || c?.content || '';
       if (i < 0 || to === undefined && c && this.askDeleteTask(c.id, 'child')) return;
@@ -8135,7 +8256,7 @@ document.addEventListener('alpine:init', () => {
       else this._pushDraftEdit(text, 'held-sub', { id: s.id, index: i, before: text, after: null, item: JSON.parse(JSON.stringify(s)) });
     },
     // Drag-to-reorder the composer's rows (grip handle; a finger holds the row instead). Subtasks always; the checklist only
-    // while EDITING a SAVED task: a new task's composer has no grip, as nothing is saved yet and it crowds the row.
+    // while editing a saved task: a new task's composer has no grip, as nothing is saved yet.
     initEntrySort(el, kind) {
       makeSortable(el, { itemSel: kind === 'sub' ? '.entry:not(.ghost, .chk-out)' : '.entry:not(.ghost, .chk-out, .done)', handleSel: '.entry-grip',
         onCommit: (from, to) => kind === 'sub' ? this.reorderSubtasks(from, to) : this.reorderChecklist(from, to) });
@@ -8150,9 +8271,9 @@ document.addEventListener('alpine:init', () => {
     },
     reorderSubtasks(from, to) { const before = this._subsSnap(), subs = this.shownSubs(); subs.splice(to, 0, subs.splice(from, 1)[0]); this.draft.subs = subs; this._pushSubs('Reordered subtasks', before); },   // Save writes the positions
     _subsSnap() { return JSON.parse(JSON.stringify(this.draft.subs)); },
-    // a ⌘Z step back to `before`, when the rows changed (a blur after no edit is none)
+    // a ⌘Z step back to `before`, when the rows changed
     _pushSubs(label, before) { const after = this._subsSnap(); if (JSON.stringify(after) !== JSON.stringify(before)) this._pushDraftEdit(label, 'sub-multi', { before, after }); },
-    // IMPERATIVE hover-block (hovered task + direct children): reading a reactive hover id in 1000 rows' :class costs ~16ms/hover
+    // Imperative hover-block (hovered task + direct children): a reactive hover id in 1000 rows' :class costs ~16ms/hover
     hoverRow(r, e) {
       this.clearHover();
       const h = _hoverId = r.t.id, inb = (id, pid) => id === h || pid === h;
@@ -8168,8 +8289,8 @@ document.addEventListener('alpine:init', () => {
     clearHover() { for (const li of _hoverEls) li.classList.remove('inblock', 'rb-top', 'rb-bottom'); _hoverEls = []; _hoverId = null; },
     _rowEl(id) { return document.querySelector('.surface-lists .list .item[data-id="' + id + '"]'); },
     _trayEl(id) { return document.querySelector('.cl-side .item[data-id="' + id + '"]'); },
-    // drag "nest here" outline — one element, not a reactive :class on every row. dwell: .drop-dwell while the pointer waits out
-    // DWELL on it, then .drop-into. No row: no dwell either.
+    // drag "nest here" outline: one element, not a reactive :class on every row. dwell: .drop-dwell while the pointer waits
+    // out DWELL on it, then .drop-into.
     _setDropInto(id, dwell = false, deep = false) {   // deep: the row is past MAX_DEPTH for this drag, drawn red
       if (!id) _intoAt = null;
       if (_dropEl?.dataset.id !== id) {
@@ -8187,25 +8308,24 @@ document.addEventListener('alpine:init', () => {
       if (list) for (const li of list.querySelectorAll('.dragging, .row-hidden, .drop-into, .drop-dwell, .drop-deep')) li.classList.remove('dragging', 'row-hidden', 'drop-into', 'drop-dwell', 'drop-deep');
       _dropEl = _dragDescs = _dragIds = _dragGrab = _dragParents = _dragProjs = _intoAt = _ghostAt = null; _ghostGrown = _sortRefused = false; this._reflow();   // the subtree windows back in, fitted
     },
-    // keyboard focus outline — one element, applied imperatively.
-    // Re-stamp only: a repaint must NEVER pull the reader back to the focused row (_setKbFocus scrolls).
+    // keyboard focus outline: one element, applied imperatively.
+    // Re-stamp only: a repaint must never pull the reader back to the focused row (_setKbFocus scrolls).
     _paintKb() { _kbEl && _kbEl.classList.remove('kbfocus'); _kbEl = this.focusId ? this._rowEl(this.focusId) : null; _kbEl && _kbEl.classList.add('kbfocus'); },
-    // TWO different distances, both real: a step or two past the fold leaves the row IN the window (nothing
-    // to build, but the reader still has to follow it — 600px of margin is 15 rows of invisible focus without
-    // this), and a long walk leaves it outside the window entirely (no element until _ensureRow builds one).
-    // The follow goes through _revealRow (±12px of air), not scrollIntoView, so _glide stays the scroller's one writer.
+    // Two distances: a step or two past the fold leaves the row in the window (nothing to build, but the reader must
+    // still follow it: 600px of margin is 15 rows of invisible focus), a long walk leaves it outside (no element until
+    // _ensureRow builds one). The follow goes through _revealRow, not scrollIntoView, so _glide stays the scroller's one writer.
     _setKbFocus(id) {
       this.focusId = id;
       if (id) this._ensureRow(id);
       this._paintKb();
       if (_kbEl) this._revealRow(id, 0);   // keyboard steps settle immediately, including same-frame key repeats
     },
-    // --- Delegated row events (bound once on the <ul>, resolve the row by data-id) — see the list markup ---
-    _rowFromEl(el) { return el ? (_rowMap?.get(el.dataset.id) ?? _doneMap?.get(el.dataset.id) ?? null) : null; },   // O(1) via Maps maintained in visibleRows(); active OR Done list
+    // --- Delegated row events (bound once on the <ul>, resolve the row by data-id) ---
+    _rowFromEl(el) { return el ? (_rowMap?.get(el.dataset.id) ?? _doneMap?.get(el.dataset.id) ?? null) : null; },   // O(1) via Maps maintained in visibleRows(); active or Done list
     listOver(e) {
       if (e.target.closest('a, code, .md-code, .chk-more, .chk-rect, .chk-rect:not(.plain) + .chk-txt, .row-rel')) return this.clearHover();   // they own their clicks (an item's box/text ticks it) — styles.css .item:hover mirrors
       const el = e.target.closest?.('.item'), id = el?.dataset.id;
-      if (id === _hoverId) return;                  // mouseover fires per child element — skip if same row
+      if (id === _hoverId) return;                  // mouseover fires per child element
       const r = id ? this._rowFromEl(el) : null;
       r ? this.hoverRow(r, e) : this.clearHover();
     },
@@ -8226,37 +8346,37 @@ document.addEventListener('alpine:init', () => {
     rowCopy() { return this._copyText(this._selRoots(this.rowMenu).map(id => this.taskMd(this.byId.get(id))).join('\n'), 'Copied as markdown'); },
     rowDelete() { const t = this.rowTask(); return !t ? this.selDelete() : this.askDeleteTask(t.id, 'row') || this.perform('Deleted', { target: 'task', kind: 'delete', id: t.id }); },
     rowNote(t) { return this.perform(inNotes(t) ? 'Made it a task' : 'Made it a note', { kind: 'update', target: 'task', id: t.id, after: { task_type: inNotes(t) ? null : 'note' } }); },
-    rowEdit(fn) { this.editTask(this.rowTask()); fn(); },   // the converts and Overview are the composer's draft edits: they open the task, as there
+    rowEdit(fn) { this.editTask(this.rowTask()); fn(); },   // the converts and Overview are the composer's draft edits: they open the task
     listClick(e) {
       const sec = e.target.closest?.('.sec-row');
       if (sec) return this.toggleSec(sec.dataset.sec);
       const r = this._rowFromEl(e.target.closest?.('.item')); if (r) this.onRowClick(r, e);
     },
     listDragStart(e) { if (sorting || e.target.closest('.chk-row, code, .md-code')) return e.preventDefault(); const r = this._rowFromEl(e.target.closest?.('.item')); if (r) this.dragStart(r.t, e); },   // native selection, checklist sorting and a held row (touch) own their drags
-    // Pointer-drag a task's checklist rows to reorder — scoped to that one task's .chk-list (never leaks / reparents).
-    // A finger has no HTML drag, so the rows themselves also sort by hold-then-drag: above/below the row it lands
-    // on, or into it after a rest (dwell), through the same drop() the mouse uses. Registered after the checklist, which owns its presses.
+    // Pointer-drag a task's checklist rows to reorder, scoped to that task's .chk-list.
+    // A finger has no HTML drag, so the rows also sort by hold-then-drag: above/below the row it lands on, or into it
+    // after a rest (dwell), through the same drop() the mouse uses. Registered after the checklist, which owns its presses.
     initListSort(el) {
       makeSortable(el, { itemSel: '.chk-row[data-ci]:not(.done)', scopeSel: '.chk-list', onCommit: (from, to, scope) => this.reorderTaskChecklist(from, to, scope) });
       // A phone row has no chevron (CSS): a still hold folds it instead. A held parent's subtree leaves the list as on desktop;
-      // the gap opens where drop() lands it ('below' a parent shown open is after its subtree) and the lifted row shifts to the depth it lands at.
+      // the gap opens where drop() lands it ('below' an open parent is after its subtree) and the lifted row shifts to its landing depth.
       const depth = el => this._rowFromEl(el).depth;
       const span = (to, items) => { const d = depth(items[to]); while (items[to + 1] && depth(items[to + 1]) > d) to++; return to; };
       const outOf = el => { const par = this.byId.get(this.byId.get(el.dataset.id)?.parent_id); return par && this.taskProj(par) ? par : null; };   // a project's row, or the Inbox's, has none
-      let land = null;   // sorted: the row's landing (_sortLand) and the row the gap opened by, read only while sortable's `cut` holds
+      let land = null;   // sorted: the row's landing (_sortLand) and the row the gap opened by, read only while `cut` holds
       makeSortable(el, { itemSel: '.item[data-id]:not(.row-hidden)', touchOnly: true, enabled: () => !this.composer.open, fixed: () => this.navSel.type === 'area',
-        // a finger moved left by 15% of the screen width unindents the row under it, desktop's rule (_dragFar, dragOver):
-        // the slot's row lands after its parent, a level up; a root row has no parent to leave
+        // a finger moved left 15% of the screen width unindents the row under it (desktop's rule, _dragFar): the slot's row
+        // lands after its parent, a level up; a root row has no parent to leave
         far: x => this._dragFar(x),   // ceiling: a hold starting under 15% of the width from the left edge (58.5px on a 390px phone) can't unindent; revisit if users grab near the checkbox
         pinned: (to, items, from, far) => { const up = far && outOf(items[to]); return (!!up || to !== from) && this._sortPins(up ? up.parent_id : this.byId.get(items[to].dataset.id)?.parent_id); },
         refused: () => this._sortHint(),
         onHold: item => { const chev = item.querySelector('.row-chev'), fold = !!chev && !chev.checkVisibility(); if (fold) this.toggleTaskCollapse(item.dataset.id); return fold; },
         lift: (item, x0) => { this._dragX0 = x0; this._liftSubtree([item.dataset.id]); return () => { item.style.translate = ''; this._clearDrag(); }; },
         // ceiling: past an open parent with 2+ subtasks the gap steps back (after its subtree, then after its first subtask): drop()'s
-        // landings go in that order. Revisit if phone drags read as jumpy; a fix moves where a drop below an open parent lands (user's OK)
+        // landings go in that order. Revisit if phone drags read as jumpy; a fix moves where a drop below an open parent lands
         span,
         lead: item => { const s = getComputedStyle(item); return parseFloat(s.paddingTop) - parseFloat(s.paddingBottom); },   // a group row's gap (styles.css .item.after)
-        // sorted, a slot under another parent opens the gap where the row lands among that parent's rows (desktop: dragOver)
+        // sorted, a slot under another parent opens the gap where the row lands among that parent's rows (as dragOver)
         redirect: (to, items, from, far) => {
           const t = this.byId.get(items[to].dataset.id), up = far && outOf(items[to]);
           if (!up && (to === from || this.sortBy === 'manual')) return null;
@@ -8269,7 +8389,7 @@ document.addEventListener('alpine:init', () => {
           return drawn.mode === 'above' ? k : span(k, items) + 1;
         },
         // up onto an open parent's first subtask the slot is before the parent, unless it's the lifted row's own ancestor (a subtask
-        // keeps first place among its siblings): a row nests only by resting on it (dwell); past MAX_DEPTH the rest marks it and the lifted row red, and the drop is refused
+        // keeps first place among its siblings): a row nests only by resting on it (dwell); past MAX_DEPTH the drop is refused
         above: (to, items, from) => { const chain = this._chain(this.byId.get(items[from].dataset.id)?.parent_id);
           while (to > 0 && depth(items[to]) > depth(items[to - 1]) && !chain.includes(items[to - 1].dataset.id)) to--; return to; },
         dwell: (item, done) => { const id = item?.dataset.id ?? null; this._setDropInto(id, !done, !!id && this._tooDeep(id)); return !!id; },
@@ -8284,13 +8404,13 @@ document.addEventListener('alpine:init', () => {
     async reorderTaskChecklist(from, to, scope) {
       const id = scope.closest('.item')?.dataset.id, t = this.byId.get(id); if (!t) return;
       const next = this._reorderChecklist(t.checklist || [], from, to, t.checklist_plain);
-      // Journal against the captured id so ⌘Z reverses THIS reorder — not an earlier action on another task.
+      // Journal against the captured id so ⌘Z reverses this reorder, not an earlier action on another task.
       await this._journalRowChange('Reordered checklist', 'task', id, () => this.store.tasks.update(id, { checklist: next }));
     },
     // Zones read the rows as drawn. Off every row (the ghost's gap is pointer-events:none, a section head, the list's padding) the
-    // drop keeps the slot it shows, its mode and depth, so aiming at the gap never reads the next row; a drag left there still outdents.
-    // Halves can't flip under a still pointer: the ghost opening beside a row moves that row away from the pointer, deeper into the half.
-    // Into closes the gap its wait held open above the parent, sliding the parent up from under the pointer: the parent is read
+    // drop keeps the slot it shows, its mode and depth; a drag left there still outdents.
+    // Halves can't flip under a still pointer: the ghost opening beside a row moves that row deeper into the half.
+    // Into closes the gap its wait held open above the parent, sliding it up from under the pointer: the parent is read
     // where it sat when into was earned, so only the pointer moves it off.
     listDragOver(e, glide = false) {
       const sc = document.querySelector('.surface-lists .app');
@@ -8304,9 +8424,9 @@ document.addEventListener('alpine:init', () => {
       }
     },
     // The edge zone travels every frame from the last dragover's pointer: a still pointer's come ~20/s, and a step per dragover
-    // judders ~30px every third frame. edgeScrollStep is rate × elapsed, so px/s holds. Each step re-reads the slot the rows put
-    // under the pointer, so the ghost never trails them and a release lands where it's drawn. Ends 100ms after the last dragover,
-    // the hold kept: Chrome's autoscroll would run on under a pointer left in the zone.
+    // judders ~30px every third frame. edgeScrollStep is rate × elapsed, so px/s holds. Each step re-reads the slot under the
+    // pointer, so a release lands where it's drawn. Ends 100ms after the last dragover, the hold kept: Chrome's autoscroll
+    // would run on under a pointer left in the zone.
     _listEdgeGlide(sc, x, y) {
       const t0 = performance.now(); this._dndHold(edgeSpeed(sc, y) ? sc : null);   // before the dragover reads a row: the move into the zone marks none
       motion.run('listEdge', () => {
@@ -8315,16 +8435,15 @@ document.addEventListener('alpine:init', () => {
         return v && performance.now() - t0 < 100;   // edgeScrollStep's clock
       });
     },
-    // Chrome's own DnD autoscroll runs on any user-scrollable box under a pointer near its edge, ~5x our zone's speed on top
-    // of it. overflow-y:hidden stops it and scrollTop still moves; held only while in our zone, so a wheel mid-drag still scrolls.
+    // Chrome's DnD autoscroll runs on any user-scrollable box near a pointer's edge, ~5x our zone's speed on top of it.
+    // overflow-y:hidden stops it and scrollTop still moves; held only in our zone, so a wheel mid-drag still scrolls.
     _dndHold(el) {
       if (el === _dndHeld) return;
       _dndHeld?.style.removeProperty('overflow-y');
       (_dndHeld = el)?.style.setProperty('overflow-y', 'hidden');
     },
-    // No row lookup: the drop lands wherever the pointer happens to be — the gap between rows, the list's own
-    // padding, or the drop-ghost (an .item with NO data-id, rendered exactly where you're aiming); gating on a row
-    // would silently drop those. The last dragOver recorded the intent in taskDropHint, and drop() reads only that.
+    // No row lookup: the drop lands wherever the pointer is (the gap between rows, the list's padding, or the drop-ghost,
+    // an .item with no data-id); gating on a row would drop those. The last dragOver recorded the intent in taskDropHint.
     listDrop(e) {
       if (['into', 'deep'].includes(this.taskDropHint?.mode) && performance.now() - _intoSeen.t < INTO_SEEN) this.dragOver(_dropSlot.t, e, _dropSlot.depth, _intoSeen.half);   // unseen: the slot it would have shown
       this.drop();
@@ -8342,14 +8461,14 @@ document.addEventListener('alpine:init', () => {
       return cl.length ? Math.round(cl.filter(c => c.done).length / cl.length * 100) : 0;
     },
     toggleChk(taskId, i, row = null) {
-      const t = this.byId.get(taskId), cl = t?.checklist ?? [], tick = () => this._serial(taskId, () => this._toggleChk(taskId, i, row));   // a task's ticks: each reads the list the last one wrote
+      const t = this.byId.get(taskId), cl = t?.checklist ?? [], tick = () => this._serial(taskId, () => this._toggleChk(taskId, i, row));   // each tick reads the list the last one wrote
       this._holdChk(taskId, i, !!cl[i]?.done);
-      // the tick that finishes the task completes its blockers and subtasks with it (store setCompleted): it asks first, like the task's own check
+      // the tick that finishes the task completes its blockers and subtasks (store setCompleted): it asks first, like the task's check
       const finishes = t && !t.completed_at && !cl[i]?.done && cl.every((x, j) => j === i || x.done);
       return finishes ? this.confirmSweep(taskId, tick).then(asked => asked || tick()) : tick();
     },
     // A tick shows in place, struck through, and its list sorts once, when the pointer leaves the list or 1.5s after the
-    // last tick: quick ticks each land on the row they aimed at. key: the task id, or 'draft' for the composer's list;
+    // last tick, so quick ticks land on the rows they aimed at. key: the task id, or 'draft' for the composer's list;
     // item: the item's id, or a row's ci (its stored index, which a tick never moves). done: what it showed before.
     _holdChk(key, item, done) {
       if (_chkHeld?.key !== key) {
@@ -8362,15 +8481,15 @@ document.addEventListener('alpine:init', () => {
       _chkHeldT = setTimeout(() => this._releaseChk(), 1500);
     },
     _chkListEl(key = _chkHeld?.key) { return key === 'draft' ? _chkDraftList : document.querySelector(`.item:not(.composer)[data-id="${key}"] .chk-list`); },
-    // by the list's box, not the event's target: a landed tick repaints the row under a still pointer, which fires pointerover on the row
+    // by the list's box, not the event's target: a landed tick repaints the row under a still pointer, firing pointerover
     _chkPointerIn(e) { const r = this._chkListEl()?.getBoundingClientRect(); return !!r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom; },
-    // pressed: a press is under way. Its row repainted now, the press's element goes and its click with it, so the release waits it out.
+    // pressed: a press is under way; repainting its row now would drop the element and its click, so the release waits.
     _releaseChk(pressed = !!document.querySelector(':active')) {
       if (!_chkHeld) return;
       if (pressed) {
         const held = _chkHeld;
         clearTimeout(_chkHeldT);
-        _chkHeldT = 0;   // a tick by this press re-arms it, and the hold goes on
+        _chkHeldT = 0;   // a tick by this press re-arms it
         return void addEventListener('pointerup', () => setTimeout(() => _chkHeld === held && !_chkHeldT && this._releaseChk(false)), { once: true });
       }
       const id = _chkHeld.key, rows = () => [...this._chkListEl(id)?.querySelectorAll(':scope > [data-id], :scope > [data-ci], :scope > .chk-more') ?? []], key = el => el.dataset.id || el.dataset.ci || 'more';
@@ -8387,9 +8506,9 @@ document.addEventListener('alpine:init', () => {
       const list = task.checklist || [], item = list[i]; if (!item) return;
       const done = !item.done, allDone = list.every((x, j) => j === i ? done : x.done), label = done ? 'Checked item' : 'Unchecked item', ops = [];
       const start = allDone && !task.completed_at && row && this.celebrations !== 'off' ? this._celebrate(row) : null;
-      // ONE silent entry against taskId (⌘Z reverses THIS toggle, never another task's action): the item, then, when the
-      // list's state flips the task's, the completion's own op, whose snapshot takes back all it did (a sweep, parents,
-      // a repeating occurrence and what it reopened). ticked: the item write already ticked the list.
+      // One silent entry against taskId (⌘Z reverses this toggle): the item, then, when the list's state flips the task's,
+      // the completion's own op, whose snapshot takes back all it did (a sweep, parents, a repeating occurrence and what it
+      // reopened). ticked: the item write already ticked the list.
       await this._journalRowChange(label, 'task', taskId, async () => {
         const at = await this.store.tasks.setChecklistItem(taskId, item.id, done); if (!at) return false;
         if (allDone === !!task.completed_at) return { id: taskId, checklist: list.map((x, j) => j === i ? { ...x, done } : x), updated_at: at };   // what the write changed
@@ -8399,12 +8518,12 @@ document.addEventListener('alpine:init', () => {
       start?.();
       this._pushOps(label, 'task', ops, { silent: true });
     },
-    // parentId and its ancestors, bottom-up — O(depth) over byId (store.js ancestorIds scans every row per level).
+    // parentId and its ancestors, bottom-up: O(depth) over byId (store.js ancestorIds scans every row per level).
     _chain(parentId) { const out = []; for (let a = this.byId.get(parentId); a && !out.includes(a.id); a = this.byId.get(a.parent_id)) out.push(a.id); return out; },
-    // Resolver ids: the completed ancestors an OPEN task landing under parentId reopens (store.js ancestorsToReopen).
+    // Resolver ids: the completed ancestors an open task landing under parentId reopens (store.js ancestorsToReopen).
     _reopenIds(parentId) { return this._chain(parentId).filter(id => this.byId.get(id).completed_at); },
-    // Optimistic: un-tick them NOW, before the store round-trip (2 on the cloud path); the reload after the write reconciles.
-    // Copy-on-write: the signed-in store's cache holds these same row objects; mutating them makes the store think the
+    // Optimistic: un-tick them before the store round-trip; the reload after the write reconciles.
+    // Copy-on-write: the signed-in store's cache holds these row objects; mutating them makes the store think the
     // parent is already open, so the DB never reopens it.
     _reopenNow(parentId) {
       const ids = this._reopenIds(parentId);
@@ -8416,18 +8535,18 @@ document.addEventListener('alpine:init', () => {
       const fields = typeof arg === 'string' ? { content: arg } : { ...arg };
       fields.content = (fields.content || '').trim(); if (!fields.content) return;
       this._reopenNow(parentId);
-      // created at the TOP of its siblings (the stores' default: above every row), right under the "New subtask" ghost — mirrors the checklist ghost
+      // created at the top of its siblings (the stores' default), right under the "New subtask" ghost
       const task = await this._newTask({ ...fields, parent_id: parentId }, 0);
       this._indexNew(task);
       await this.loadTasks();   // a failed create: reconciles the optimistic reopen
       return task;
     },
-    // Overflow menu: subtasks → checklist items, or subtasks/checklist ↔ Steps — Steps only behind its confirm. A draft
-    // change like the rest: Save lands the checklist first and deletes the subtasks last; until then it's one ⌘Z step.
+    // Overflow menu: subtasks → checklist items, or subtasks/checklist ↔ Steps (only behind its confirm). A draft
+    // change: Save lands the checklist first and deletes the subtasks last; until then it's one ⌘Z step.
     convertTo(type, asked) {
       const d = this.draft, subs = this.shownSubs(), steps = type === 'steps', nested = subs.reduce((n, s) => n + this.descendantCount(s.id), 0);
       const what = subs.length ? (subs.length > 1 ? `these ${subs.length} subtasks` : 'this subtask') : steps ? 'this checklist' : 'these steps';
-      // only the subtasks become items: what's nested in them goes to the Bin with them — said first
+      // only the subtasks become items: what's nested in them goes to the Bin with them, said first
       if (!asked && (nested || steps !== this.chkSteps())) return this.askConfirm({ danger: !!nested, onConfirm: () => this.convertTo(type, true),
         message: `Turn ${what} into ${steps ? 'steps' : 'a checklist'}?` + (nested ? ` ${this._nTasks(nested)} nested in them will go to the Bin when you save.` : ''),
         confirmLabel: steps ? 'Convert to steps' : 'Convert to checklist' });
@@ -8436,7 +8555,7 @@ document.addEventListener('alpine:init', () => {
       Object.assign(d, { checklist: [...d.checklist, ...items], subs: [] }); this.setTaskType(steps ? 'steps' : null);   // subMoves stay: a row deleted with "Move them" still moves them
       this._pushDraftEdit(steps ? 'Converted to steps' : 'Converted to checklist', 'convert', { before, after: this._shapeSnap() });
     },
-    // A convert (or undo) persisted these fields: fold ONLY them into the saved state — other unsaved edits (the title, held subtasks) stay a draft.
+    // A convert (or undo) persisted these fields: fold only them into the saved state; other unsaved edits stay a draft.
     _landDraft(fields) {
       const b = JSON.parse(this._draftBase); Object.assign(b.draft, fields); this._draftBase = JSON.stringify(b);
       if (_saveBase) Object.assign(_saveBase, JSON.parse(JSON.stringify(fields)));   // stored now: Save diffs against them, else converted subtasks read as new ticks and complete the task
@@ -8445,7 +8564,7 @@ document.addEventListener('alpine:init', () => {
     // The open task as saved, before an undo/redo/restore: _rebaseDraft diffs it against the task after.
     _savedDraft() { const t = this.composer.open && !this._closingComposer && this.byId.get(this.editing); return t && { draft: this.draft, saved: this.taskToDraft(t) }; },
     // An undo/redo/restore rewrote the open task: each field it changed and the user hadn't takes the saved value, else the next
-    // Save writes the stale draft back over it. A field with unsaved typing keeps it, now unsaved against the new value.
+    // Save writes the stale draft back over it. A field with unsaved typing keeps it.
     _rebaseDraft(was) {
       const t = was && this._live(was.draft) && this.byId.get(this.editing); if (!t) return;
       const now = this.taskToDraft(t), changed = Object.keys(now).filter(k => JSON.stringify(now[k]) !== JSON.stringify(was.saved[k]));
@@ -8459,9 +8578,8 @@ document.addEventListener('alpine:init', () => {
       if (clean.includes('checklist')) this.syncChkRows();
       this._landDraft(Object.fromEntries(changed.map(k => [k, now[k]])));
     },
-    // Overflow menu: checklist → subtasks. CREATE FIRST, DELETE LAST: the checklist is cleared only after
-    // every subtask verifiably exists; any failure rolls back the created tasks and leaves the checklist
-    // untouched. Worst case is a duplicate, never a loss.
+    // Overflow menu: checklist → subtasks. Create first, delete last: the checklist is cleared only after every subtask
+    // verifiably exists; any failure rolls back the created tasks and leaves the checklist untouched (worst case a duplicate).
     async convertToSubtasks(asked, ops) {   // ops: as perform's, its step joins the caller's entry
       const id = this.editing; if (!id || _converting.has(id)) return;
       if (!asked && this.chkSteps()) return this.askConfirm({ message: 'Turn these steps into subtasks?', confirmLabel: 'Convert to subtasks', onConfirm: () => this.convertToSubtasks(true) });
@@ -8473,7 +8591,7 @@ document.addEventListener('alpine:init', () => {
       if (!items.length) return;
       const beforeChecklist = JSON.parse(JSON.stringify(d.checklist)), beforeType = d.task_type ?? null, type = inNotes(d) ? 'note' : null;   // a note stays one
       // a new subtask reopens this task and its completed ancestors: a failed convert puts each one's completed_at back, and so
-      // does one that leaves this task completed (an open task rightly keeps its ancestors open)
+      // does one that leaves this task completed
       const was = new Map();
       for (let t = this.byId.get(id); t; t = this.byId.get(t.parent_id)) was.set(t.id, t.completed_at ?? null);
       const wasCompletedAt = was.get(id);
@@ -8486,17 +8604,17 @@ document.addEventListener('alpine:init', () => {
           if (!task) throw 0;
           made.push(task.id);
         }
-        await this.store.tasks.reorder(made);   // creates prepend — restore the checklist's order
+        await this.store.tasks.reorder(made);   // creates prepend: restore the checklist's order
         for (let i = 0; i < items.length; i++) if (items[i].done && !await this.store.tasks.setCompleted(made[i], true)) throw 0;
-        // every subtask exists — only NOW is the destructive step safe. completed_at pins the task's own state (the last done
-        // child auto-completed it): converting never completes it — complete only if it was AND every item was done.
+        // every subtask exists, so the destructive step is safe. completed_at pins the task's own state (the last done child
+        // auto-completed it): converting never completes it, unless it was complete and every item was done.
         // ceiling: [] also drops an item another tab or device added since this composer opened, unbinned; revisit if a cross-device checklist loss is reported
         if (!await this.store.tasks.update(id, { checklist: [], task_type: type, completed_at: items.every(i => i.done) ? wasCompletedAt : null })) throw 0;
-        // only the draft that asked: a reopened one is the user's newer typing, never cleared. Items typed meanwhile stay, shown.
+        // only the draft that asked: a reopened one is newer typing, never cleared. Items typed meanwhile stay.
         if (this._live(d)) d.checklist = d.checklist.filter(c => c.text.trim() && !items.some(i => i.id === c.id));
         ok = true;
       } catch {
-        // undo partial creates; checklist intact. A take-back that fails leaves its subtask: said, never a clean rollback.
+        // undo partial creates; checklist intact. A take-back that fails leaves its subtask, said, never a clean rollback.
         const left = (await Promise.allSettled(made.map(k => this.store.tasks.remove(k)))).flatMap((r, i) => r.value ? [] : [`“${chkParts(items[i]).txt.trim()}”`]);
         this.toast('Failed converting to subtasks. Checklist kept' + (left.length ? `, and ${left.join(', ')} stayed as ${left.length > 1 ? 'subtasks' : 'a subtask'}` : ''));
       }
@@ -8508,11 +8626,11 @@ document.addEventListener('alpine:init', () => {
       }
       const entry = { kind: 'composite', target: 'task', ops: [
         ...made.map(k => ({ kind: 'remove', target: 'task', id: k })).reverse(),
-        { kind: 'update', target: 'task', id, after: { checklist: beforeChecklist, task_type: beforeType, completed_at: wasCompletedAt } },   // removing done kids can auto-complete it — pin it back
+        { kind: 'update', target: 'task', id, after: { checklist: beforeChecklist, task_type: beforeType, completed_at: wasCompletedAt } },   // removing done kids can auto-complete it: pin it back
       ] };
       if (ok) ops ? ops.push(['Converted to subtasks', entry]) : this._pushEntry('Converted to subtasks', entry);
       if (ok && this._live(d)) {   // a failed convert saved nothing: the checklist stays a draft
-        // only the new rows land: a subtask the draft deleted (or converted) stays an unsaved delete, else it's back beside its copy
+        // only the new rows land: a subtask the draft deleted stays an unsaved delete, else it's back beside its copy
         const rows = made.map((k, i) => ({ id: k, done: !!items[i].done })), base = JSON.parse(this._draftBase).draft.subs;
         d.subs = [...d.subs.filter(s => s.add), ...rows, ...d.subs.filter(s => !s.add)]; this.setTaskType(null);
         this._landDraft({ checklist: [], subs: [...rows, ...base], task_type: type });
@@ -8520,7 +8638,7 @@ document.addEventListener('alpine:init', () => {
       return ok;
     },
     // Duplicate: fresh checklist ids, no identity, status or subtree, through perform() so ⌘Z removes the copy. From the
-    // composer the copy is the task as shown, unsaved edits included, and the composer stays on the original.
+    // composer the copy is the task as shown, unsaved edits included.
     duplicateEditing() { if (this.byId.get(this.editing)) return this.duplicate(this.editing, this.draftFields()); },
     duplicate(id, shown) {
       const src = { ...this.byId.get(id), ...shown }, f = { checklist: (src.checklist || []).map(c => ({ ...c, id: crypto.randomUUID() })) };   // fresh item ids; identity/status/subtree deliberately absent from the whitelist
@@ -8531,19 +8649,19 @@ document.addEventListener('alpine:init', () => {
     anyDialog() { return OVERLAYS.some(([open, , dialog]) => dialog && open(this)); },
     modalOpen() { return this.settingsOpen || this.anyDialog(); },   // the page behind is inert while true
     closeDialogs() { for (const [open, close, dialog] of OVERLAYS) if (dialog && open(this)) close(this); },
-    // Focus moves in once Alpine shows it (closing hands it back: _modalFrom); a stray Enter must never be what destroys data.
-    // $refs read now: Alpine resolves it from the element that called, and a menu item asking is gone by the microtask
+    // Focus moves in once Alpine shows it (closing hands it back: _modalFrom); a stray Enter must never destroy data.
+    // $refs read now: Alpine resolves it from the calling element, and a menu item asking is gone by the microtask
     askConfirm(opts) { this.confirm = opts; const refs = this.$refs; queueMicrotask(() => refs[opts.danger ? 'confirmNo' : 'confirmYes'].focus()); },
     async confirmYes(k = 'onConfirm') { const c = this.confirm; this.confirm = null; if (c?.[k]) await c[k](); },   // 'onAlt' = the optional left secondary
     confirmNo() { const c = this.confirm; this.confirm = null; if (c?.onCancel) c.onCancel(); },
     onPaste(e) {
       const text = e.clipboardData?.getData('text') || '';
       if (!text) return;
-      // A structured payload takes the whole paste — it can never be a title. The sentinel or a "tasks" array is
-      // what makes this safe to intercept: ordinary text, markdown and unrelated JSON all fall through untouched.
+      // A structured payload takes the whole paste and is never a title. The sentinel or a "tasks" array makes this safe
+      // to intercept: ordinary text, markdown and unrelated JSON fall through.
       if (looksLikePayload(text)) { e.preventDefault(); return this.openImport('tasks', text); }
-      // Never the browser's paste: syncTitle reads only text nodes, so pasted formatting was shown but not saved, and a
-      // title is one line — pasted line breaks become spaces.
+      // Never the browser's paste: syncTitle reads only text nodes, so pasted formatting would show but not save, and a
+      // title is one line (pasted line breaks become spaces).
       e.preventDefault();
       const line = text.replace(/\s*[\r\n]+\s*/g, ' '), segs = tokenizeAll(line, new Date(), this.locNames());
       for (const seg of segs) if (seg.kind && !this._nlpTakes(seg)) delete seg.kind;
@@ -8558,8 +8676,8 @@ document.addEventListener('alpine:init', () => {
       });
     },
     // ─── Import — dropped .ics calendars and pasted {"adherod":1} payloads ────────────────────────
-    // Both paths land in ONE preview. Nothing is written until the payload validates clean and you press
-    // the button: a partly-applied bad import is the worst outcome this feature can have.
+    // Both paths land in one preview. Nothing is written until the payload validates clean and you press the button:
+    // a partly applied bad import is the worst outcome.
     _importCtx() {
       return { lists: this.tasks.filter(t => t.overview).map(t => t.content), areas: this.areas.map(a => a.name),
                places: this.locNames(), today: isoDate(new Date()) };
@@ -8569,23 +8687,21 @@ document.addEventListener('alpine:init', () => {
       if (kind === 'ics' && !r.items.length && !r.problems.length) return this.toast('No events in that file');
       this.importPreview = { kind, name, items: r.items, problems: r.problems, busy: false, file };
     },
-    // Preview rows draw with the SAME component as the palette, the sweep dialog and the relation wells —
-    // rowBodyHtml in minimal mode. This is taskLine's sibling: taskLine adapts a SAVED row (byId lookups for
-    // parent and areas), and an import item has no id, no byId entry, and a list that may not exist yet.
+    // Preview rows draw with rowBodyHtml in minimal mode, like the palette, the sweep dialog and the relation wells.
+    // taskLine's sibling: taskLine adapts a saved row (byId lookups), an import item has no id, no byId entry, and a
+    // list that may not exist yet.
     importLine(it) {
       const f = it.fields || {};
       const t = { content: it.content, completed_at: null, archived_at: null, recurrence: f.recurrence ?? null, checklist: f.checklist || [] };
       const known = new Map((this.areas || []).map(a => [a.name.trim().toLowerCase(), a]));
       return rowBodyHtml({
         t, pc: this.pc(f.importance || 'none'), titleHtml: mdTitleFn(it.content),
-        // A declared-but-not-yet-created area has no row to read a color off: fall back to the default
-        // rather than dropping the chip, so the preview shows what you are agreeing to either way.
+        // A declared-but-not-yet-created area has no row to read a color off: the default color keeps its chip.
         areas: (it.areaNames || []).map(n => { const a = known.get(n.trim().toLowerCase()); return { name: n, icon: a?.icon, color: a?.color || this.areaDefault }; }),
         projName: it.listName || '', isDefaultProj: false, note: inNotes(f), rels: [], chk: f.checklist || [],
       }, { minimal: true });
     },
-    // Only what the row itself does NOT already say: the check carries importance, the chip carries the
-    // list, the area chips carry areas.
+    // Only what the row doesn't already say: the check carries importance, the chip the list, the area chips areas.
     importRowMeta(it) {
       if (it.kind === 'event') return [it.starts_at.replace('T', ' '), it.recurrence ? 'repeats' : '', it.detached_from ? 'moved occurrence' : ''].filter(Boolean).join(', ');
       const f = it.fields || {};
@@ -8612,21 +8728,20 @@ document.addEventListener('alpine:init', () => {
     },
     codeKey(e) {
       if (e.target.closest('.code-copy') && !e.target.closest('.msg') && !e.metaKey && !e.ctrlKey && e.key !== 'Escape') return e.stopPropagation();   // button keys must never edit/delete the containing row
-      // Editing uses raw text; restore decoration before Tab searches for the copy control.
+      // Editing uses raw text: restore decoration before Tab searches for the copy control.
       if (e.key !== 'Tab' || e.shiftKey || !e.target.matches('.desc, .entry.chk .entry-txt') || !e.target.textContent.includes('```')) return;
       const el = e.target; el.blur();
       const button = el.querySelector('.code-copy'); if (button) { e.preventDefault(); button.focus(); }
     },
-    // Naming every problem only pays off if you can hand the list back to whatever wrote the payload.
+    // The problem list is for handing back to whatever wrote the payload.
     copyProblems() {
       const p = this.importPreview; if (!p?.problems.length) return;
       const head = `${p.problems.length} problem${p.problems.length === 1 ? '' : 's'} with this import. Fix them and resend the whole payload:`;
       return this._copyText([head, ...p.problems.map(x => `- ${x.path}: ${x.message}`)].join('\n'), 'Problems copied');
     },
 
-    // Page-wide file drop. Gated on a FILE drag so it never steals the task/event drags, and on the
-    // extension so an unrelated file is left unclaimed — the OS then shows its own bounce-back, which is
-    // the honest answer. A .ics we CAN'T read says so out loud instead of doing nothing.
+    // Page-wide file drop. Gated on a file drag so it never steals the task/event drags, and on the extension so an
+    // unrelated file is left unclaimed (the OS shows its own bounce-back). A .ics we can't read says so.
     onFileDragOver(e) {
       if (!e.dataTransfer?.types?.includes('Files')) return;
       e.preventDefault(); this.fileDrag = true;
@@ -8675,8 +8790,8 @@ document.addEventListener('alpine:init', () => {
       const at = new Date(doc.at), name = at.toLocaleDateString([], { month: 'short', day: 'numeric', ...at.getFullYear() !== new Date().getFullYear() && { year: 'numeric' } });
       this.importPreview = { kind: 'backup', name, items, problems: [], busy: false, plan, files };
     },
-    // Create-first, as _importTasks: each kind lands in one store write, and ANY failure takes back every row this restore
-    // minted (its plan is the ledger: no other writer holds those ids). Worst case is a duplicate, never a loss.
+    // Create-first, as _importTasks: each kind is one store write; ANY failure takes back every row this restore minted
+    // (its plan is the ledger). Worst case is a duplicate, never a loss.
     async _restoreBackup(plan, name) {
       const kinds = BACKUP_KINDS.filter(k => plan[k].length && this._res(k)), mine = new Set(plan.task.map(t => t.id)), roots = plan.task.filter(t => !mine.has(t.parent_id));
       const rows = k => k !== 'reminder' ? plan[k] : plan[k].map(r => isPassed(r) ? { ...r, paused: true } : { ...r, at: nextAt(r) });   // as a Bin restore: a passed reminder never fires late
@@ -8706,8 +8821,9 @@ document.addEventListener('alpine:init', () => {
       const pick = (key, ok = () => true) => byKey.get(key)?.find(e => !taken.has(e.id) && ok(e));
       for (const it of items) {
         const key = it.external_id, fields = { title: it.title, starts_at: it.starts_at, ends_at: it.ends_at, all_day: it.all_day, recurrence: it.recurrence ?? null, ics_seq: it.seq ?? null, external_id: key ?? null, ...it.notes && { notes: it.notes } };   // a calendar without a description never clears notes typed here
-        // rows imported before uid#rid keys hold the bare UID on the series AND its moved occurrences: the series is the one that
-        // repeats. A refresh writes the new key, so they migrate in place. ceiling: two legacy moved rows of one series pair up in list order.
+        // rows imported before uid#rid keys hold the bare UID on the series AND its moved occurrences: the series is
+        // the one that repeats. A refresh writes the new key, so they migrate in place. ceiling: two legacy moved rows
+        // of one series pair up in list order.
         const prev = key && (pick(key, e => !e.recurrence === !it.recurrence) || pick(key) || it.detached_from && pick(key.split('#')[0], e => !e.recurrence));
         if (prev) taken.add(prev.id);
         if (!prev) ops.push({ kind: 'create', target: 'event', fields });
@@ -8746,8 +8862,8 @@ document.addEventListener('alpine:init', () => {
           if (!res.every(Boolean)) throw new Error(`could not save the links, date or reminders of “${it.content}”`);
         }
       } catch (err) {
-        // newest first; what stays is named. Areas stay: find-or-create can't tell one it inserted from one another tab or
-        // device already had, and an empty leftover is a duplicate, never a loss.
+        // newest first; what stays is named. Areas stay: find-or-create can't tell one it inserted from one another
+        // tab already had, and an empty leftover is a duplicate, never a loss.
         const left = [];
         for (const row of [...created].reverse()) if (!await this.store.tasks.remove(row.id).catch(() => false)) left.push(row.content);
         await Promise.all([this._reloadFor('task'), this._reloadFor('area')]);
@@ -8796,13 +8912,13 @@ document.addEventListener('alpine:init', () => {
     },
     // An Overview project keeps no checklist: one that has items must first delete them or convert them to subtasks.
     askShowInOverview() {
-      // The flag rides the composer's normal save: pending edits land with it (nothing typed is lost), a failed save keeps
-      // the composer + draft and flags nothing, and ⌘Z reverts the whole write (edits, flag, a deleted checklist).
+      // The flag rides the composer's normal save: pending edits land with it, a failed save keeps the composer and
+      // flags nothing, and ⌘Z reverts the whole write.
       const d = this.draft, id = this.editing, n = d.checklist.filter(c => (c.text || '').trim()).length, out = this.byId.get(id)?.parent_id === this.store.defaultProject(),
         show = { overview: true, ...out && { parent_id: null } }, flag = (f = {}, lead) => this.submitComposer({ ...f, ...show }, undefined, lead);   // a Backlog task leaves Backlog for the top
       this.askConfirm(n ? { message: `Overview projects don't keep a checklist. Turn its ${n} item${n > 1 ? 's' : ''} into subtasks, or delete ${n > 1 ? 'them' : 'it'}?`,
         // flags only once every subtask exists; a composer closed or moved on meanwhile isn't this draft: flag the task by id.
-        // The convert and the flag are one card and one ⌘Z: a step the save didn't take (it never got that far) is journaled here
+        // The convert and the flag are one card and one ⌘Z: a step the save didn't take is journaled here
         confirmLabel: 'Convert to subtasks', onConfirm: async () => { const lead = [];
           const ok = await this.convertToSubtasks(true, lead) && (this._live(d) ? await flag({}, lead) : await this.perform('Showed in Overview', { target: 'task', kind: 'update', id, after: show }, { ops: lead }));
           this._pushOps('Converted to subtasks', 'task', lead);
@@ -8812,9 +8928,8 @@ document.addEventListener('alpine:init', () => {
           if (await flag({ checklist: [] }) === true) this._binChkItems(id, cl, cl.filter(c => (c.text || '').trim())); } }
         : { message: `Show this task in Overview? ${out ? "It'll move out of Backlog." : "It'll stay in its current project."}`, confirmLabel: 'Show in Overview', onConfirm: () => flag() });
     },
-    // Shared sweep-check: if completing `id` would also complete open dependents (children/blockers),
-    // show the confirm dialog and return true — the caller must stop and let the dialog finish the job.
-    // Returns false when there's nothing to sweep, so the caller completes it directly.
+    // If completing `id` would also complete open dependents (children/blockers), shows the confirm dialog and
+    // returns true: the caller stops and the dialog finishes the job. False: nothing to sweep, complete directly.
     async confirmSweep(id, complete = () => this.applyComplete(id, true)) {
       const sweep = pendingSweep(this.tasks, id, this.byId, this._kidsOf(id));
       if (!sweep.length) return false;
@@ -8822,7 +8937,7 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
     _sweepHtml(items) { return html`<div class="sweep-list">${items.map(it => raw(html`<div class="task-line">${raw(this.taskLine(it))}</div>`))}</div>`; },
-    async toggle(t, row = null) {
+    async toggle(t, row = null, then = null) {
       if (inNotes(t) && !t.completed_at) return;   // a note never completes (x, the row, the composer); one that came in done reopens
       if (t.archived_at) return;   // an archived check is inert
       const finish = !t.completed_at, id = t.id;
@@ -8831,12 +8946,13 @@ document.addEventListener('alpine:init', () => {
         await this.applyComplete(id, finish);
         start?.();
         if (finish && this.celebrations === 'full' && this.byId.get(id)?.completed_at) this._dayClearFx(id);
+        then?.();
       };
       if (!(finish && await this.confirmSweep(id, complete))) await complete();   // Complete all rewards as the tick would have
     },
-    // The completion reward (docs/ui/task-list.md §Completion reward): the tick pops in the row's own slot, the row lingers
-    // done, then a leaving one exits; full adds a warm ring and, on an effort-weighted roll, embers. Imperative row
-    // state (_stampRow), so nothing re-renders for it. Returns the linger's start, run once the write lands.
+    // The completion reward (docs/ui/task-list.md §Completion reward): the tick pops, the row lingers done, then a
+    // leaving one exits; full adds a warm ring and, on an effort-weighted roll, embers. Imperative row state
+    // (_stampRow), so nothing re-renders. Returns the linger's start, run once the write lands.
     _celebrate(row, parents = false) {
       // Hold ancestors too: dropping a completed root would take the rewarded row with its subtree.
       const rows = [row, ...this._chain(row.t.parent_id).map(id => _rowMap.get(id)).filter(r => r && !r.t.completed_at)];
@@ -8857,12 +8973,10 @@ document.addEventListener('alpine:init', () => {
       clearTimeout(_celeT);
       _celeT = setTimeout(() => this._celeExit(), motion.t(600));
     },
-    // A pointer tick on a Steps row (docs/ui/task-list.md §Steps, docs/ui/motion.md), one phase after another: the rail
-    // fills down to the next step in the task's color, that step's node lights, then the write lands and the next step's
-    // text pushes the old one up out of the row while the step after rises in below. A tick on the preview's node lights
-    // it and pushes the preview line alone. The step that finishes the task takes the completion reward instead. Keys and
-    // ⌘Z never come here: they stay instant. A second tap hurries the first to its end (motion.seq), then ticks what's
-    // current by then.
+    // A pointer tick on a Steps row (docs/ui/task-list.md §Steps, docs/ui/motion.md), in phases: the rail fills to the
+    // next step, its node lights, then the write lands and the next step's text pushes the old one up out of the row.
+    // A tick on the preview's node pushes the preview line alone. The step that finishes the task takes the completion
+    // reward instead. Keys and ⌘Z stay instant. A second tap hurries the first to its end (motion.seq), then ticks.
     _stepTick(id, preview = false, row = null) {
       let block, before, d = 0, p0 = 0, fs = 0, faint;
       return motion.seq('step:' + id,
@@ -8946,14 +9060,14 @@ document.addEventListener('alpine:init', () => {
           }
           for (const el of fading) el.classList.remove('leave');
         };
-        // Unmarked after the list renders: dirtied before, the render's window read (_winOf) forces a layout the glide's
-        // own read then repeats. Same task, so no frame shows the marks.
+        // Unmarked after the list renders: dirtied before, the render's window read (_winOf) forces a layout the
+        // glide's own read repeats.
         if (left.length) { this._glideRows(left, () => { this._exitRows(left); queueMicrotask(unmark); }); this._clearIn(); }   // only a leaving row changes visibleRows: a staying one rebuilds nothing
         else unmark();
       }, motion.t(200));
     },
-    // A pointer tick's exit may empty the list: if so, its All clear arrives (CSS, on .arrive — it runs once x-show
-    // displays it). Only here: on load or after a key it's plain.
+    // A pointer tick's exit may empty the list: its All clear then arrives (CSS, on .arrive, once x-show displays
+    // it). On load or after a key it's plain.
     _clearIn() {
       const el = document.querySelector('.surface-lists .empty'); if (!el) return;
       el.classList.add('arrive');
@@ -8968,9 +9082,9 @@ document.addEventListener('alpine:init', () => {
       } else _visKey = '';
       this._celeV++;
     },
-    // FLIP around a change that drops rows: each row, the Add button and the Done head glide from where they stood; a row
-    // with no before (the one arriving in Done) fades in. Keyed by id: the morph may rebuild a row. Reads the rendered
-    // window only, animates on screen only. Alpine renders in its microtask flush, so ours, queued after, sees the new layout.
+    // FLIP around a change that drops rows: each row, the Add button and the Done head glide from where they stood; a
+    // row with no before (the one arriving in Done) fades in. Keyed by id: the morph may rebuild a row. Alpine renders
+    // in its microtask flush, so ours, queued after, sees the new layout.
     _glideRows(left, change) {
       const before = this._rowTops();
       for (const id of left) before.delete(id);   // in Done it arrives, it doesn't travel
@@ -8989,7 +9103,7 @@ document.addEventListener('alpine:init', () => {
       }
     },
     // Clearing the day (_clCleared: every task planned for today done) by THIS completion: a one-shot moment over the
-    // page, named in work done, never a count. Built and removed here: no state, nothing reactive.
+    // page, named in work done, never a count. Built and removed here: no reactive state.
     _dayClearFx(id) {
       if (!onCalendar(this.byId.get(id), this._placedMap())) return;   // not on today's page: no calendar grouped per tick
       const iso = isoDate(new Date()), day = this._clGroup(iso, iso)[iso] || [];
@@ -9004,8 +9118,8 @@ document.addEventListener('alpine:init', () => {
         setTimeout(() => el.remove(), motion.t(200));
       }, motion.t(2000));
     },
-    // The composer's Archive lands now, its undo card the one confirmation. Unarchive is a draft edit: the Save writes it with
-    // the other edits, one ⌘Z.
+    // The composer's Archive lands now, its undo card the one confirmation. Unarchive is a draft edit: the Save
+    // writes it with the other edits, one ⌘Z.
     toggleArchive() {
       const t = this.byId.get(this.editing), d = this.draft; if (!t) return;
       if (!t.archived_at) { this._keepOpen(t.id); return this.archive(t.id, true); }
@@ -9013,9 +9127,9 @@ document.addEventListener('alpine:init', () => {
       else d.unarchive = true;
     },
     archivedNow() { return !!this.editingTask()?.archived_at && !this.draft.unarchive; },
-    // Archive cascades as completion does: the open tasks inside go with it, after the same ask; done ones stay done. One store
-    // write stamps them all with one instant, and that instant is what Unarchive reads back: it reopens only the rows under it
-    // carrying it, never one archived on its own (another instant). One ⌘Z step either way.
+    // Archive cascades as completion does: the open tasks inside go with it, after the same ask; done ones stay done.
+    // One store write stamps them all with one instant: Unarchive reopens only rows carrying it, never one archived
+    // on its own. One ⌘Z step either way.
     archive(roots, val, then = () => {}, ops) {   // roots: an id, or a selection's roots (one entry, one ⌘Z) · ops: a save's journal steps it joins
       const ts = [roots].flat().map(id => this.byId.get(id)).filter(t => t && !t.archived_at === val); if (!ts.length) return;
       const kids = ts.flatMap(t => descendantIds(this.tasks, t.id, this._taskIdx().kids).slice(1).map(x => this.byId.get(x)).filter(k => cascades(t, k, val)));
@@ -9032,9 +9146,9 @@ document.addEventListener('alpine:init', () => {
       if (!val || !kids.length) return run();
       this.askConfirm({ message: 'Archiving this will also archive:', bodyHtml: this._sweepHtml(kids), confirmLabel: 'Archive all', onConfirm: run });
     },
-    // Mark all checklist items done (inside the completion's fx snapshot, so undo takes it back).
-    // Returns false if the store update failed — caller aborts setCompleted on failure to stay atomic.
-    // Skips a repeating task: setCompleted advances its occurrence, which unticks the list, instead of closing it.
+    // Marks all checklist items done (inside the completion's fx snapshot, so undo takes it back). False if the store
+    // update failed: the caller aborts setCompleted to stay atomic. Skips a repeating task: setCompleted advances its
+    // occurrence, which unticks the list.
     async _checkAllItems(id) {
       const t = this.byId.get(id); const cl = t?.checklist;
       if (!cl?.length || inNotes(t) || cl.every(c => c.done)) return true;   // a note never completes (an old entry can name a row made a note since)
@@ -9048,12 +9162,12 @@ document.addEventListener('alpine:init', () => {
     },
 
     // --- Relations ---
-    // The edited task's edges and the composer pickers' pools, cached per (data-version × edited task): the pickers, the wells and the chips all read them,
-    // and a scan for the inverse 'blocks' edge costs ~1s at 20k tasks — per render, and again per keystroke.
+    // The edited task's edges and the composer pickers' pools, cached per (data-version × edited task): the pickers,
+    // wells and chips all read them, and a scan for the inverse 'blocks' edge costs ~1s at 20k tasks per keystroke.
     _relIdx() {
       return _memo(_relMemo, this._rowV + '|' + this.editing, () => {
         const e = this.editingTask(), inv = this._taskIdx().inv.get(this.editing) ?? [];
-        // 'blocks' = the INVERSE direction (this task sits in the other's blocked_by) — shown so it's managed from here too.
+        // 'blocks' = the INVERSE direction (this task sits in the other's blocked_by), shown so it's managed here too.
         // done: a block is over once either end is done; a 'relates' link only when the other task is.
         const rel = (id, type) => ({ id, type, done: !!(this.byId.get(id)?.completed_at || type !== 'relates' && e?.completed_at) });
         return { rels: [...(e?.blocked_by ?? []).map(id => rel(id, 'blocked_by')), ...inv.map(id => rel(id, 'blocks')), ...(e?.relates ?? []).map(id => rel(id, 'relates'))] };
@@ -9112,13 +9226,12 @@ document.addEventListener('alpine:init', () => {
       }
       return ok;
     },
-    // A linked task in a well is still a TASK: it gets the same row the picker above it uses, so its state
-    // (done, blocked, its areas, which project it's in) is readable without leaving the pop.
+    // A linked task in a well gets the picker's own row, so its state is readable without leaving the pop.
     relLine(id) { const t = this.byId.get(id); return t ? this.taskLine(t) : ''; },
     relTypeLabel(type) { return { blocked_by: 'blocked', blocks: 'blocks', relates: 'relates' }[type]; },
     editingTask() { return this.byId.get(this.editing) ?? null; },
-    // Typed "needs / needed by" pills on a saved task, journaled into its save's entry (ops).
-    // Same store call as the relation panel — one way a dependency gets written.
+    // Typed "needs / needed by" pills on a saved task, journaled into its save's entry (ops). Same store call as
+    // the relation panel.
     async _applyDraftLinks(id, d, ops) {
       const lost = new Set(), link = (a, b, what) => this._journalRowChange('Saved task', 'task', a, () => this.store.tasks.link(a, b), { ops, fail: null }).then(ok => ok || lost.add(what));
       for (const o of d.needs || []) await link(id, o, 'needs');
@@ -9128,8 +9241,8 @@ document.addEventListener('alpine:init', () => {
     async addRelation(otherId, type) { if (otherId && await this._relChange('Added relation', 'link', otherId, type)) this.pickerQ = ''; },
     async dropRel(e, type) { const id = e.dataTransfer.getData('text/plain'); if (id && this.byId.has(id)) await this.addRelation(id, type); },
     removeRelation(otherId, type, from) { return this._relChange('Removed relation', 'unlink', otherId, type, from); },
-    // 'blocks' is blocked_by on the OTHER task (swapped direction). 'relates' is symmetric, and the store mirrors a
-    // relates write to the partner — so one row's diff undoes both sides.
+    // 'blocks' is blocked_by on the OTHER task (swapped direction). 'relates' is symmetric and the store mirrors it
+    // to the partner, so one row's diff undoes both sides.
     _relChange(label, verb, otherId, type, from = this.editing) {
       const [id, linkId] = type === 'blocks' ? [otherId, from] : [from, otherId];
       return this._journalRowChange(label, 'task', id, () => this.store.tasks[verb](id, linkId, type));
@@ -9146,9 +9259,9 @@ document.addEventListener('alpine:init', () => {
     // must bust _calDataV too, else a block added between two event loads never reaches the memo
     async loadBlocks() { const bl = await this.store.blocks.list(); _calDataV++; this.blocks = bl; },
     _clDate() { return new Date(this.clAnchor + 'T00:00'); },
-    // Where the view is heading, `dir` periods on: while a scroll is live, its target (a page turn's tween, a month step's
-    // glide) or position; else clAnchor, which each landing (_clLand, _clMSettle, a tween's arrival) syncs. Every action
-    // reads this, never clAnchor — a key beats the land. Month keeps the picked day: clamped to a short month, never shrunk by it.
+    // Where the view is heading, `dir` periods on: while a scroll is live, its target or position; else clAnchor,
+    // which each landing (_clLand, _clMSettle, a tween's arrival) syncs. Every action reads this, never clAnchor:
+    // a key beats the land. Month keeps the picked day: clamped to a short month, never shrunk by it.
     _clAt(dir = 0, live = this.clScrolling) {
       const a = this._clDate();
       if (this.clView === 'month') {
@@ -9181,10 +9294,9 @@ document.addEventListener('alpine:init', () => {
       if (bar && p) { const ps = getComputedStyle(p); this._clBarY = bar.offsetHeight - parseFloat(ps.paddingBottom) - parseFloat(ps.fontSize); }
     },
     clTotalH() { return CL_TOTAL_WEEKS * this.clRowH; },
-    // A resize changes only the SCALE: re-measure once, then repaint at the SAME place — the month row (in rows, not
-    // px: scrollTop is px) or clPos (in periods, already scale-free) — this frame. Hidden, it only marks Plan stale:
-    // address-bar collapse and a window-edge drag fire ~60/s, each a forced layout + repaint no one sees. Showing
-    // Plan re-runs it ONCE (x-effect on .calendar).
+    // A resize changes only the SCALE: re-measure once, then repaint at the SAME place: the month row (in rows, not
+    // px) or clPos (in periods). Hidden, it only marks Plan stale: address-bar collapse and a window-edge drag fire
+    // ~60/s, each a forced layout + repaint no one sees. Showing Plan re-runs it once (x-effect on .calendar).
     _clResized() {
       if (this._clHidden()) return void (this._clStale = true);
       this._clStale = false;
@@ -9213,8 +9325,8 @@ document.addEventListener('alpine:init', () => {
     },
     clPeriodMain() { return this.clTitleParts()[0]; },
     clPeriodYear() { return this.clTitleParts()[1]; },
-    // A 7-column week grid is unreadable at 390px — the phone offers day and month only, and every route
-    // into week (the 'w' key, tapping a month week-row) lands on that week's day instead.
+    // A 7-column week grid is unreadable at 390px: the phone offers day and month only, and every route into
+    // week (the 'w' key, tapping a month week-row) lands on that week's day.
     clViews() { return this.narrow ? ['day', 'month'] : ['day', 'week', 'month']; },
     clSetView(v, instant, frac) {   // frac: the hour to open at (_clScrollToPeriod)
       this._clSaveName();
@@ -9222,26 +9334,26 @@ document.addEventListener('alpine:init', () => {
       if (this.clScrolling || this._clMDue) { clearTimeout(_clScrollT); this._clMSettle(); }   // the switch is the land: left running, a month scroll's flag reads the new view's period as live
       this._clWeekDropped = null;   // the week hour a phone width dropped; any switch, the user's or the width's, settles the view: widening restores nothing
       if (v === 'week' && this.narrow) v = 'day';
-      // reset zoom to fit, never to 0 — a zero hour height makes clPeriodH 0, and a divide by it has no position
+      // reset zoom to fit, never to 0: a zero hour height makes clPeriodH 0, and a divide by it has no position
       const side = this.clSideVisible();
       this._withTransition(() => { this._clHalt(); this.clZoom = 1; this.clHourH = this._clFitHour(); this.clView = v; if (this.clSideVisible() !== side) this._clSideSlide(); },
         () => { if (v === 'month') this.clScrollToAnchor(); else if (v === 'week' || v === 'day') { this.clRecalcPages(); this._clScrollToPeriod(8, frac); } this._clSettle(); }, instant);
     },
     _withTransition(setFn, afterFn, instant, every) {
-      // Switches must not be able to land out of order: _vtSeq ensures a stale callback never applies over a newer one.
-      // A step is relative (`every`): each lands, superseded or not — dropped, a held Shift+↓ ×12 travels 1–11 weeks.
+      // _vtSeq: a stale callback never applies over a newer one. A step is relative (`every`): each lands, superseded
+      // or not; dropped, a held Shift+↓ ×12 travels 1–11 weeks.
       const seq = this._vtSeq = (this._vtSeq || 0) + 1;
       let ran = false;
       this.clVT = true;   // names go on for the capture only — see the CSS note on permanent layer promotion
-      // microtask flushes, not $nextTick: Alpine holds that while any x-transition starts, until a frame — and no frame
-      // comes while this update callback runs, so a surface switch landing mid-morph freezes the page for Chrome's 4s timeout
+      // microtask flushes, not $nextTick: Alpine holds that while any x-transition starts, and no frame comes while
+      // this update callback runs, so a surface switch landing mid-morph freezes the page for Chrome's 4s timeout
       const flush = () => new Promise(queueMicrotask);
       const run = async () => { if (ran || (!every && seq !== this._vtSeq)) return; ran = true; setFn(); await flush(); afterFn?.(); await flush(); };
       // hidden tabs abort (InvalidStateError) — guard with visibilityState
       if (!instant && document.startViewTransition && document.visibilityState === 'visible' && motion.scale) {   // zero motion: no cross-fade either
         const t = document.startViewTransition(run);
-        // settle: clear CSS names once the animation finishes; also call run() in case the update callback was skipped.
-        // A superseded transition settles as its successor starts — the names belong to the successor then.
+        // settle: clear CSS names once the animation finishes, and call run() in case the callback was skipped.
+        // A superseded transition settles as its successor starts: the names are the successor's then.
         const settle = () => { if (seq === this._vtSeq) this.clVT = false; run(); };
         t.finished.then(settle, settle); t.updateCallbackDone.catch(run); t.ready.catch(() => {});
         setTimeout(run, 250);   // fallback: apply state if callback never fires; seq-guarded, never resets clVT
@@ -9250,14 +9362,13 @@ document.addEventListener('alpine:init', () => {
 
     // --- read-model (module scope — never triggers reactivity) ---
     _clGroup(fromIso, toIso) {
-      // Register the reactive deps BEFORE the memo can short-circuit: on a hit we would otherwise return
-      // without ever reading events/tasks, the render effect would record no dependency on them, and adding or
-      // completing something would not repaint until an unrelated change happened to force it.
-      void this.events; void this.pcEvents; void this.tasks; void this.scheduleItems; void this._rowV;   // _rowV: a patched task changes in place
+      // Register the reactive deps BEFORE the memo can short-circuit: on a hit the render effect would record no
+      // dependency on events/tasks, and adding or completing something would not repaint.
+      void this.events; void this.pcEvents; void this.gcalEvents; void this.tasks; void this.scheduleItems; void this._rowV;   // _rowV: a patched task changes in place
       // clPages re-derives every tick — cache to avoid full-set scans
       return _memo(_groupMemo, fromIso + '|' + toIso + '|' + _calDataV, () => {
         const map = {}, add = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return isoDate(d); };
-        for (const it of calendarItems(this.events.concat(this.pcEvents), this.tasks, fromIso, toIso, this._placedMap())) {
+        for (const it of calendarItems(this.events.concat(this.pcEvents, this.gcalEvents), this.tasks, fromIso, toIso, this._placedMap())) {
           const s = it.start.slice(0, 10), end = it.end || it.start, e = !it.allDay && end.endsWith('T00:00') ? add(end.slice(0, 10), -1) : end.slice(0, 10);
           if (e <= s) (map[s] ||= []).push(it);
           // a multi-day all-day item (event or task band) explodes into connected segments; a timed one is filed on each day, _clPack slices it
@@ -9268,7 +9379,7 @@ document.addEventListener('alpine:init', () => {
       }, 12);
     },
     // Grouped over the window snapped OUT to 8-week bounds: a fling slides clVisStart a row at a time, and an
-    // exact-window key would re-run calendarItems over every event and task on each slide; snapped, ~one in eight misses.
+    // exact-window key would re-run calendarItems on each slide; snapped, ~one in eight misses.
     _clVisMap() {
       const a = this.clVisStart & ~7, b = a + this.clVisCount + 8;   // b follows a, so only a crossing moves the key
       return this._clGroup(isoDate(this._weekDate(a)), isoDate(this._weekDate(b)));
@@ -9276,24 +9387,22 @@ document.addEventListener('alpine:init', () => {
 
     // --- MONTH: virtualized week rows in a fixed-height spacer (constant scroll height, no reflow; buffer prevents blanks on fast flings) ---
     // Rows are MEMOIZED per index: fresh day objects re-run every cell's bindings on a one-row shift (~27k DOM
-    // mutations a fling), while the identical object makes x-for's scope write a no-op. The signature carries
-    // everything a row's contents depend on: the data and today. Never the height: --rowh places a row in CSS
-    // (top = key × --rowh), so a resize moves every row in one style pass and rebuilds none; a per-row px top leaves
-    // rows a resize didn't re-bind at their old tops, overlapping.
+    // mutations a fling), while the identical object makes x-for's scope write a no-op. The signature carries what a
+    // row's contents depend on: the data and today. Never the height: --rowh places a row in CSS (top = key × --rowh),
+    // so a resize moves every row in one style pass and rebuilds none; a px top leaves un-re-bound rows overlapping.
     clWeeks() {
       if (this.clView !== 'month' || this._clHidden()) return _clWkOut;   // hidden: keep the last rows; showing re-runs this
       if (!this.clRowH) this.clRecalc();
       const byDay = this._clVisMap(), out = [];
-      // NOT keyed on clFocusYM: the dominant month changes at every month boundary (~4× a fling) and the only
-      // thing that depends on it is the out-of-month fade. Cells carry their own `ym` and the template compares
-      // it, so a focus change costs one class binding per cell instead of rebuilding every row.
+      // NOT keyed on clFocusYM: it changes at every month boundary (~4× a fling) and only the out-of-month fade
+      // depends on it. Cells carry their own `ym` and the template compares it, so a focus change rebuilds no row.
       const todayIso = this._nowDay, narrow = this.narrow;
       // phone: a named day's two-line name stands over its chips, so the row's height decides how many show: [all, before a "+N"]
       const named = narrow && [Math.min(3, Math.floor((this.clRowH - CL_MNAMED) / CL_MCHIP)), Math.max(0, Math.floor((this.clRowH - CL_MNAMED - CL_MMORE) / CL_MCHIP))];
       const shelf = this._clShelf(), shelved = new Set(shelf);
       const sig = _calDataV + '|' + todayIso + '|' + narrow + '|' + named + '|' + shelf + (named ? '|' + this.dayNotes.map(d => d.date) : '');   // the names: a reactive read, so one arriving re-runs this
       if (_clWkSig !== sig || _clWkCache.size > 200) { _clWkSig = sig; _clWkCache.clear(); }   // size: a long scroll would otherwise keep every row it ever passed
-      // first show: the weeks in view (±1) paint first and the buffer mounts after that paint; all 28 at once froze the tap ~0.5 s at his 11-11 counts
+      // first show: the weeks in view (±1) paint first and the buffer mounts after that paint; all 28 at once froze the tap ~0.5 s
       const pad = this.clWarm ? 0 : CL_BUFFER - 1;
       if (pad) requestAnimationFrame(() => setTimeout(() => { this.clWarm = true; }));
       const end = Math.min(CL_TOTAL_WEEKS, this.clVisStart + this.clVisCount - pad);
@@ -9336,8 +9445,8 @@ document.addEventListener('alpine:init', () => {
         }
         out.push(row);
       }
-      // our glide is drawing back to the stop's row: a scroll frame still in flight (a wheel's, a fling's) doesn't recycle it, or its focused
-      // day falls to body until the glide lands and a key typed meanwhile turns the surface. Untracked: a wheel clearing the glide re-runs nothing.
+      // our glide is drawing back to the stop's row: a scroll frame still in flight doesn't recycle it, or its focused
+      // day falls to body until the glide lands and a key typed meanwhile turns the surface. Untracked: clearing the glide re-runs nothing.
       const held = _appRaw._clMTo != null && _clWkCache.get(this._weekIdx(new Date(_appRaw._clStop() + 'T00:00')));
       if (held && held.key < this.clVisStart) out.unshift(held);   // in key order: x-for MOVES a row out of order, and a moved node drops its focus too
       else if (held && held.key >= end) out.push(held);
@@ -9346,40 +9455,38 @@ document.addEventListener('alpine:init', () => {
     // Thursday's month = dominant; shared by scroll handler + jumps for consistent label
     _topMonthLabel(idx) { const d = this._weekDate(idx); d.setDate(d.getDate() + 3); return this._monthLabel(d); },
     _monthFirstIdx(d) { return this._weekIdx(new Date(d.getFullYear(), d.getMonth(), 1)); },   // week index of a month's 1st
-    // The viewport line below which a title rides coupled to the body (a band); at or above it the overlay flies
-    // it over the header into the bar. That fly runway is one week row in month; in day/week the incoming title
-    // rises from the bottom edge instead, because a whole period of runway would be a mile.
+    // The viewport line below which a title rides coupled to the body (a band); at or above it the overlay flies it
+    // into the bar. The runway is one week row in month; in day/week the title rises from the bottom edge instead.
     _clZoneTop() { return this.clView === 'month' ? this._clHeadH() + (this.clRowH || 1) : this._clVH() - CL_FOOT; },
     // Body bands: month titles glued to the grid (top=idx*rowH), only BELOW the zone. clZoneTitles picks them up overhead.
     // The month zone is one row deep, so rows through top+1 are in it: that depends on the TOP ROW alone, read off
-    // clVisStart (top − CL_BUFFER), never the scrollTop, which would re-run this every scroll frame for an identical list.
+    // clVisStart (top − CL_BUFFER), never the scrollTop, which would re-run this every scroll frame.
     // ceiling: clVisStart clamps at 0, so in the first CL_BUFFER weeks (Jan–Mar 2000) bands below the zone go missing; a real top-row field if the epoch nears reachable dates
     clMonthBands() {
       if (!this.clRowH) this.clRecalc();
       const rowH = this.clRowH, out = [], end = Math.min(CL_TOTAL_WEEKS, this.clVisStart + this.clVisCount);
       for (let idx = Math.max(0, this.clVisStart + CL_BUFFER + 2); idx < end; idx++) {
-        // A week holds at most one 1st: either it starts on one, or the month turns over inside it (so its last
-        // day is already in the new month). Two Dates, not the seven a per-day scan built on every scroll event.
+        // A week holds at most one 1st: it starts on one, or the month turns over inside it (its last day is in
+        // the new month). Two Dates, not a per-day scan on every scroll event.
         const ws = this._weekDate(idx), we = new Date(ws); we.setDate(we.getDate() + 6);
         const first = ws.getDate() === 1 ? ws : we.getMonth() !== ws.getMonth() ? we : null;
         if (first) out.push({ name: this._monthLabel(first), top: idx * rowH - 34 });   // sits on the row above, clear of the 1st's label, as clZoneTitles hands it over
       }
       return out;
     },
-    // Parallax clamp/shove/round shared by clZoneTitles and _periodZoneTitles.
-    // Callers build list as [{name, vt}]; this applies the parallax, shoves overlaps, and filters.
+    // Parallax clamp/shove/round shared by clZoneTitles and _periodZoneTitles; list is [{name, vt}].
     // LINEAR (not ease-out t*(2-t)): ease-out's zero slope at t=1 dips at the band→overlay handoff.
-    // `clear`: px a title keeps above its own start line in the runway — a week's riding all-day rail hangs just below
-    // it, the outgoing week's deadline labels just above it. Never above the bar: there the rails are clipped under the head.
+    // `clear`: px a title keeps above its own start line in the runway, where a week's riding all-day rail hangs just
+    // below it and the outgoing week's deadline labels just above. Never above the bar: the rails are clipped there.
     _zoneLayout(list, head, zoneH, barY, clear = -Infinity, labelH = 46) {
       list.forEach(z => { z.y = z.vt <= head ? barY : Math.max(barY, Math.min(z.vt - clear, barY + (head + zoneH - barY) * ((z.vt - head) / zoneH))); });
       for (let i = list.length - 2; i >= 0; i--) list[i].y = Math.min(list[i].y, list[i + 1].y - labelH);
-      // park out-of-zone titles at -999 instead of dropping them: the element must stay mounted so the
-      // imperative positioner can bring it in mid-period without waiting for an x-for wake
+      // park out-of-zone titles at -999, not dropped: the element stays mounted so the imperative positioner can
+      // bring it in mid-period without an x-for wake
       return list.map(z => ({ name: z.name, y: z.vt > head + zoneH || z.y <= -labelH ? -999 : Math.round(z.y), atBar: Math.abs(z.y - barY) < 3 }));
     },
-    // `top` applied imperatively so it never lags. Membership follows the TOP ROW (clVisStart, as clMonthBands);
-    // scrollTop is unreactive (_clMTop), so the template's x-for doesn't re-run every scroll frame for the same names
+    // `top` applied imperatively so it never lags. Membership follows the TOP ROW (clVisStart, as clMonthBands):
+    // scrollTop is unreactive (_clMTop), so x-for doesn't re-run every scroll frame for the same names
     // ceiling: clVisStart clamps at 0, so in the first CL_BUFFER weeks (Jan–Mar 2000) the titles don't re-list as you scroll; a real top-row field if the epoch nears reachable dates
     clZoneTitles() {
       if (!this.clRowH) return [];
@@ -9393,10 +9500,9 @@ document.addEventListener('alpine:init', () => {
       }
       return this._zoneLayout(list, head, zoneH, barY, 34);   // 34: the .cl-mtitle line box, kept above the row that holds the 1st and its label
     },
-    // Viewport + scroller height, measured ONCE per layout. Both are forced-reflow reads, and a wheel event
-    // needs three, at ~10 trackpad events per frame. Invalidated wherever
-    // either can actually move: resize, view switch, window recalc. Always cached, even at port===0 (pre-layout);
-    // a rAF identity-check invalidates the zero so the next call re-measures once the DOM has laid out.
+    // Viewport + scroller height, measured ONCE per layout: both are forced-reflow reads, and a wheel event needs
+    // three, at ~10 trackpad events per frame. Invalidated on resize, view switch, window recalc. Cached even at
+    // port===0 (pre-layout); a rAF identity-check invalidates the zero so the next call re-measures.
     _clMetrics() {
       if (this._clM) return this._clM;
       const el = _staticEl('.cl-pages'), side = PHONE_MQ.matches && this.clSideVisible() && _staticEl('.cl-side');
@@ -9420,9 +9526,8 @@ document.addEventListener('alpine:init', () => {
       this.clTopMonth = z ? z.name : this._topMonthLabel(Math.max(0, Math.floor(scrollTop / (this.clRowH || 1))));
       this._clFocus(scrollTop);
     },
-    // THE only thing that sets a zone title's `top`: with a reactive :style binding beside it, a title that enters or leaves
-    // the x-for keeps a stale top until the next flush (a teleport). The markup is position-less (data-name only);
-    // this is the single writer, called from the one place position moves.
+    // THE only thing that sets a zone title's `top`: with a reactive :style binding beside it, a title that enters or
+    // leaves the x-for keeps a stale top until the next flush (a teleport). The markup is position-less (data-name only).
     _clPositionZone(list) {
       const box = this.$refs.clMtitlesBox; if (!box) return;
       const at = {}; for (const t of (list || (this.clView === 'month' ? this.clZoneTitles() : this._periodZoneTitles()))) at[t.name] = t;
@@ -9430,8 +9535,7 @@ document.addEventListener('alpine:init', () => {
     },
     clMonthScroll(e) {
       // ONE scrollTop read, before any write: re-reading it after _clPositionZone's style writes forces a second
-      // style+layout every scroll frame. (No rAF coalescing — scroll already fires once per frame, and the titles
-      // must move THIS frame.)
+      // style+layout every scroll frame. No rAF coalescing: the titles must move THIS frame.
       const y = e.target.scrollTop, topIdx = Math.max(0, Math.floor(y / (this.clRowH || 1)));
       const start = Math.max(0, topIdx - CL_BUFFER), moved = start !== this.clVisStart;
       this.clVisStart = start;
@@ -9446,19 +9550,17 @@ document.addEventListener('alpine:init', () => {
         this._clLandInView();   // the flush recycled the focused day: a day in view takes focus now, or the next key lands on body (→ turns the surface)
       });
       const t = performance.now();
-      // our OWN settle glide: it still virtualizes, but it is not a gesture — re-lighting the chrome here is a flicker.
-      // It still POSTPONES the settle: a ↓/Today step inside this window otherwise lets a pending week-snap fire
-      // mid-step and round it back to where it started. Not live, yet clAnchor lags this scroll until that settle (a wheel's
-      // scroll landing just after one reads as ours too), so _clMDue has _clAt step from the month in view.
+      // our OWN settle glide: it still virtualizes, but it is not a gesture: re-lighting the chrome is a flicker.
+      // It still POSTPONES the settle: a ↓/Today step in this window otherwise lets a pending week-snap fire mid-step
+      // and round it back. Not live, yet clAnchor lags this scroll until the settle (a wheel scroll landing just
+      // after one reads as ours too), so _clMDue has _clAt step from the month in view.
       if (t < (this._clMGlide || 0)) { this._clMDue = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this._clMSettle(), motion.t(600)); return; }
-      // TWO chrome states landing at different moments: the out-of-month DIM comes back as soon as the glide
-      // slows to a crawl, the month band/title text holds until the scroll has STOPPED. Both are ONE-WAY per
-      // scroll session (only _clMSettle re-arms them), because any rate gate strobes: a decaying glide jitters
-      // across any threshold, and the browser hands a wheel over in bursts that dip and spike.
-      // dt is capped because speed means "distance moved in the last frame-ish window": an event's raw gap
-      // spans the IDLE time before the gesture, so a coalesced 1038px jump reads 0.33px/ms, a crawl.
+      // TWO chrome states landing at different moments: the out-of-month DIM comes back once the glide slows to a
+      // crawl, the month band/title text holds until the scroll has STOPPED. Both are ONE-WAY per scroll session
+      // (only _clMSettle re-arms them): a decaying glide jitters across any rate threshold and a wheel arrives in bursts.
+      // dt is capped: an event's raw gap spans the IDLE time before the gesture, so a coalesced 1038px jump reads a crawl.
       const dt = Math.min(t - (this._clMSt || 0), 100), v = Math.abs(y - this._clMSy) / dt;
-      // phantom native scroll from an el.scrollTop assignment — position unchanged; skip the chrome update. `=== 0`,
+      // phantom native scroll from an el.scrollTop assignment: position unchanged, skip the chrome update. `=== 0`,
       // never `!v`: the first sample is NaN (no previous position) and must record one, or no scroll ever lights.
       if (v === 0) return;
       if (!this._clMDone) {
@@ -9476,9 +9578,8 @@ document.addEventListener('alpine:init', () => {
     // A FINGER's scrollend is final (it fires once the finger is up and the fling spent), so a touch lands flush
     // right then: waiting out the settle parks the grid off-row for a visible beat.
     clMonthSnap() { if (this._clMTouch) this._clMFlush(); clearTimeout(_clScrollT); _clScrollT = setTimeout(() => this._clMSettle(), motion.t(CL_MONTH_SETTLE)); },
-    // The settle drops the chrome, re-arms the dim for the next scroll — and snaps the grid to a week boundary
-    // OURSELVES. CSS scroll-snap can only do this by arresting the fling mid-flight (it cuts a 2400px trackpad
-    // fling to 9px); doing it here, after the scroll has stopped, keeps the momentum free AND lands flush.
+    // The settle drops the chrome, re-arms the dim, and snaps the grid to a week boundary OURSELVES: CSS scroll-snap
+    // arrests the fling mid-flight (a 2400px trackpad fling to 9px); snapping after the scroll stops keeps momentum free.
     _clMSettle() {
       this.clScrolling = this._clMDue = false; this.clFast = false; this.clDimYM = this.clFocusYM; this._clMRest = true; this._clMDone = false;
       if (this.clView === 'month') { this._clMAnchor(0, true); this._clTabInView(); }
@@ -9495,9 +9596,8 @@ document.addEventListener('alpine:init', () => {
       this._clMGlide = performance.now() + motion.t(700);   // this glide is ours; clMonthScroll must not read it as a gesture
       el.scrollTo({ top: to, behavior: this.reduceMotion() ? 'auto' : 'smooth' });
     },
-    // …and the hand always wins: a smooth scrollTo keeps animating THROUGH new input, so it fights anyone who
-    // scrolls during the settle. Any real input aborts the glide (an instant scroll to where we
-    // already are cancels the animation) and hands the scroll straight back.
+    // The hand always wins: a smooth scrollTo keeps animating THROUGH new input, so it fights anyone who scrolls
+    // during the settle. Any real input aborts the glide (an instant scroll to where we already are cancels it).
     clMonthTake(e) {
       const ours = this._clMGlide || this._clMTo != null;   // a settle glide, or a step/↓ still gliding to its target
       this._clMFinger = this._clMTouch = e.type === 'touchstart' || e.pointerType === 'touch'; this._clMTo = null;
@@ -9507,21 +9607,20 @@ document.addEventListener('alpine:init', () => {
     },
     clScrollToAnchor(tries = 8, row = null) {   // row: a fractional week index to hold instead of the anchor's month
       const el = this.$refs.clMonth; if (!el) return;
-      // A zero-height element SILENTLY IGNORES scrollTop, and the Plan surface can still be off-screen when a
-      // view switch lands here (clSetView runs this in its after-callback). Nothing re-runs it, so the month
-      // would stay at row 0 while clVisStart points at the anchor: an empty grid. Retry until layout exists, as
-      // _clScrollToPeriod does.
+      // A zero-height element SILENTLY IGNORES scrollTop, and Plan can still be off-screen when a view switch lands
+      // here. Nothing re-runs it, so the month would stay at row 0 while clVisStart points at the anchor: an empty
+      // grid. Retry until layout exists, as _clScrollToPeriod does.
       if (!el.clientHeight && tries > 0) return void requestAnimationFrame(() => this.clScrollToAnchor(tries - 1, row));
       if (!this.clRowH) this.clRecalc();
       const target = row ?? this._monthFirstIdx(this._clDate()), top = Math.round(target * this.clRowH);
       this.clVisStart = Math.max(0, Math.floor(target) - CL_BUFFER);
-      // A glide of ours runs on past the jump on slow frames: the jump takes its target, so the settle lands it. No glide, no
-      // target; a wheel, touch, pointer (clMonthTake) or browser key (onKey) clears it, so the user's own scroll is never pulled back.
+      // A glide of ours runs on past the jump on slow frames: the jump takes its target, so the settle lands it. No
+      // glide, no target; a wheel, touch, pointer (clMonthTake) or browser key (onKey) clears it, never pulling the user back.
       // ceiling: on a slow device the old glide still swings off the jumped-to month before the settle glides it back — cancel it at the jump if that swing is reported.
       _clMTop = top; if (this._clMTo != null) this._clMTo = top;
       this._clScrollState(top);
       // seed the velocity sample FIRST: the jump's scroll event then reads v === 0 (ours), not a gesture that lights the chrome.
-      // A microtask, not $nextTick: that waits a setTimeout, so a resize paints one frame of new --rowh at the old scrollTop — blank.
+      // A microtask, not $nextTick: that waits a setTimeout, so a resize paints a frame of new --rowh at the old scrollTop.
       queueMicrotask(() => { this._clMSy = top; el.scrollTop = top; this._clScrollState(top); this._clTabInView(); });
     },
     _clStepMonth() {
@@ -9574,8 +9673,7 @@ document.addEventListener('alpine:init', () => {
     clOpenWeekRow(idx) { this.clSetView('week'); this.clAnchor = isoDate(this._weekDate(idx)); },   // tap a week → expand
 
     // --- Continuous day/week timeline. NO SCROLLER: clPos is the position and the timeline is painted at
-    // translateY(-clPosOff · --ph). Month keeps its native scroller — a bounded grid with no zoom has nothing
-    // to fight — which is why _clMTop exists and means month, and only month. ---
+    // translateY(-clPosOff · --ph). Month keeps its native scroller, so _clMTop means month only. ---
     _periodSpan() { return this.clView === 'day' ? 1 : 7; },
     _dayStart(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); },
     _periodIdx(d) { return this.clView === 'day' ? Math.round((this._dayStart(d) - CL_EPOCH) / 86400000) : this._weekIdx(d); },
@@ -9593,11 +9691,11 @@ document.addEventListener('alpine:init', () => {
     // A WEEK block is its 24h body — its top border is the 12am rule. A DAY block is a PAGE: its rows and waking hours
     // fill the scroller exactly, and a day too full for it scrolls inside its page (_clAgScroll).
     clPeriodH() { return this.clView === 'day' ? this._clDayH() + CL_FOOT : 24 * (this.clHourH || 40); },   // a day also spans the nav band, so the NEXT day never parks under the nav
-    // one page = the scroller's VISIBLE area: .cl-pages already reserves the chrome with padding-top, so a
-    // parked day starts below the header without the agenda insetting itself a second time
+    // one page = the scroller's VISIBLE area: .cl-pages already reserves the chrome with padding-top, so the
+    // agenda doesn't inset a second time
     _clDayH() { return Math.max(320, this._clVH() - this._clHeadH() - CL_FOOT); },
-    // Pinned head cells: weekday names in month; weekday + DATE of the period currently on top in week view.
-    // Dates can't ride the block — in a continuous timeline they'd scroll out of sight almost immediately.
+    // Pinned head cells: weekday names in month; weekday + DATE of the period on top in week view. Dates can't
+    // ride the block: they'd scroll out of sight.
     clHeadCells() {
       if (this.clView !== 'week') return WEEKDAYS.map(n => ({ key: n, name: n }));
       const ps = this._periodDate(this.clPos.idx), todayIso = this._nowDay;
@@ -9607,8 +9705,8 @@ document.addEventListener('alpine:init', () => {
       });
     },
     clDayLabel(iso) { return this.dayNotes.find(d => d.date === iso)?.label || ''; },
-    // The weekday slot IS the name field. An empty name deletes the row — a day with no name leaves no trace.
-    // A failed write puts the field back to what's stored, so it never shows a name that isn't saved.
+    // The weekday slot IS the name field. An empty name deletes the row. A failed write puts the field back to
+    // what's stored.
     async clSetDayLabel(iso, el) {
       const label = el.value.trim(), row = this.dayNotes.find(d => d.date === iso);
       if (label === (row?.label || '')) return;
@@ -9619,53 +9717,47 @@ document.addEventListener('alpine:init', () => {
     },
     _clHeadH() { return CL_BAR + CL_HEAD; },   // every px of pinned chrome the timeline hides under (must match --cl-top in CSS)
     _clFitHour() { return Math.max(18, Math.round((this._clVH() - this._clHeadH()) / (CL_WAKING_END - CL_WAKING_START))); },   // a waking day fills the viewport at zoom 1
-    // How far INTO a period you can travel before its far edge is on screen, as a fraction of the period. 0 =
-    // the period exactly fills the viewport, so there is nowhere to go and the next push is a page turn.
-    // The week gets a little BLEED past its own end so the next week's first hours peek in before the page
-    // turns — stopping dead the instant the last hour touches the bottom edge reads as a wall.
-    // An up phone tray insets the floor by its height, so a period's last hours and the now line travel above it.
+    // How far INTO a period you can travel before its far edge is on screen, as a fraction of the period. 0 = the
+    // period exactly fills the viewport, so the next push is a page turn. The week gets a little BLEED past its end
+    // so the next week's first hours peek in: stopping dead at the last hour reads as a wall. An up phone tray
+    // insets the floor by its height, so the last hours and the now line travel above it.
     _clMaxFrac() { const ph = this.clPeriodH(), { port, tray } = this._clMetrics();
       if (!port || !ph) return 0;
       return Math.max(0, 1 - (port - this._clHeadH() - tray) / ph) + (this.clView === 'week' ? CL_WEEK_BLEED / ph : 0); },
-    // toLocaleDateString is ~100us; three zone titles plus the heading ask for one on EVERY wheel event.
-    // A period's label is a pure function of its key, so it is computed once and kept.
+    // toLocaleDateString is ~100us and three zone titles plus the heading ask for one on EVERY wheel event: a
+    // period's label is a pure function of its key, so it is kept.
     _lbl(k, make) { if (_periodLabels.has(k)) return _periodLabels.get(k); const v = make(); if (_periodLabels.size > 500) { _periodLabels.clear(); _dayLabels.clear(); } _periodLabels.set(k, v); return v; },
     _periodLabelAt(idx) { return this._lbl(this.clView + '|' + idx, () => this._periodLabel(this._periodDate(idx))); },
     // The offset the timeline is painted at, in PERIODS, relative to the first rendered one.
     clPosOff() { return (this.clPos.idx - this.clPVisStart + this.clPos.frac).toFixed(4); },
-    // The ONE paint. --pf and --ph are written together, so a zoom can never catch the transform and the
-    // block tops (which are calc(var(--ph) * rel)) disagreeing for a frame. Both are custom properties on
-    // already-composited elements: no layout, no Alpine, no style recalc beyond the transform itself.
+    // The ONE paint. --pf and --ph are written together, so a zoom never catches the transform and the block tops
+    // (calc(var(--ph) * rel)) disagreeing for a frame. Both sit on composited elements: no layout, no Alpine.
     _clPaint() {
       const el = _staticEl('.cl-pages'), inner = _staticEl('.cl-pages-inner'); if (!inner) return;
       el?.style.setProperty('--ph', this.clPeriodH() + 'px');
       inner.style.setProperty('--pf', this.clPosOff());
       this._clAdPaint();
     },
-    // The rails are chrome, so the ONE thing allowed to move them is the week boundary — a week's items may
-    // never outlive their week. `--rd` is how far below the pin that line sits, `--re` the same line measured
-    // off the floor; both go negative once it is on screen, and each rail is then dragged along by it (the
-    // arithmetic lives in the CSS, beside the rule it moves). The top rail pins under the weekday row and is
-    // pushed out by its own height; the bottom rail pins above the nav and rides up the same way, because a
-    // deadline belongs to the END of its day. The NEXT week's pair arrives from the far side of that same
-    // line, so at d=0 they already stand exactly where the outgoing pair was and the index flip moves nothing.
+    // The rails are chrome: only the week boundary moves them, so a week's items never outlive their week. `--rd` is
+    // how far below the pin that line sits, `--re` the same line off the floor; both go negative once it is on
+    // screen and each rail is dragged along by it (the arithmetic lives in the CSS). The top rail pins under the
+    // weekday row; the bottom rail pins above the nav, because a deadline belongs to the END of its day. The NEXT
+    // week's pair arrives from the far side of that line, so at d=0 the index flip moves nothing.
     // Three properties on the WRAPPER, which Alpine never re-renders: a transform on a rail itself is lost whenever
     // its contents change, snapping it back to the floor until the next wheel event.
     _clAdPaint(tries = 6) {
-      // the ref can be absent on the very first paint (the surface is still mounting) — and a rail that
-      // misses that paint stays parked at its CSS default until you happen to scroll, which reads as the
-      // week's all-day items simply not existing. Retry, exactly as clScrollToAnchor does for layout.
+      // the ref can be absent on the first paint (the surface is mounting), and a rail that misses it stays at its
+      // CSS default until a scroll, which reads as the week's all-day items not existing. Retry, as clScrollToAnchor.
       const w = this.$refs.clAd;
       if (!w) return void (tries > 0 && requestAnimationFrame(() => this._clAdPaint(tries - 1)));
       if (this.clView !== 'week') return;   // month/day have no boundary to ride, and the veil belongs to one
       const d = (1 - this.clPos.frac) * this.clPeriodH(), h = this._clMetrics().port - this._clHeadH() - CL_FOOT;
       const pg = this.clAdPage();
-      // The deadline rail's height is the ONE number the top rail can't derive: its rows are wrapped type, not
-      // a fixed grid. Measured when the week's contents change, never per frame. The `!_clAdH` arm covers the first
-      // paint, which runs while the surface is still mounting and measures 0; a page-identity guard alone keeps that 0
-      // and the rails overlap. Retry ONLY while this page wants a deadline rail: `r.style.display !== 'none'` is true
-      // for every week with no deadlines, and the measure (two forced layouts + a wrapper property that restyles every
-      // child) would run every frame, freezing a dense week.
+      // The deadline rail's height is the ONE number the top rail can't derive: its rows are wrapped type. Measured
+      // when the week's contents change, never per frame. The `!_clAdH` arm covers the first paint, which measures 0
+      // while the surface is mounting; a page-identity guard alone keeps that 0 and the rails overlap. Retry ONLY while
+      // this page wants a deadline rail: `r.style.display !== 'none'` is true for every week with no deadlines, and the
+      // measure (two forced layouts + a wrapper property that restyles every child) would run every frame.
       if (pg !== _clAdPg || (!_clAdH && this.clHasDeadlines(pg))) {
         _clAdPg = pg; this._clAdMeasure(w); requestAnimationFrame(() => this._clAdMeasure(w));
       }
@@ -9673,27 +9765,25 @@ document.addEventListener('alpine:init', () => {
       _clAdD = d;
       w.style.setProperty('--rd', d + 'px');
       w.style.setProperty('--re', (d - h) + 'px');
-      // the veil is the ONE stable element here, so it is written directly — a third property on the wrapper
-      // would re-run style for every label in both rails just to change one element's alpha
+      // the veil is the ONE stable element here, so it is written directly: a wrapper property would re-run style
+      // for every label in both rails just to change one alpha
       const v = w.firstElementChild;
       if (v) { v.style.transform = `translate3d(0,${Math.min(0, d - h)}px,0)`; v.style.opacity = Math.max(0, (h - d) / h) * CL_LEAVE_DIM; }
     },
     _clAdMeasure(w) {
       const r = w.querySelector('.cl-dlrail'); _clAdH = r ? r.offsetHeight : 0; w.style.setProperty('--dlh', _clAdH + 'px');
-      // …and the same number for the INCOMING pair: both .nx rails hang off the same boundary line, so without it a
-      // tall deadline rail (18 labels ≈ 119px) swallows its own week's claims at the bottom of the screen.
+      // The same number for the INCOMING pair: both .nx rails hang off the same boundary line, so without it a tall
+      // deadline rail (18 labels ≈ 119px) swallows its own week's claims at the bottom of the screen.
       const nx = w.querySelector('.cl-adrail.nx'), h = nx && nx.offsetParent ? nx.offsetHeight : 0;
       if (h !== _clAdNxH) { _clAdNxH = h; w.style.setProperty('--adh', h + 'px'); }   // writing it restyles every child — only on a real change
     },
-    // Called from the wrapper's x-effect, i.e. AFTER Alpine renders a rail — the only moment its height can be
-    // measured. Nothing scrolls at that point, so the paint's own "did d change?" guard would skip it; the
-    // caches are cleared so it re-measures and re-places. Safe to re-run: every value here is derived.
+    // Called from the wrapper's x-effect, AFTER Alpine renders a rail: the only moment its height can be measured.
+    // Nothing scrolls then, so the paint's "did d change?" guard would skip it; clearing the caches re-measures.
     _clAdSync() { _clAdPg = null; _clAdD = undefined; this._clAdPaint(); },
     // the head is about to re-key or go: blur a focused day name so it saves (no browser blurs a REMOVED field)
     _clSaveName() { document.querySelector('.cl-wh-n:focus')?.blur(); },
-    // THE one writer of clPos. Everything (wheel, touch, keys, jumps, tweens) arrives here in period-space.
-    // Reactive state is touched ONLY when it changes: clPos is MUTATED IN PLACE so a scroll within a period (frac
-    // only) wakes nothing that reads .idx; clHeadCells rebuilds all seven week-header cells off .idx.
+    // THE one writer of clPos (wheel, touch, keys, jumps, tweens), in period-space. Reactive state is touched ONLY
+    // when it changes: clPos is MUTATED IN PLACE so a frac-only scroll wakes nothing that reads .idx.
     _clSetPos(idx, frac) {
       const t = Math.max(0, Math.min(this._periodTotal() - 0.0001, idx + frac)), i = Math.floor(t);
       const crossed = i !== this.clPos.idx;
@@ -9706,20 +9796,19 @@ document.addEventListener('alpine:init', () => {
       this._clPaint();
       const zt = this._periodZoneTitles();   // computed ONCE and shared — the positioner and the heading both want it
       this._clPeriodState(zt);
-      // Place THIS frame — a reactive :style would lag one, which reads as the title teleporting on fast
-      // scroll. Only a period crossing can add or remove a title, so only then is a post-flush pass needed
-      // to place a brand-new element (it starts at CSS `top: -999px`, so it can never flash at the wrong y).
+      // Place THIS frame: a reactive :style would lag one, a title teleporting on fast scroll. Only a period
+      // crossing adds or removes a title, so only then is a post-flush pass needed to place a brand-new element
+      // (it starts at CSS `top: -999px`, so it never flashes at the wrong y).
       this._clPositionZone(zt);
       if (crossed) this.$nextTick(() => this._clPositionZone());
     },
-    // Tween in PERIOD-space (page turn, keyboard nudge). Same two properties as _glide — we own the handle so
-    // a second request supersedes rather than races — but there is no scroller to fight, so it cannot be
-    // clamped, cancelled or retargeted by the browser behind our back.
+    // Tween in PERIOD-space (page turn, keyboard nudge). Same two properties as _glide; we own the handle so a
+    // second request supersedes, and with no scroller the browser can't clamp, cancel or retarget it.
     _clTween(idx, frac, ms = CL_TURN_MS) {
       const from = this.clPos.idx + this.clPos.frac, to = this._clTo = Math.max(0, Math.min(this._periodTotal() - 0.0001, idx + frac)), called = performance.now();
       let t0 = 0;   // the clock starts at most a frame before the first frame drawn: a slow render after the input never eats the turn's opening
-      // only an ARRIVING period stages in — not a nudge or a spring-back. ↓'s tween has no scroll land behind it, so the anchor
-      // follows the page here even when THIS turn didn't cross: a held ↓'s crossing nudge is superseded before it lands.
+      // only an ARRIVING period stages in, not a nudge or a spring-back. ↓'s tween has no scroll land behind it, so the
+      // anchor follows the page even when THIS turn didn't cross: a held ↓'s crossing nudge is superseded before it lands.
       const arrive = () => {
         if (Math.floor(to) !== this._periodIdx(this._clDate())) this.clAnchor = isoDate(this._periodDate(Math.floor(to)));
         if (Math.floor(to) !== Math.floor(from)) this._clSettle();
@@ -9766,8 +9855,8 @@ document.addEventListener('alpine:init', () => {
     // edge, else it buries the spine label or lands left of (over) a held child.
     // ceiling: O(blocks × items) per day on a pack miss; index by start if a day passes ~100 items
     _clPack(col, hourH = this.clHourH || 60) {
-      const tRanges = col.items.filter(it => !it.allDay && it.start.length > 10).map(it => {   // over midnight: this day's slice, as _dayBlocks
-        const sm = it.start < col.iso ? 0 : this._clMin(it.start), em = it.end.slice(0, 10) > col.iso ? 1440 : Math.max(this._clMin(it.end), sm + 20); return { it, sm, em };
+      const tRanges = col.items.filter(it => !it.allDay && it.start.length > 10 && it.kind !== 'task-deadline').map(it => {   // a timed deadline is its rule, not a tile; over midnight: this day's slice, as _dayBlocks
+        const sm = it.start < col.iso ? 0 : this._clMin(it.start), em = it.going === false ? sm + CL_NG_PX * 60 / hourH : it.end.slice(0, 10) > col.iso ? 1440 : Math.max(this._clMin(it.end), sm + 20); return { it, sm, em };   // Not going packs as its thin tile: a later overlap takes the full width
       });
       const holds = (b, sm, em) => b._sm <= sm && b._pem >= em && b._pem - b._sm > em - sm;   // equal spans are peers
       const overlaps = (b, sm, em) => b._sm < em && b._pem > sm;
@@ -9785,15 +9874,14 @@ document.addEventListener('alpine:init', () => {
     },
     clBlocks() {
       if (this.clView === 'month' || this._clHidden()) return _clBlocksCache;   // hidden: keep the last pages; showing re-runs this
-      void this.tasks; void this.events; void this.blocks; void this.byId; void this.blockDays; void this._rowV;   // register deps BEFORE the memo can short-circuit — else a hit records no dep and adds/edits don't repaint
+      void this.tasks; void this.events; void this.pcEvents; void this.gcalEvents; void this.blocks; void this.byId; void this.blockDays; void this._rowV;   // register deps BEFORE the memo can short-circuit (a hit records no dep, so edits wouldn't repaint)
       if (!this.clHourH) this.clRecalcPages();
       const span = this._periodSpan(), todayIso = this._nowDay, ph = this.clPeriodH();
-      // The rendered window is just "around where you are" — there is no spacer to live inside, so no origin
-      // to drift from, so nothing to recenter. It follows clPos for free.
+      // The rendered window is just "around where you are": no spacer, no origin to drift from. It follows clPos.
       const start = Math.max(0, this.clPVisStart), end = Math.min(this._periodTotal(), start + this.clPVisCount);
       if (end <= start) return [];
-      // The view-switch/scroll settle re-fires this effect ~100× against unchanged inputs. Return the SAME array
-      // ref on a hit so Alpine's x-for no-ops instead of re-diffing every column/event. _calDataV busts on any data change.
+      // The view-switch/scroll settle re-fires this effect ~100× against unchanged inputs. The SAME array ref on a
+      // hit makes x-for a no-op. _calDataV busts on any data change.
       // scale key: the week packs by px-per-minute (tier, stacking); a day page is scale-free — its agenda tier binds in the template
       const scale = span === 1 ? 0 : this.clHourH;
       const shelf = this._clShelf(), sig = this.clView + '|' + start + '|' + end + '|' + scale + '|' + span + '|' + todayIso + '|' + _calDataV + '|' + shelf;   // no clock: an open band's foot follows it at render (clBandH)
@@ -9821,29 +9909,27 @@ document.addEventListener('alpine:init', () => {
         if (pg.scale !== scale) {
           pg.scale = scale;
           pg.cols = pg.days.map(c => this._clPack(c));
-          // Day has no band layer: every mark and every all-day item (one merely passing through today too) gets a
-          // row of its own above the day's hours.
+          // Day has no band layer: every mark and all-day item (one passing through today too) gets a row above the hours.
           if (span === 1) for (const c of pg.cols) c.agenda = this._clAgenda(c);
         }
         out.push({ key: idx, rel: idx - start, cols: pg.cols, bands: pg.bands });   // top comes from --ph in CSS so it cannot drift from the height
       }
       _clBlocksSig = sig; _clBlocksCache = out; return out;
     },
-    // A date-only item is one of two different things:
-    // A BAND occupies the day (an all-day event, a task scheduled across days).
-    // A MARK is a moment ABOUT the day (a due date, a deadline); it has no width.
+    // A date-only item is a BAND (occupies the day: an all-day event, a task scheduled across days) or a MARK (a
+    // moment ABOUT the day: a due date, a deadline; no width).
     _clSplitDay(items) {
       const ad = items.filter(it => it.allDay || it.start.length <= 10);
       return { bands: ad.filter(it => it.kind === 'event' || it.kind === 'task-block'),
                marks: ad.filter(it => it.kind === 'task-due'),
-               // A deadline is the one mark with an HOUR in it — it gets drawn on the timeline, at the moment
-               // it bites, rather than filed in the chrome with the whole-day claims.
-               deadlines: ad.filter(it => it.kind === 'task-deadline') };
+               // A deadline, date-only or timed, is a rule across the day at the moment it bites (calendar.md), never a tile;
+               // the timed ones first, so the nearest leads the runway (a date-only one bites at the day's close)
+               deadlines: items.filter(it => it.kind === 'task-deadline').sort((a, b) => (a.start.length <= 10) - (b.start.length <= 10)) };
     },
     // ONE entry per band per PAGE, not one chip per column: {c0, len} is the run of columns it covers and `row`
-    // its stacking order. Chapter draws the entry directly (a single element spanning its columns — so it cannot
-    // disagree with itself, cannot lose its title, and there are no spacer chips to miscount); Terrain filters
-    // the same list per column. `openL` means it began before this page, which is what earns the feathered edge.
+    // its stacking order. Chapter draws the entry as a single element spanning its columns (no spacer chips to
+    // miscount, no lost title); Terrain filters the same list per column. `openL`: it began before this page,
+    // which earns the feathered edge.
     _clWeekBands(cols) {
       const seen = new Map(), rowEnd = [], out = [];
       cols.forEach((c, i) => { for (const it of c.bands) {
@@ -9854,10 +9940,9 @@ document.addEventListener('alpine:init', () => {
       } });
       return out;
     },
-    // Hold to travel. The first CL_HOLD_MS of a held arrow keep nudging at the key's own repeat rate; past it
-    // the step becomes a whole PERIOD — a day, a week, a month — because by then you are traveling, not
-    // reading. Throttled once escalated, or a ~30/s key repeat would fly a year past you in a second.
-    // `e.repeat` is what distinguishes a held key from a fresh press, so a re-press always restarts the clock.
+    // Hold to travel. The first CL_HOLD_MS of a held arrow keep nudging at the key's repeat rate; past it the step
+    // becomes a whole PERIOD, because by then you are traveling, not reading. Throttled once escalated, or a ~30/s
+    // repeat would fly a year past. `e.repeat` tells a held key from a fresh press, which restarts the clock.
     clArrow(dir, repeat) {
       const now = Date.now();
       if (!repeat || !this._clHold) this._clHold = { t0: now, last: 0 };
@@ -9865,12 +9950,11 @@ document.addEventListener('alpine:init', () => {
       if (now - this._clHold.last < CL_HOLD_STEP) return;
       this._clHold.last = now; this.clStep(dir);
     },
-    // ↑/↓: one hour in week/day, one week row in month. Smooth, so the move reads as movement and you keep your
-    // place; it goes through the same scroller the wheel uses, so the snap and the midnight gate still apply.
+    // ↑/↓: one hour in week/day, one week row in month. Smooth, so you keep your place.
     clNudge(dir, repeat) {
-      // Month keeps the BROWSER's smooth scroll: a bounded grid with no zoom and no spacer, and its own virtualization
-      // re-render shifts scrollTop, which a glide of ours would read as someone else grabbing the wheel.
-      // A fresh press steps from the PENDING target (cleared once the settle finds it reached, or by the hand): stepping from the
+      // Month keeps the BROWSER's smooth scroll: its own virtualization re-render shifts scrollTop, which a glide of
+      // ours would read as someone else grabbing the wheel.
+      // A fresh press steps from the PENDING target (cleared once the settle finds it reached, or by the hand): the
       // live mid-glide scrollTop lands between rows, and the settle rounds two presses back to one. A key REPEAT
       // steps from live: piled onto the target, a held key runs the grid on for dozens of rows after the release.
       const el = this.$refs.clMonth;
@@ -9878,8 +9962,7 @@ document.addEventListener('alpine:init', () => {
       const at = this.clPos.idx + this.clPos.frac + dir * (this.clHourH || 40) / this.clPeriodH();   // one hour, in periods
       this._clTween(Math.floor(at), at - Math.floor(at), 220);
     },
-    // How far down the day the deadline bites. Date-only means "by the end of it", so the rule sits at the
-    // day's close; the moment deadlines carry a time, the same rule simply moves up to that hour.
+    // How far down the day the deadline bites: date-only means the day's close, a timed one its hour.
     clDlPct(it) { return timeOf(it.start) ? this._clMin(it.start) / 14.4 : 100; },
     clDlWhen(it) { const t = timeOf(it.start); return t ? this.fmtTime(t) : 'by end of day'; },
     // The label carries the time LEFT (the rule already says when it bites); a date-only deadline bites at the day's close
@@ -9892,32 +9975,30 @@ document.addEventListener('alpine:init', () => {
           return { id: e.id, title: e.title, n: deadlineLeft(iso, now).label.split(' ')[0], prox: Math.max(0, 1 - (new Date(iso + 'T00:00') - t0) / 864e5 / 14) }; });
     },
     clDlLeft(it) { void this._nowTickV; return deadlineLeft(timeOf(it.start) ? it.start : it.start.slice(0, 10) + 'T23:59', new Date())?.label || ''; },
-    // The page BOTH chrome rails describe: the week at the top of the viewport. Neither can be `position:
-    // sticky` inside the grid — .cl-period-block sets `contain: paint`, which makes it the containing block
-    // for its descendants, so a sticky layer sticks to the BLOCK and rides the transform off-screen with it.
-    // Never null: a rail's x-for still evaluates its body while the rail is display:none, so an empty page
-    // is what keeps a hidden rail from throwing on every view that isn't week.
+    // The page BOTH chrome rails describe: the week at the top of the viewport. Neither can be `position: sticky`
+    // in the grid: .cl-period-block's `contain: paint` makes it the containing block, so a sticky layer rides the
+    // transform off-screen. Never null: a hidden rail's x-for still evaluates its body, so an empty page keeps it
+    // from throwing on every view that isn't week.
     clAdPage() {
       if (this.clView !== 'week') return CL_NO_PAGE;   // day view is the agenda, which already gives each one a row
       const b = this.clBlocks();
       return b.find(p => p.key === this.clPos.idx) || b.find(p => p.key === this._periodIdx(this._clDate())) || b[0] || CL_NO_PAGE;
     },
-    // Two rails, drawn from ONE template: the week at the top, and the one whose start line is rising toward
-    // the pin. What makes the swap invisible is that they trade places at d=0 — the incoming rail is already
-    // sitting exactly where the outgoing one was, so the index flip moves nothing. See _clAdPaint. Keyed by
-    // week: on a turn the incoming rail BECOMES the pinned one instead of being redrawn into it.
+    // Two rails, drawn from ONE template: the week at the top, and the one whose start line is rising toward the
+    // pin. They trade places at d=0 (see _clAdPaint), so the swap is invisible. Keyed by week: on a turn the
+    // incoming rail BECOMES the pinned one instead of being redrawn.
     clAdPages() {
       const pg = this.clAdPage(), nx = this.clView === 'week' && this.clBlocks().find(p => p.key === this.clPos.idx + 1);
       return [pg, nx && nx !== pg ? nx : CL_NO_PAGE];   // one week twice would be a duplicate key
     },
     clAdRailOn(p) { return p.bands.length > 0 || p.cols.some(c => c.marks.length); },
     clHasDeadlines(p) { return p.cols.some(c => c.deadlines.length); },
-    // Chapter: a day's marks start below the bands standing over THAT day — not below the tallest stack
-    // anywhere in the week: a week-wide max would let one Tuesday claim reserve an empty row under all seven columns.
+    // Chapter: a day's marks start below the bands standing over THAT day, not the week's tallest stack, which
+    // would reserve an empty row under all seven columns for one Tuesday claim.
     clChRows(pg, i) { return this.clColBands(pg, i).reduce((m, b) => Math.max(m, b.row + 1), 0); },
     clColBands(pg, i) { return pg.bands.filter(b => b.c0 <= i && i < b.c0 + b.len); },
-    // A day you actually finished. Real planned minutes, all of them done — never a count of tasks, which
-    // is gameable the moment anyone notices (see "nothing fake" in ui-conventions).
+    // A day you actually finished: real planned minutes, all done, never a count of tasks, which is gameable
+    // (see "nothing fake" in ui-conventions).
     _clCleared(items) {
       const mine = items.filter(it => it.kind === 'task-block');
       if (!mine.length || !mine.every(it => this.byId.get(it.id)?.completed_at)) return null;
@@ -9951,9 +10032,9 @@ document.addEventListener('alpine:init', () => {
       const p = bd && col.packedBlocks.find(p => p.it.id === bd.block_id && p.it.src === bd.date);
       return p ? p.topPct + p.hPct : null;
     },
-    // Height tier drives how much an event can say. Splitting evenly by lane count shrinks a 15-min standup
-    // to an unreadable sliver, so overlaps CASCADE instead: each lane steps 14px right and stacks on top,
-    // leaving the earlier event fully readable (macOS/Fantastical). Capped so deep stacks don't march away.
+    // Height tier drives how much an event can say. Splitting evenly by lane count leaves a 15-min standup an
+    // unreadable sliver, so overlaps CASCADE: each lane steps 14px right and stacks on top (macOS/Fantastical).
+    // Capped so deep stacks don't march away.
     _clTier(mins) { const px = mins * (this.clHourH || 0) / 60; return !px || px >= 40 ? 'full' : px >= 18 ? 'compact' : 'tiny'; },
     _lanePack(ranges, blocks = []) {
       // ranges are prebuilt {it, sm, em}; non-container blocks join the SAME pack so all kinds cascade as peers
@@ -9963,10 +10044,9 @@ document.addEventListener('alpine:init', () => {
         if (!cluster.length) return;
         const lanes = [];
         for (const p of cluster) { let k = 0; while (k < lanes.length && lanes[k] > p.sm) k++; lanes[k] = p.em; p.lane = k; }
-        // A cascade only reads while the covered item's TITLE still shows above the one stacked on it. Things
-        // starting at (or within a title of) the same time leave no such strip (the top one hides the other
-        // outright), so concurrent peers STACK: same lane, each stepped down-right so the one under it keeps a
-        // title strip, and only a genuinely later start steps a full cascade lane.
+        // A cascade only reads while the covered item's TITLE shows above the one stacked on it. Items starting at
+        // (or within a title of) the same time leave no such strip, so concurrent peers STACK: same lane, each stepped
+        // down-right so the one under keeps a title strip; only a genuinely later start steps a full cascade lane.
         const perMin = (this.clHourH || 60) / 60;
         let grp = [], gend = -1;
         const stack = () => { if (grp.length > 1) { const b = Math.min(...grp.map(p => p.lane)); grp.forEach((p, i) => { p.stk = [i, grp.length]; p.lane = b; }); } grp = []; };
@@ -9976,8 +10056,8 @@ document.addEventListener('alpine:init', () => {
           gend = Math.max(gend, p.em);
         }
         stack();
-        // Something drawn OVER an item leaves only its top strip visible, and the time sits on the SECOND line —
-        // so mark it and let the view inline the time into the title, on the one line that survives.
+        // Something drawn OVER an item leaves only its top strip visible and the time sits on the SECOND line, so
+        // mark it and let the view inline the time into the title.
         for (const p of cluster) p.cov = cluster.some(q => q !== p && q.sm < p.em && q.em > p.sm
           && (q.lane > p.lane || (q.lane === p.lane && (q.stk?.[0] ?? 0) > (p.stk?.[0] ?? 0))));
         for (const p of cluster) out.push({ it: p.it, blk: p.blk, cov: p.cov, sm: p.sm, em: p.em, topPct: p.sm / 1440 * 100, hPct: (p.em - p.sm) / 1440 * 100, lane: p.lane, stk: p.stk, offPx: Math.min(p.lane, 4) * 14, tier: this._clTier(p.em - p.sm) });
@@ -9986,10 +10066,9 @@ document.addEventListener('alpine:init', () => {
       for (const p of raw) { if (p.sm >= cend && cluster.length) flush(); cluster.push(p); cend = Math.max(cend, p.em); }
       flush(); return out;
     },
-    // Cascade fills to the column's right edge (CSS `right`); a concurrent peer keeps the cascade's left edge
-    // and steps down-right from it, so the one beneath always keeps a strip of its own title showing. --peek is
-    // that strip: it is the item's ONLY hit area (the body is inert), which is what makes hover non-glitchy —
-    // raising an item to the front can never swallow a peer's hover zone. The front item keeps its whole body.
+    // Cascade fills to the column's right edge (CSS `right`); a concurrent peer keeps the cascade's left edge and
+    // steps down-right from it. --peek is the strip of title left showing: the item's ONLY hit area (the body is
+    // inert), so raising an item to the front can never swallow a peer's hover zone. The front item keeps its body.
     clEvBox(p) {
       const L = p.offPx + 1;
       if (!p.stk) return `left:${L}px;`;
@@ -10007,21 +10086,24 @@ document.addEventListener('alpine:init', () => {
     // A day's rows: the all-day ones (deadlines first: the sharpest thing on a day), then each timed item at its minute.
     _clAgenda(col) {
       const rows = [];
-      for (const it of [...col.deadlines, ...col.marks]) rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 });
+      const timedDl = col.deadlines.filter(it => it.start.length > 10);
+      for (const it of [...col.deadlines.filter(it => !timedDl.includes(it)), ...col.marks]) rows.push({ key: it.kind + it.id, it, mark: true, allday: true, min: 0, mins: 0 });
       for (const it of col.bands) rows.push({ key: it.kind + it.id, it, allday: true, min: 0, mins: 0 });
+      const timed = [];
       for (const p of [...col.timed].sort((a, b) => a.topPct - b.topPct || b.hPct - a.hPct)) {
-        const min = Math.round(p.topPct * 14.4), mark = this._clIsMark(p.it);   // a timed due/deadline is still a MOMENT: its time, no length
-        rows.push({ key: p.it.kind + p.it.id + min, it: p.it, mark, min, mins: mark ? 0 : Math.max(1, (p.it.end.slice(0, 10) > col.iso ? 1440 : this._clMin(p.it.end)) - min) });   // the real end: hPct carries the grid's 20-minute floor
+        const min = Math.round(p.topPct * 14.4), mark = this._clIsMark(p.it);   // a timed due is still a MOMENT: its time, no length
+        timed.push({ key: p.it.kind + p.it.id + min, it: p.it, mark, min, mins: mark ? 0 : Math.max(1, (p.it.end.slice(0, 10) > col.iso ? 1440 : this._clMin(p.it.end)) - min) });   // the real end: hPct carries the grid's 20-minute floor
       }
-      return rows;
+      for (const it of timedDl) timed.push({ key: it.kind + it.id + this._clMin(it.start), it, mark: true, min: this._clMin(it.start), mins: 0 });   // Day draws a timed deadline at its minute
+      return rows.concat(timed.sort((a, b) => a.min - b.min));   // stable: same-minute rows keep the tiles' order
     },
     // An agenda row is read on its own, so the time must be unambiguous — "2:00" beside "11:00" reads as 2am.
     clAgTime(m) { return (m % 60 ? this._clHM(m) : ((Math.floor(m / 60) + 11) % 12) + 1) + (m < 720 ? ' AM' : ' PM'); },
     _clIsMark(it) { return it.kind === 'task-due' || it.kind === 'task-deadline'; },
     clAgSub(r) {
       const a = this.areaObjs(this.byId.get(r.it.id)?.area_ids || [])[0];
-      // a mark has no length to report, so it says what KIND of moment it is; an all-day item has no length
-      // either, and the time column already said "All day" — so it carries only its area, or nothing.
+      // a mark has no length to report, so it says what KIND of moment it is; an all-day item has none either and
+      // the time column already said "All day", so it carries only its area, or nothing.
       const lead = r.mark ? (r.it.kind === 'task-deadline' ? 'Deadline' : 'Due') : r.allday ? (r.it.spanStart === false ? 'Continues' : '') : this._clCross(r.it) ? this.clTimeLabel(r.it) : this.durFmt(r.mins);
       return lead + (a ? (lead ? ', ' : '') + a.name : '');
     },
@@ -10094,8 +10176,8 @@ document.addEventListener('alpine:init', () => {
       };
       night();
       void this.clPeriodH();   // any resize, width alone too, reruns this: _clResized drops the metrics clPeriodH reads
-      // rows past the page push the hours down, never squash them (the page scrolls); a short tile draws 24px, so the day's
-      // last one moves the night down to clear it
+      // rows past the page push the hours down, never squash them; a short tile draws 24px, so the day's last one
+      // moves the night down to clear it
       const fit = () => { grid.style.minHeight = (w1 - w0) / 60 * CL_DAY_HOUR + 'px'; return grid.clientHeight / (w1 - w0) || 1; };
       let k = fit();
       const end = Math.max(...timed.filter(r => r.mins).map(r => r.min + 24 / k));
@@ -10111,18 +10193,20 @@ document.addEventListener('alpine:init', () => {
       }
       // cascade, the week's rule at day width: a later tile steps right over the earlier one and runs to the edge, the
       // earlier keeps its title line; two starting within a line of each other sit side by side
-      const len = r => Math.max(r.mins, 24 / k), hit = (a, b) => a.r.min < b.r.min + len(b.r) && a.r.min + len(a.r) > b.r.min;   // a short tile still draws 24px
+      const ng = r => r.it.going === false, len = r => ng(r) ? CL_NG_PX / k : Math.max(r.mins, 24 / k);   // a short tile still draws 24px
+      // a Not going tile under the floor of a tile above it (that one's 24px runs past its end) draws below it, never across it
+      const drawn = new Map(timed.filter(r => r.mins && ng(r)).map(r => [r, Math.max(r.min, ...timed.filter(o => o.mins && !ng(o) && o.min <= r.min && o.min + len(o) > r.min).map(o => o.min + len(o)))]));
+      const st = r => drawn.get(r) ?? r.min, hit = (a, b) => st(a.r) < st(b.r) + len(b.r) && st(a.r) + len(a.r) > st(b.r);
       const at = timed.filter(r => r.mins).map(r => ({ r, x0: 0, x1: 1, z: 0 }));
-      // his 11-15 21:58 "if the event/block isn't a child of another or in another block or something, it should go back to the
-      // leftmost baseline": a tile clears the block lane (--L) only where a block sits beside it, else it starts at the hours'
-      // edge (--g); a run of overlapping tiles shares one edge so the cascade's fractions keep one width
+      // a tile clears the block lane (--L) only where a block sits beside it, else it starts at the hours' edge (--g);
+      // a run of overlapping tiles shares one edge so the cascade's fractions keep one width
       const beside = r => blocks.some(b => b._sm < r.min + len(r) && b._em > r.min), runs = [];
       let runEnd = -1;
       for (const r of timed) { if (r.min >= runEnd) runs.push([]); runs.at(-1).push(r); runEnd = Math.max(runEnd, r.min + len(r)); }
       const lane = new Map(runs.flatMap(run => { const L = run.some(beside); return run.map(r => [r, L]); }));
       const edge = r => lane.get(r) ? 'var(--L)' : 'var(--g)';
       at.forEach((a, i) => {
-        const prev = at.slice(0, i).filter(b => hit(a, b)), near = prev.findLast(b => (a.r.min - b.r.min) * k < 16 && b.x1 - b.x0 >= .8);   // halves of 40% at least: a run of short tiles 15px apart cascades, never splits to slivers
+        const prev = at.slice(0, i).filter(b => hit(a, b)), near = prev.findLast(b => (st(a.r) - st(b.r)) * k < 16 && b.x1 - b.x0 >= .8);   // halves of 40% at least: a run of short tiles 15px apart cascades, never splits to slivers
         if (near) { const mid = (near.x0 + near.x1) / 2; Object.assign(a, { x0: mid, x1: near.x1, z: near.z, ring: near.ring }); near.x1 = mid; }
         else if (prev.length) Object.assign(a, { x0: Math.min(.6, Math.max(...prev.map(b => b.x0)) + .28), z: 1 + Math.max(...prev.map(b => b.z)), ring: true });   // never narrower than 40%
       });
@@ -10134,14 +10218,14 @@ document.addEventListener('alpine:init', () => {
       const wide = el.closest('.cl-agwrap').clientWidth >= 720;   // the 720px container query's line: a desk page has room for where and what
       let evs, locs;   // by id, built once per render when a tall tile needs them
       at.forEach(({ r, x0, x1, z, ring }, i) => {
-        const it = r.it, tw = tws(r), L = edge(r), ht = Math.max(r.mins * k, 24), ev = wide && ht >= 58 && it.kind === 'event' && (evs ||= new Map(this.events.map(e => [e.id, e]))).get(it.id);
+        const it = r.it, tw = tws(r), L = edge(r), ht = ng(r) ? CL_NG_PX : Math.max(r.mins * k, 24), ev = wide && ht >= 58 && it.kind === 'event' && (evs ||= new Map(this.events.map(e => [e.id, e]))).get(it.id);
         const more = ev ? [(ev.location?.ids || []).map(id => (locs ||= new Map(this.locations.map(x => [x.id, x]))).get(id)?.name).filter(Boolean).join(', '), ev.notes].filter(Boolean) : [];
         const ask = this.clAsks(it), chips = room(at[i]) ? this._clAskHtml(it, ask, true) : '';
         const cov = ht < 40 && at.some(b => b.z > z && hit(at[i], b));   // the week's .cl-cov: a later tile over a one-line tile's far end, so its time rides beside the title
         const cut = ht >= 40 && ask && !chips ? Math.min(...over(at[i]).map(b => b.x0).filter(x => x > x0 && x < x1)) : Infinity;   // where a later tile covers this one's time line: Going? shows whole before it or not at all
         const imp = it.importance === 'must' || it.importance === 'focus' ? html`<svg class="ico cl-event-imp" style="color:${this.pc(it.importance)}"><use href="#i-prio-fill"/></svg>` : '';
-        parts.push({ id: r.key, html: html`<div class="cl-event ${it.kind} tier-${ht >= 40 ? 'full' : 'compact'}${ring ? ' cl-casc' : ''}${cov ? ' cl-cov' : ''}${cut < 1 ? ' cl-cut' : ''}${r.min + r.mins <= now ? ' past' : ''}${this.clTaskState(it)}" data-id="${r.key}" role="button" tabindex="0" draggable="true"`
-          + html` style="${cut < 1 ? `--cut:${tw * (cut - x0)}px;` : ''}top:${P(r.min)}%;height:max(24px, ${P(r.min + r.mins) - P(r.min)}%);left:calc(${L} + (100% - ${L}) * ${x0} + 2px);width:calc((100% - ${L}) * ${x1 - x0} - 4px);z-index:${2 + z};--i:${i};--cc:${this.clItemColor(it)}">`
+        parts.push({ id: r.key, html: html`<div class="cl-event ${it.kind} tier-${ht >= 40 ? 'full' : 'compact'}${ring ? ' cl-casc' : ''}${cov ? ' cl-cov' : ''}${cut < 1 ? ' cl-cut' : ''}${r.min + r.mins <= now ? ' past' : ''}${this.clTaskState(it)}" data-id="${r.key}"${raw(/^g:/.test(it.id) ? html` data-g="${it.id}" data-at="${it.start}"` : '')} role="button" tabindex="0" draggable="true"`
+          + html` style="${cut < 1 ? `--cut:${tw * (cut - x0)}px;` : ''}top:${P(st(r))}%;height:${ng(r) ? CL_NG_PX + 'px' : `max(24px, ${P(r.min + r.mins) - P(r.min)}%)`};left:calc(${L} + (100% - ${L}) * ${x0} + 2px);width:calc((100% - ${L}) * ${x1 - x0} - 4px);z-index:${2 + z};--i:${i};--cc:${this.clItemColor(it)}">`
           + (it.kind === 'task-block' ? this.clCheckHtml(it, 'cl-evt-check') : '')
           + html`<span class="cl-event-b"><span class="cl-event-t"${raw(chips ? ' tabindex="-1"' : '')}>${raw(imp)}<span>${it.title}</span></span><span class="cl-event-tm"><span>${this.clTimeLabel(it)}</span>${raw(chips || (ask ? '<b class="cl-ask">Going?</b>' : ''))}</span>`
           + more.map(t => html`<span class="cl-event-tm cl-event-x">${t}</span>`).join('') + '</span></div>' });
@@ -10170,18 +10254,18 @@ document.addEventListener('alpine:init', () => {
     clHours() { return CL_HOURS; },
     clHourLabel(h) { return h === 0 ? '' : h < 12 ? h + ' AM' : h === 12 ? 'Noon' : (h - 12) + ' PM'; },
     clNowPct() { return this.clNowMin() / 1440 * 100; },
-    clAsks(it) { return it.kind === 'event' && it.going === undefined && it.start.slice(0, 10) === this._nowDay && (it.end.slice(0, 10) > this._nowDay || this._clMin(it.end) > this.clNowMin()); },   // an unanswered event asks on its day until it ends
+    clAsks(it) { return it.kind === 'event' && it.going === undefined && !String(it.id).startsWith('g:') && it.start.slice(0, 10) === this._nowDay && (it.end.slice(0, 10) > this._nowDay || this._clMin(it.end) > this.clNowMin()); },   // an unanswered event asks on its day until it ends
     clNowMin() { void this._nowTickV; const n = new Date(); return n.getHours() * 60 + n.getMinutes(); },
-    // The clock marks read the tick only on today's column, and not while Plan is hidden (peek shows off-Plan): each
-    // tick would restyle every column's hidden line. Showing Plan re-runs them off `surface`, so the line is never a minute late.
+    // The clock marks read the tick only on today's column, and not while Plan is hidden (peek shows off-Plan):
+    // each tick would restyle every column's hidden line. Showing Plan re-runs them off `surface`.
     clNowAt(col, prop, peek) { return col?.today && (peek || !this._clHidden()) ? 'display:block;' + prop + ':' + this.clNowPct() + '%' : 'display:none'; },
     clNowLabel(col) { return col?.today && !this._clHidden() ? this._clHM(this.clNowMin()) : ''; },
     clNowCuts(h, col) { return !!col?.today && !this._clHidden() && Math.abs(this.clNowMin() - h * 60) * this.clHourH / 60 < 15.5; },   // px: the now pill (−8…+7.5) meets the hour label (−7…+7.5)
     _clHM(m) { return `${((Math.floor(m / 60) + 11) % 12) + 1}:${String(m % 60).padStart(2, '0')}`; },
     _clHMA(m) { return this._clHM(m) + (m < 720 ? ' AM' : ' PM'); },   // a landing time: keeps :00
     _clClock(iso) { return this._clHM(this._clMin(iso)); },
-    // A moment has no range to state: a TIMED due date/deadline carries end === start, and so does an event
-    // saved with no length. As a range both read "3:00 – 3:00", a broken range rather than a moment.
+    // A moment has no range to state: a TIMED due date/deadline and an event saved with no length carry end ===
+    // start, which as a range reads "3:00 – 3:00".
     clTimeLabel(it) { if (it.allDay) return ''; const a = this._clClock(it.start);
       if (this._clCross(it)) {   // every day's slice states the whole range, AM/PM so "2:00" can't read as afternoon; past the next day, with weekdays
         const day = iso => new Date(iso.slice(0, 10) + 'T00:00'), far = day(it.end) - day(it.start) > 1.5 * 864e5;
@@ -10192,22 +10276,22 @@ document.addEventListener('alpine:init', () => {
     _clCross(it) { return !it.allDay && (it.end || '').slice(0, 10) > it.start.slice(0, 10); },
     // A view switch or jump outranks motion in flight, whose frames would land in the new view's period space.
     _clHalt() { motion.stop('clTween'); motion.stop('clFling'); },
-    // Park the anchor period under the chrome, opening at the waking hour — or at `frac`, the hour a keyboard step keeps.
-    // clientHeight is 0 on first open, and _clMaxFrac needs it — retry until layout settles. One assignment; nothing to re-assert afterwards.
+    // Park the anchor period under the chrome, opening at the waking hour, or at `frac`, the hour a keyboard step keeps.
+    // clientHeight is 0 on first open and _clMaxFrac needs it: retry until layout settles.
     _clScrollToPeriod(tries = 8, frac, turn) {   // turn: Today and a picked date turn the page as the wheel does
       this._clHalt(); const el = _staticEl('.cl-pages'); if (!el) return;   // not $refs: Alpine resolves it from the caller, and a week tile that opened its day is gone by now
       if (!el.clientHeight) { if (tries > 0) requestAnimationFrame(() => this._clScrollToPeriod(tries - 1, frac, turn)); return; }
       if (!this.clHourH) this.clRecalcPages();
-      // day: the whole day is on one page, so there is no waking-hours offset to scroll past. In week it is a
-      // FRACTION of the period, so a zoom cannot move it.
+      // day: the whole day is on one page, so no waking-hours offset. In week it is a FRACTION of the period, so a
+      // zoom cannot move it.
       const idx = this._periodIdx(this._clDate()), to = frac ?? (this.clView === 'day' ? 0 : Math.min(this._clMaxFrac(), CL_WAKING_START / 24));
       const gap = idx + to - this.clPos.idx - this.clPos.frac;
       if (!turn || !gap) return this._clSetPos(idx, to);   // already there: no idle turn holding the page
       if (Math.abs(gap) > 1) this._clSetPos(idx - Math.sign(gap), to);   // from the period beside the target: months away is still one turn
       this._clTween(idx, to);
     },
-    // A period ARRIVING (view switch, scroll settle, jump) stages its events in. Off-then-on so the
-    // animation restarts; the class rides .calendar so every child replays together.
+    // A period ARRIVING (view switch, scroll settle, jump) stages its events in. Off-then-on restarts the
+    // animation; the class rides .calendar so every child replays together.
     _clSettle(at = performance.now()) {
       const arm = () => {
         this.clSettling = true;
@@ -10221,8 +10305,8 @@ document.addEventListener('alpine:init', () => {
       this.clSettling = false;
       this.$nextTick(arm);
     },
-    // The heading is the title the layout CLAMPED to the bar — asked of the layout, not searched for in its
-    // output. (Scanning the rendered list for |y − barY| < 3 could name a different month than the fallback formula.)
+    // The heading is the title the layout CLAMPED to the bar, asked of the layout: scanning the rendered list for
+    // |y − barY| < 3 could name a different month than the fallback formula.
     _clPeriodState(list) {
       const z = (list || this._periodZoneTitles()).find(t => t.atBar);
       const name = z ? z.name : this._periodLabelAt(this.clPos.idx);
@@ -10236,14 +10320,14 @@ document.addEventListener('alpine:init', () => {
       const first = Math.max(0, this.clPos.idx - 1), list = [];
       for (let idx = first; idx <= first + 2; idx++) {
         const vt = head + (idx - base) * rowH - scrollTop;
-        // membership is a function of idx ONLY — frac is non-reactive here, so a frac-dependent filter would
-        // leave an incoming title unmounted until the next crossing; _zoneLayout parks out-of-zone ones instead
+        // membership is a function of idx ONLY: frac is non-reactive here, so a frac-dependent filter would leave an
+        // incoming title unmounted until the next crossing; _zoneLayout parks out-of-zone ones instead
         list.push({ name: this._periodLabelAt(idx), vt });
       }
       return this._zoneLayout(list, head, zoneH, barY, 34 + (this.clView === 'week' ? _clAdH : 0));   // 34: the .cl-mtitle line box; _clAdH: the top week's deadline rail
     },
-    // Pinch = ctrl/⌘+wheel, claimed in capture phase for EVERY calendar view (else month-view pinch
-    // page-zooms the browser). Accumulates past a deliberate threshold and steps the view finer or coarser.
+    // Pinch = ctrl/⌘+wheel, claimed in capture phase for EVERY calendar view (else month-view pinch page-zooms the
+    // browser). Accumulates past a threshold and steps the view finer or coarser.
     clZoomWheel(e) {
       if (e.cancelable) e.preventDefault();
       const t = performance.now(), fresh = !this._clZG || t - this._clZGT > CL_GESTURE_GAP;
@@ -10260,24 +10344,22 @@ document.addEventListener('alpine:init', () => {
       const views = this.clViews(), next = views[views.indexOf(this.clView) + (g.acc > 0 ? 1 : -1)];   // spread = finer
       if (next) { g.stepped = true; this.clSetView(next); }
     },
-    // Zoom changes the SCALE and nothing else — clPos already says where we are, in units a scale cannot
-    // touch, and the transform is bound to the same --ph the blocks are, so both change in one flush.
+    // Zoom changes the SCALE and nothing else: clPos is in units a scale cannot touch, and the transform is bound
+    // to the same --ph the blocks are, so both change in one flush.
     _clZoomTo(z) {
       if (!_staticEl('.cl-pages')) return;
       this.clZoom = z; this.clHourH = Math.max(18, Math.round(this._clFitHour() * z));
       this._clSetPos(this.clPos.idx, Math.min(this.clPos.frac, this._clMaxFrac()));   // a coarser scale can shrink the room to travel
     },
-    // ONE travel model for every continuous input — trackpad, wheel, finger. `dy` is pixels of hand movement;
-    // everything downstream is periods. A gesture moves WITHIN one period and stops at its edge; the next
-    // gesture turns the page. So every hour stays reachable, you never rest straddling two periods, and a
-    // flick can't carry you three days past what you were reading. Momentum keeps firing events, so a gesture
-    // ends only on CL_GESTURE_GAP of real quiet.
+    // ONE travel model for every continuous input (trackpad, wheel, finger). `dy` is pixels of hand movement;
+    // downstream is periods. A gesture moves WITHIN one period and stops at its edge; the next gesture turns the
+    // page, so every hour stays reachable, you never rest straddling two periods, and a flick can't carry you days
+    // past what you were reading. Momentum keeps firing events, so a gesture ends only on CL_GESTURE_GAP of quiet.
     _clTravel(dy, fresh) {
       const ph = this.clPeriodH(), maxF = this._clMaxFrac(), EDGE = 0.002;
       if (fresh) {
-        // A boundary crossing — or a period that exactly fills the viewport, where there is nowhere to travel —
-        // is a PAGE TURN, and it must ANIMATE: clamping to the neighbor instead jumps a whole viewport on the
-        // first pixel of scroll.
+        // A boundary crossing, or a period that exactly fills the viewport, is a PAGE TURN and must ANIMATE:
+        // clamping to the neighbor jumps a whole viewport on the first pixel of scroll.
         const f = this.clPos.frac;
         const step = maxF < EDGE ? Math.sign(dy) : dy > 0 && f >= maxF - EDGE ? 1 : dy < 0 && f <= EDGE ? -1 : 0;
         this._clGate = { turned: !!step };
@@ -10287,13 +10369,13 @@ document.addEventListener('alpine:init', () => {
       motion.stop('clTween');   // a hand mid-flight outranks a tween, same rule as _glide
       this._clSetPos(this.clPos.idx, Math.max(0, Math.min(maxF, this.clPos.frac + dy / ph)));
     },
-    // A new gesture: CL_GESTURE_GAP of quiet ended slower than half the stream's last speed, or a SPEED rising out of
-    // a decay — web's stand-in for ClPages' `.began` (the next swipe lands inside the last one's momentum). `t` is the
-    // event's own time and speed is px/ms: a main-thread stall makes Chrome merge a frame-rate stream into ONE event
-    // spanning it at about the stream's speed (a hand from rest is far slower), so that reads as the same hand, and a
+    // A new gesture: CL_GESTURE_GAP of quiet, ended slower than half the stream's last speed, or a SPEED rising out
+    // of a decay: web's stand-in for ClPages' `.began` (the next swipe lands inside the last one's momentum). `t` is
+    // the event's own time and speed is px/ms: a main-thread stall makes Chrome merge a frame-rate stream into ONE
+    // event at about the stream's speed (a hand from rest is far slower), so that reads as the same hand, and a
     // coalesced burst (…17, 15, 38 over 48ms) is no rise. `spins` (pull-up): a free-spinning wheel's slowing clicks
-    // continue their stream too, and a wheel's pause between strokes is a dip; the calendar keeps every click
-    // CL_GESTURE_GAP apart a new gesture, and a trackpad stroke that hesitates one gesture (ClPages).
+    // continue their stream and its pause between strokes is a dip; the calendar keeps every click CL_GESTURE_GAP
+    // apart a new gesture, and a hesitating trackpad stroke one gesture (ClPages).
     // Mini-spec (`w`, the calendar's _clWheel or a caller's own state): a peak > .5px/ms ≥6 events back (`spins`:
     // ≥96ms — a stamp's jitter doesn't count), floor < peak/2, then speed > 2×floor + .25.
     // ceiling: a fast-decaying tail (~7%/frame) stalled ~400ms early on, or any stalled under .25px/ms, reads as a hand — loosen the ratio/floor if one turns a page or opens the overview.
@@ -10318,11 +10400,10 @@ document.addEventListener('alpine:init', () => {
       this._clTravel(dy, fresh);
       this._clScrolling();
     },
-    // Touch. There is no scroller to pan, so the finger drives clPos itself. Under a finger a period is a PAGE:
-    // the timeline follows it 1:1 — across the edge into the neighbour, at most one — and the release decides
-    // (_clRelease). Claim only once the drag is clearly vertical, or the horizontal surface-swipe loses its
-    // gesture. The hand catches whatever we were animating. Times are the EVENTS' own (swipe-velocity rule).
-    // ONE finger drives: a second one landing, moving or lifting mid-drag is ignored (emil §10 multi-touch guard).
+    // Touch. With no scroller to pan, the finger drives clPos itself: a period is a PAGE and the timeline follows
+    // 1:1, across the edge into the neighbor (at most one); the release decides (_clRelease). Claim only once the
+    // drag is clearly vertical, or the horizontal surface-swipe loses its gesture. The hand catches whatever we
+    // were animating. Times are the EVENTS' own. ONE finger drives: a second landing, moving or lifting is ignored.
     clPagesTouch(e) {
       if (e.type === 'pointerdown') {
         if (this._clTouch || e.pointerType !== 'touch') return;
@@ -10331,8 +10412,8 @@ document.addEventListener('alpine:init', () => {
         return;
       }
       const d = this._clTouch; if (!d || e.pointerId !== d.id) return;
-      // no velocity from a finger that STOPPED before lifting (~4 frames still), nor from a system cancel —
-      // an interruption lands on the NEAREST page (the Android pager does the same)
+      // no velocity from a finger that STOPPED before lifting (~4 frames still), nor from a system cancel: an
+      // interruption lands on the NEAREST page (as the Android pager)
       if (e.type === 'pointerup' || e.type === 'pointercancel') { this._clTouch = null; return this._clRelease(e.type === 'pointercancel' || e.timeStamp - d.t > 64 ? 0 : d.v); }
       const dy = d.y0 - e.clientY;
       if (!d.on) {
@@ -10347,9 +10428,8 @@ document.addEventListener('alpine:init', () => {
       d.v = (d.y - e.clientY) / Math.max(1, e.timeStamp - d.t); d.y = e.clientY; d.t = e.timeStamp;
       this._clScrolling();
     },
-    // A release. Inside a period's travel it coasts on its momentum, stopping at the period's edge; in the gap
-    // between two periods it pages exactly like the surface swipe — a flick or past half-way commits the
-    // neighbour, anything else springs back. So a finger never rests you straddling two periods.
+    // A release. Inside a period's travel it coasts, stopping at the period's edge; in the gap between two periods
+    // it pages like the surface swipe: a flick or past half-way commits the neighbor, anything else springs back.
     _clRelease(v) {
       const maxF = this._clMaxFrac(), i = this.clPos.idx, f = this.clPos.frac;
       if (f <= maxF) return Math.abs(v) > 0.05 && this._clFlingStep(v);
@@ -10357,16 +10437,16 @@ document.addEventListener('alpine:init', () => {
       this._clTween(i + next, next ? 0 : maxF);
     },
     // Time-based: v (px/ms) decays by CL_FLING per 16ms and travels its mean over dt, so a 120Hz screen coasts as
-    // far and as long as a 60Hz one (a per-frame decay runs it twice as fast for half the time; end-of-step speed
-    // alone undershoots 60Hz by ~3%). dt caps at 64ms so a stalled frame can't lurch. First step is SYNCHRONOUS.
+    // far as a 60Hz one (a per-frame decay runs twice as fast). dt caps at 64ms so a stalled frame can't lurch.
+    // First step is SYNCHRONOUS.
     _clFlingStep(v) {
       let last = performance.now() - 16;
       const step = now => { const dt = Math.min(64, Math.max(0, now - last)), v0 = v; last = now; v *= CL_FLING ** (dt / 16);
         if (Math.abs(v) < 0.02) return false; this._clTravel((v0 + v) / 2 * dt, false); this._clScrolling(); return true; };
       if (step(last + 16)) motion.run('clFling', step); else motion.stop('clFling');
     },
-    // Nothing has landed while a finger is still down (however long it holds still) or a spring-back is mid-flight —
-    // landing then would anchor the day the timeline is merely passing through (T flashes mid-drag, or sticks after).
+    // Nothing lands while a finger is still down or a spring-back is mid-flight: landing then would anchor the
+    // day the timeline is merely passing through (T flashes mid-drag, or sticks after).
     _clAgScroll(ag, dy) { const room = dy > 0 ? ag.scrollHeight - ag.clientHeight - ag.scrollTop > .5 : dy < 0 && ag.scrollTop > .5; ag.scrollTop += dy; return room; },   // false at its end in dy's direction, though a sub-pixel dy moves nothing
     _clScrolling() { if (!this.clScrolling) this.clScrolling = true; clearTimeout(_clScrollT); _clScrollT = setTimeout(() => { if (this._clTouch || motion.running('clTween')) return this._clScrolling(); this.clScrolling = false; this._clLand(); }, motion.t(600)); },
     // Landing settles the anchor on whatever period is on top. No scrollend to wait for — we know when we stopped.
@@ -10377,9 +10457,8 @@ document.addEventListener('alpine:init', () => {
     },
 
 
-    // The title IS the date picker in day/week — the same popup the composer uses for a deadline, so the
-    // positioning, clamping and month paging are all the tested ones. Week mode picks a WEEK: the whole row
-    // highlights, and landing anywhere in it anchors to that week.
+    // The title IS the date picker in day/week: the composer's deadline popup. Week mode picks a WEEK: the whole
+    // row highlights, and landing anywhere in it anchors to that week.
     clPopHoverWk: '',
     clOpenDatePop(anchor) {
       if (this.clView !== 'day' && this.clView !== 'week') return;
@@ -10400,12 +10479,12 @@ document.addEventListener('alpine:init', () => {
     clStep(dir, vt, at) {
       const mo = this.clView === 'month', hour = this._clHour();
       const set = () => { mo ? this._clMAnchor(dir) : (this.clAnchor = isoDate(this._clAt(dir))); }, after = () => mo ? this._clStepMonth() : this._clScrollToPeriod(8, hour);
-      if (vt) this._withTransition(set, () => { after(); if (this.reduceMotion()) this._clSettle(at); }, false, true);   // Shift+↑/↓ — the same morph a view switch runs; without one the period fades in
-      else if (!mo) { set(); this._clTween(this._periodIdx(this._clDate()), hour); }   // a held arrow's period turns the page as a wheel does; the next step retargets it
+      if (vt) this._withTransition(set, () => { after(); if (this.reduceMotion()) this._clSettle(at); }, false, true);   // Shift+↑/↓: the view-switch morph; without one the period fades in
+      else if (!mo) { set(); this._clTween(this._periodIdx(this._clDate()), hour); }   // a held arrow turns the page as a wheel does; the next step retargets
       else { set(); after(); if (this.reduceMotion()) this._clSettle(); }   // month glides as Today does; reduced, it lands and fades in
     },
-    // The strip's "T" shows only while today is OUT of view (Android planShowToday) — the
-    // SETTLED day (clAnchor lands after a drag), never the live drag, which would flash it mid-gesture
+    // The strip's "T" shows only while today is out of view (Android planShowToday), judged on the settled
+    // day (clAnchor), not the live drag, which would flash it mid-gesture.
     clShowToday() { const d = new Date(); return this.clView === 'month' ? this.clFocusYM !== d.getFullYear() * 12 + d.getMonth() : this.clAnchor !== isoDate(d); },
     jbDay() {   // the bar's Plan chip: Today until the view leaves it
       if (!this.clShowToday()) return 'Today';
@@ -10415,12 +10494,12 @@ document.addEventListener('alpine:init', () => {
     clToday(turn = true) {
       const now = new Date(), gap = now.getFullYear() * 12 + now.getMonth() - this.clFocusYM;
       this.clAnchor = isoDate(now); this.clDayFocus = this.clDayInView = null;   // the Tab stop comes back with today
-      if (this.clView !== 'month') return queueMicrotask(() => this._clScrollToPeriod(8, undefined, turn));   // not $nextTick: a surface switch holds that two frames
-      if (!turn || !gap) return this.clScrollToAnchor();   // already in today's month: no idle glide leaving its target behind
+      if (this.clView !== 'month') return queueMicrotask(() => this._clScrollToPeriod(8, undefined, turn));   // not $nextTick: a surface switch holds it two frames
+      if (!turn || !gap) return this.clScrollToAnchor();   // already in today's month: no idle glide
       if (this.reduceMotion()) { this.clScrollToAnchor(); return this._clSettle(); }   // lands at once; today's month fades in
       // month turns on its arrows' glide, from the month beside today's: months away is still one turn
       if (Math.abs(gap) > 1) this.clScrollToAnchor(8, this._monthFirstIdx(new Date(now.getFullYear(), now.getMonth() - Math.sign(gap), 1)));
-      queueMicrotask(() => this._clStepMonth());   // after the jump's own microtask writes scrollTop: that write cancels a glide
+      queueMicrotask(() => this._clStepMonth());   // after the jump's microtask writes scrollTop, which cancels a glide
     },
     clOpenDay(iso) { this.clSetView('day'); this.clAnchor = iso; },
     // --- Event editor (create / edit / delete) ---
@@ -10429,7 +10508,7 @@ document.addEventListener('alpine:init', () => {
     },
     clEditEvent(id, tile = false, day = null) {
       const e = this.events.find(x => x.id === id); if (!e) return;
-      day = e.recurrence?.freq ? day : e.ends_at.slice(0, 10);   // a repeating event answers per occurrence (no day, no answer); a one-off until its last day
+      day = e.recurrence?.freq ? day : e.ends_at.slice(0, 10);   // a repeating event answers per occurrence; a one-off until its last day
       const multi = e.starts_at.slice(0, 10) < e.ends_at.slice(0, 10);
       this.eventEdit = { draft: tile && !multi, viewIso: e.recurrence?.freq ? day : null, id: e.id, title: e.title, date: e.starts_at.slice(0, 10), span: this._adSpan(e), start: timeOf(e.starts_at, '09:00'), end: timeOf(e.ends_at, '10:00'), multi, all_day: !!e.all_day, color: e.color || null, location_id: e.location?.mode === 'only' ? e.location.ids[0] ?? null : null, weekdays: this._clDays(e.recurrence), ...this._clRep(e.recurrence), countdown: !!e.countdown, importance: e.importance || 'none', notes: e.notes ?? '', ticket: e.ticket ?? '', attachments: [...e.attachments ?? []], files: [], day, going: day ? goingOn(e, day) ?? null : null };
       this._loadFiles(this.eventEdit.attachments);
@@ -10443,7 +10522,7 @@ document.addEventListener('alpine:init', () => {
     },
     // Must rings an Outlook meeting as an Alarm: on when Outlook marks it High, a tap sets it for the whole series
     pcMust(id) { return this.pcMustSet[id.slice(3).split('#')[0]] ?? !!this.pcEvents.find(e => e.id === id)?.high; },
-    evImp(e) { return !e?.pc ? e?.importance : this.pcMust(e.id) ? 'must' : 'none'; },   // an Outlook meeting carries Must or nothing: Focus has no ring of its own there
+    evImp(e) { return !e?.pc ? e?.importance : this.pcMust(e.id) ? 'must' : 'none'; },   // an Outlook meeting is Must or nothing: no Focus ring there
     evSetImp(v) { const e = this.eventEdit; if (!e.pc) e.importance = v; else if ((v === 'must') !== this.pcMust(e.id)) this.clPcMust(e.id); },   // a meeting's Must sets at once, for the series, as its tile chip does
     clPcMust(id) {
       const series = id.slice(3).split('#')[0], on = !this.pcMust(id), { [series]: _, ...rest } = this.pcMustSet;
@@ -10484,26 +10563,25 @@ document.addEventListener('alpine:init', () => {
       this.mailbox.redraw();
       this.eventEdit = null;
     },
-    clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clEditPc(it); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
-    clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does: done, the composer stays open
+    clItemClick(it, tile) { if (!it) return; if (String(it.id).startsWith('pc:')) return this.clEditPc(it); if (String(it.id).startsWith('g:')) return this.clEditG(it); if (it.kind === 'event') return this.clEditEvent(it.id, tile, it.start.slice(0, 10)); if (this.clIsTask(it)) return this.clOpenTaskSide(it.id); if (it.start) this.clOpenDay(it.start.slice(0, 10)); },
+    clToggleTask(id) { if (id === this.editing && this.composer.open) return this.typeTap(false); const t = this.byId.get(id); if (t) this.toggle(t); },   // the open composer's task ticks as its own check does; the composer stays open
     clKeyActivate(e, el = e.currentTarget) { if (el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); } },
-    // ONE state class for every calendar mark of a task (and a Not going event) — chip, timeline event, agenda row, chapter band,
-    // due/deadline mark, so a finished deadline never reads like a live one.
+    // One state class for every calendar mark of a task (and a Not going event), so a finished deadline never reads as live.
     clTaskState(it) { const t = this.clIsTask(it) && this.byId.get(it.id); return it.going === false ? ' not-going' : !t ? '' : t.archived_at ? ' archived' : t.completed_at ? ' done' : ''; },
-    // checkHtml's row args for a task off the list (mkRow builds the list's) — same blocked/paused/prog states as list rows.
-    // imp: the composer's check shows the DRAFT's importance, not the stored one.
+    // checkHtml's row args for a task off the list, same blocked/paused/prog states as list rows.
+    // imp: the composer's check shows the draft's importance, not the stored one.
     _chkArgs(t, imp = t.importance) {
       const hp = this.hasProgress(t);
       return { t, pc: this.pc(imp), note: inNotes(t), blocked: openBlockers(t, this.byId).length > 0, hasProgress: hp, progress: hp ? this.rowProgress(t) : 0 };
     },
     clCheckHtml(it, cls = 'cl-chip-check') { const t = this.byId.get(it.id); return t ? checkHtml(this._chkArgs(t), 'button', cls) : ''; },   // calendar task checkboxes
-    entryCheckHtml(c) { return checkHtml(this._chkArgs(c), 'button', 'sm'); },   // composer subtask rows — adds archived/blocked/paused not covered by inline :class
-    // The composer's type toggle (6th check site): tack = which layer. A new task has no row state, so only the draft's importance colors it.
+    entryCheckHtml(c) { return checkHtml(this._chkArgs(c), 'button', 'sm'); },   // composer subtask rows
+    // The composer's type toggle: tack = which layer. A new task has no row state, so only the draft's importance colors it.
     compCheckHtml(tack) { const t = this.editingTask(), imp = this.draft.importance; return checkHtml({ ...(t ? this._chkArgs(t, imp) : { t: {}, pc: this.pc(imp) }), note: tack }, 'span'); },
     typeFront(tack) { return tack === inNotes(this.draft); },
     typeLabel(tack) { return !this.typeFront(tack) ? (tack ? 'Make it a note' : 'Make it a task') : tack ? 'Note' : !this.editing ? 'Task' : this.editingTask()?.content; },   // editing: a checkbox named by its task, as the row's
-    // The check = complete (the saved task; the draft waits for Save); the tack swaps the draft's type. Note → Task restores the
-    // type it had (steps), and deleting the memo keeps a round trip's draft equal to its base (no phantom unsaved edit).
+    // The check completes the saved task (the draft waits for Save); the tack swaps the draft's type. Note → Task restores
+    // the type it had, and deleting the memo keeps a round trip's draft equal to its base (no phantom unsaved edit).
     typeTap(tack) {
       const d = this.draft;
       if (this.typeFront(tack)) return this._pillThen(() => this.toggleEditing());   // a trailing token pills like Enter
@@ -10512,21 +10590,22 @@ document.addEventListener('alpine:init', () => {
     },
     clChipCls(it) {
       const st = this.clTaskState(it);
-      if (it.spanStart === undefined || this.clView === 'day') return it.kind + st;   // one column ⇒ nothing to join across, so no span caps
+      if (it.spanStart === undefined || this.clView === 'day') return it.kind + st;   // one column: no span caps
       return it.kind + st + ' cl-span' + (it.spanStart ? ' cl-span-l' : '') + (it.spanEnd ? ' cl-span-r' : '') + (!it.spanStart && !it.spanEnd ? ' cl-span-mid' : '');
     },
     // [main, year, a named day's name]: the name takes the weekday's place (the week head's slot, in the title)
     clSplitTitle(n) {
-      const m = n.match(/^(.*?),?\s*(\d{4})$/), [main, year] = m ? [m[1], ' ' + m[2]] : [n, ''];   // trailing YEAR only — splitting on the first space would mangle 'Jul 19 – Jul 25, 2026' down to 'Jul 19'
+      const m = n.match(/^(.*?),?\s*(\d{4})$/), [main, year] = m ? [m[1], ' ' + m[2]] : [n, ''];   // trailing year only: splitting on the first space would turn 'Jul 19 – Jul 25, 2026' into 'Jul 19'
       const day = _dayLabels.get(n), name = day ? this.clDayLabel(day.iso) : '';
       return name && main.startsWith(day.wd) ? [main.slice(day.wd.length), year, name] : [main, year, ''];
     },
     clIsTask(it) { return it.kind === 'task-due' || it.kind === 'task-block' || it.kind === 'task-deadline'; },
-    // all-day → date-only, keeping its day-span when the date moves; a single-day end before the start is the next day (22:00–02:00), a multi-day one is kept as typed; shared by event + block
+    // all-day → date-only, keeping its day-span when the date moves; a single-day end before the start is the next day
+    // (22:00–02:00), a multi-day one is kept as typed. Shared by event and block.
     _evRange(e, date = e.date) {
       const end = new Date(date + 'T00:00');
-      if (e.all_day) { end.setDate(end.getDate() + Math.max(0, e.span || 0)); return { starts_at: date, ends_at: isoDate(end) }; }   // the All-day editor hides a backwards end date, so it shows and saves one day
-      end.setDate(end.getDate() + (e.multi ? e.span : +(e.end < e.start)));   // multi: the end date the event editor shows, exactly as typed (< 0 mid-typing)
+      if (e.all_day) { end.setDate(end.getDate() + Math.max(0, e.span || 0)); return { starts_at: date, ends_at: isoDate(end) }; }   // the All-day editor hides a backwards end date: it shows and saves one day
+      end.setDate(end.getDate() + (e.multi ? e.span : +(e.end < e.start)));   // multi: the end date as typed (< 0 mid-typing)
       return { starts_at: date + 'T' + e.start, ends_at: isoDate(end) + 'T' + e.end };
     },
     // days an all-day row runs past its start: ends_at is INCLUSIVE (import.js finishEvent); an end before the start reads as 0
@@ -10535,16 +10614,17 @@ document.addEventListener('alpine:init', () => {
     async clSaveEvent() {
       const e = this.eventEdit; if (!e) return;
       if (e.pc) return this.clSavePc(e);
+      if (e.g) return this.clSaveG(e);
       if (!e.files.every(f => f.row)) return this.toast(e.files.some(f => f.failed) ? 'A file didn’t upload. Retry or remove it' : 'Files are still uploading');
       const recurrence = this._clRule(e), fields = { title: e.title.trim() || 'Untitled', notes: e.notes.trim() || null, all_day: e.all_day, color: e.color || null, countdown: e.countdown, importance: e.importance, recurrence, ...this._evRange(e, this._clAnchor(recurrence, e.date)),
         ticket: e.ticket.trim() || null, attachments: [...new Set([...e.attachments, ...e.files.map(f => f.row.id)])],
-        location: { mode: e.location_id ? 'only' : 'any', ids: e.location_id ? [e.location_id] : [] } };   // an event has one place: no writer sets 'except' or several
+        location: { mode: e.location_id ? 'only' : 'any', ids: e.location_id ? [e.location_id] : [] } };   // an event has one place
       if (fields.ends_at <= fields.starts_at && e.multi && !e.all_day) return this.toast('The end is before the start');   // stored as typed it would collapse the event
       const was = e.id && this.events.find(x => x.id === e.id);
       if (was && fields.ticket === (was.ticket ?? null) && fields.attachments.join() === (was.attachments ?? []).join()) { delete fields.ticket; delete fields.attachments; }   // unchanged stays unsent: an UPDATE naming them fails until db:apply
       if (was && fields.importance === (was.importance || 'none')) delete fields.importance;
       const start = fields.starts_at.slice(0, 10);
-      if (was?.recurrence?.freq && !recurrence && Object.keys(was.going ?? {}).some(k => k !== start)) fields.going = was.going[start] == null ? {} : { [start]: was.going[start] };   // a series ending as a one-off keeps its own day's answer alone
+      if (was?.recurrence?.freq && !recurrence && Object.keys(was.going ?? {}).some(k => k !== start)) fields.going = was.going[start] == null ? {} : { [start]: was.going[start] };   // a series ending as a one-off keeps only its own day's answer
       // a failed write keeps the editor and its edits
       let id = e.id;
       if (id) {
@@ -10558,22 +10638,21 @@ document.addEventListener('alpine:init', () => {
       }
       this.eventEdit = null;
     },
-    async clDeleteEvent() { const e = this.events.find(x => x.id === this.eventEdit?.id); if (!e || await this.perform('Deleted event', { target: 'event', kind: 'delete', id: e.id })) this.eventEdit = null; },   // a failed delete keeps the editor and its edits
+    async clDeleteEvent(bin) { if (this.eventEdit?.g) return this._gDelete(this.eventEdit.g, bin); const e = this.events.find(x => x.id === this.eventEdit?.id); if (!e || await this.perform('Deleted event', { target: 'event', kind: 'delete', id: e.id })) this.eventEdit = null; },   // a failed delete keeps the editor and its edits
 
-    // --- New block/event on the week/day grid. A click on empty time starts a 1h block at its slot; a new editor opened from
-    // the grid (that click or ＋) is a draft: its band stays on the grid and its editor sits beside it with no backdrop. While a
-    // draft is open a drag redraws it (a press inside it drags the nearer edge) and a click off it closes it.
-    // A timed tile opens its item the same way: the ghost stands in for the tile (clHeld) until save or close.
-    // No drag creates without an editor: it fights the pan.
+    // --- New block/event on the week/day grid. A click on empty time starts a 1h block at its slot; an editor opened from
+    // the grid is a draft: its band stays on the grid, its editor beside it with no backdrop. While a draft is open a drag
+    // redraws it (a press inside it drags the nearer edge) and a click off it closes it. A timed tile opens the same
+    // way: the ghost stands in for the tile (clHeld) until save or close. No drag creates without an editor: it fights the pan.
     clDraft() { const e = this.eventEdit || this.blockEdit; return e?.draft ? e : null; },
     clHeld(p) { const d = this.clDraft(), at = p.it.src ?? p.it.start.slice(0, 10); return d?.id === p.it.id && (d.viewIso || at) === at; },
-    _draftOn(d) { return d === this.eventEdit && d.viewIso || d.date; },   // a repeating event's ghost stands on the occurrence clicked; its date stays the series' start
+    _draftOn(d) { return d === this.eventEdit && d.viewIso || d.date; },   // a repeating event's ghost stands on the clicked occurrence; its date stays the series' start
     // A new item opens for its title (docs/ui/dialogs.md "typing first"); a phone's keyboard would bury the grid under a draft
     clDraftFocus(el) { const e = this.eventEdit || this.blockEdit; if (e.draft ? !document.documentElement.classList.contains('touch') : !e.id) queueMicrotask(() => el.querySelector('.ev-title')?.focus({ preventScroll: true })); },
     _hm(t) { return +t.slice(0, 2) * 60 + +t.slice(3, 5); },
-    // The editors' title is the composer's pill editor (the same engine, aimed at it): a typed day, time, length, repeat, place
-    // or block area lands on the item's own fields. The draft reads and writes the open editor, so a chip's removal and ⌘Z do too.
-    // Init reads untracked (_appRaw): x-init runs inside the editor's x-if effect, and a tracked read re-runs that effect on each
+    // The editors' title is the composer's pill editor aimed at it: a typed day, time, length, repeat, place or block area
+    // lands on the item's own fields. The draft reads and writes the open editor, so chip removal and ⌘Z do too.
+    // Init reads untracked (_appRaw): x-init runs inside the editor's x-if effect, and a tracked read re-runs it on each
     // edit, after the card's bindings, which then read the closed editor on Save.
     clTitleInit(el, key) {
       const prev = _nlpFocus;
@@ -10596,7 +10675,7 @@ document.addEventListener('alpine:init', () => {
       const s = this, ed = () => s[key], timed = x => { x.all_day = false; return x; };
       return { ...emptyDraft(),   // the kinds an editor never takes stay inert
         get content() { return ed().title; }, set content(v) { ed().title = v; },
-        get on() { return ed().date; }, set on(v) { if (v) { ed().date = v; s._clFollow(ed()); } },   // a clear keeps the day: a removed chip restores the one before it
+        get on() { return ed().date; }, set on(v) { if (v) { ed().date = v; s._clFollow(ed()); } },   // a clear keeps the day
         get dueTime() { return ed().all_day ? '' : ed().start; }, set dueTime(v) { if (v) s.evSetStart(timed(ed()), v); },
         get durMin() { const x = ed(); return x.all_day ? 0 : (s._hm(x.end) - s._hm(x.start) + 1440) % 1440; },
         set durMin(v) { const x = ed(); if (v) timed(x).end = s._fmtMin((s._hm(x.start) + v) % 1440); },
@@ -10614,9 +10693,9 @@ document.addEventListener('alpine:init', () => {
     clWhenLabel(e) { return dueBadge(e.date, undefined, true).label + (e.all_day ? '' : ' ' + this.clDraftTime(e)); },
     clWhenLook(iso) { const s = this._sugs().find(s => s.iso === iso); return s ? ['i-' + s.icon + '-fill', `var(--q-${s.key})`] : ['i-cal-fill', 'var(--muted)']; },
     clRepeatLabel(e) { return recurrenceLabel(this._clRule(e)); },
-    _clDays(rule) { return rule?.freq === 'week' ? (rule.weekdays || []).slice().sort((a, b) => a - b) : []; },   // the days the Repeat pop shows: weekly only (a monthly "2nd Tue" names a day too)
-    // the pop authors weekdays alone: a rule it can't show (daily, monthly) survives a save that leaves its days alone,
-    // and a weekly rule keeps its step, end and skipped days when its days change
+    _clDays(rule) { return rule?.freq === 'week' ? (rule.weekdays || []).slice().sort((a, b) => a - b) : []; },   // weekly only: the days the Repeat pop shows
+    // the pop authors weekdays alone: a rule it can't show (daily, monthly) survives a save that leaves its days alone;
+    // a weekly rule keeps its step, end and skipped days when its days change
     _clRule(e) {
       const rule = (e === this.eventEdit ? this.events : this.blocks).find(x => x.id === e.id)?.recurrence, wds = e.weekdays.slice().sort((a, b) => a - b);
       const rep = { interval: e.interval || 1, ends: e.ends ?? null };
@@ -10625,7 +10704,7 @@ document.addEventListener('alpine:init', () => {
       const { ends, ...base } = rule?.freq === 'week' ? rule : { freq: 'week' };   // a cleared end leaves no key
       return { ...base, weekdays: wds, interval: rep.interval, ...rep.ends && { ends: rep.ends } };
     },
-    _clRep(rule) { return rule?.freq === 'week' ? { interval: rule.interval || 1, ends: rule.ends ?? null } : { interval: 1, ends: null }; },   // the sentence's every/times/ending, weekly only as the days
+    _clRep(rule) { return rule?.freq === 'week' ? { interval: rule.interval || 1, ends: rule.ends ?? null } : { interval: 1, ends: null }; },   // the sentence's every/times/ending, weekly only
     // the Usable pop: the block's length (the series' when opened on a day) and its All/¾/½/¼ to the 5 minutes; All stores null
     sliderAt(v, min, max) { return '--at:' + (max > min ? (v - min) / (max - min) : 1); },   // a .slider's WebKit fill: where its value sits, 0..1
     clUsableLen(e) { const t = e.rule || e; return (this._hm(t.end) - this._hm(t.start) + 1440) % 1440 || 1440; },
@@ -10698,9 +10777,9 @@ document.addEventListener('alpine:init', () => {
     clDraftPos() {
       if (innerWidth < 760) return 'margin-inline:auto';
       const d = this.clDraft(), w = 480;   // .event-editor/.block-editor's width
-      const dow = new Date(this._draftOn(d) + 'T00:00').getDay();   // every page lays its columns at the same x: its weekday's column on a rendered page stands in for a page _clFollow is still turning to
+      const dow = new Date(this._draftOn(d) + 'T00:00').getDay();   // every page lays its columns at the same x: a rendered page's weekday column stands in for one _clFollow is still turning to
       const col = [...document.querySelectorAll('.cl-pcol')].find(c => { const r = c.getBoundingClientRect(); return (this.clView === 'day' || new Date(c.dataset.iso + 'T00:00').getDay() === dow) && r.width && r.left >= 0 && r.right <= innerWidth; }), r = col?.getBoundingClientRect();
-      // room beside it: 2px from its column, almost touching (a wider gap shows the next day's bar), 8px from the window
+      // room beside it: 2px from its column (a wider gap shows the next day's bar), 8px from the window
       const right = r ? innerWidth - r.right - 10 : 0, left = r ? r.left - 10 : 0, fit = Math.max(right, left);
       if (right >= w) return 'left:' + (r.right + 2) + 'px;--from:0 0';
       if (left >= w) return 'left:' + (r.left - 2 - w) + 'px;--from:100% 0';
@@ -10715,26 +10794,26 @@ document.addEventListener('alpine:init', () => {
       if (!d) return this.clNewBlock(iso, this._fmtMin(s), this._fmtMin((s + 60) % 1440), true);
       const span = this._draftSpan(iso);
       if (span && s >= span[0] && s < span[1]) return;   // a click on its own ghost keeps it
-      this.eventEdit = this.blockEdit = null;   // any other click closes it, as the composer's does: only a drag moves it
+      this.eventEdit = this.blockEdit = null;   // any other click closes it, as the composer's does
     },
 
-    // --- Drag-to-(re)schedule (HTML5 DnD) — wall-clock local strings, never toISOString (tz shift) ---
+    // --- Drag-to-(re)schedule (HTML5 DnD): wall-clock local strings, never toISOString (tz shift) ---
     _fmtMin: m => String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'),
     clDragStart(e, kind, id, srcIso, start = srcIso, end) {   // start/end: the occurrence's drawn slot (an event's srcIso is its start)
       if (!kind) return;
-      if (String(id).startsWith('pc:')) return e.preventDefault();   // Outlook's events move in Outlook
-      // dim the SOURCE element (the hole it left behind) while its copy rides the pointer
+      if (/^pc:/.test(id) || /^g:/.test(id) && this._gOf(id)?.ro !== false) return e.preventDefault();   // Outlook's and read-only Google events move in their own calendar
+      // dim the source element while its copy rides the pointer
       const el = this._clLifted = e.target?.closest?.('.cl-event, .cl-chip, .cl-block, .item, .cl-ch, .cl-ag-row'), col = el?.closest('.cl-pcol'), img = el?.cloneNode(true);
       el?.classList.add('cl-lift'); document.body.classList.toggle('calendar-lift', !!el);
       const r = el?.getBoundingClientRect();   // after the lift: it drops :active's press scale
-      const day = el?.closest('.cl-side') && [...el.closest('.calendar').querySelectorAll('.cl-pcol, .cl-cell')].find(c => c.getClientRects().length)?.offsetWidth;   // a panel row's copy narrows to it over the grid (dragFollow), its title wrapping
+      const day = el?.closest('.cl-side') && [...el.closest('.calendar').querySelectorAll('.cl-pcol, .cl-cell')].find(c => c.getClientRects().length)?.offsetWidth;   // a panel row's copy narrows to it over the grid (dragFollow)
       if (img && e.dataTransfer) { img.style.cssText += `;top:0;left:0;width:${r.width}px;` + (day ? '' : `height:${r.height}px`); img.setAttribute('x-ignore', ''); dragImage(e, img.outerHTML, r, day); }   // x-ignore: Alpine would init the copy's directives
-      // grab: minutes from the item's real start to the pointer, not from its drawn top (a stacked peer steps down) — the
-      // drop keeps it, so a sideways move keeps the time. lead: how far that start sits above this column — a tail drawn from 00:00 began the day before.
+      // grab: minutes from the item's real start to the pointer, not its drawn top (a stacked peer steps down); the drop
+      // keeps it, so a sideways move keeps the time. lead: how far that start sits above this column (a tail began the day before).
       const at = col && start?.length > 10 ? minutesBetween(col.dataset.iso + 'T00:00', start) : null, cr = col?.getBoundingClientRect();
       const lead = at != null ? Math.max(0, -at) : 0;
       const grab = col ? Math.max(0, (e.clientY - cr.top) / cr.height * 1440 - (at ?? (r.top - cr.top) / cr.height * 1440)) : 0;   // never above the start: a synthetic dragstart has clientY 0
-      this._clDnd = { kind, id, grab, lead, ...(srcIso && { date: srcIso.slice(0, 10) }), ...(end && { span: { starts_at: start, ends_at: end } }) };   // date: the occurrence's own day (block/event)
+      this._clDnd = { kind, id, grab, lead, at: start, ...(srcIso && { date: srcIso.slice(0, 10) }), ...(end && { span: { starts_at: start, ends_at: end } }) };   // date: the occurrence's own day (block/event)
       this._clDnd.allDay = (kind === 'event' || kind === 'block') && !!this._dndRow(this._clDnd)?.all_day;   // clDropOn keeps it all-day wherever it lands
       if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(id)); }
     },
@@ -10748,12 +10827,11 @@ document.addEventListener('alpine:init', () => {
       const r = col.getBoundingClientRect();
       return Math.max(-lead, Math.min(1425, Math.round(((e.clientY - r.top) / r.height * 1440 - grab) / 15) * 15));
     },
-    _dndRow(d) { return (d.kind === 'event' ? this.events : this.blocks).find(x => x.id === d.id); },   // the row a dragged event/block came from
+    _dndRow(d) { return (d.kind !== 'event' ? this.blocks : String(d.id).startsWith('g:') ? this.gcalEvents : this.events).find(x => x.id === d.id); },   // the row a dragged event/block came from
     // the dragged occurrence's own slot as its chip drew it: a repeating block's day can carry its own times (block_days), on any date
     _dndSpan(d, it) { return it.recurrence && d.span || it; },
-    // Sizes AND names the preview ghost in one read, so it lands as the thing you dragged and not just a time:
-    // an event/block keeps its own length and title, a task its est_minutes and content, a due chip a marker
-    // height — 60 being that marker, i.e. the one-hour default every durationless or all-day drag falls back to.
+    // Sizes and names the preview ghost in one read: an event/block keeps its own length and title, a task its
+    // est_minutes and content; 60 is the one-hour default every durationless or all-day drag falls back to.
     _dragGhost() {
       const d = this._clDnd; if (!d) return { h: 60, t: '' };
       if (d.kind === 'event' || d.kind === 'block') {
@@ -10763,8 +10841,8 @@ document.addEventListener('alpine:init', () => {
       const t = this.byId.get(d.id);
       return { h: d.kind === 'task' ? t?.est_minutes || 60 : 60, t: t?.content || '' };
     },
-    // The week/day edge zone travels every frame from the last dragover's pointer, not per dragover (a still pointer's come
-    // ~20/s): edgeScrollStep is rate × elapsed, so px/s holds. It ends 100ms after the last one, or on entering anything but a day column.
+    // The week/day edge zone travels every frame from the last dragover's pointer (a still pointer's come ~20/s):
+    // edgeScrollStep is rate × elapsed, so px/s holds. It ends 100ms after the last one, or on entering anything but a day column.
     _clEdgeGlide(x, y) {
       const t0 = performance.now();
       addEventListener('dragenter', clEdgeOut, true);   // stays through in-grid dragenters; the same fn is added once
@@ -10776,19 +10854,19 @@ document.addEventListener('alpine:init', () => {
     clDropOver(e, iso, glide = false) {
       if (!this._clDnd) return;
       if (!glide && motion.running('clEdge')) return this._clEdgeGlide(e.clientX, e.clientY);   // the next frame travels and previews from here
-      // scroll FIRST, so the preview reads the grid the drop will. .cl-pages is overflow:clip under pinned chrome: its edge
-      // zone starts below the chrome, and travel means clPos — only in a glide frame, which paints the preview it reads:
-      // a dragover's step lands the drop it comes before (Chrome sends one) where no frame showed.
+      // scroll first, so the preview reads the grid the drop will. .cl-pages is overflow:clip under pinned chrome: its edge
+      // zone starts below the chrome, and travel means clPos, only in a glide frame (which paints the preview it reads);
+      // a dragover's step would land the drop where no frame showed.
       const sc = e.target?.closest?.('.cl-pages, .cl-month, .peek-body'), pg = sc === _staticEl('.cl-pages'), v = edgeScrollStep(sc, e.clientY, false, pg ? this._clHeadH() : 0);
       if (v && pg && glide) this._clSetPos(this.clPos.idx, Math.max(0, Math.min(this._clMaxFrac(), this.clPos.frac + v / this.clPeriodH())));
-      this._dndHold(v && !pg ? sc : null);   // .cl-pages is overflow:clip — no native autoscroll to hold off
+      this._dndHold(v && !pg ? sc : null);   // .cl-pages is overflow:clip: no native autoscroll to hold off
       if (v && pg && !glide) this._clEdgeGlide(e.clientX, e.clientY);
       const min = this._dropMin(e, this._clDnd.grab, this._clDnd.lead), p = this.clDropPreview, inBlk = this._dropBlock(e, this._clDnd);
-      this.clDropHint = null; this._clDropCell(this._clDnd.allDay && min != null ? e.target.closest('.cl-pcol') : null);   // timed preview and the all-day/month highlight are mutually exclusive
+      this.clDropHint = null; this._clDropCell(this._clDnd.allDay && min != null ? e.target.closest('.cl-pcol') : null);   // timed preview and all-day/month highlight are exclusive
       if (min == null || this._clDnd.allDay) { this.clDropPreview = null; return v; }   // an all-day item lands date-only: its day lights, no time
       const clock = inBlk && !inBlk.timed ? null : this._clHMA((min % 1440 + 1440) % 1440), name = inBlk?.blk.title || 'block';   // the bin sets no time
       const label = !inBlk ? clock : clock ? clock + ', ' + name : 'Attach to ' + name;
-      const top = Math.max(0, min);   // a tail (its start days above, on a later day's slice) draws from this day's 00:00, not up under the pinned header; the label keeps the real start
+      const top = Math.max(0, min);   // a tail (its start days above) draws from this day's 00:00, not under the pinned header; the label keeps the real start
       if (p?.iso !== iso || p.min !== top || p.label !== label) { const g = this._dragGhost(); this.clDropPreview = { iso, min: top, clock, label, ...g, h: Math.min(1440, g.h + min) - top }; }   // the slice it lands as, ending at this day's foot   // same slot: no write (dragover fires per frame)
       return v;
     },
@@ -10799,14 +10877,16 @@ document.addEventListener('alpine:init', () => {
       return { blk: this.blocks.find(x => x.id === id) || { id }, timed: e.clientX > r.left + r.width / 2 };
     },
     _dndKind(kind) { return ({ 'task-deadline': 'deadline', 'event': 'event', 'task-due': 'due', 'block': 'block' })[kind] ?? 'task'; },
-    async clDropOn(e, iso, allDay = false) {   // allDay: a list task dropped on the Peek's all-day strip or month → date only
+    async clDropOn(e, iso, allDay = false) {   // allDay: a list task dropped on the Peek's all-day strip or month: date only
       const d = this._clDnd; this.clDragEndSchedule();
       if (!d || !iso) return;
       this._clPlaced(d.id);
-      const dm = allDay ? null : this._dropMin(e, d.grab, d.lead);   // null ⇒ month cell or all-day row (date only)
+      const dm = allDay ? null : this._dropMin(e, d.grab, d.lead);   // null: month cell or all-day row (date only)
       if (this.dragId) this.dragEnd();   // capture drop geometry before closing the list's Peek Pane
       const stamp = dm == null ? iso : addMinutes(iso + 'T00:00', dm), on = stamp.slice(0, 10), hm = stamp.slice(11) || null;   // before 00:00 = the day before
       if (d.kind === 'task' || d.kind === 'due' || d.kind === 'deadline') {
+        const gEl = d.kind === 'task' && e.target?.closest?.('[data-g]');
+        if (gEl) return this._gAttach(d.id, gEl);
         const { blk, timed } = this._dropBlock(e, d) || {}, attached = 'Attached to ' + (blk?.title || 'block'), has = blk && this.scheduleItems.some(x => x.block_id === blk.id && x.task_id === d.id);
         if (blk && !timed) return has || this.perform(attached, { kind: 'create', target: 'scheduleItem', fields: { task_id: d.id, block_id: blk.id } }, { fail: 'Failed attaching. Try again?' });   // attached once
         if (blk) return this._saveSched(d.id, { on, dueTime: hm, block: has ? null : blk.id }, has ? 'Rescheduled task' : attached + ' at ' + this._clHMA(dm));   // a drop on a block is always in a column: dm is set
@@ -10825,16 +10905,17 @@ document.addEventListener('alpine:init', () => {
           const starts_at = addMinutes(iso + 'T00:00', dm ?? this._clMin(it.starts_at));   // dropped time (before 00:00 = the day before), else keep tod
           fields = { starts_at, ends_at: addMinutes(starts_at, Math.max(15, minutesBetween(span.starts_at, span.ends_at))) };   // its whole length, days included
         }
+        if (String(d.id).startsWith('g:')) return this._gDrop(e, d, fields);
         // Recurring block: override only this occurrence via block_days; non-recurring: update the base block.
         if (d.kind === 'block' && it.recurrence) {
-          // The override row stays keyed on the occurrence's own day and points planned_start at wherever it landed,
-          // so a cross-day drop is the same one write: the source day stops resolving it, the target day gains it.
-          if (!d.date) { this.notify('Drag this occurrence from the week or day view to move it'); return; }   // no source-date on record (month/agenda chip); can't tell which occurrence
+          // The override row stays keyed on the occurrence's own day and points planned_start at the drop, so a cross-day
+          // drop is one write: the source day stops resolving it, the target day gains it.
+          if (!d.date) { this.notify('Drag this occurrence from the week or day view to move it'); return; }   // month/agenda chip: no source date, so no telling which occurrence
           if (span.starts_at === fields.starts_at && span.ends_at === fields.ends_at) return;   // dropped where it already is
           await this._clMoveBlockDay(d.id, d.date, fields);
         } else if (d.kind === 'event' && it.recurrence?.freq) {
-          // Recurring event: ONE occurrence moves as calendar.js represents it — the series exdates that day and a
-          // standalone copy lands on the drop. Copy FIRST and verify; a failed series write deletes the copy again.
+          // Recurring event: one occurrence moves as calendar.js represents it: the series exdates that day and a
+          // standalone copy lands on the drop. Copy first and verify; a failed series write deletes the copy again.
           if (!d.date) { this.notify('Drag this occurrence from the week or day view to move it'); return; }
           if (fields.starts_at === (it.all_day ? d.date : d.date + 'T' + this._fmtMin(this._clMin(it.starts_at)))) return;   // dropped where it already is
           const fail = async (msg = 'Failed moving this occurrence. Try again?') => { await this._reloadFor('event'); this.notify(msg); };
@@ -10842,23 +10923,22 @@ document.addEventListener('alpine:init', () => {
           if (!copy) return fail();
           const was = { recurrence: it.recurrence }, after = { recurrence: { ...it.recurrence, exdates: [...(it.recurrence.exdates || []), d.date] } };
           // A lost response (cloud patch → null) can hide a write that landed: re-read before rolling back, or the
-          // copy goes while the series already skips the day — and the occurrence is gone.
+          // copy goes while the series already skips the day.
           const landed = await this.store.events.update(it.id, after).catch(() => null)
             || (await this.store.events.get(it.id).catch(() => null))?.recurrence?.exdates?.includes(d.date);
           if (!landed) return fail(await this.store.events.remove(copy.id).catch(() => false) ? undefined : 'Failed moving this occurrence. It may show twice, delete the extra');
           await this._reloadFor('event');
-          this._pushEntry('Moved event occurrence', { kind: 'composite', target: 'event', ops: [   // ⌘Z: series back FIRST, then the copy goes
+          this._pushEntry('Moved event occurrence', { kind: 'composite', target: 'event', ops: [   // ⌘Z: series back first, then the copy goes
             { kind: 'update', target: 'event', id: it.id, after: was, was: after }, { kind: 'remove', target: 'event', id: copy.id, rows: this._rowsForDelete('event', copy.id) }] });
         } else if (Object.keys(fields).some(k => fields[k] !== it[k])) {   // dropped where it already is: no write, no undo step
           await this.perform('Moved ' + d.kind, { kind: 'update', target: d.kind, id: d.id, after: fields });   // one entry per drop → ⌘Z puts it back
         }
       }
     },
-    // task_id → placement ISO (the ONE date fact). Cached on _calDataV — every scheduleItems write bumps it,
-    // and it is read once per row in the list pipeline, so rebuilding it per call is not free.
+    // task_id → placement ISO. Cached on _calDataV (every scheduleItems write bumps it): the list pipeline reads it per row.
     _placedMap() { void this.scheduleItems; return _memo(_placedMemo, 'p|' + _calDataV, () => placedMap(this.scheduleItems), 1); },
-    // THE date a task sits on. The placement is the whole answer for a plain task; recur_from is consulted ONLY
-    // for a repeat, where it is the rule anchor rather than a placement; a task with neither follows its repeating project.
+    // The date a task sits on: the placement for a plain task; recur_from only for a repeat (the rule anchor, not a
+    // placement); a task with neither follows its repeating project.
     whenOf(t, pm = this._placedMap()) { const lead = this._follows(t, pm); return lead ? this.whenOf(lead, pm) : pm.get(t.id) || (t.recurrence ? t.recur_from : null) || ''; },
     // The repeating project whose date a subtask without its own follows: the nearest repeating ancestor, the set
     // store.js completionPatches reopens. An ancestor with its own date, an archive or a paused repeat ends it.
@@ -10870,12 +10950,12 @@ document.addEventListener('alpine:init', () => {
       }
       return null;
     },
-    // DELIBERATE FORK, never merge: whenOf is the SELECTION fact (sort, filters, Reschedule), where a repeat stays its
-    // anchor so a slipped one keeps surfacing; whenShown is what the ROW SAYS — today's occurrence, else the anchor
-    // while behind ("Last Mon"), else the next, at the rule's time. Asked from yesterday so today
-    // counts (`inclusive` admits only an anchor ≥ the from-day).
-    // from_completion has no next until this one is done: it is the anchor, due today once slipped (counted from
-    // now, the row would show where completing lands, so completing would never move it).
+    // Deliberate fork, never merge: whenOf is the selection fact (sort, filters, Reschedule), where a repeat stays its
+    // anchor so a slipped one keeps surfacing; whenShown is what the row says: today's occurrence, else the anchor
+    // while behind ("Last Mon"), else the next, at the rule's time. Asked from yesterday so today counts
+    // (`inclusive` admits only an anchor ≥ the from-day).
+    // from_completion has no next until this one is done: it is the anchor, due today once slipped (counted from now,
+    // the row would show where completing lands, so completing would never move it).
     whenShown(t, pm) {
       const lead = this._follows(t, pm); if (lead) return this.whenShown(lead, pm);
       const placed = pm.get(t.id); if (placed || !t.recurrence || !t.recur_from) return placed || '';
@@ -10894,12 +10974,12 @@ document.addEventListener('alpine:init', () => {
       }
       return v;
     },
-    _siOf(id) { return window.Alpine.raw(this.scheduleItems).find(x => !x.block_id && x.date && x.task_id === id) || null; },   // that one task's date-item; raw: a proxied scan wraps every item it passes
-    // Persist a task's ONE date-item (the composer's ON register, a calendar drop). One composite, CREATE first:
+    _siOf(id) { return window.Alpine.raw(this.scheduleItems).find(x => !x.block_id && x.date && x.task_id === id) || null; },   // that task's date-item; raw: a proxied scan wraps every item it passes
+    // Persist a task's one date-item (the composer's ON register, a calendar drop). One composite, create first:
     // a failed remove rolls the new one back, so the old placement is never lost, and ⌘Z puts it back first.
     // No label = silent: the composer already announces the save.
     _schedParts(id, d) {   // a placement's writes; [] when it stands
-      if (d.recurrence) return [];   // repeat mode: recur_from IS the rule anchor, not a placement
+      if (d.recurrence) return [];   // repeat mode: recur_from is the rule anchor, not a placement
       const have = this._siOf(id), want = d.on ? { task_id: id, date: d.on.slice(0, 10), start: d.dueTime || null } : null;
       const same = want ? have && have.date === want.date && (have.start || null) === want.start : !have;
       const attach = !!d.block;   // d.block: also attach to that block
@@ -10932,7 +11012,7 @@ document.addEventListener('alpine:init', () => {
       return this.tasks.filter(t => this._openLeaf(t, true) && this._overdue(t, b, pm))
         .sort((x, y) => this.whenOf(x, pm).localeCompare(this.whenOf(y, pm)));   // the moment it slipped past
     },
-    // A phone sheet follows the finger (emil §10); past its top it rubber-bands up to `over` px, and on release
+    // A phone sheet follows the finger; past its top it rubber-bands up to `over` px, and on release
     // done(dy, v, base) settles it, v in px/ms over the last move.
     sheetDown(e, side, done, over = 0) {
       if (!PHONE_MQ.matches || _sheetDrag || e.button > 0) return;
@@ -10956,9 +11036,8 @@ document.addEventListener('alpine:init', () => {
       const side = e.currentTarget.parentElement;
       if (!e.target.closest('button')) this.sheetDown(e, side, (dy, v) => (dy > side.offsetHeight / 3 || v > 0.4 && dy > 8) && this.clSideToggle(false));
     },
-    // The lists tray rises half up from the title tap; drag it up for every list, down to close. Release
-    // projects the flick 200ms on (Apple's momentum) and rests at the nearest of full, half and closed. At half the rows
-    // drag it too; at full they scroll and the head drags.
+    // The lists tray rises half up from the title tap. Release projects the flick 200ms on (Apple's momentum) and
+    // rests at the nearest of full, half and closed. At half the rows drag it too; at full they scroll and the head drags.
     openListTray() {
       if (!PHONE_MQ.matches) return;
       this.trayRows = this.holdRows(); this.listTray = 'half';
@@ -10972,28 +11051,28 @@ document.addEventListener('alpine:init', () => {
         this.listTray = [['full', 0], ['half', half], [null, h]].reduce((a, b) => Math.abs(b[1] - at) < Math.abs(a[1] - at) ? b : a)[0];
       }, 24);
     },
-    clSideToggle(open = !this.clSideOpen) {   // every way to shut the panel closes the composer it hosted, else the edit stays open off-screen
+    clSideToggle(open = !this.clSideOpen) {   // every way to shut the panel closes the composer it hosted, else it stays open off-screen
       const hosted = this.composer.open && this._inPanel(); this.clSideOpen = open;
       this._clM = null;   // the tray's inset on the floor (_clMaxFrac)
-      if (this.clView !== 'month' && this.clPos.frac > this._clMaxFrac()) this._clTween(this.clPos.idx, this._clMaxFrac());   // a closing tray takes its inset along: the day settles back to its floor
+      if (this.clView !== 'month' && this.clPos.frac > this._clMaxFrac()) this._clTween(this.clPos.idx, this._clMaxFrac());   // a closing tray takes its inset along
       this._clSideSlide();
       if (hosted && !this._inPanel()) this.closeComposer();
     },
-    _clSideSlide() { this.clSideSlide = true; clearTimeout(_sideSlideT); _sideSlideT = setTimeout(() => { this.clSideSlide = false; }, motion.t(400)); },   // the grid rides the panel's slide (a toggle, a block's click, a view that shows or hides it); a resize reflows it at once
-    clSideVisible() { return this.clSideOpen || (this.clView === 'day' && !this.clSideOver); },   // the panel is up in day view (auto) or when toggled — but where it OVERLAYS, auto-opening would bury the day you just opened
+    _clSideSlide() { this.clSideSlide = true; clearTimeout(_sideSlideT); _sideSlideT = setTimeout(() => { this.clSideSlide = false; }, motion.t(400)); },   // the grid rides the panel's slide; a resize reflows it at once
+    clSideVisible() { return this.clSideOpen || (this.clView === 'day' && !this.clSideOver); },   // up in day view (auto) or when toggled, but where it overlays, auto-opening would bury the day you opened
     _clRowsHtml(tasks, cache) {
       const now = new Date(), byId = this.byId, def = this.store.defaultProject(), pm = this._placedMap(); let byParent;
       return tasks.map(t => {
         let html = cache.get(t.id); if (html) return { id: t.id, html };
-        const w = this.whenOf(t, pm);   // >10 chars only when the placement carries a clock time — that's the timed chip
+        const w = this.whenOf(t, pm);   // >10 chars only when the placement carries a clock time
         html = this._itemLi(this.mkRow(t, 0, byParent ||= buildByParent(this.tasks), byId, def, now, undefined, pm), { drag: ' draggable="true"', proj: true, tray: true, schedTime: w.length > 10 ? this._clTime(w) : null });
         if (!(t.deadline_at?.length > 10)) cache.set(t.id, html);   // a timed deadline counts down by the minute
         return { id: t.id, html };
       });
     },
-    // The panel's sections. Reschedule: what slipped; older ones fold: a deadline over 2 weeks gone, else a slip over 7 days.
-    // This week: a date window open today that closes within 7 days (typed "this week"). Due in two weeks: an undated
-    // deadline. The rest of the undated fold behind "N more".
+    // The panel's sections. Reschedule: what slipped; older ones fold (a deadline over 2 weeks gone, else a slip over 7 days).
+    // This week: a date window open today that closes within 7 days. Due in two weeks: an undated deadline.
+    // The rest of the undated fold behind "N more".
     _clSideSecs() {
       const today = this._nowDay, key = this._rowV + '|' + today + '|' + this._nowTickV + '|' + this._foldV + '|' + _calDataV + '|' + this._celeV;
       if (_clSecs.key === key) return _clSecs;
@@ -11006,26 +11085,26 @@ document.addEventListener('alpine:init', () => {
       for (const t of need) (t.deadline_at && t.deadline_at.slice(0, 10) <= soon ? due : more).push(t);
       return _clSecs = { key, res, old, week, due, more: more.concat(rest) };
     },
-    _clShelf() { return this.clSideVisible() ? this._clSideSecs().week.map(t => t.id) : []; },   // This week's tasks sit in the open panel, not on their last day (grid and month)
+    _clShelf() { return this.clSideVisible() ? this._clSideSecs().week.map(t => t.id) : []; },   // This week's tasks sit in the open panel, not on their last day
     // One build per change, shared by the list, its x-show and its rows. Hidden (panel shut or Plan away):
     // keep the last rows and read no task, so a Lists edit wakes nothing; showing re-runs this.
     clSideRows(kind) {
       const side = _clSideOut[kind]; if (!this.clSideVisible() || this._clHidden()) return side.rows;
       const shut = kind === 'old' ? !this.clSideOlder : kind === 'more' && !this.clSideMore;
-      const clock = kind === 'res' || kind === 'old' ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV + '|' + _calDataV + '|' + this._celeV + '|' + shut;   // the tick: re-list for the timed deadlines it left uncached
+      const clock = kind === 'res' || kind === 'old' ? isoDate(new Date()) + '|' + this._nowTickV : this._nowDay, key = this._rowV + '|' + clock + '|' + this._nowTickV + '|' + this._foldV + '|' + _calDataV + '|' + this._celeV + '|' + shut;   // the tick: re-list the timed deadlines it left uncached
       if (side.key === key) return side.rows;
-      if (_clSideV !== this._rowV) { for (const s of Object.values(_clSideOut)) s.html.clear(); _clSideV = this._rowV; }   // not only patches since: any row may differ
+      if (_clSideV !== this._rowV) { for (const s of Object.values(_clSideOut)) s.html.clear(); _clSideV = this._rowV; }   // any row may differ
       if (side.clock !== clock) side.html.clear();   // rows read the clock (due and deadline badges)
       const ts = this._clSideSecs()[kind];
       return Object.assign(side, { key, clock, n: ts.length, rows: shut ? [] : this._clRowsHtml(ts, side.html) }).rows;
     },
     clSideN(kind) { this.clSideRows(kind); return _clSideOut[kind].n; },   // a section's size, folded or not
-    clSideFold(kind) {   // shut, a fold has nowhere for a composer open on its row: it closes, as on a tap outside
+    clSideFold(kind) {   // shut, a fold closes a composer open on its row, as a tap outside does
       const open = kind === 'old' ? 'clSideOlder' : 'clSideMore';
       if (this[open] && this.composer.open && _clSideOut[kind].rows.some(r => r.id === this.editing)) this.closeComposer();
       this[open] = !this[open];
     },
-    clRowClick(e) {   // a Steps row's check and preview node tick its steps, as in the list: they need the row's step and next
+    clRowClick(e) {   // a Steps row's check and preview node tick its steps, as in the list
       const el = e.target.closest?.('.item'), t = el && this.byId.get(el.dataset.id); if (!t) return;
       this.onRowClick(el.querySelector('.step-block') ? { ...this.mkRow(t, 0, buildByParent(this.tasks), this.byId, this.store.defaultProject(), new Date(), undefined, this._placedMap()), tray: true } : { t }, e);
     },
@@ -11041,19 +11120,19 @@ document.addEventListener('alpine:init', () => {
     clEditBlock(id, viewIso, tile = false) {
       const b = this.blocks.find(x => x.id === id); if (!b) return;
       const start = timeOf(b.starts_at, '09:00'), end = timeOf(b.ends_at, '10:00'), bd = this.clBlockDay(b.id, viewIso), p = plannedOf(bd);
-      // Occurrence⇄rule duality: opened from one of its days, the When fields are THAT day (occ) and move it alone;
-      // the series' own times ride the Repeat row (rule) and move every day.
+      // Opened from one of its days, the When fields are that day (occ) and move it alone; the series' own times ride
+      // the Repeat row (rule) and move every day.
       const occ = b.recurrence && viewIso && !b.all_day ? { date: (bd?.planned_start || bd?.actual_start || viewIso).slice(0, 10), start: timeOf(p?.[0] || '', start), end: timeOf(p?.[1] || '', end) } : null;
       this.blockEdit = { id: b.id, title: b.title || '', date: b.starts_at.slice(0, 10), start, end, ...occ, occ, rule: { start, end }, all_day: !!b.all_day, span: this._adSpan(b),
         weekdays: this._clDays(b.recurrence), ...this._clRep(b.recurrence), location_id: b.location_id || null, areas: (b.areas || []).slice(), color: b.color || null, est_minutes: b.est_minutes ?? null,
         viewIso: viewIso || null, draft: tile && !b.all_day && b.starts_at.slice(0, 10) === b.ends_at.slice(0, 10) };   // a day's tile alone: past midnight its ghost could sit off screen
     },
-    // ONE day of a repeating block moves by an override keyed on its own day (src) — drag and editor alike, never the series.
+    // One day of a repeating block moves by an override keyed on its own day (src), never the series.
     async _clMoveBlockDay(id, src, { starts_at, ends_at }, ops) {
       // A started occurrence stays where it happened.
       if (this.clStarted(id, src)) return this.notify('Already started this occurrence. Undo it to move it');
-      // A skip answers the DAY it was given: carried to another day it would arrive pre-answered on a day the
-      // user never answered. Cleared in the SAME write, so one ⌘Z restores both the day and the answer.
+      // A skip answers the day it was given: carried to another day it would arrive pre-answered. Cleared in the
+      // same write, so one ⌘Z restores both the day and the answer.
       await this.clSetBlockDay(id, { planned_start: starts_at, planned_end: ends_at, ...(src !== starts_at.slice(0, 10) && { status: 'pending' }) }, src, 'Moved block occurrence', ops);
     },
     async clSaveBlock() {
@@ -11064,7 +11143,7 @@ document.addEventListener('alpine:init', () => {
       const est_minutes = e.est_minutes === '' || e.est_minutes == null ? null : +e.est_minutes;
       const core = { title: e.title.trim(), all_day: e.all_day, recurrence, location_id: e.location_id || null, areas: e.areas, color: e.color || null, est_minutes, ...this._evRange(s, date) };
       if (e.id) {
-        const j = [];   // journaled by hand: the series and the day land as ONE entry, one ⌘Z takes back both
+        const j = [];   // journaled by hand: the series and the day land as one entry
         if (Object.keys(core).some(k => JSON.stringify(core[k]) !== JSON.stringify(b?.[k] ?? null))
           && !await this._journalRowChange('Edited block', 'block', e.id, () => this.store.blocks.update(e.id, core).catch(() => null), { ops: j, fail: 'Failed saving block. Try again?' })) return;   // the editor stays open, edits intact
         if (moved) await this._clMoveBlockDay(e.id, e.viewIso, this._evRange(e), j);
@@ -11117,27 +11196,37 @@ document.addEventListener('alpine:init', () => {
       const el = document.querySelector('.block-editor .ev-title');   // a mounted editor's field shows it; one mounting later reads it
       if (el) el.innerHTML = titleLive(title);
     },
-    clAttachedTasks() {   // Before, During, After: the order they run in; an archived task leaves the list
-      const id = this.blockEdit?.id, roles = ['before', 'during', 'after']; if (!id) return [];
-      return this.scheduleItems.filter(si => si.block_id === id).map(si => ({ si, t: this.byId.get(si.task_id) })).filter(({ t }) => t && !t.archived_at).sort((a, b) => roles.indexOf(a.si.role) - roles.indexOf(b.si.role));
+    clAttachedTasks(edit) {   // Before, During, After: the order they run in; an archived task leaves the list
+      const id = edit?.id, k = edit?.g && this._gKey(edit.g), roles = ['before', 'during', 'after']; if (!id || k && !k.gcal_uid) return [];
+      return this.scheduleItems.filter(si => k ? si.gcal_uid === k.gcal_uid && (si.gcal_day ?? null) === k.gcal_day : si.block_id === id).map(si => ({ si, t: this.byId.get(si.task_id) })).filter(({ t }) => t && !t.archived_at).sort((a, b) => roles.indexOf(a.si.role) - roles.indexOf(b.si.role));
     },
     clCycleRole(itemId) {   // silent: a quick repeated tap, ⌘Z still steps back
       const item = this.scheduleItems.find(x => x.id === itemId);
       if (item) return this.perform('Changed role', { kind: 'update', target: 'scheduleItem', id: itemId, after: { role: { before: 'during', during: 'after', after: 'before' }[item.role] || 'during' } }, { silent: true });
     },
+    // a subtask's row (SUB_ROW): ticks, opens, detaches; a block's carries its role, which nothing reads on a Google event
+    clAttachedHtml(key) {
+      return html`<div class="blk-field" x-show="clAttachedTasks(${key}).length"><label class="section-label">Attached tasks</label>
+        <div class="entry-list flex flex-col"><template x-for="{ si, t } in clAttachedTasks(${key})" :key="si.id"><div class="entry" :class="{ done: t.completed_at }">
+          <span class="entry-chk" x-html="entryCheckHtml(t)" @click="toggle(t)"></span><div class="entry-txt" x-text="t.content"></div>
+          ${raw(key === 'blockEdit' ? html`<button type="button" class="c g flex-none" @click="clCycleRole(si.id)" x-text="si.role[0].toUpperCase() + si.role.slice(1)"></button>` : '')}
+          <button type="button" class="entry-kids" title="Open this task" @click="editTask(t)"><svg class="ico"><use href="#i-chev-r"/></svg></button>
+          <button type="button" class="entry-del" title="Detach" @click="clRemoveAttached(si.id)"><svg class="ico"><use href="#i-x"/></svg></button>
+        </div></template></div></div>`;
+    },
     clRemoveAttached(itemId) { return this.perform('Detached task', { kind: 'remove', target: 'scheduleItem', id: itemId }); },
 
     // --- Block day (start-ask answered from the web; the phone writes the same rows) ---
-    // A repeating block draws one instance PER DAY, so the status is looked up for THAT day (a today default lights
+    // A repeating block draws one instance per day, so status is looked up for that day (a today default would light
     // Monday's run-state on every Tuesday). The block editor, the only caller meaning "today", omits the date.
     clBlockDay(blockId, iso) { const d = iso || isoDate(new Date()); return this.blockDays.find(x => x.block_id === blockId && x.date === d) || null; },
     async clSetBlockDay(blockId, fields, iso, label, ops) {
-      iso ||= isoDate(new Date());   // callers pass blockEdit.viewIso, which is NULL outside a calendar chip — and a default only catches undefined
+      iso ||= isoDate(new Date());   // callers pass blockEdit.viewIso, null outside a calendar chip; a default only catches undefined
       const prev = this.clBlockDay(blockId, iso);
-      // ONE row carries the whole per-occurrence answer (day-move included), so there is nothing to delete first —
-      // a failed write (null) leaves the occurrence exactly where it was, and we say so.
+      // One row carries the whole per-occurrence answer (day-move included): a failed write (null) leaves the
+      // occurrence where it was.
       const row = await this.store.blockDays.set({ block_id: blockId, date: iso, ...fields });
-      await this._reloadFor('blockDay');   // reloads blockDays + bumps _calDataV so clBlocks() memo busts and DOM repaints
+      await this._reloadFor('blockDay');   // bumps _calDataV so the clBlocks() memo busts
       const cur = this.clBlockDay(blockId, iso);
       // a lost response (cloud upsert → null) can hide a write that landed: the re-read says which
       if (!row && !(cur && Object.keys(fields).every(k => (cur[k] ?? null) === (fields[k] ?? null)))) return this.toast('Failed updating this day. Try again?');
@@ -11147,9 +11236,8 @@ document.addEventListener('alpine:init', () => {
       const op = { kind: 'update', target: 'blockDay', id: cur.id, after: rollback, was: fields };
       if (Object.keys(rollback).length) ops ? ops.push([lbl, op]) : this._pushEntry(lbl, op);
     },
-    // The Start/Skip panel says "today", so it may only appear for the occurrence that LIVES today — the one you
-    // opened, wherever its row is keyed. A chip moved onto today counts; today's own, moved away, no longer does.
-    // A passed day still running gets it too — for its Undo.
+    // The Start/Skip panel says "today", so it appears only for the occurrence that lives today, wherever its row is
+    // keyed: a chip moved onto today counts; today's own, moved away, doesn't. A passed day still running gets it for its Undo.
     clDayPanel(b, iso) {
       const bd = b && iso && this.clBlockDay(b.id, iso);
       const today = isoDate(new Date());
@@ -11157,16 +11245,15 @@ document.addEventListener('alpine:init', () => {
     },
     clUnended(bd) { return unended(bd, bd && this.blocks.find(b => b.id === bd.block_id), isoDate(new Date())); },
     clStarted(blockId, iso) { return ['running', 'done'].includes(this.clBlockDay(blockId, iso)?.status); },
-    // What "Reset this day" would undo: a time nudge, or a whole day-move (named, so the note isn't a lie). Never offered
-    // once started: Reset clears actual_* too (a legacy plan's home), which would erase the start and leave it running.
+    // What "Reset this day" would undo: a time nudge, or a whole day-move. Never offered once started: Reset clears
+    // actual_* too (a legacy plan's home), which would erase the start and leave it running.
     clOverrideNote(blockId, iso) {
       const a = plannedOf(this.clBlockDay(blockId, iso))?.[0];
       return !a || this.clStarted(blockId, iso) ? '' : a.slice(0, 10) === iso ? 'Time adjusted for this day'
         : 'Moved to ' + new Date(a.slice(0, 10) + 'T00:00').toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
     },
-    // These three answer ONE occurrence — the one on screen (iso), not whichever of them today happens to hold.
-    // Start records the real clock time on the day that occurrence now LIVES, so starting it never un-moves it.
-    // A plan still living in actual_* (legacy) moves to planned_* in the same write, so the clock can't take it.
+    // These three answer one occurrence, the one on screen (iso). Start records the real clock time on the day that
+    // occurrence lives, so starting never un-moves it. A plan still in actual_* (legacy) moves to planned_* in the same write.
     // ceiling: the actual_* → planned_* move here pairs with plannedOf's legacy branch; delete both once LocalStore migrates them
     clStartBlock(blockId, iso) {
       const n = new Date(), bd = this.clBlockDay(blockId, iso), p = plannedOf(bd);
@@ -11174,17 +11261,17 @@ document.addEventListener('alpine:init', () => {
         ...p && p[0] === bd.actual_start && { planned_start: p[0], planned_end: p[1] } }, iso);
     },
     clSkipBlock(blockId, iso) { return this.clSetBlockDay(blockId, { status: 'skipped' }, iso); },
-    // `missed` is ANSWERED, never inferred (auto-closing would ash every block you didn't press a button on), and only
-    // once the occurrence's planned end has gone by: before that "didn't happen" is a guess about the future.
+    // `missed` is answered, never inferred (auto-closing would mark every unpressed block missed), and only once
+    // the occurrence's planned end has gone by.
     clBlockEnded(blockId, iso) { void this._nowTickV; const n = new Date(), d = iso || isoDate(n);   // the tick: an open editor offers it once the end goes by
       const end = plannedOf(this.clBlockDay(blockId, d))?.[1] || blocksInRange(this.blocks.filter(b => b.id === blockId), d, d, this.blockDays).find(x => x.src === d)?.planned;
       return !!end && end <= localStamp(n); },
-    // Stop records the stop moment itself — its own date too, so a Stop drawn before midnight and clicked after it never
-    // ends before it started. Only offered while the day it lives is today: a passed day's end isn't today's clock.
+    // Stop records its own date too, so a Stop drawn before midnight and clicked after never ends before it started.
+    // Only offered while the day it lives is today.
     clStopBlock(blockId, iso) { return this.clSetBlockDay(blockId, { status: 'done', actual_end: localStamp(new Date()) }, iso); },
-    // Only a START clears actual_* (actual_end with it: orphaned, it stretches a 1-hour block down to midnight) —
-    // on a skipped day they can hold a legacy move, and a skip's undo must not erase it.
-    // A DONE day's Undo takes back the stop only (as ⌘Z does), back to running.
+    // Only a start clears actual_* (actual_end with it: orphaned, it stretches a 1-hour block to midnight); on a
+    // skipped day they can hold a legacy move that a skip's undo must not erase.
+    // A done day's Undo takes back the stop only (as ⌘Z does), back to running.
     clUndoBlockDay(blockId, iso) {
       if (this.clBlockDay(blockId, iso)?.status === 'done') return this.clSetBlockDay(blockId, { status: 'running', actual_end: null }, iso, 'Undid stop');
       return this.clSetBlockDay(blockId, { status: 'pending', ...this.clStarted(blockId, iso) && { actual_start: null, actual_end: null } }, iso);
@@ -11203,26 +11290,27 @@ document.addEventListener('alpine:init', () => {
 
     async reloadAll(quiet) {
       const store = this.store, gen = ++this._loadGen;
-      // The store's re-pull (a socket drop errors every channel, a return after 30s hidden, online) lands here as 'all': the chat has the same hole.
+      // The store's re-pull (a socket drop, a return after 30s hidden, online) lands here as 'all': the chat has the same hole.
       // ceiling: an error on the chat channel alone isn't caught up; watch its status if a missed message ever shows with the store's channel up.
       if (this.chat.watch) this.chatReload();
-      // ONE parallel round-trip set (cloud): the whole account in a single query + the two side lists
+      // One parallel round-trip set: the whole account in a single query plus the side lists
       const [b, si, bd, rem, dn] = await Promise.allSettled([store.bootstrap(), store.scheduleItems.list(), store.blockDays.list(), store.reminders.list(), store.dayNotes.list()]);
       if (b.value) await this._loadFiles(b.value.tasks.flatMap(t => t.attachments ?? []));   // as loadTasks
-      if (gen !== this._loadGen) return;   // superseded — by the minute retry or a reconnect's 'all'
+      if (gen !== this._loadGen) return;   // superseded by the minute retry or a reconnect's 'all'
       // What landed is applied; a failed part keeps its last good state and stays unloaded in the store, so it's re-pulled.
       const failed = !b.value || !si.value || !bd.value || !rem.value;
       if (failed && !this._loadFailed && !quiet) this.toast('Couldn’t load, retrying');
       this._loadFailed = failed;
-      // ALL awaits above, ONE synchronous block below: Alpine flushes effects during an await, so a reactive
-      // write followed by an awaited gap runs renders against the OLD memo keys, and the version bumps after
-      // the gap are module-scope, so nothing re-wakes (month chips stay stale after an event edit).
-      this._rowV++; _calDataV++;   // bust memos before the reactive writes so the flush sees fresh keys
+      // All awaits above, one synchronous block below: Alpine flushes effects during an await, so a reactive write
+      // followed by an awaited gap renders against the old memo keys, and module-scope version bumps after the gap
+      // wake nothing (month chips stay stale after an event edit).
+      this._rowV++; _calDataV++;   // bust memos before the reactive writes
       if (si.value) this.scheduleItems = si.value; if (bd.value) this.blockDays = bd.value; if (rem.value) this.reminders = rem.value;
       if (dn.value) this.dayNotes = dn.value;   // not in `failed`: a DB without the table must run, not retry every minute
+      this.gcalDraw().catch(() => {});   // as dayNotes, never `failed`: Plan draws what the mirror has once it answers
       const d = b.value; if (!d) return;
       this.areas = d.areas; this._pruneQfAreas();
-      this.tasks = d.tasks; this.byId = new Map(d.tasks.map(t => [t.id, t])); this.parentIds = new Set(d.tasks.map(t => t.parent_id).filter(Boolean));   // ← list renders (reactive) from here
+      this.tasks = d.tasks; this.byId = new Map(d.tasks.map(t => [t.id, t])); this.parentIds = new Set(d.tasks.map(t => t.parent_id).filter(Boolean));   // the list renders (reactive) from here
       this.filters = d.filters; this.locations = d.locations;
       if (this.navSel.type === 'filter' && !this.activeFilter()) this.setNav('backlog');   // as loadFilters: its filter went
       if (this.navSel.type === 'project' && !this.byId.has(this.navSel.id)) this.setNav('all');   // as loadTasks: its project went
@@ -11241,8 +11329,8 @@ document.addEventListener('alpine:init', () => {
         if (error) { this.authMsg = error.message; this.authErr = true; }
         return;
       }
-      // One email carries both a link and a 6-digit code (templates: pg_mail/mail/mail.js). A new email makes an account only
-      // with an invite waiting: the server's before-user-created hook (pg_mail/functions/invite_signup.sql) checks it has uses left.
+      // One email carries both a link and a 6-digit code (pg_mail/mail/mail.js). A new email makes an account only with an
+      // invite waiting: the before-user-created hook (pg_mail/functions/invite_signup.sql) checks it has uses left.
       // ceiling: the mail link opened on another device signs in without the invite; the friend opens the invite link again
       const invite = localStorage.getItem('adherod.invite');
       const { error } = await sb.auth.signInWithOtp({ email: this.authEmail, options: { emailRedirectTo: location.href, shouldCreateUser: !!invite, data: invite ? { invite } : undefined } });
@@ -11263,7 +11351,7 @@ document.addEventListener('alpine:init', () => {
       if (error) { this.authMsg = error.message; this.authErr = true; }   // stay on the code form; onAuthStateChange handles success
       this.authCode = '';
     },
-    // Another account (or none) reloads: boot picks the store from the saved session, so no save still running on this page
+    // Another account (or none) reloads: boot picks the store from the saved session, so no save still running here
     // can land in the next account. this.session stays until then: pagehide files the draft and journal under this account.
     async onAuth(session) {
       if ((session?.user?.id ?? null) === this._acct()) { this.session = session; return; }   // Supabase re-emits SIGNED_IN on every tab focus: same uid, a fresh token
@@ -11273,8 +11361,8 @@ document.addEventListener('alpine:init', () => {
       for (let idle = 0, end = Date.now() + 3000; idle < 2 && Date.now() < end;) { idle = _inFlight ? 0 : idle + 1; await new Promise(r => setTimeout(r)); }
       location.reload();
     },
-    // realtime → app: the channel names the kind that changed, and it re-reads exactly that list. Same map as
-    // our own writes use, so a remote change and a local one leave the app in the same state.
+    // realtime → app: the channel names the kind that changed and it re-reads that list, the same map our own
+    // writes use.
     _subscribeStore() { this.store.subscribe?.(kind => this._reloadFor(kind)); },
     async signOut() { const sb = sbClient(); if (sb) await sb.auth.signOut(); },   // onAuthStateChange → onAuth(null)
 
@@ -11288,11 +11376,11 @@ document.addEventListener('alpine:init', () => {
     theme: savedAppearance(),
     colorTheme: savedColorTheme(),
     themeColors: THEME_COLORS,
-    // Wipe this device's local copy and reload — the escape hatch when local storage is stale (e.g. a re-seeded
-    // demo won't overwrite existing data). Signed-in accounts re-sync from the cloud; local-only data is gone.
+    // Wipe this device's local copy and reload: the escape hatch when local storage is stale. Signed-in accounts
+    // re-sync from the cloud; local-only data is gone.
     resetLocalData() {
       let local = 0;   // signed in, the wipe also takes what the cloud never had: signed-out tasks, the Bin, unsaved drafts
-      try { const def = JSON.parse(localStorage.getItem('adherod.meta'))?.default_project_id; local = JSON.parse(localStorage.getItem('adherod.tasks') || '[]').filter(t => t.id !== def).length; } catch {}   // not the seeded Backlog; catch: a broken store's escape hatch still opens
+      try { const def = JSON.parse(localStorage.getItem('adherod.meta'))?.default_project_id; local = JSON.parse(localStorage.getItem('adherod.tasks') || '[]').filter(t => t.id !== def).length; } catch {}   // not the seeded Backlog; catch: a broken store still opens the escape hatch
       const all = trashView(this.journal, Date.now()), smallDays = new Set(all.filter(e => e.kind === 'small').map(e => new Date(e.ts).setHours(0, 0, 0, 0)));   // every account's: jWipe clears the whole journal
       const bin = all.filter(e => e.kind !== 'small').length + smallDays.size, drafts = Object.keys(this._pendingMap()).length + Object.values(this._chatDraftStore()).reduce((n, chats) => n + Object.keys(chats).length, 0);   // a day's small changes are one row, as trashDays shows them; drafts: tasks' and every account's chats'
       const also = [local && `${this._nTasks(local)} saved on this device while signed out`, bin && `${bin} item${bin === 1 ? '' : 's'} in the Bin`, drafts && `${drafts} unsaved draft${drafts === 1 ? '' : 's'}`].filter(Boolean);

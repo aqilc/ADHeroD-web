@@ -12,15 +12,15 @@ export const overviewFields = fields => {
   const { sidebar, ...rest } = fields;
   return { ...rest, overview: rest.overview ?? sidebar };
 };
-// Checklist item ids key the composer's rows and every by-id toggle, but stored lists can carry missing/duplicate
-// ids (Android mints `c${size}`, reused after a delete; imports carry none) — rows then vanish and the zebra doubles
-// up. Both stores apply this on READ; deterministic, so every read agrees until the next save persists it.
+// Checklist item ids key the composer's rows and every by-id toggle, but stored lists can carry missing or duplicate
+// ids (Android reuses `c${size}` after a delete; imports carry none), so rows vanish. Both stores apply this on READ;
+// deterministic, so every read agrees until the next save persists it.
 export const chkIds = list => { const seen = new Set();
   if (list.every(c => c.id && !seen.has(c.id) && seen.add(c.id))) return list;
   seen.clear();
   return list.map((c, i) => { let id = c.id && !seen.has(c.id) ? c.id : `${c.id || 'chk'}-${i}`; while (seen.has(id)) id += `-${i}`; seen.add(id); return id === c.id ? c : { ...c, id }; });   // until unused: one pass is a fixed point
 };
-// Canonical task record — single source of truth. Used by seed/create/normalize AND tests.
+// Canonical task record: single source of truth for seed/create/normalize and tests.
 export const baseTask = () => {
   const ts = new Date().toISOString();
   return {
@@ -47,7 +47,7 @@ export function descendantIds(projects, id, kids = childIndex(projects), skip = 
   return result;
 }
 
-// n strictly rising positions for a reordered child list, from the ones its rows hold (sorted; a tie bumps up, a row moving in
+// n strictly rising positions for a reordered child list, from the ones its rows hold (a tie bumps up, a row moving in
 // gets one past the last): a row whose slot equals its position needs no write.
 export const orderSlots = (held, n) => {
   const slots = [...held].sort((a, b) => a - b);
@@ -64,8 +64,9 @@ export function projectDepth(projects, id) {
   return depth;
 }
 
-// Incomplete descendants + incomplete blockers that a completion of `id` would sweep (archived rows and notes excluded — never force-completed).
-// A repeating parent's occurrence leaves the subtasks with their own repeat alone. byId/kids: the app passes the indexes it holds — two O(n) builds per call otherwise.
+// Incomplete descendants + incomplete blockers that completing `id` would sweep (archived rows and notes never are). A
+// repeating parent's occurrence leaves subtasks with their own repeat alone. byId/kids: the app's held indexes (else
+// two O(n) builds per call).
 export function pendingSweep(rows, id, byId = new Map(rows.map(r => [r.id, r])), kids = childIndex(rows), ts = new Date().toISOString()) {
   const t = byId.get(id); if (!t || inNotes(t)) return [];   // a note never completes, so it sweeps nothing
   const own = occursAgain(t, ts) ? k => recActive(byId.get(k)?.recurrence) : null;
@@ -76,35 +77,34 @@ export function ancestorIds(rows, id) {
   while (cur && cur.parent_id && !seen.has(cur.parent_id)) { seen.add(cur.parent_id); out.push(cur.parent_id); cur = rows.find(r => r.id === cur.parent_id); }
   return out;
 }
-// Task resolver: a parent is never complete while it has an open descendant. Completed ancestors of `id` to reopen
-// once it lands open (create, reparent, un-complete, undo, unarchive). Pure; both stores apply it (pg twin: reopen_ancestors).
+// A parent is never complete while it has an open descendant: completed ancestors of `id` to reopen once it lands
+// open (create, reparent, un-complete, undo, unarchive). Pure; both stores apply it (pg twin: reopen_ancestors).
 export const ancestorsToReopen = (rows, id) => { const t = rows.find(r => r.id === id);
   return t && !t.completed_at && !t.archived_at ? ancestorIds(rows, id).filter(a => rows.find(r => r.id === a)?.completed_at) : []; };
-// Parent ids (bottom-up) to auto-complete after id is marked done — stops when a sibling is still open, at a note (never
-// done, so an open child of its own parent), or at the default project, which never auto-completes (pg twin: auto_complete_parent).
-// ts: a completion — a repeating parent whose rule goes on ends the list (its occurrence advances, so it stays open).
+// Parent ids (bottom-up) to auto-complete after id is marked done; stops at an open sibling, a note (never done), or the
+// default project (never auto-completes). pg twin: auto_complete_parent.
+// ts: a completion; a repeating parent whose rule goes on ends the list (its occurrence advances, so it stays open).
 export function parentsToComplete(rows, id, defaultId, ts = null) {
   const out = [], marked = new Set(); let cur = rows.find(r => r.id === id);
   while (cur?.parent_id) {
     const parent = rows.find(r => r.id === cur.parent_id); if (!parent) break;
     const kids = rows.filter(r => r.parent_id === parent.id), occurs = ts && occursAgain(parent, ts);
-    // archived children count as satisfied (like completed) so a parent can close when its remaining work is done/abandoned;
-    // under an occurrence, so does a subtask with its own repeat (left alone).
+    // archived children count as satisfied; under an occurrence, so does a subtask with its own repeat.
     const done = kids.length && kids.every(k => k.completed_at || k.archived_at || marked.has(k.id) || occurs && recActive(k.recurrence));
     if (done && parent.id !== defaultId && !inNotes(parent)) { if (!parent.completed_at && !parent.archived_at) { out.push(parent.id); marked.add(parent.id); } if (occurs) break; cur = parent; }
     else break;
   }
   return out;
 }
-// Which old-parent-chain ids should auto-complete after `id` moves out from `oldParentId`:
-// view `id` as if still under oldParent AND done, then ask which ancestors would close. Pure; both stores apply the result.
+// Old-parent-chain ids to auto-complete after `id` moves out of `oldParentId`: view `id` as still there AND done,
+// then ask which ancestors would close. Pure; both stores apply the result.
 export function movedOutParents(rows, id, oldParentId, ts, defaultId) {
-  if (!rows.some(r => r.parent_id === oldParentId && r.id !== id)) return [];   // its only child left — nothing finished the parent
+  if (!rows.some(r => r.parent_id === oldParentId && r.id !== id)) return [];   // its only child left: nothing finished the parent
   const tempRows = rows.map(r => r.id === id ? { ...r, parent_id: oldParentId, completed_at: ts } : r);
   return parentsToComplete(tempRows, id, defaultId);
 }
-// …for a removal of several [root, Set of the ids it takes] groups: each as its own remove would close them, over the rows
-// the groups before it left, their closes applied. ceiling: O(groups·n) — group the roots by parent past ~1000 selected.
+// …for a removal of several [root, Set of the ids it takes] groups: each closes what its own remove would, over the rows
+// the earlier groups left, their closes applied. ceiling: O(groups·n) — group the roots by parent past ~1000 selected.
 export function removedOutParents(rows, groups, ts, defaultId) {
   const out = []; let left = rows;
   for (const [root, gone] of groups) {
@@ -149,8 +149,7 @@ export const recurStep = (r, d) => {
     if (r.weekdays?.length) {
       let x = addDays(d, 1);
       while (!r.weekdays.includes(x.getUTCDay())) x = addDays(x, 1);
-      // interval counts WEEKS, not steps: skip ahead only once the walk crosses into a new week, so
-      // "every 2 weeks on Mon+Wed" stays biweekly instead of collapsing to weekly.
+      // interval counts WEEKS, not steps: skip ahead only on crossing into a new week ("every 2 weeks on Mon+Wed" stays biweekly)
       return iv > 1 && +weekStart(x) !== +weekStart(d) ? addDays(x, (iv - 1) * 7) : x;
     }
     return addDays(d, iv * 7);
@@ -158,7 +157,7 @@ export const recurStep = (r, d) => {
   if (r.freq === 'month') {
     if (r.nth != null && r.weekdays?.length) {
       const here = nthWeekday(d.getUTCFullYear(), d.getUTCMonth(), r.nth, r.weekdays[0]);
-      if (here > d) return here;   // this month's instance is still ahead of us
+      if (here > d) return here;   // this month's instance is still ahead
       const nx = addMonths(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)), iv);
       return nthWeekday(nx.getUTCFullYear(), nx.getUTCMonth(), r.nth, r.weekdays[0]);
     }
@@ -192,7 +191,7 @@ export const recurMatches = (r, d) => {
   return true;
 };
 
-// --- multiple repeat statements (V3 phase 2): recurrence = one rule object (legacy) or an array of rules ---
+// --- multiple repeat statements: recurrence = one rule object (legacy) or an array of rules ---
 export const recRules = rec => !rec ? [] : Array.isArray(rec) ? rec : [rec];
 export const recActive = rec => recRules(rec).some(r => !r.paused);
 // Earliest next occurrence across active rules (per-rule count/date ends respected) → { iso, rule } | null.
@@ -213,7 +212,7 @@ export function nextOccurrence(recurrence, fromIso, now, { inclusive = false } =
   const r = recurrence, today = isoDate(new Date(now));
   if (r.from_completion) return _iso(recurStep(r, _d(today)));
   let cur = _d(fromIso);
-  if (inclusive && _iso(cur) >= today && recurMatches(r, cur)) return _iso(cur);   // today eligible as first due only if it matches
+  if (inclusive && _iso(cur) >= today && recurMatches(r, cur)) return _iso(cur);   // today counts as first due only if it matches
   do { cur = recurStep(r, cur); } while (_iso(cur) <= today);
   return _iso(cur);
 }
@@ -285,9 +284,9 @@ export function completionPatches(rows, id, ts, defaultId, placed) {
   }
   return out;
 }
-// A placement is minted in a clock — stamp it (freeze §8 step 3) so day-boundary math survives travel. Explicit tz wins.
+// A placement is minted in a clock: stamp it so day-boundary math survives travel. Explicit tz wins.
 export const captureTz = f => { if ((f.starts_at || f.ends_at) && !f.tz) f.tz = Intl.DateTimeFormat().resolvedOptions().timeZone; return f; };
-// An archive takes the open tasks under its root; an Unarchive brings back only those at the root's instant, never one archived on its own
+// An archive takes the open tasks under its root; an Unarchive restores only those at the root's instant, never one archived on its own
 export const cascades = (root, t, val) => val ? !t.completed_at && !t.archived_at : Date.parse(t.archived_at) === Date.parse(root.archived_at);
 // Pause all rules in a recurrence (non-mutating).
 export const pauseRecurrence = rec => Array.isArray(rec) ? rec.map(x => ({ ...x, paused: true })) : { ...rec, paused: true };
@@ -309,22 +308,22 @@ export function seedRecurrenceDue(rec, ts) {
   return b.iso + (b.rule.at ? 'T' + b.rule.at : '');
 }
 // THE placement fact: task_id → the date-item's ISO ("YYYY-MM-DD" or "…THH:MM"). A date-item is a schedule
-// item with a date and no block. recur_from is NOT consulted — it is only a recurrence anchor.
+// item with a date and no block. recur_from is not consulted: it is only a recurrence anchor.
 export const placedMap = items => {
   const m = new Map();
   for (const x of items || []) if (!x.block_id && x.date) m.set(x.task_id, x.date + (x.start ? 'T' + x.start : ''));
   return m;
 };
-// The FKs a restored row carries (pg_mail/schema.js:243,282,299,318,349): a gone cascade parent means the DB
-// rejects the row (and its whole batch), so it stays out; a gone location is ON DELETE SET NULL, so the block just loses it.
+// The FKs a restored row carries (pg_mail/schema.js:243,282,299,318,349): a gone cascade parent makes the DB reject the
+// row (and its batch), so it stays out; a gone location is ON DELETE SET NULL, so the block just loses it.
 export const REFS = { scheduleItem: [['task_id', 'task'], ['block_id', 'block']], blockDay: [['block_id', 'block']],
   reminder: [['ref_id', 'task'], ['block_id', 'block']], block: [['location_id', 'location']], relation: [['task_id', 'task'], ['related_id', 'task']] };
-// ids: parent kind → Set of live ids, or null when unreadable (keep the row: the write decides)
+// ids: parent kind → Set of live ids, or null when unreadable (keep the row; the write decides)
 export const liveRefs = (kind, rows, ids) => (REFS[kind] || []).reduce((out, [col, p]) => {
   const ok = r => r[col] == null || !ids[p] || ids[p].has(r[col]);
   return p === 'location' ? out.map(r => ok(r) ? r : { ...r, [col]: null }) : out.filter(ok);
 }, rows);
-// A user-authored reminder's row, both adapters. The server brain owns fire_at/level; anchored rows carry no absolute `at`, and vice versa.
+// A user-authored reminder's row, both adapters. The server owns fire_at/level; anchored rows carry no absolute `at`, and vice versa.
 export const reminderRow = ({ task_id, anchor, offset_minutes, at, severity, repeat, times, message }, anc = anchor || 'absolute') => ({
   ref_type: 'task', ref_id: task_id, kind: 'user', anchor: anc,
   offset_minutes: anc === 'absolute' ? null : (offset_minutes ?? 0), at: anc === 'absolute' ? (at ?? null) : null,
@@ -340,29 +339,29 @@ export function createLocalStore(opts = {}) {
   const now = opts.now || (() => new Date().toISOString());
 
   // Parsed rows per key, trusted only while storage holds the very string they came from: another tab's write replaces
-  // it, so a stale cache is never read nor written back over that write. Readers that write get shallow row copies.
-  // Tasks parse normalized (chkIds, overviewFields): deterministic, so every read agrees until a save persists it.
+  // it, so a stale cache is never read nor written back over that write. Tasks parse normalized (chkIds, overviewFields).
   const _parsed = new Map();   // key → { raw, value, rows: id → [json | null until a write serializes it, row, its index in value] }
   const fixTask = t => overviewFields((t.checklist = chkIds(t.checklist ?? []), t));
   const parse = (k, s) => k === TASKS_KEY ? fixTask(JSON.parse(s)) : JSON.parse(s);
   const view = k => {
     const raw = storage.getItem(k) || (k === META_KEY ? '{}' : '[]'), hit = _parsed.get(k);
-    if (hit?.raw === raw) { hit.raw = raw; return hit.value; }   // keep storage's own string: the next compare is by reference
+    if (hit?.raw === raw) { hit.raw = raw; return hit.value; }   // keep storage's string: the next compare is by reference
     let value = JSON.parse(raw), dropped = false;
-    // A null row holds no data: dropped (boot's healTasks writes tasks back without it); the rows are handed out uncopied.
+    // A null row holds no data: dropped (boot's healTasks writes tasks back without it).
     if (Array.isArray(value)) { const n = value.length; value = value.filter(r => r != null).map(r => k === TASKS_KEY ? fixTask(r) : r); dropped = value.length < n; }
     _parsed.set(k, { raw, value, dropped, rows: new Map(Array.isArray(value) ? value.map((r, i) => [r.id, [null, r, i]]) : []) }); return value;
   };
   const readKey = k => { const v = view(k); return Array.isArray(v) ? v.map(r => ({ ...r })) : { ...v }; };
   // Copy-on-write rows for a writer: its own array of the cached rows, whose JSON the write reuses; edit(id) swaps in a
-  // shallow copy of an original row, once, and returns it (null: no such row); a row the writer appended is its own. Edit before filtering or inserting rows: an original past n is edited in place.
+  // shallow copy of an original row, once, and returns it (null: no such row); a row the writer appended is its own.
+  // Edit before filtering or inserting rows: an original past n is edited in place.
   // get(id): the original row a Map over the array would hold (the last of a shared id).
   const cow = k => {
     const rows = [...view(k)], n = rows.length, mine = new Set(), cached = _parsed.get(k).rows;
-    const from = cached.size === n ? n : 0;   // ceiling: O(n) scan per edit while any id repeats (the cache holds an id's last row; edit wants its first); dedupe on load if that shows in a trace
+    const from = cached.size === n ? n : 0;   // ceiling: O(n) scan per edit while any id repeats (cache holds the last row, edit wants the first); dedupe on load if it shows in a trace
     const index = id => {
       const hit = from && cached.get(id); if (hit && rows[hit[2]]?.id === id) return hit[2];
-      for (let i = hit ? 0 : from; i < rows.length; i++) if (rows[i].id === id) return i;   // hit elsewhere: the writer moved rows before this edit
+      for (let i = hit ? 0 : from; i < rows.length; i++) if (rows[i].id === id) return i;   // the writer moved rows before this edit
       return -1;
     };
     return [rows, id => {
@@ -372,19 +371,19 @@ export function createLocalStore(opts = {}) {
     }, id => cached.get(id)?.[1]];
   };
   // A full or blocked storage fails the write, never the caller: every write reports whether it landed. A row whose JSON
-  // didn't change keeps its object (the app's reload diff skips it); a changed one is parsed back, sharing nothing with the writer.
-  // A row passed as the cached object itself is unedited (copy-on-write writers copy what they edit): its JSON is reused.
-  // An in-place edit to a held row would be lost: tests set __storeCheck (the e2e harness, store.test) to fail that write.
+  // didn't change keeps its object (the app's reload diff skips it); a changed one is parsed back, sharing nothing with
+  // the writer. A row passed as the cached object itself is unedited (writers copy what they edit): its JSON is reused.
+  // An in-place edit to a held row would be lost: tests set __storeCheck (e2e harness, store.test) to fail that write.
   const writeKey = (k, v) => {
     try {
       if (!Array.isArray(v)) { storage.setItem(k, JSON.stringify(v)); return true; }
       const prev = _parsed.get(k)?.rows, rows = new Map(), value = [];
       const json = v.map(r => {
         const o = prev?.get(r.id);
-        if (o?.[1] !== r && k === TASKS_KEY) r = fixTask(r);   // normalized as parse is, so an unchanged copy's JSON matches its cached row
+        if (o?.[1] !== r && k === TASKS_KEY) r = fixTask(r);   // normalized as parse is, so an unchanged copy matches its cached row
         const s = (o?.[1] === r && o[0]) || JSON.stringify(r);
         if (globalThis.__storeCheck && o?.[1] === r && o[0] && o[0] !== JSON.stringify(r)) throw new Error(`row ${r.id} edited in place`);
-        const row = o && (o[1] === r || (o[0] ?? JSON.stringify(o[1])) === s) ? o[1] : parse(k, s);   // ceiling: a row parsed but never written (o[0] null) serializes here, so a load's first write costs every row once; revisit if it shows in a trace
+        const row = o && (o[1] === r || (o[0] ?? JSON.stringify(o[1])) === s) ? o[1] : parse(k, s);   // ceiling: a never-written row (o[0] null) serializes here, so a load's first write costs every row once; revisit if it shows in a trace
         rows.set(r.id, [s, row, value.length]); value.push(row); return s;
       });
       const raw = `[${json.join(',')}]`;
@@ -393,8 +392,8 @@ export function createLocalStore(opts = {}) {
       return true;
     } catch (e) { console.error('[store] write failed', k, e); return false; }
   };
-  // Append a row: the caller supplies only the fields that make its namespace different — id and the two
-  // timestamps are the same everywhere, so they live here (the cloud's collection().insert is the mirror).
+  // Append a row: the caller supplies only its namespace's fields; id and the timestamps live here (mirrors the cloud's
+  // collection().insert).
   const addRow = (k, write, fields) => { const ts = now(), row = { id: uuid(), ...fields, created_at: ts, updated_at: ts }; return write([...view(k), row]) ? row : null; };
   const patchRow = (k, write, id, fields) => { const [rows, edit] = cow(k), r = edit(id); if (!r) return null; Object.assign(r, fields, { updated_at: now() }); return write(rows) ? r : null; };
   const dropRow = (k, write, id) => write(view(k).filter(r => r.id !== id));
@@ -402,29 +401,29 @@ export function createLocalStore(opts = {}) {
   // Replace the rows hit() matches with fix(row) copies; no match, no write.
   const scrubRows = (k, write, hit, fix) => { const rows = view(k); if (rows.some(hit)) write(rows.map(r => hit(r) ? fix(r) : r)); };
   // Drop a row + scrub its id out of each [read, write, column] that references it (parity with the DB's delete_area RPC).
-  // The row goes first: a failed scrub leaves a dangling id (the row's restore re-attaches it), never a task stripped of a live one.
+  // The row goes first: a failed scrub leaves a dangling id (restore re-attaches it), never a task stripped of a live one.
   const removeAndScrub = (k, write, id, refs) => { if (!dropRow(k, write, id)) return false;
     for (const [refKey, writeRefs, col] of refs) scrubRows(refKey, writeRefs, r => r[col]?.includes(id), r => ({ ...r, [col]: r[col].filter(x => x !== id) }));
     return true; };
   // task_relations FKs both ends to tasks (pg_mail/schema.js:282): no blocked_by/relates id outlives its task.
   const dropEdges = (r, dead, edit = () => r) => { for (const k of ['blocked_by', 'relates']) if (r[k]?.some(dead)) { r = edit(r.id); r[k] = r[k].filter(x => !dead(x)); } };
 
-  const readTasks = () => view(TASKS_KEY);   // the cached rows: a writer edits through cow
+  const readTasks = () => view(TASKS_KEY);   // cached rows: a writer edits through cow
   const writeTasks = v => { reindex(); return writeKey(TASKS_KEY, v); };
-  // Task resolver: reopen id's completed ancestors once it lands open. Edits cow rows; the caller writes them.
+  // Reopen id's completed ancestors once it lands open. Edits cow rows; the caller writes them.
   const reopen = (rows, edit, id, ts = now()) => { for (const a of ancestorsToReopen(rows, id)) { const r = edit(a); r.completed_at = null; r.updated_at = nextTs(ts, r.updated_at); } };
-  // …and close the parents id's move/removal left finished (movedOutParents: open, all in rows). Sync: nothing yields before the write.
+  // …and close the parents id's move/removal left finished (movedOutParents). Sync: nothing yields before the write.
   const closeMovedOut = (rows, edit, id, oldParentId, ts) => { for (const a of movedOutParents(rows, id, oldParentId, ts, readMeta().default_project_id)) { const r = edit(a); r.completed_at = ts; r.updated_at = nextTs(ts, r.updated_at); } };
   const readAreas = () => readKey(AREAS_KEY);
   const writeAreas = v => { reindex(); return writeKey(AREAS_KEY, v); };
   const readMeta = () => readKey(META_KEY);
   const writeMeta = v => writeKey(META_KEY, v);
   const readFilters = () => readKey(FILTERS_KEY);
-  const writeFilters = v => writeKey(FILTERS_KEY, v);   // no reindex: filters aren't part of the search corpus
+  const writeFilters = v => writeKey(FILTERS_KEY, v);   // filters aren't in the search corpus
   const EVENTS_KEY = 'adherod.events';
   const readEvents = () => readKey(EVENTS_KEY);
   const writeEvents = v => writeKey(EVENTS_KEY, v);   // no reindex
-  const BLOCKS_KEY = 'adherod.blocks';                // condition-bearing time regions (subsume presence windows)
+  const BLOCKS_KEY = 'adherod.blocks';                // condition-bearing time regions
   const readBlocks = () => readKey(BLOCKS_KEY);
   const writeBlocks = v => writeKey(BLOCKS_KEY, v);
   const SCHEDULE_ITEMS_KEY = 'adherod.schedule_items';
@@ -446,11 +445,11 @@ export function createLocalStore(opts = {}) {
   const locationRow = (name, region = 'Home', position = 0) => ({ name, icon: null, color: null, region, position });
   const uf = makeFuzzy();
   let _search = { haystack: [], meta: [] }, _idxDirty = true;
-  let _treeDirty = true;   // repairTree() only runs on list() after a parent_id-touching mutation (move/reparent/remove)
-  function reindex() { _idxDirty = true; }   // lazy; built on first search/filter after mutation
+  let _treeDirty = true;   // repairTree() runs on list() only after a parent_id-touching mutation
+  function reindex() { _idxDirty = true; }   // lazy: built on the next search/filter
   function ensureIdx() { if (_idxDirty) { _search = buildSearchDocs(readTasks(), readAreas(), readMeta().default_project_id || null, readLocations()); _idxDirty = false; } }
 
-  // Storage keeps no null task row (read drops it) nor an id-less one (it may hold data: it gets an id), before ensureBacklog adopts a root by id.
+  // Storage keeps no null task row (read drops it) nor an id-less one (it gets an id), before ensureBacklog adopts a root by id.
   function healTasks() {
     const [tasks] = cow(TASKS_KEY); let healed = _parsed.get(TASKS_KEY).dropped;
     tasks.forEach((r, i) => { if (r.id == null) { tasks[i] = { ...r, id: uuid() }; healed = true; } });
@@ -522,8 +521,7 @@ export function createLocalStore(opts = {}) {
       }
       meta.default_filters_seeded = true; writeMeta(meta);
     }
-    // "All tasks" is a removable default filter (a null filter — is:any → every task incl. completed/archived),
-    // seeded at the top of the Filters list. Deletable like any filter.
+    // "All tasks": a deletable default filter (null filter, is:any: every task incl. completed/archived), seeded first.
     if (!meta.all_tasks_filter_seeded) {
       const fs = readFilters();
       if (!fs.some(f => f.name === 'All tasks' && f.query === 'is:any')) {
@@ -534,7 +532,7 @@ export function createLocalStore(opts = {}) {
     }
   }
 
-  // Seed Home location once (a block names a location by id; tasks use a location constraint object).
+  // Seed Home location once (a block names a location by id).
   {
     const meta = readMeta();
     if (!meta.home_seeded) {
@@ -560,13 +558,14 @@ export function createLocalStore(opts = {}) {
     return readMeta().default_project_id;
   }
 
-  // Not unified with supabase-store's resolveAreaIds on purpose: the shared prefix is resolveAreaNames; the rest really differs (sync find-or-create + one batched writeAreas here, async ensureArea per name there). Don't re-flag.
+  // Not unified with supabase-store's resolveAreaIds: the rest differs (sync find-or-create + one batched writeAreas here,
+  // async ensureArea per name there).
   function resolveAreas(fields) {
     const { ids, names } = resolveAreaNames(fields);
     if (ids) return ids;
     if (!names.length) return [];
     const areas = [...view(AREAS_KEY)]; const ts = now();
-    const result = names.map(nm => {   // trim so "Work " reuses "Work" (mirrors the DB unique index) — done by resolveAreaNames
+    const result = names.map(nm => {   // trimmed by resolveAreaNames so "Work " reuses "Work" (mirrors the DB unique index)
       let l = areas.find(x => x.name === nm);
       if (!l) { const pos = areas.length ? Math.max(...areas.map(x => x.position)) + 1 : 0; l = { id: uuid(), name: nm, color: null, position: pos, favorite: false, created_at: ts, updated_at: ts }; areas.push(l); }
       return l.id;
@@ -577,14 +576,14 @@ export function createLocalStore(opts = {}) {
   function resolveGoals(fields) { return Array.isArray(fields.goal_ids) ? fields.goal_ids : []; }
 
   return {
-    // Another tab's write: `storage` fires in every other same-origin document — local storage's realtime. A null key: it cleared storage.
+    // Another tab's write: `storage` fires in every other same-origin document. A null key: it cleared storage.
     subscribe(onChange) {
       const kinds = { [TASKS_KEY]: 'task', [AREAS_KEY]: 'area', [FILTERS_KEY]: 'filter', [EVENTS_KEY]: 'event', [BLOCKS_KEY]: 'block', [SCHEDULE_ITEMS_KEY]: 'scheduleItem',
         [BLOCK_DAYS_KEY]: 'blockDay', [DAY_NOTES_KEY]: 'dayNote', [REMINDERS_KEY]: 'reminder', [LOCATIONS_KEY]: 'location', [META_KEY]: 'location' };   // meta: the home place, which the places loader reads
       addEventListener('storage', e => { const kind = e.key === null ? 'all' : kinds[e.key]; if (kind && e.storageArea === storage) { reindex(); onChange(kind); } });
     },
 
-    // parity with SupabaseStore.bootstrap — one call, whole account
+    // parity with SupabaseStore.bootstrap: one call, whole account
     async bootstrap() {
       return {
         tasks: await this.tasks.list(), areas: await this.areas.list(),
@@ -593,8 +592,8 @@ export function createLocalStore(opts = {}) {
       };
     },
 
-    // Trash restore: re-insert previously-deleted rows (dedup by id, order-preserving). Powers "Recently deleted".
-    // A row already live stays as it is, its id added to `live`: the Bin keeps its copy.
+    // Trash restore: re-insert deleted rows (dedup by id, order-preserving). A row already live stays as it is, its id
+    // added to `live`: the Bin keeps its copy.
     reinsert(kind, rows, live = null) {
       const rw = { task: [TASKS_KEY, writeTasks], area: [AREAS_KEY, writeAreas],
         event: [EVENTS_KEY, writeEvents], block: [BLOCKS_KEY, writeBlocks], filter: [FILTERS_KEY, writeFilters], location: [LOCATIONS_KEY, writeLocations],
@@ -604,13 +603,14 @@ export function createLocalStore(opts = {}) {
       const ids = Object.fromEntries((REFS[kind] || []).map(([, p]) => [p, new Set(view({ task: TASKS_KEY, block: BLOCKS_KEY, location: LOCATIONS_KEY }[p]).map(r => r.id))]));
       const [key, write] = rw, [cur, edit] = cow(key), have = new Set(cur.map(r => r.id)), add = liveRefs(kind, rows.filter(r => !have.has(r.id)), ids).map(r => ({ ...r }));
       for (const r of rows) if (have.has(r.id)) live?.add(r.id);
-      // an edge to a task deleted since can't come back; a parent: repairTree re-homes the row; an open row reopens its done ancestors (pg twin: tasks_reopen_ancestors)
+      // an edge to a since-deleted task can't come back; repairTree re-homes a missing parent; an open row reopens its
+      // done ancestors (pg twin: tasks_reopen_ancestors)
       if (kind === 'task') {
-        const byId = new Map([...cur, ...add].map(r => [r.id, r])), ts = now();   // one index: a per-row reopen() scan is O(depth·n) per row
+        const byId = new Map([...cur, ...add].map(r => [r.id, r])), ts = now();   // one index: reopen() per row is O(depth·n)
         for (const r of add) {
           dropEdges(r, x => !byId.has(x));
           if (!r.completed_at && !r.archived_at) for (let a = byId.get(r.parent_id), seen = new Set([r.id]); a && !seen.has(a.id); seen.add(a.id), a = byId.get(a.parent_id))
-            if (a.completed_at) { byId.set(a.id, a = edit(a.id) ?? a); a.completed_at = null; a.updated_at = nextTs(ts, a.updated_at); }   // ?? a: an added row is already a copy
+            if (a.completed_at) { byId.set(a.id, a = edit(a.id) ?? a); a.completed_at = null; a.updated_at = nextTs(ts, a.updated_at); }   // an added row is already a copy
         }
         _treeDirty = true;
       }
@@ -643,8 +643,8 @@ export function createLocalStore(opts = {}) {
           title: fields.title || '', notes: fields.notes ?? null,
           starts_at: fields.starts_at, ends_at: fields.ends_at, all_day: fields.all_day ?? false,
           recurrence: fields.recurrence ?? null, location: fields.location ?? null, color: fields.color ?? null,
-          // source stays 'local' — the enum has no other member; an .ics import's provenance is external_id,
-          // which is also what a re-drop dedups on. ics_seq gates whether a re-drop may overwrite.
+          // source stays 'local' (the enum has no other member); an .ics import's provenance is external_id, which a
+          // re-drop dedups on. ics_seq gates whether a re-drop may overwrite.
           source: 'local', external_id: fields.external_id ?? null, ics_seq: fields.ics_seq ?? null, countdown: !!fields.countdown,
           ticket: fields.ticket ?? null, attachments: fields.attachments ?? [], going: fields.going ?? {}, importance: fields.importance ?? 'none',
         });
@@ -677,9 +677,9 @@ export function createLocalStore(opts = {}) {
 
     scheduleItems: {
       async list() { return readScheduleItems(); },
-      async add({ task_id, block_id, role, position, date, start, duration_min }) {
+      async add({ task_id, block_id, role, position, date, start, duration_min, gcal_uid, gcal_day }) {
         return addRow(SCHEDULE_ITEMS_KEY, writeScheduleItems, { task_id, block_id: block_id ?? null, role: role ?? 'during',
-          position: position ?? 0, date: date ?? null, start: start ?? null, duration_min: duration_min ?? null });
+          position: position ?? 0, date: date ?? null, start: start ?? null, duration_min: duration_min ?? null, ...gcal_uid && { gcal_uid, gcal_day: gcal_day ?? null } });
       },
       async update(id, fields) { return patchRow(SCHEDULE_ITEMS_KEY, writeScheduleItems, id, fields); },
       async remove(id) { return dropRow(SCHEDULE_ITEMS_KEY, writeScheduleItems, id); },
@@ -718,7 +718,7 @@ export function createLocalStore(opts = {}) {
         if (_treeDirty) { const [tasks, edit] = cow(TASKS_KEY); if (repairTree(tasks, readMeta().default_project_id || null, edit)) writeTasks(tasks); _treeDirty = false; }
         return [...readTasks()].sort((x, y) => (x.position ?? 0) - (y.position ?? 0) || y.created_at.localeCompare(x.created_at));
       },
-      async get(id) { const t = view(TASKS_KEY).find(r => r.id === id); return t ? { ...t } : null; },   // a shallow copy: the holder may edit its top-level fields
+      async get(id) { const t = view(TASKS_KEY).find(r => r.id === id); return t ? { ...t } : null; },   // a shallow copy: the holder may edit top-level fields
       async create(fields) {
         fields = overviewFields(fields);
         try {
@@ -731,13 +731,13 @@ export function createLocalStore(opts = {}) {
             const depth = projectDepth(readTasks(), parent_id);
             if (depth >= MAX_DEPTH) return null;
           }
-          const [rows, edit] = cow(TASKS_KEY); // read after resolveParent (may write a new root task)
+          const [rows, edit] = cow(TASKS_KEY); // after resolveParent (may write a new root task)
           const recurrence = fields.recurrence ?? null;
           let recur_from = fields.recur_from || null;
-          if (recurrence && !recur_from) { const seeded = seedRecurrenceDue(recurrence, now()); if (seeded) recur_from = seeded; }   // seeded due is rule-generated; a rule may carry its own time
+          if (recurrence && !recur_from) { const seeded = seedRecurrenceDue(recurrence, now()); if (seeded) recur_from = seeded; }   // a seeded due is rule-generated; a rule may carry its own time
           const row = {
             ...baseTask(),
-            id: fields.id ?? uuid(),   // a caller-minted id: a composer draft names its new subtasks before Save
+            id: fields.id ?? uuid(),   // caller-minted: a composer draft names its new subtasks before Save
             content: fields.content,
             notes: fields.notes ?? null,
             importance: fields.importance ?? 'none',
@@ -759,7 +759,7 @@ export function createLocalStore(opts = {}) {
             task_type: fields.task_type ?? null,
             milestone: fields.milestone ?? false,
             blocked_by: fields.blocked_by ?? [], relates: fields.relates ?? [], attachments: fields.attachments ?? [],
-            // substrate columns — Supabase create persists these via its post-insert update; parity demands the same here
+            // substrate columns (Supabase persists them via its post-insert update)
             task_size: fields.task_size ?? null, anchor: fields.anchor ?? null, possible: fields.possible ?? null,
             starts_at: fields.starts_at ?? null, ends_at: fields.ends_at ?? null, tz: fields.tz ?? null,
             recurrence,
@@ -767,7 +767,7 @@ export function createLocalStore(opts = {}) {
             updated_at: ts,
           };
           rows.push(row); reopen(rows, edit, row.id, ts);
-          if (row.blocked_by.length || row.relates.length) {   // Supabase create: setRelationType
+          if (row.blocked_by.length || row.relates.length) {   // as Supabase create's setRelationType
             const live = new Set(rows.map(r => r.id)); dropEdges(row, x => !live.has(x));
             for (const { id } of rows) if (row.relates.includes(id)) { const r = edit(id); r.relates = [...(r.relates ?? []), row.id]; r.updated_at = nextTs(ts, r.updated_at); }
           }
@@ -781,12 +781,12 @@ export function createLocalStore(opts = {}) {
         let [rows, edit] = cow(TASKS_KEY);
         if (!rows.some(r => r.id === id)) return null;   // before resolveParent: a missing id must not leave a stray project
         const resolved = {};
-        // project: null (every composer save of a root) is "no project named", not "move to the default"
+        // project: null (every composer save of a root) means "no project named", not "move to the default"
         if (fields.parent_id !== undefined) resolved.parent_id = fields.parent_id;
         else if (fields.project) { resolved.parent_id = resolveParent(fields); [rows, edit] = cow(TASKS_KEY); }   // re-read: a project it creates is a write this one must not overwrite
         delete fields.project;
         const row = edit(id);
-        if (resolved.parent_id === row.parent_id) delete resolved.parent_id;   // unchanged (every composer save sends it): no cycle walk, no tree repair — future-guard: nothing observable reds without it
+        if (resolved.parent_id === row.parent_id) delete resolved.parent_id;   // unchanged (every composer save sends it): no cycle walk or tree repair; future-guard: nothing observable reds without it
         else if ('parent_id' in resolved) {
           if (resolved.parent_id && descendantIds(rows, id).includes(resolved.parent_id)) return null;
           _treeDirty = true;
@@ -798,7 +798,7 @@ export function createLocalStore(opts = {}) {
         if (fields.goal_ids !== undefined) { resolved.goal_ids = resolveGoals(fields); delete fields.goal_ids; }
         if ('blocked_by' in fields || 'relates' in fields) { const live = new Set(rows.map(r => r.id)); dropEdges(fields, x => !live.has(x)); }
         Object.assign(row, fields, resolved, { updated_at: nextTs(now(), row.updated_at) });
-        // 'relates' is symmetric (Supabase setRelationType): partners in the new set gain id, the rest lose it
+        // 'relates' is symmetric: partners in the new set gain id, the rest lose it
         if ('relates' in fields) {
           const rel = new Set(fields.relates ?? []);
           for (const { id: rid, relates } of rows) if (rid !== id && rel.has(rid) !== !!relates?.includes(id)) {
@@ -812,7 +812,7 @@ export function createLocalStore(opts = {}) {
         const [rows, edit] = cow(TASKS_KEY), row = edit(id); if (!row) return false;
         const it = (row.checklist || []).find(c => c.id === itemId); if (!it) return false;
         row.checklist = row.checklist.map(c => c === it ? { ...c, done } : c); row.updated_at = nextTs(now(), row.updated_at);
-        return writeTasks(rows) && row.updated_at;   // the write's stamp: the caller patches its row with it
+        return writeTasks(rows) && row.updated_at;   // the write's stamp, which the caller patches its row with
       },
       async move(id, parentId, toIndex) {
         try {
@@ -826,13 +826,12 @@ export function createLocalStore(opts = {}) {
           const oldParentId = t.parent_id;
           const ts = now();
           t.parent_id = parentId ?? null; t.position = toIndex; t.updated_at = nextTs(ts, t.updated_at); _treeDirty = true; reopen(rows, edit, id, ts);
-          // Auto-complete old parent chain (ancestors whose remaining children are all done).
           if (oldParentId && oldParentId !== (parentId ?? null)) closeMovedOut(rows, edit, id, oldParentId, ts);
           return writeTasks(rows) ? t : null;
         } catch (e) { console.error('[store] move failed', e); return null; }
       },
-      // id, [id, ...every row the caller journaled], or a list of those (a bulk delete, one write): each id's subtree AS STORED
-      // goes, never a row the caller didn't list. A group whose id is gone is skipped, and the answer is false.
+      // id, [id, ...every row the caller journaled], or a list of those (a bulk delete, one write): each id's subtree AS
+      // STORED goes, never a row the caller didn't list. A group whose id is gone is skipped, and the answer is false.
       async remove(id, targetId) {
         try {
           _treeDirty = true;
@@ -840,7 +839,7 @@ export function createLocalStore(opts = {}) {
           for (const list of lists) {
             if (!byId.has(list[0])) continue;
             const listed = new Set(list), sub = descendantIds(rows, list[0], kidsOf), g = new Set(sub.filter(x => listed.has(x)));
-            const kids = [...g].flatMap(x => kidsOf.get(x) || []).filter(x => !g.has(x));   // unlisted subtasks: moved to targetId, else nothing goes
+            const kids = [...g].flatMap(x => kidsOf.get(x) || []).filter(x => !g.has(x));   // unlisted subtasks move to targetId, else nothing goes
             if (kids.length && (!byId.has(targetId) || sub.includes(targetId))) return false;
             for (const k of kids) { const r = edit(k); r.parent_id = targetId; r.updated_at = nextTs(now(), r.updated_at); reopen(rows, edit, k); }   // an open one reopens a done target (pg twin: reopen_ancestors)
             groups.push([list[0], g]); for (const x of g) gone.add(x);
@@ -854,8 +853,8 @@ export function createLocalStore(opts = {}) {
           const meta = readMeta();
           if (targetId && groups.some(([root]) => root === meta.default_project_id)) { meta.default_project_id = targetId; writeMeta(meta); }
           // Parity with the DB (schedule_items.task_id, reminders.ref_id ON DELETE CASCADE, pg_mail/schema.js:299,349): a
-          // removed task takes its block attachments and reminders with it — after the tasks write, so a failed delete keeps
-          // them. Schedule items key on the tasks that remain, not `gone`, so an orphan an earlier failed write left goes too.
+          // removed task takes its attachments and reminders, after the tasks write so a failed delete keeps them. Schedule
+          // items key on the tasks that remain, not `gone`, so an earlier failed write's orphan goes too.
           const live = new Set(remaining.map(r => r.id)), si = view(SCHEDULE_ITEMS_KEY), rem = view(REMINDERS_KEY);
           if (si.some(x => !live.has(x.task_id))) writeScheduleItems(si.filter(x => live.has(x.task_id)));
           if (rem.some(x => gone.has(x.ref_id))) writeReminders(rem.filter(x => !gone.has(x.ref_id)));   // only the deleted tasks' rows: a reminder of an already-missing task may be a Bin entry's only copy
@@ -865,18 +864,18 @@ export function createLocalStore(opts = {}) {
       async setCompleted(id, done) {
         const [rows, edit] = cow(TASKS_KEY), ts = now();
         const target = rows.find(r => r.id === id); if (!target) return false;
-        if (done && inNotes(target)) return true;   // a note is reference, never done: every completing path lands here
+        if (done && inNotes(target)) return true;   // a note is never done: every completing path lands here
         const patches = done ? completionPatches(rows, id, ts, readMeta().default_project_id, placedMap(view(SCHEDULE_ITEMS_KEY))) : new Map([[id, { completed_at: null }]]);
         for (const [x, patch] of patches) { const r = edit(x); Object.assign(r, patch); r.updated_at = nextTs(ts, r.updated_at); }
         if (!done) reopen(rows, edit, id, ts);
         return writeTasks(rows);
       },
-      // Archive: a task that can't be completed anymore. Non-destructive — pauses recurrence (never destroys the rule).
-      // Excluded from sweeps/parent-walks (see pendingSweep/parentsToComplete). ids: one id, or a cascade's set — one write, one instant.
+      // Archive: pauses recurrence (never destroys the rule) and is excluded from sweeps and parent-walks (pendingSweep,
+      // parentsToComplete). ids: one id, or a cascade's set: one write, one instant.
       async setArchived(ids, val) {
         const [rows, edit] = cow(TASKS_KEY), ts = now(), asked = [ids].flat(), byId = new Map(rows.map(r => [r.id, r])), root = byId.get(asked[0]);
         if (!asked.every(id => byId.has(id))) return false;
-        // as the stored rows stand, not another tab's view: a root another tab archived since keeps its instant, as signed in
+        // as the stored rows stand: a root another tab archived since keeps its instant, as signed in
         const list = asked.filter(id => id === asked[0] ? !val || !root.archived_at : cascades(root, byId.get(id), val));
         for (const id of list) {
           const t = edit(id);
@@ -911,7 +910,7 @@ export function createLocalStore(opts = {}) {
       async create({ name, color }) {
         const areas = readAreas();
         const nm = (name ?? '').trim();
-        const existing = areas.find(a => a.name === nm);   // reuse — no local equivalent of the DB unique index (areas_user_name_idx)
+        const existing = areas.find(a => a.name === nm);   // no local equivalent of the DB unique index (areas_user_name_idx)
         if (existing) return existing;
         return addRow(AREAS_KEY, writeAreas, { name: nm, color: color ?? null, icon: null,
           position: areas.length ? Math.max(...areas.map(l => l.position)) + 1 : 0, favorite: false });
@@ -928,7 +927,7 @@ export function createLocalStore(opts = {}) {
       },
       async update(id, fields) { return patchRow(LOCATIONS_KEY, writeLocations, id, fields); },
       async remove(id) {
-        if (!dropRow(LOCATIONS_KEY, writeLocations, id)) return false;   // the row first: a failed scrub leaves a dangling id, never a lost one
+        if (!dropRow(LOCATIONS_KEY, writeLocations, id)) return false;   // row first: a failed scrub leaves a dangling id, never a lost one
         scrubRows(BLOCKS_KEY, writeBlocks, b => b.location_id === id, b => ({ ...b, location_id: null }));   // orphaned blocks become free
         for (const [k, write] of [[TASKS_KEY, writeTasks], [EVENTS_KEY, writeEvents]])   // parity with delete_location.sql: tasks and events lose it
           scrubRows(k, write, r => r.location?.ids?.includes(id), r => ({ ...r, location: { ...r.location, ids: r.location.ids.filter(x => x !== id) } }));
@@ -937,7 +936,7 @@ export function createLocalStore(opts = {}) {
       async reorder(ids) { return reorderRows(LOCATIONS_KEY, writeLocations, ids); },
     },
 
-    homeLocationId() { return readMeta().home_location_id ?? null; },   // user's designated "home" place ("at home" NLP)
+    homeLocationId() { return readMeta().home_location_id ?? null; },   // the designated "home" place ("at home" NLP)
     setHomeLocation(id) { const m = readMeta(); m.home_location_id = m.home_location_id === id ? null : id; return writeMeta(m); },
     currentRegion() { return readMeta().current_region ?? 'Home'; },
     theme() { return readMeta().theme ?? null; },

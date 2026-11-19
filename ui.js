@@ -3,8 +3,7 @@
 export const esc = s => String(s ?? '').replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-// A ? sheet keycap row → the shortcut coach's plain tip text: its first alternative, adjacent keys joined the
-// platform's way (⌘Z on a Mac, Ctrl+Z elsewhere).
+// A ? sheet keycap row → the shortcut coach's tip text: its first alternative, keys joined per platform.
 export const keyTip = (keycaps, mod) => keycaps.split(' or ')[0].replaceAll('</kbd><kbd', mod === '⌘' ? '</kbd><kbd' : '</kbd>+<kbd')
   .replace(/<[^>]+>/g, '').replaceAll('⌘', mod).replace(/(?<=[⌘+])[a-z]$/, c => c.toUpperCase());
 
@@ -12,8 +11,8 @@ export const keyTip = (keycaps, mod) => keycaps.split(' or ')[0].replaceAll('</k
 const _mdUrl = u => /^(https?:\/\/|mailto:|adherod:\/\/task\/[\w-]+$)/i.test(u) ? u
   : /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(u) ? 'mailto:' + u
   : /^www\.[^\s]+$/i.test(u) ? 'https://' + u : '';
-// A task link (adherod://task/<id>) draws as the task's current title, for whoever can see the task: app.js sets the
-// lookup (null = not theirs or gone, which says so). Notes and checklists only: mdTitle's memo would keep a renamed title.
+// A task link (adherod://task/<id>) draws as the task's current title for whoever can see it: app.js sets the lookup
+// (null = not theirs or gone, which says so). Notes and checklists only: mdTitle's memo would keep a renamed title.
 const TLINK = /(^|[\s(])(adherod:\/\/task\/([\w-]+))/g;
 let _taskTitle = () => null;
 export const setTaskTitles = f => { _taskTitle = f; };
@@ -99,7 +98,7 @@ const _fenced = (src, live, opts) => {
   for (const m of raw.matchAll(_fences)) {
     // Only a newline-ended opening line is language metadata; same-line commands stay literal.
     const head = m[1].match(/^([^\s`]*)[ \t]*\r?\n/), prefix = head?.[0] || '', compact = !m[1].includes('\n'), block = _codeBlock(m[1].slice(prefix.length), head?.[1], compact);
-    // A multiline fence is a block and takes its closing line break (hidden, it leaves no empty line); a compact one flows in its line.
+    // A multiline fence is a block and takes its closing line break (hidden: no empty line); compact flows inline.
     const nl = live && !compact && m[2] && raw[m.index + m[0].length] === '\n' ? '\n' : '';
     out += prose(raw.slice(at, m.index)) + (live ? `<span class="dm-tok${compact ? '' : ' dm-fence'}"><span class="dm-mark">${esc('```' + prefix)}</span>` + block + (m[2] ? '<span class="dm-mark">```' + nl + '</span>' : '') + '</span>' : block);
     at = m.index + m[0].length + nl.length;
@@ -148,10 +147,10 @@ const _dLine = (line, literal) => {   // literal: a title's, where # and - stay 
   return unstash(t);
 };
 
-// Which checklist items a list row actually shows: 3+ done fold behind "N done" (open items unaffected;
-// plain = no collapse); `open` reveals them. `more` = the toggle exists at all. Shared with app.js's row-height
-// estimate for contain-intrinsic-size, so the rendered count and the estimated count can't drift. Open first, done last (stable),
-// the composer's and the row's alike. held: item key (id, or a row's ci) → the done it showed before a tick still in place (app.js _holdChk).
+// Which checklist items a list row shows: 3+ done fold behind "N done" (plain = no collapse); `open` reveals them.
+// `more` = the toggle exists at all. Shared with app.js's row-height estimate, so the rendered and estimated counts
+// can't drift. Open first, done last (stable). held: item key (id, or a row's ci) → the done it showed before a
+// tick still in place (app.js _holdChk).
 export function chkVisible(cl, plain, open, held) {
   if (plain) return { rows: cl, hidden: 0, more: 0 };
   const isDone = x => !!(held?.has(x.id ?? x.ci) ? held.get(x.id ?? x.ci) : x.done);
@@ -254,20 +253,17 @@ export const rowBodyHtml = (r, opts = {}) => {
     ? `<button type="button" class="row-chev${r.depth > 0 ? ' boxed' : ''}" data-act="collapse" aria-label="Fold" aria-expanded="${!r.collapsed}"${r.collapsed ? ' style="transform:rotate(-90deg)"' : ''}><svg class="ico"><use href="#i-chev-d"/></svg></button>` : '';
   const recArr = recList(t.recurrence), check = checkHtml(opts.tray && !r.step ? { ...r, hasProgress: false } : r, 'button', '', recArr);   // the tray drops the checklist ring, never a Steps pie; same builder the link picker uses, so both read the task's state identically
   const areas = r.areas.length ? `<span class="areas inline-flex items-center gap-6 flex-none"${r.areas.length === 1 ? ` style="--tc:${esc(r.areas[0].color)}"` : ''}>${r.areas.map(areaChipHtml).join('')}</span>` : '';
-  // Goals are not drawn in the list row (parked until the goals rework): no `.goal`/`.goals-chips` element.
-  // `proj-inbox` marks the default-project chip: a bare glyph on the phone (glyph plus "Backlog" on `.dsk`), so the
-  // overflow ladder is forbidden from moving it to line 2 (an icon alone on its own line reads as a bug). → app.js _ladder
+  // Goals are not drawn in the list row (parked until the goals rework): no `.goals-chips` element.
+  // `proj-inbox` marks the default-project chip: a bare glyph on the phone, so the overflow ladder must not move it
+  // to line 2 (an icon alone on its own line reads as a bug). → app.js _ladder
   const proj = showProj ? projChipHtml(r.projName, r.isDefaultProj) : '';
-  // Every badge in the row's right cluster is the same shape — muted icon + value. Only the modifier class,
-  // the glyph and the text differ, so they are one builder rather than six near-identical template literals.
+  // Every badge in the row's right cluster is a muted icon + value; only class, glyph and text differ.
   const m = (on, icon, text, cls = '', attr = '') => on
     ? `<span class="m${cls ? ' ' + cls : ''} inline-flex items-center gap-4 muted-12"${attr}>${icon ? `<svg class="ico"><use href="#${icon}"/></svg>` : ''}${text ? `<span>${esc(text)}</span>` : ''}</span>`
     : '';
-  // The tray's clock time (calendar side lists). It wears the clock GLYPH like every other badge here:
-  // bare text reads as a stray number beside the when badge.
+  // The tray's clock time (calendar side lists) wears the clock glyph: bare text reads as a stray number.
   const sched = m(opts.schedTime, 'i-clock', opts.schedTime, 'sched');
-  // Size bucket, not a clock + "45m": the same four glyphs the composer's Size picker uses, so the row and the
-  // control that sets it speak one vocabulary. Text-free — the duration rides along as the tooltip.
+  // Size bucket in the composer Size picker's four glyphs, text-free; the duration rides as the tooltip.
   const est = m(badges && r.estSize, 'i-size-' + r.estSize, '', 'est', ` title="${esc(r.est + (r.estRollup ? ' (total of subtasks)' : ''))}"`);
   const dl = m(badges && t.deadline_at, 'i-flag', r.dl?.label, 'dl' + (r.dl?.overdue ? ' over' : ''));
   const loc = m(badges && r.loc, r.locX ? 'i-pin-off' : 'i-pin', r.loc, 'loc');
@@ -278,8 +274,8 @@ export const rowBodyHtml = (r, opts = {}) => {
   const titleHtml = (r.titleHtml ?? mdTitle(t.content)).replaceAll('</code>', _copyCode + '</code>');   // cached inline-only title; copy controls belong to full rows, not pickers
   const row1 = (left, right) => `<div class="row1 flex items-center gap-8"><div class="r1l flex items-center gap-6 min-w-0 grow"><span class="title">${titleHtml}</span>${left}</div><div class="r1r flex items-center gap-8 min-w-0">${right}</div></div>`;
   const chkMd = s => md(s, { inline: true, literal: !_hasFence(s), copy: true });
-  // Steps: the current step hangs under the (smaller) title at title size, its ::desc on a line of its own, then the
-  // next open step on the rail — its node ticks it (app.js onRowClick). It stands in for the task's description, which stays in the composer.
+  // Steps: the current step hangs under the title at title size, its ::desc on its own line, then the next open step
+  // on the rail (its node ticks it, app.js onRowClick). It stands in for the description, which stays in the composer.
   const step = r.step && !done ? `<div class="step-block" style="--pc:${esc(r.pc)}"><div class="row-step"><span class="chk-txt">${chkMd(r.step.txt)}</span></div>${r.step.desc ? `<div class="step-desc truncate">${chkMd(r.step.desc)}</div>` : ''}${r.next
     ? `<div class="step-next flex items-center" data-ci="${r.next.ci}"><span class="chk-rect step-node" role="checkbox" aria-checked="false" aria-label="Tick the next step"></span><span class="step-next-txt truncate min-w-0">${chkMd(r.next.txt)}</span></div>` : ''}</div>` : '';
   // Plan's tray: one flat line — check, title, project, when (a Steps row adds its step block). Nothing that unfolds, nests or ages.
@@ -297,9 +293,8 @@ export const rowBodyHtml = (r, opts = {}) => {
   const roll = rl => !typed || step || kinds[rl.type] < 4 ? '' : (seen[rl.type] = (seen[rl.type] || 0) + 1) === 1 ? ' icon-only rolled' : ' icon-only rel-hid';
   const rels = opts.rels !== false && r.rels.length ? `<div class="row-rels flex items-center gap-8 min-w-0">${r.rels.map(rl =>
     `<button type="button" class="row-rel ${rl.type}${roll(rl)} inline-flex items-center gap-4 muted-11" data-act="rel" data-kind="${rl.type}" data-rel="${esc(rl.id)}" aria-label="${esc(rl.label)}"><svg class="ico"><use href="#${esc(rl.icon)}"/></svg><span class="row-rel-name">${esc(rl.name)}</span>${rl.n ? `<span class="row-rel-n">${rl.n}</span>` : ''}</button>`).join('')}</div>` : '';
-  // Relations are a LINE-1 CITIZEN — the ladder sheds them like anything else, so a row with a relation isn't
-  // two lines at every width. The DESCRIPTION is the deliberate exception: prose always owns its own line,
-  // so it never competes with the title and never joins the meta line. → app.js LADDER
+  // Relations are line-1 citizens the ladder sheds like anything else, so a row with one isn't two lines at every
+  // width. The description is the exception: prose owns its own line, never the title's. → app.js LADDER
   const head = t.notes ? t.notes.slice(0, mdCut(t.notes, 0, 1000)) : '';   // one line shows: the first 1000+ chars, never half a fence
   let lead = head;
   for (const m of _hasFence(head) ? head.matchAll(_fences) : []) if (m[1].includes('\n')) {   // a code block after prose would wrap below the one line, half clipped; a one-line fence stays inline
@@ -316,10 +311,10 @@ export const rowBodyHtml = (r, opts = {}) => {
   const renderRow = ({ ci, done, txt, desc }) =>
     `<div class="chk-row flex gap-8${done && !plain ? ' done' : ''}" data-ci="${ci}"><span class="chk-rect${plain ? ' plain' : done ? ' done' : ''}"></span><span class="chk-txt truncate min-w-0">${chkMd(txt)}</span>${desc ? `<span class="chk-desc truncate min-w-0">${chkMd(desc)}</span>` : ''}</div>`;
   const chk = opts.checklist !== false && cl.length && !r.step && !(r.collapsed && r.fold !== false) ? `<div class="chk-list flex-col">${clRows.slice(0, openN).map(renderRow).join('')}${fold}${clRows.slice(openN).map(renderRow).join('')}</div>` : '';
-  // Each kind its own look and place (ds-3 Card 3): line 1 ends in size and the date as desktop's pill, its repeat glyph inside
-  // (asst-135-3, his 11-11 "put chips on time"; the tray keeps the word in its bucket's color); line 2 reads deadline, areas, place, relations, then the project at the far right.
+  // Line 1 ends in size and the date as desktop's pill, its repeat glyph inside (the tray keeps the word in its
+  // bucket's color); line 2 reads deadline, areas, place, relations, then the project at the far right.
   // A phone's line 2 rides up beside the title when it fits or is only the project (app.js _lift).
-  const desk = !typed && !step && opts.desc !== false;   // ds-3-3: the desktop list row; desc:false is the desk sticky, which keeps the row below
+  const desk = !typed && !step && opts.desc !== false;   // the desktop list row; desc:false is the desk sticky, which keeps the row below
   if (!typed && !desk) return chev + check + `<div class="body grow min-w-0">${row1(areas + proj + rels, sched + est + dl + loc + due + rep)}${step || desc}${chk}</div>`;   // a one-line row (the desk sticky, a desktop Steps row)
   const chip = ['overdue', 'missed'].includes(r.due?.kind), tint = !chip && r.dueQ ? ` style="--tc:var(--q-${r.dueQ})"` : '';
   const pill = desk || !opts.tray, when = pill ? due : badges && r.due ? `<span class="badge ${chip ? '' : 'w '}${esc(r.due.kind || '')} inline-flex items-center"${tint}><span>${esc(r.due.label + (r.dueTime ? ' ' + r.dueTime : ''))}</span></span>` : '';
@@ -355,24 +350,20 @@ export const rollerBoxHtml = (it) => {
   const more = it.kind === 'loc' ? '' : it.kind === 'arch' ? `<svg class="ico rl-chev${it.open ? ' open' : ''}"><use href="#i-chev-d"/></svg>`   // 'Manage locations' has no per-item menu; the Archived row folds
     : it.kind === 'backlog' ? '<span class="rl-more" aria-hidden="true" style="visibility:hidden">&#8943;</span>'   // no menu, but the ⋯'s footprint keeps its count in Archived's column
     : `<button type="button" class="rl-more" data-more="${it.kind}:${it.id ?? ''}">&#8943;</button>`;
-  // The rail has no drag, so these arrows ARE the ordering control — they sit beside the ⋯ instead of inside it
-  // because reordering is a repeated one-press-per-step action, and a menu round-trip per step kills that.
-  // Backlog/locations are fixed rows: there is nothing to order them against.
+  // The rail has no drag, so these arrows are the ordering control, beside the ⋯ rather than in it: reordering is
+  // one press per step and a menu round-trip per step kills that. Backlog/locations are fixed rows.
   const mv = ['proj', 'area', 'filter'].includes(it.kind) && !it.archived ? `<span class="rl-mv">${[-1, 1].map(d =>
     `<button type="button" class="rl-mvb" data-move="${it.kind}:${it.id}:${d}" aria-label="Move ${d < 0 ? 'up' : 'down'}"><svg class="ico"><use href="#i-chev-d"/></svg></button>`).join('')}</span>` : '';
   const cls = it.kind === 'arch' ? ' rl-arch-row' : it.archived ? ' rl-arch' : '';
   return html`<div class="rl-box${cls}" data-ridx="${it.ridx}"${raw(indent)}>${raw(icon)}<span class="rl-nm">${it.label}</span>${raw(cnt)}${raw(mv)}${raw(more)}</div>`;
 };
 
-// The strip IS the navigation on a phone, so every dot needs a name: cd-far wears
-// only its icon, and the current one carries a second job — pressing it opens the overview — that its visible
-// label doesn't say. aria-label wins over the label text, so it has to repeat the surface name.
-// A surface may fold its own sub-modes into its dot while it is current — Plan does, on a phone, where the
-// calendar's views join the app's one navigator instead of floating a second cluster over the grid
-// (calendar-mobile-controls-explorations #6).
-// It is a SIBLING of the dot, never a child: a button inside a button is invalid and the parser hoists it
-// straight back out. Plan's actions follow the views: "T" only while today is out of view, the task panel,
-// and ＋ new task (held: new event) — `data-act`, dotStripClick.
+// The strip is the phone's navigation, so every dot needs a name: cd-far wears only its icon, and the current dot's
+// second job (pressing it opens the overview) isn't in its label; aria-label wins over it, so it repeats the name.
+// A surface may fold its sub-modes into its dot while current (Plan does on a phone: the calendar's views join the
+// app's one navigator; calendar-mobile-controls-explorations #6). The seg is a SIBLING of the dot: a button in a button is invalid and the parser hoists it out.
+// Plan's actions follow the views: "T" only while today is out of view, the task panel, and ＋ new task (held: new
+// event) — `data-act`, dotStripClick.
 const segHtml = (seg) => !seg ? '' : `<span class="cd-seg">${seg.views.map(v =>
   `<button type="button" data-v="${esc(v)}" data-sk="Day / week / month" data-sk-key="${esc(v[0])}" class="cd-segb${v === seg.cur ? ' on' : ''}" aria-label="${esc(v)} view" aria-pressed="${v === seg.cur}">${esc(v[0].toUpperCase())}</button>`).join('')}</span>`
   + `<button type="button" data-act="today" class="cd-act cd-today" aria-label="Today">T</button>`
@@ -382,8 +373,7 @@ const segHtml = (seg) => !seg ? '' : `<span class="cd-seg">${seg.views.map(v =>
 export const dotStripHtml = (surfaces, idx) =>
   surfaces.map((s, i) => {
     const d = Math.abs(i - idx);
-    // Its own icon, on every dot: a bare pip names nothing, leaving a far surface reachable only by
-    // counting positions. The icon is the constant; the label is what drops away with distance.
+    // Every dot wears its own icon: a bare pip names nothing. The label is what drops away with distance.
     const ico = raw(`<svg class="ico cd-ico" aria-hidden="true"><use href="#${esc(s.icon || 'i-all')}"/></svg>`);
     const label = s.unread ? s.label + ', new messages' : s.label, cls = s.unread ? ' cd-new' : '';   // the quiet unread dot
     if (i === idx) { const dot = html`<button type="button" data-idx="${i}" data-sk="Overview" class="cd cd-cur${cls}" aria-label="${label}, open menu" aria-haspopup="dialog">${ico}<span class="cd-lab">${s.label}</span></button>`;

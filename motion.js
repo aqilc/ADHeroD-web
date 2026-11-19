@@ -22,8 +22,8 @@ const clear = (el, tag) => { const s = css.get(el); if (s) { s.delete(tag); if (
 const running = () => document.getAnimations().filter(a => a.playState === 'running' && a.effect.getComputedTiming().iterations !== Infinity);
 // Ambient loops (spinners, breathing glows) never end — exclude them or idle() wedges forever.
 const ambient = e => {
-  // pass the pseudo (::before/::after) through: bare getComputedStyle(e.target) reads the PARENT's styles,
-  // so .cl-now::after's infinite cl-breathe would read as non-ambient and wedge idle() on the calendar
+  // pass the pseudo through: a bare getComputedStyle(e.target) reads the parent's styles, so .cl-now::after's
+  // infinite loop would read as non-ambient and wedge idle()
   const cs = getComputedStyle(e.target, e.pseudoElement || undefined), names = cs.animationName.split(', '), i = names.indexOf(e.animationName);
   const counts = cs.animationIterationCount.split(', ');
   return i >= 0 && counts[i % counts.length] === 'infinite';   // CSS repeats short lists cyclically
@@ -31,8 +31,7 @@ const ambient = e => {
 
 let forced = null;   // harness override: 0 = zero motion (tests assert end states), a fraction compresses time; null → the OS
 let reduceMQ; const osReduced = () => (reduceMQ ??= matchMedia('(prefers-reduced-motion: reduce)'));   // lazy: bun unit tests import this with no matchMedia
-// Zero motion kills CSS motion at the stylesheet level (transitions/animations collapse to instant state changes).
-// OS reduced motion is gentler, not zero: soften() trims each animation as it starts.
+// Zero motion collapses CSS transitions/animations at the stylesheet level; OS reduced motion is gentler (soften()).
 const zeroStyle = () => {
   const on = forced === 0, el = document.getElementById('motion-zero');
   if (on && !el) { const st = document.createElement('style'); st.id = 'motion-zero';
@@ -44,7 +43,7 @@ const META = new Set(['offset', 'computedOffset', 'easing', 'composite']), FADE 
 // the animation an event is about — a pseudo-element's isn't in its host's bare getAnimations()
 const animOf = (e, match) => e.target.getAnimations({ subtree: !!e.pseudoElement }).find(a => a.effect.target === e.target && (a.effect.pseudoElement || '') === e.pseudoElement && match(a));
 // One animation as it starts, through the dial: a fraction compresses its clock; at 0 an ambient loop holds still and
-// movement jumps to its end — when gentle, the fade part survives, capped at 150ms.
+// movement jumps to its end (gentle keeps the fade part, capped at 150ms).
 const soften = a => {
   if (!a) return;
   const s = motion.scale, fx = a.effect;
@@ -61,21 +60,19 @@ const soften = a => {
 };
 
 export const motion = {
-  // THE reduced-motion dial: 0 = JS movement jumps to its end state, 1 = animate. Every JS check routes through
-  // here so reduced motion is one switch, never scattered matchMedia reads.
+  // THE reduced-motion dial: 0 = JS movement jumps to its end state, 1 = animate. One switch, no scattered matchMedia
+  // reads.
   get scale() { return forced ?? (osReduced().matches ? 0 : 1); },
   get gentle() { return forced == null && osReduced().matches; },   // the OS preference: drop movement, keep short fades
   force(v) { forced = v; zeroStyle(); },
   soften,   // for a JS el.animate(), which fires no event for the listeners below
-  // Felt-time constants (hold-to-escalate thresholds, land timers, tween durations) route through here,
-  // so a time-compressed test (force(0.25)) compresses the THRESHOLDS with the motion — semantics intact.
-  // Only the forced dial scales time: OS reduced motion drops movement, not the user's thresholds.
+  // Felt-time constants (hold thresholds, land timers, tween durations) route through here so a time-compressed test
+  // compresses them with the motion. Only the forced dial scales time; OS reduced motion keeps the thresholds.
   t(ms) { return ms * (forced ?? 1); },
   rand: Math.random,   // reward rolls draw here; a test pins it
-  // A sequence: its phases play one after another, each starting when the last one's animations end. A new sequence
-  // under the same key first hurries the old one to its end (every animation finishes, the rest of its phases run
-  // instantly), so a second tap never overlaps the first or plays it twice. A phase gets the sequence `s` and returns
-  // what it waits on (animations, promises); it reads the DOM when it runs, never before the sequence starts.
+  // A sequence: phases play one after another, each starting when the last one's animations end. A new sequence under
+  // the same key first hurries the old one to its end, so a second tap never overlaps the first. A phase gets the
+  // sequence `s`, returns what it waits on (animations, promises), and reads the DOM when it runs.
   async seq(key, ...phases) {
     const prev = seqs.get(key);
     if (prev) { prev.hurry(); await prev.done; }
@@ -87,8 +84,8 @@ export const motion = {
     })();
     return s.done;
   },
-  // One animation through the dial (reduced motion, the test clock), joined to sequence `s` if given. `fill: 'backwards'`
-  // holds its first frame through a delay, so a move set up before paint never shows its end state first.
+  // One animation through the dial, joined to sequence `s` if given. `fill: 'backwards'` holds its first frame
+  // through a delay, so a move set up before paint never shows its end state first.
   go(s, el, keyframes, opts) {
     if (!el) return null;
     const a = el.animate(keyframes, { fill: 'backwards', ...opts });
@@ -106,10 +103,10 @@ export const motion = {
     el?.classList.add(cls);
     return motion.go(s, el, { scale: [.6, 1] }, { duration: DESIGN.motion[tier], easing: DESIGN.ease.spring });
   },
-  // Push: the new content (`incoming`, already in place) rises `d` px into `box` while `outgoing` (a frozen copy of the
-  // old, laid over it) rises out by the same `d`; `box` clips both. The old is gone before the new fades in, so two texts
-  // never show at once. `carried` (the same text, moving on) rides the move unfaded. The calendar's month titles move the
-  // same way, driven by scroll (_clPositionZone). Reduced motion keeps only the fades: out, then in.
+  // Push: `incoming` (already in place) rises `d` px into `box` while `outgoing` (a frozen copy of the old, laid over
+  // it) rises out by the same `d`; `box` clips both. The old is gone before the new fades in, so two texts never show
+  // at once. `carried` (same text, moving on) rides the move unfaded. Reduced motion keeps only the fades: out, then
+  // in.
   push(s, box, outgoing, incoming, d, carried = [], tier = 'daily') {
     const o = { duration: DESIGN.motion[tier], easing: DESIGN.ease.drawer }, rise = { translate: [`0 ${d}px`, '0 0'] }, fadeIn = { opacity: [0, 0, 1] };
     box.classList.add('pushing');
@@ -119,8 +116,8 @@ export const motion = {
     Promise.allSettled(runs.map(a => a?.finished)).then(() => { box.classList.remove('pushing'); outgoing?.remove(); });
     return runs;
   },
-  // Register a per-frame step under a key. A new run with the same key SUPERSEDES the old one — a
-  // second request never queues behind or races the first. step returns true while it stays alive.
+  // Register a per-frame step under a key; a new run with the same key supersedes the old one. step returns true while
+  // alive.
   run(key, step) { tweens.set(key, step); if (!rafId) rafId = requestAnimationFrame(pump); },
   stop(key) { tweens.delete(key); },
   running(key) { return tweens.has(key); },
@@ -130,9 +127,8 @@ export const motion = {
     for (const el of scrollers.keys()) if (el !== document && !el.isConnected) scrollers.delete(el);
     return tweens.size + css.size + scrollers.size;
   },
-  // 2 clean frames: a state write's transitionrun lands a frame later, a single-frame check races it — and on a loaded
-  // CPU a transition can still be pending (no event yet) past both, so the page's own finite animations count too.
-  // Bounded, frames or none: a wedge rejects naming what still moves instead of hanging its caller to a test timeout.
+  // 2 clean frames: a state write's transitionrun lands a frame later, and on a loaded CPU a transition can still be
+  // pending past both, so the page's own finite animations count too. Bounded: a wedge rejects naming what still moves.
   async idle(ms = 9000) {
     let frames = 0, clean = 0, timer;
     const late = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`motion.idle: not idle after ${ms}ms, ${frames} frames — ${this.moving().join(', ') || 'nothing moving now'}`)), ms); });
@@ -155,9 +151,8 @@ export const motion = {
     for (const t of ['transitionend', 'transitioncancel']) document.addEventListener(t, e => clear(e.target, 't:' + e.propertyName), true);
     document.addEventListener('animationstart', e => { if (!ambient(e)) mark(e.target, 'a:' + e.animationName); if (motion.scale !== 1) soften(animOf(e, a => a.animationName === e.animationName)); }, true);
     for (const t of ['animationend', 'animationcancel']) document.addEventListener(t, e => clear(e.target, 'a:' + e.animationName), true);
-    // A layout clamp or anchoring jump (Lists, parked deep, losing its height to Plan) fires `scroll` and NEVER `scrollend`.
-    // A running scroll fires every frame — so one silent frame after the last event = stopped.
-    // (A rAF queued during dispatch runs this same frame; the nested one runs after the NEXT frame's scroll events.)
+    // A layout clamp or anchoring jump fires `scroll` and never `scrollend`; a running scroll fires every frame,
+    // so one silent frame after the last event = stopped. (A rAF queued during dispatch runs this same frame.)
     document.addEventListener('scroll', e => {
       const el = e.target, n = (scrollers.get(el) || 0) + 1; scrollers.set(el, n);
       requestAnimationFrame(() => requestAnimationFrame(() => { if (scrollers.get(el) === n) scrollers.delete(el); }));

@@ -51,8 +51,7 @@ export function dueBadge(due, now = new Date(), done = false) {
 
 export function deadlineLeft(deadline, now = new Date()) {
   if (!deadline) return null;
-  // A deadline that carries an HOUR counts down in hours once it's inside a day: "1d left" on a 9am hand-in
-  // reads as a whole free day, which is exactly the rounding this app exists to stop. Date-only stays date-only.
+  // A deadline with an hour counts down in hours inside a day: "1d left" on a 9am hand-in reads as a whole free day.
   if (deadline.length > 10) {
     const ms = new Date(deadline) - now;
     if (Math.abs(ms) < 864e5) {
@@ -122,7 +121,8 @@ const WD_WORD = new RegExp(WD_LEAD + '\\b'), WD_WHOLE = new RegExp(WD_LEAD + '[.
 // a weekday beside an explicit date ("sat oct 3", "oct 3 sat") is absorbed; the date wins
 const WD_PRE = '(?:(?:' + WD_ALT + ')\\.?,?\\s+)', WD_SUF = '(?:,?\\s+(?:' + WD_ALT + ')\\b)?', ORD = '(?:the\\s+)?(\\d{1,2})(?:st|nd|rd|th)';
 const MON_DAY = WD_PRE + '?' + MONTH_RE + '\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:,?\\s+(\\d{4}))?' + WD_SUF, DAY_MON = WD_PRE + '?(\\d{1,2})(?:st|nd|rd|th)?\\s+' + MONTH_RE + '(?:,?\\s+(\\d{4}))?' + WD_SUF;
-// Every regex is built once: V8 drops a per-call RegExp's compiled code at each major GC, so the next typed space would recompile them all (~29ms at 6x CPU).
+// Every regex is built once: V8 drops a per-call RegExp's compiled code at each major GC (~29ms to recompile at 6x
+// CPU).
 const MON_DAY_ALL = new RegExp('^' + MON_DAY + '$'), DAY_MON_ALL = new RegExp('^' + DAY_MON + '$'), ORD_ALL = new RegExp('^' + WD_PRE + '?' + ORD + '$');
 // no year: rolls to next year if already past. A day the month lacks ("feb 30") rolls over in Date → null.
 function monthDayIso(mi, day, year, now) {
@@ -214,8 +214,8 @@ export function parseDateText(s, now = new Date(), whole = false) {
 }
 
 // Recurrence grammar ("every[!] <rule>") — shared by parseQuick (strips) and parseRecurrence (date field).
-// It mirrors the When popover's sentence — "every N unit [on <days>] at <time>, <n> times, ending <date>" —
-// so every word that surface RENDERS is typeable, including its empty-value glyphs (`–`, `∞`, `never`).
+// Mirrors the When popover's sentence ("every N unit [on <days>] at <time>, <n> times, ending <date>"), so every word
+// it renders is typeable, including its empty-value glyphs (`–`, `∞`, `never`).
 const REC_DAY_RE = '(?:sun|mon|tue|wed|thu|fri|sat)(?:day|sday|nesday|rsday|urday)?\\b';
 const REC_DAYS = '(?:(?:' + REC_DAY_RE + ')(?:(?:\\s*,\\s*|\\s+)(?:and\\s+(?=' + REC_DAY_RE + '))?)?)+';   // "mon, wed and fri": a dropped "and" turned the last day into a one-off date
 // An nth weekday ("first sunday", store `nth`) and the month's last day (month_day 31, clamped to month-end) name a monthly day.
@@ -224,9 +224,9 @@ const REC_NTH_DAY = REC_NTH + '\\s+' + REC_DAY_RE, REC_OF_MONTH = '(?:\\s+of\\s+
 const REC_RULE = '(?:' + REC_NTH_DAY + '|last\\s+day)' + REC_OF_MONTH + '|other\\s+(?:' + REC_DAYS + '|days?|weeks?|months?|years?)|' + REC_DAYS + '|weekday|\\d+\\s*(?:days?|weeks?|months?|years?)|days?|weeks?|months?|years?|\\d{1,2}(?:st|nd|rd|th)';
 const REC_ON = '\\s+on\\s+(' + REC_DAYS + '|(?:the\\s+)?(?:' + REC_NTH_DAY + '|last\\s+day)|the\\s+\\d{1,2}(?:st|nd|rd|th))';   // must hug the rule, so "work on the deck" is prose
 const REC_AT = '\\s+at\\s+(–|\\d{1,2}(?::\\d{2})?\\s*[ap]m|(?:[01]?\\d|2[0-3]):[0-5]\\d)';   // a TIME only — never "at <place>"
-// The count needs `for` or the popover's own comma (", 3 times"): a bare "<n> times" is ordinary English
-// ("every day 2 times daily" is a frequency, not an end) and eating it silently loses title text. The
-// until-tail is bounded (≤3 comma-free words + an optional ", <year>") so a following clause still binds.
+// The count needs `for` or the popover's comma (", 3 times"): a bare "<n> times" is ordinary English and eating it
+// loses title text. The until-tail is bounded (≤3 comma-free words + an optional ", <year>") so a following clause
+// binds.
 const REC_END = '(?:\\s*,\\s*|\\s+for\\s+)(\\d+|∞)\\s+times?|\\s+x(\\d+)|(?:\\s*,\\s*|\\s+)(?:until|ending)\\s+(never|[^\\s,]+(?:\\s+[^\\s,]+){0,2}(?:,\\s*\\d{4})?)';
 const REC_FULL = '\\severy(!?)(?:\\s+(' + REC_RULE + '))?(?:' + REC_ON + ')?(?:' + REC_AT + ')?((?:' + REC_END + ')*)(?=\\s|$)';
 const REC_END_ALL = new RegExp(REC_END, 'gi'), REC_DAYS_ALL = new RegExp(REC_DAY_RE, 'g'), REC_DAY_LEAD = new RegExp('^' + REC_DAY_RE);
@@ -237,9 +237,8 @@ const REC_OF = '\\s(?:on\\s+)?(?:the\\s+)?(' + REC_ITEM + '(?:(?:\\s*,\\s*|\\s+)
 const REC_OF_ONE = new RegExp(REC_OF, 'i'), REC_OF_EACH = new RegExp(REC_OF, 'gi'), REC_ITEM_ALL = new RegExp(REC_ITEM, 'gi');
 const REC_MONTH_DAY = new RegExp('^(?:the\\s+)?(?:(' + REC_NTH + ')\\s+(' + REC_DAY_RE + ')|last\\s+day)', 'i');
 const nthOf = w => REC_NTH_N[w.toLowerCase()] ?? parseInt(w);
-// End clauses may co-occur and repeat; `ends` is single-valued, so the LAST clause with a real value wins
-// (reading order) — "∞ times"/"ending never" are placeholders, so a printed "3 times, ending never" survives.
-// Returns the prose it could NOT resolve, to hand back to the title as the sibling `only`/`by` matchers do.
+// `ends` is single-valued, so the last end clause with a real value wins ("∞ times"/"ending never" are placeholders:
+// "3 times, ending never" keeps 3). Returns the prose it could not resolve, for the title.
 function applyEnds(rec, tail, now) {
   let rest = '';
   for (const [raw, count, xCount, until] of (tail || '').matchAll(REC_END_ALL)) {
@@ -355,8 +354,8 @@ export function parseQuick(raw, now = new Date(), locations = []) {
     today = !dated; partText = m; o.part = /night/i.test(w) ? 'evening' : w.toLowerCase(); return ' \u0001 ';
   });
 
-  // 'only <date>' walls BOTH sides — a one-day world-window ("vote only tue"). Leading form only:
-  // a trailing "<date> only" stays literal ("aug 10 only tue" ambiguity). Consumed before by/due below.
+  // 'only <date>' walls both sides (a one-day window: "vote only tue"). Leading form only: a trailing "<date> only"
+  // stays literal ("aug 10 only tue" is ambiguous). Consumed before by/due below.
   s = s.replace(/\sonly\s+(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
     const { iso, time } = parseDateText(dateStr.replace('\u0001', '').trim(), now, true);
     if (!iso) return m;
@@ -375,8 +374,8 @@ export function parseQuick(raw, now = new Date(), locations = []) {
     const d = midnight(now); d.setDate(1); d.setMonth(d.getMonth() + 1);
     o.deadlineFromIso = isoDate(d); d.setMonth(d.getMonth() + 1, 0); o.deadlineIso = isoDate(d); return ' ';
   });
-  // Marked dates wall (§11): by/due/^ join the deadline keyword; until/till/before read as by. Consumed before due-date matchers so
-  // the keyword's date isn't also taken as a due date; a non-date tail leaves the text untouched.
+  // Marked dates wall (§11): by/due/^ join the deadline keyword; until/till/before read as by. Consumed before the
+  // due-date matchers so the date isn't also taken as a due date; a non-date tail is left untouched.
   s = s.replace(/\s(?:(?:deadline|ddl|dl|by|due|until|till|before)\s+|\^\s*)(.+?)(?=\s+(?:!{1,2}|~)(?=\s|$)|\s+[#@]|\s+every\b|\s*$)/i, (m, dateStr) => {
     dateStr = dateStr.replace(/\s*\u0001/, '');
     const at = dateStr.match(AT_HOUR_END);   // "by fri at 5"
@@ -433,8 +432,8 @@ export function parseQuick(raw, now = new Date(), locations = []) {
   });
   s = s.replace(Q_CLOCK, (_, h, m) => (setTime(+h, +m), ' '));
   s = s.replace(AT_HOUR_ANY, (_, h) => (o.dueTime = atHour(h, o.dueIso > isoDate(now), now), ' '));
-  // the popover shows `at <time>` INSIDE the repeat sentence — so a time with a rule and no one-off date
-  // rides the RULE (matches applyDateText). A one-off date present ("friday at 5pm every week") keeps its time.
+  // The popover shows `at <time>` inside the repeat sentence, so a time with a rule and no one-off date rides the
+  // rule (matches applyDateText); with a one-off date ("friday at 5pm every week") it keeps the time.
   if (o.part) {
     if (today && !o.dueIso) { const r = quickRange('today', now); o.dueFromIso = r.from; o.dueIso = r.to; }
     if (!o.dueIso && /^.{10}$/.test(o.deadlineIso ?? '')) o.deadlineIso += 'T' + DAY_PARTS[o.part][1];   // "by fri afternoon": by its end
@@ -505,13 +504,12 @@ export function tokenizeAll(text, now = new Date(), locations = []) {
 }
 
 // Natural-language importance (conservative): prefix `must X` / `focus on X` / `someday X`; suffix
-// `X focus|someday|must` UNLESS the word before it is a connector (so "improve my focus" / "read up on
-// focus" stay literal). Positional — it can't ride classifyToken (a title always leaves leftover), so
-// it's parsed as a start/end pass by the composer's live trailing pill + the save-flush.
+// `X focus|someday|must` unless the word before it is a connector ("improve my focus" stays literal). Positional,
+// so it can't ride classifyToken (a title always leaves leftover): a start/end pass by the live pill + save-flush.
 const IMP_CONNECTORS = new Set('a an the this that these those my your our their its his her on in of for to at by up about with into from is are was were be am no'.split(' '));
 
-// Trailing importance word for the LIVE composer pill (consumes only the word). must/someday may lead
-// (no word before); focus needs a real, non-connector word before it — so bare "focus …" never pills.
+// Trailing importance word for the live composer pill (consumes only the word). must/someday may lead;
+// focus needs a real, non-connector word before it, so bare "focus …" never pills.
 export function matchTrailingImportanceWord(text) {
   const m = (text || '').match(/(^|\s)(focus|someday|must)\s*$/i);
   if (!m) return null;
@@ -522,9 +520,8 @@ export function matchTrailingImportanceWord(text) {
   return { value: word, start: m.index + m[1].length };
 }
 
-// Whole-title importance from natural language — the save-flush backstop (catches prefix "focus on X",
-// which can't pill trailing). Returns { importance, content } or null; caller only applies it when no
-// importance was set explicitly (pill/picker), so it never overrides a deliberate choice.
+// Whole-title importance from natural language: the save-flush backstop (catches prefix "focus on X").
+// Returns { importance, content } or null; the caller applies it only when none was set explicitly.
 export function parseImportanceWords(text) {
   const t = (text || '').trim();
   let m;
@@ -552,9 +549,9 @@ export function matchTrailingToken(pending, now = new Date(), locations = []) {
 }
 
 export const WEEKDAYS = V.weekdayLabels;
-// A word typed after a date pill folds into it when "<pill> <word>" reads as ONE date: [next week] + "sun",
-// [Fri 4:00] + "PM" (space mints the time before its meridiem exists). A word that alone is that same date
-// is an independent date ("fri" then "mon") — two pills, so backspacing the second restores the first.
+// A word typed after a date pill folds into it when "<pill> <word>" reads as one date: [next week] + "sun",
+// [Fri 4:00] + "PM" (space mints the time before its meridiem exists). A word that is a date alone stays an
+// independent pill ("fri" then "mon"), so backspacing the second restores the first.
 export function foldIntoDate(pillToken, word, now = new Date(), locations = []) {
   const token = (pillToken + ' ' + word).trim();
   const cls = classifyToken(token, now, locations);
