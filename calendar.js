@@ -182,3 +182,89 @@ export const sizeFromMinutes = (m) => { if (!m) return null; for (const k in SIZ
 export const minutesForSize = (k) => SIZES[k]?.[2] ?? 0;
 // A completion's ember-burst odds by its effort's size bucket: 1 in 8, weighted by effort — a surprise, never a sure payout.
 export const emberOdds = (size) => ({ tiny: .5, session: 2, multi: 3 }[size] ?? 1) / 8;
+
+// ---- A place's open hours (locations.hours: { mon: [["09:00","13:30"], …], …, sun: [] }; null = unknown) ----
+export const WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const DAY_SETS = { weekday: [0, 1, 2, 3, 4], weekend: [5, 6], daily: [0, 1, 2, 3, 4, 5, 6], everyday: [0, 1, 2, 3, 4, 5, 6] };
+const dayLabel = i => DAY_NAMES[i][0].toUpperCase() + DAY_NAMES[i].slice(1, 3);
+const hm = min => String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
+const mins = t => +t.slice(0, 2) * 60 + +t.slice(3);
+// A typed day word → day indexes ("mon", "th": any prefix of 2+, "mondays", "weds", "sat-mon", "weekdays"), else null.
+function daysOf(word) {
+  const set = word.replace(/s$/, '');
+  if (Object.hasOwn(DAY_SETS, set)) return DAY_SETS[set];
+  const find = w => w?.length >= 2 ? DAY_NAMES.findIndex(n => n.startsWith(w)) : -1;
+  const at = w => find(w) < 0 ? find(w?.replace(/s$/, '')) : find(w), [a, b, extra] = word.split('-');
+  const from = at(a), to = b === undefined ? from : at(b);
+  if (from < 0 || to < 0 || extra !== undefined) return null;
+  const out = [from];
+  while (out.at(-1) !== to) out.push((out.at(-1) + 1) % 7);   // "sat-mon" wraps the week
+  return out;
+}
+// A typed time → minutes; with no am/pm and not 24h ("14:00", "09:00") the first at or after `after`, else null (a range never
+// runs backward). An `end` of 12am (or a bare 12 past noon) is midnight closing, 1440 ("24:00"). null when it isn't one.
+function clockAt(word, after, end) {
+  const m = /^(\d{1,2})(?::(\d{2}))?([ap]m?)?$/.exec(word);
+  const h = +m?.[1], min = +(m?.[2] ?? 0), midnight = end && h === 12 && min === 0 ? 1440 : null;
+  if (!m || h > 23 || min > 59) return null;
+  if (m[3]) return h > 12 || h === 0 ? null : m[3][0] === 'a' && midnight ? midnight : (h % 12 + (m[3][0] === 'p' ? 12 : 0)) * 60 + min;
+  if (h === 0 || h > 12 || m[1][0] === '0') return h * 60 + min;
+  return [h % 12 * 60 + min, h % 12 * 60 + min + 720, midnight].find(t => t !== null && t >= after) ?? null;
+}
+// One typed range ("9-1:30", "9am–5pm") → ["09:00", "13:30"], starting at or after `after` ("HH:MM", else 6am); null when unreadable.
+export function parseRange(word, after) {
+  const [a, b, extra] = word.split(/[-–]/), start = extra === undefined && b ? clockAt(a, after ? mins(after) : 360) : null;
+  const end = start === null ? null : clockAt(b, start + 1, true);
+  return end !== null && end > start ? [hm(start), hm(end)] : null;   // ceiling: no range past midnight; revisit when one of his places closes after 12am
+}
+// Typed hours in the line's one form: lowercase, "9 to 5" and dashes → "9-5", "9 a.m." → "9am", "every day" → "daily".
+export const normHours = line => String(line).toLowerCase().replace(/\s*[-–—]\s*|\s+to\s+/g, '-').replace(/(\d)\s*([ap])\.?m?\.?(?![a-z])/g, '$1$2m').replace(/every day/g, 'daily');
+// The typed line → { hours, bad }: the whole week (a day it doesn't name is closed), or null for an empty line; bad = the words
+// it couldn't read. Parts split on , or ;. A part naming no day adds to the previous part's days (every day when it's first).
+export function parseHours(line) {
+  const text = normHours(line);
+  if (!text.replace(/[,;\s]/g, '')) return { hours: null, bad: [] };
+  const hours = Object.fromEntries(WEEK.map(d => [d, []])), bad = [];
+  let last = DAY_SETS.daily, pending = [];
+  for (const part of text.split(/[,;]/)) {
+    const words = part.split(/\s+/).filter(Boolean), days = [...pending];
+    let k = 0;
+    for (let d; k < words.length && (d = daysOf(words[k])); k++) days.push(...d);
+    if (k === words.length) { pending = days; continue; }   // "mon, wed 9-5": a part of only days joins the next
+    pending = [];
+    if (days.length) last = days;
+    const ranges = days.length ? [] : [...hours[WEEK[last[0]]]];
+    for (const word of words.slice(k)) {
+      const r = word === 'closed' || parseRange(word, ranges.at(-1)?.[1]);
+      if (!r) bad.push(word); else if (r !== true) ranges.push(r);
+    }
+    for (const d of last) hours[WEEK[d]] = ranges;
+  }
+  return { hours, bad };
+}
+// Hours → runs of neighboring days with equal ranges: [{ days, label: "Mon–Fri" | "Sat" | "Daily", ranges }].
+export function hoursGroups(hours) {
+  const out = [], key = i => JSON.stringify(hours?.[WEEK[i]] ?? []);
+  for (let i = 0; i < 7; i++) {
+    const g = out.at(-1);
+    if (g && key(g.days.at(-1)) === key(i)) g.days.push(i);
+    else out.push({ days: [i], ranges: hours?.[WEEK[i]] ?? [] });
+  }
+  for (const g of out) g.label = g.days.length === 7 ? 'Daily' : dayLabel(g.days[0]) + (g.days.length > 1 ? '–' + dayLabel(g.days.at(-1)) : '');
+  return out;
+}
+// Hours → the typed line that reads back as them: each run of open days, am/pm only where a bare hour would read otherwise.
+export function hoursText(hours) {
+  if (!hours) return '';
+  const say = (min, after, end) => {
+    const bare = (Math.floor(min / 60) % 12 || 12) + (min % 60 ? ':' + String(min % 60).padStart(2, '0') : '');
+    return clockAt(bare, after, end) === min && !bare.startsWith('12') ? bare : bare + (min < 720 || min >= 1440 ? 'am' : 'pm');   // a bare 12 reads as noon or midnight only by context
+  };
+  const parts = hoursGroups(hours).filter(g => g.ranges.length).map(g => {
+    const days = { Daily: 'daily', 'Mon–Fri': 'weekdays', 'Sat–Sun': 'weekends' }[g.label] ?? g.label.toLowerCase().replace('–', '-');
+    let after = 360;
+    return [days, ...g.ranges.map(([a, b]) => { const range = say(mins(a), after) + '-' + say(mins(b), mins(a) + 1, true); after = mins(b); return range; })].join(' ');
+  });
+  return parts.join(', ') || 'daily closed';
+}

@@ -40,7 +40,7 @@ import { anchorsFor, suggestionsFor, isRepeating, isPassed, nextAt, leadIcon, se
 const REM_LIST = new Intl.ListFormat('en');   // "9am and 6pm"
 import { parseDateText, parseRecurrence, isoDate, localStamp, nextTimeAt, addMonths, quickDate, dueBadge, dueQuick, windowBadge, deadlineLeft, matchTrailingToken, classifyToken, foldIntoDate, tokenizeAll, parseImportanceWords, recurrenceLabel, monthOn, ordinal, impRank, IMPORTANCE, WEEKDAYS, DAY_PARTS, partOf } from './nlp.js';
 import { markTitle, makeFuzzy, fuzzyRank, tokenize, KEYS, qfQuery, queryStates, bodyText } from './search.js';
-import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds, gcalAsEvents } from './calendar.js';
+import { calendarItems, tasksFirst, onCalendar, placeable, blocksInRange, occurrencesInRange, loggedOf, plannedOf, unended, goingOn, timeOf, minutesBetween, addMinutes, sizeFromMinutes, minutesForSize, emberOdds, gcalAsEvents, WEEK, parseHours, parseRange, normHours, hoursGroups, hoursText } from './calendar.js';
 import { ruleFromRRULE, parseICS, parsePayload, looksLikePayload, icsReplaces, importPrompt, PROMPT_EXAMPLE, BACKUP_KINDS, isBackup, restorePlan } from './import.js';
 import { motion, EASE_OUT } from './motion.js';
 motion.install();   // registry listeners must be armed before Alpine renders anything that moves
@@ -304,7 +304,7 @@ const PILL_SPEC = {
               commit: (s, d, v) => { const t = s.byId.get(v) ?? (v === d.project ? null : s.projNamed(v)); if (t || v !== d.project) d.project_id = t?.id ?? null; d.project = t ? t.content : v; s.projRequired = false; }, clear: (s, d) => { d.project = null; d.project_id = null; }, snapshot: (s, d) => ({ project: d.project, project_id: d.project_id }), restore: (s, d, x) => { d.project = x?.project ?? null; d.project_id = x?.project_id ?? null; } },   // a replayed chip keeps the picked (maybe nested) project's id
   area:     { json: 0, multi: 'areas', label: (s, v) => '@' + (s.areaById(v)?.name ?? v),
               commit: (s, d, v) => { if (!d.areas.includes(v)) d.areas.push(v); }, clear: (s, d, r) => { const i = d.areas.indexOf(r); if (i >= 0) d.areas.splice(i, 1); }, snapshot: (s, d) => [...d.areas], restore: (s, d, x) => { d.areas = x || []; } },
-  loc:      { json: 0, label: (s, v) => '📍 ' + v,
+  loc:      { json: 0, label: (s, v) => v,   // the pin is drawn by CSS (.nlp-pill[data-kind="loc"]::before)
               read: (s, d) => d.location.mode === 'any' ? null : (d.location.mode === 'except' ? 'away from ' : '') + (s.locations.find(l => l.id === d.location.ids[0])?.name ?? ''),
               commit: (s, d, v) => { const neg = /^away from /i.test(v), nm = String(v).replace(/^away from /i, ''); const l = s.locByName(nm); d.location = { mode: neg ? 'except' : 'only', ids: l ? [l.id] : [] }; }, clear: (s, d) => { d.location = { mode: 'any', ids: [] }; }, snapshot: (s, d) => ({ mode: d.location.mode, ids: [...d.location.ids] }), restore: (s, d, x) => { d.location = x ? { mode: x.mode, ids: [...x.ids] } : { mode: 'any', ids: [] }; } },
   // future-guard (no test reds it): refreshRecurrenceDue seeds the composer's day, never an editor's
@@ -335,10 +335,10 @@ const OVERLAYS = [
   [c => c.palette.open, c => c.palette.open = false, 1], [c => c.confirm, c => c.confirmNo(), 1],
   [c => c.guideOpen, c => c.guideOpen = false, 1],
   [c => c.importPreview, c => c.importPreview = null, 1],   // above the rest: it is the frontmost thing when open
-  [c => c.delAsk, c => c.delAsk = null, 1], [c => c.locMgr, c => c.locMgr = false, 1],
+  [c => c.delAsk, c => c.delAsk = null, 1], [c => c.locMgr && c.hoursEd, c => c.hoursEd = null], [c => c.locMgr, c => c.locMgr = false, 1],   // Esc on a place's hours drops that edit first
   [c => c.filterEdit, c => c.filterEdit = null, 1],
   [c => c.pop && (c.eventEdit || c.blockEdit), c => c.pop = null],   // an editor's chip pop closes before its editor
-  [c => c.eventEdit && !c.eventEdit.draft, c => c.eventEdit = null, 1], [c => c.blockEdit && !c.blockEdit.draft, c => c.blockEdit = null, 1],
+  [c => c.eventEdit && !c.eventEdit.draft, c => c.eventEdit = null, 'editor'], [c => c.blockEdit && !c.blockEdit.draft, c => c.blockEdit = null, 'editor'],   // Esc drops the edit, the backdrop saves it
   [c => c.clDraft(), c => c.eventEdit = c.blockEdit = null],   // a new block/event drawn on the grid: no backdrop, the grid stays live
   [c => c.settingsOpen, c => c.settingsOpen = false],   // corner settings popup — own light backdrop, below the dialogs
   [c => c.navPop, c => c.navPop = null], [c => c.listMenu, c => c.listMenu = null],   // Hearthsay sentence menus (add/sort)
@@ -601,6 +601,7 @@ document.addEventListener('alpine:init', () => {
     homeLocationId: null,   // designated home place (mirror of store)
     currentRegion: 'Home',
     locMgr: false,
+    hoursEd: null,          // the place whose open hours are open: { id, line (typed), open (day indexes whose chips show), adding }
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
     surfaceOrder: SURFACES, surface: SURF_HOME,   // config.js owns the shipped set
@@ -1534,12 +1535,12 @@ document.addEventListener('alpine:init', () => {
       return { gcal_uid: (series ?? r).ical_uid, gcal_day: !series ? null : r.series_id ? isoDate(new Date(gMs(r.original_start))) : at.slice(0, 10) };
     },
     // a task dropped on a Google tile attaches to that occurrence; Google gets nothing
-    async _gAttach(taskId, el) {
-      const o = this._gOf(el.dataset.g), m = o && (o.series ?? o.r);
+    async _gAttach(taskId, o) {   // o: the occurrence, _gOf's with its start as at
+      const m = o.series ?? o.r;
       // a row mirrored before ical_uid existed reads it from Google once; the merge keeps it for every device
       const got = m && !m.ical_uid && await this._gApi(o.cal.google_id, 'GET', '/' + encodeURIComponent(m.google_id));
       if (got?.iCalUID && await this.store.gcal.merge({ p_calendar: o.cal.id, p_events: [got], p_seen: new Date().toISOString() })) m.ical_uid = got.iCalUID;
-      const key = m && this._gKey({ ...o, at: el.dataset.at });
+      const key = m && this._gKey(o);
       if (!key?.gcal_uid) return this.toast('Failed attaching. Try again?');
       if (this.scheduleItems.some(si => si.task_id === taskId && si.gcal_uid === key.gcal_uid && (si.gcal_day ?? null) === key.gcal_day)) return;
       return this.perform('Attached to ' + (o.r.title || 'event'), { kind: 'create', target: 'scheduleItem', fields: { task_id: taskId, ...key } }, { fail: 'Failed attaching. Try again?' });
@@ -1945,10 +1946,10 @@ document.addEventListener('alpine:init', () => {
       if (e.target.closest('input, textarea, [contenteditable], .inp, .composer, code, .md-code, .cd-seg')) return;   // let native text interaction (and a view-strip tap) win
       if (this.drag.active) return;   // ignore extra touch points once a drag owns the pointer
       this.drag = { active: true, x0: e.clientX, y0: e.clientY, w: this.$refs.canvas.offsetWidth, t0: e.timeStamp || performance.now(), id: e.pointerId, axis: null, from: e.target };
-      // Holding the strip's ＋ = a new event on the shown day: 500ms real time (motion.t would make every tap a hold);
+      // Holding the strip's ＋ or Plan's phone field = a new event on the shown day: 500ms real time (motion.t would make every tap a hold);
       // the slop below cancels it. A fired hold ends the drag (a mouse release lands on the editor's backdrop, missing
       // canvasUp); the strip's @touchend eats a finger's release click, which would close it.
-      if (e.target.closest('[data-act="add"]')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.clNewEvent(); }, 500);
+      if (e.target.closest('[data-act="add"], .jb-day ~ .jb-jot')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.clNewEvent(); }, 500);
       else if (e.target.closest('.jb-dest:not(.jb-day)')) this.drag.hold = setTimeout(() => { Object.assign(this.drag, { held: true, active: false }); this.listHold = { hot: -1, x: e.clientX, y: e.clientY, moved: false }; this.openListTray(); }, 500);   // the lists tray: same hold and slop
     },
     canvasMove(e) {
@@ -4543,7 +4544,10 @@ document.addEventListener('alpine:init', () => {
         { kind: 'cmd', type: 'command', id: 'new-filter', title: 'New filter', icon: 'i-search', kw: 'add create query' },
         { kind: 'cmd', type: 'command', id: 'today', title: 'Jump to Today', icon: 'i-cal', kw: 'calendar now' },
         { kind: 'cmd', type: 'command', id: 'locations', title: 'Manage places', icon: 'i-tag-map', kw: 'locations regions' },
+        { kind: 'cmd', type: 'command', id: 'settings', title: 'Settings', icon: 'i-gear', kw: 'account preferences' },
       );
+      for (const [id, on, what, icon] of [['toggle-done', this.showCompleted, 'done', 'i-check'], ['toggle-archived', this.qfArchived, 'archived', 'i-archive']])
+        if (!this.lastLens(on)) t.push({ kind: 'cmd', type: 'command', id, title: (on ? 'Hide ' : 'Include ') + what + ' tasks', icon, kw: 'show completed lens' });   // the one lit lens has no Hide, as its chip
       return t;
     },
     searchResults(query = this.palette.open ? this.palette.q : null) {   // the palette's, or the jot bar's words
@@ -4648,6 +4652,9 @@ document.addEventListener('alpine:init', () => {
         this.goSurface('plan'); queueMicrotask(() => this.clToday(turn));   // after the flush that mounts Plan
       }
       else if (id === 'locations') { this.locMgr = true; this.loadLocations(); }
+      else if (id === 'settings') this.settingsOpen = true;
+      else if (id === 'toggle-done') this.toggleShowCompleted();
+      else if (id === 'toggle-archived') this.toggleQfArchived();
     },
     draftFields(d = this.draft, editing = this.editing) {
       // save-flush: catch an importance word live pilling couldn't (prefix "focus on X" can't pill trailing), only when
@@ -6332,7 +6339,7 @@ document.addEventListener('alpine:init', () => {
       if (!hhmm) return hhmm;
       const [h, m] = hhmm.split(':').map(Number);
       const h12 = h % 12 || 12;
-      return h12 + (m ? ':' + String(m).padStart(2, '0') : '') + (h < 12 ? 'am' : 'pm');
+      return h12 + (m ? ':' + String(m).padStart(2, '0') : '') + (h % 24 < 12 ? 'am' : 'pm');   // "24:00", a place closing at midnight, is 12am
     },
     today() { return new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }); },
 
@@ -7441,6 +7448,43 @@ document.addEventListener('alpine:init', () => {
       l ? this._pushEntry('Added place', { kind: 'remove', target: 'location', id: l.id, rows: [l] }) : this.toast('Failed adding the place. Try again?');
     },
     patchLocation(id, fields) { return this._journalRowChange('Edited place', 'location', id, () => this.store.locations.update(id, fields)); },
+    // A place's open hours: the typed line read back live per day group; a group's label opens a chip row per day, each editing only its day.
+    async openHours(loc) {
+      if (this.hoursEd && this.hoursEd.id !== loc.id && !await this.saveHours()) return;   // the open place saves first; unreadable, it stays open
+      this.hoursEd = { id: loc.id, line: hoursText(loc.hours), open: null, adding: null };
+    },
+    hoursRead(loc) { const hours = this.hoursEd?.id === loc.id ? parseHours(this.hoursEd.line).hours : loc.hours; return hours ? hoursGroups(hours) : []; },
+    hoursBad() { return !!this.hoursEd && parseHours(this.hoursEd.line).bad.length > 0; },
+    hoursDay(loc, g) {
+      const ed = this.hoursEd;
+      if (ed?.id !== loc.id) return this.openHours(loc);   // a tap on the read opens the line; once open, a group's label opens its days' chips
+      ed.open = g.days.some(d => ed.open?.includes(d)) ? null : g.days;   // an edit can split the group; its days' rows stay open under each part
+      ed.adding = null;
+    },
+    hoursOpenDays(loc, g) { const ed = this.hoursEd; return ed?.id === loc.id && ed.open ? g.days.filter(d => ed.open.includes(d)).map(day => ({ day, label: WEEKDAYS[(day + 1) % 7] })) : []; },
+    hoursChips(day) { return (this.hoursEd && parseHours(this.hoursEd.line).hours?.[WEEK[day]]) ?? []; },
+    // Day's chip i as typed (i past the last adds one, '' removes it) → the line; false when unreadable or out of order with its neighbors.
+    hoursChip(day, i, text) {
+      const ed = this.hoursEd, { hours, bad } = parseHours(ed.line), week = hours ?? Object.fromEntries(WEEK.map(d => [d, []]));
+      const ranges = [...week[WEEK[day]]], range = text.trim() && parseRange(normHours(text).replace(/\s+/g, ''), ranges[i - 1]?.[1]);
+      if (range === null || bad.length) return false;   // rewriting a line with unread words would drop them
+      ranges.splice(i, 1, ...range ? [range] : []);
+      if (ranges.some((r, j) => j && r[0] < ranges[j - 1][1])) return false;
+      week[WEEK[day]] = ranges;
+      ed.line = hoursText(week);
+      ed.adding = null;
+      return true;
+    },
+    // Saves the open line (true once saved or unchanged); an unreadable line stays open, flagged, and `closing` (Done) says so.
+    async saveHours(closing) {
+      const ed = this.hoursEd;
+      if (!ed) return true;
+      const loc = this.locations.find(l => l.id === ed.id), { hours, bad } = parseHours(ed.line);
+      if (bad.length) return closing && this.toast(`Hours not saved for ${loc?.name}: couldn't read ${bad.join(' ')}`), false;   // a save would drop what it can't read
+      const saved = JSON.stringify(hours) === JSON.stringify(loc?.hours ?? null) || await this.patchLocation(ed.id, { hours });
+      if (saved && this.hoursEd === ed) this.hoursEd = null;   // a failed save keeps the line
+      return !!saved;
+    },
     async deleteLocation(id) { if (this.locations.some(l => l.id === id)) return this.perform('Deleted place', { kind: 'delete', target: 'location', id }); },
     placeLabel(l) { return this.locations.some(x => x !== l && x.name === l.name) ? `${l.name}, ${l.region || 'Home'}` : l.name; },   // a name repeated across regions carries its region
     locName(id) { return this.locations.find(x => x.id === id)?.name ?? ''; },   // a place not loaded yet (a synced task ahead of its place) reads as no place, as rowLoc: never its id
@@ -8650,7 +8694,10 @@ document.addEventListener('alpine:init', () => {
     },
     anyDialog() { return OVERLAYS.some(([open, , dialog]) => dialog && open(this)); },
     modalOpen() { return this.settingsOpen || this.anyDialog(); },   // the page behind is inert while true
-    closeDialogs() { for (const [open, close, dialog] of OVERLAYS) if (dialog && open(this)) close(this); },
+    closeDialogs() {   // the backdrop's click
+      if (OVERLAYS.find(([open, , dialog]) => dialog && open(this))?.[2] === 'editor') return this.clAway();
+      for (const [open, close, dialog] of OVERLAYS) if (dialog && open(this)) close(this);
+    },
     // Focus moves in once Alpine shows it (closing hands it back: _modalFrom); a stray Enter must never destroy data.
     // $refs read now: Alpine resolves it from the calling element, and a menu item asking is gone by the microtask
     askConfirm(opts) { this.confirm = opts; const refs = this.$refs; queueMicrotask(() => refs[opts.danger ? 'confirmNo' : 'confirmYes'].focus()); },
@@ -10252,6 +10299,8 @@ document.addEventListener('alpine:init', () => {
     _clAgRow(e, col) { const el = e.target.closest('.cl-ag-row, .cl-event'); return el && col.agenda?.find(r => r.key === el.dataset.id); },
     clAgClick(e, col) {
       if (e.target.closest('[data-tail]')) return this.clItemClick(this._clNextFirst(col.iso)?.it);
+      const pill = e.target.closest('.cl-dblk'), b = pill && col.blocks.find(x => 'b' + x.id + x._sm === pill.dataset.id);
+      if (b) return this.clEditBlock(b.id, b.src);   // the phone Day's block pill, as its events open
       const r = this._clAgRow(e, col);
       if (!r) return;
       if (e.target.closest('.cl-ag-chk, .cl-evt-check')) { e.stopPropagation(); return this.clToggleTask(r.it.id); }
@@ -10651,7 +10700,7 @@ document.addEventListener('alpine:init', () => {
         this._pushEntry('Added event', { kind: 'remove', target: 'event', id: ev.id, rows: this._rowsForDelete('event', ev.id, ev) });   // ev: the re-read may have failed
         id = ev.id;
       }
-      this.eventEdit = null;
+      if (this.eventEdit === e) this.eventEdit = null;   // a click outside on another tile opened its editor meanwhile
     },
     async clDeleteEvent(bin) { if (this.eventEdit?.g) return this._gDelete(this.eventEdit.g, bin); const e = this.events.find(x => x.id === this.eventEdit?.id); if (!e || await this.perform('Deleted event', { target: 'event', kind: 'delete', id: e.id })) this.eventEdit = null; },   // a failed delete keeps the editor and its edits
 
@@ -10671,7 +10720,7 @@ document.addEventListener('alpine:init', () => {
     // edit, after the card's bindings, which then read the closed editor on Save.
     clTitleInit(el, key) {
       const prev = _nlpFocus;
-      el.innerHTML = titleLive(_appRaw[key].title); el._draft = this._clPillDraft(key);
+      el.innerHTML = titleLive(_appRaw[key].title); el._draft = this._clPillDraft(key); el._of = this[key];   // _of: a click away's save in flight can see another tile's editor open in this card
       _nlpFocus = { el, draft: _appRaw._clPillDraft(key), cal: true }; el._hist = { undo: [], redo: [], prev: _appRaw._nlpSnap(el, false) }; _nlpFocus = prev;
       Alpine.onElRemoved(el, () => { if (_nlpFocus?.el === el) _nlpFocus = null; });   // a closed editor's draft is null: the composer's title takes aim again
     },
@@ -10809,7 +10858,13 @@ document.addEventListener('alpine:init', () => {
       if (!d) return this.clNewBlock(iso, this._fmtMin(s), this._fmtMin((s + 60) % 1440), true);
       const span = this._draftSpan(iso);
       if (span && s >= span[0] && s < span[1]) return;   // a click on its own ghost keeps it
-      this.eventEdit = this.blockEdit = null;   // any other click closes it, as the composer's does
+      this.clAway();   // any other click saves and closes it
+    },
+    // a click outside an editor saves it, as the composer's click away does; a new one with no title writes nothing
+    clAway() {
+      const e = this.eventEdit || this.blockEdit;
+      if (!e.id && !e.title.trim()) return void (this.eventEdit = this.blockEdit = null);
+      return this.eventEdit ? this.clSaveEvent() : this.clSaveBlock();
     },
 
     // --- Drag-to-(re)schedule (HTML5 DnD): wall-clock local strings, never toISOString (tz shift) ---
@@ -10901,7 +10956,7 @@ document.addEventListener('alpine:init', () => {
       const stamp = dm == null ? iso : addMinutes(iso + 'T00:00', dm), on = stamp.slice(0, 10), hm = stamp.slice(11) || null;   // before 00:00 = the day before
       if (d.kind === 'task' || d.kind === 'due' || d.kind === 'deadline') {
         const gEl = d.kind === 'task' && e.target?.closest?.('[data-g]');
-        if (gEl) return this._gAttach(d.id, gEl);
+        if (gEl) return this._gAttach(d.id, { ...this._gOf(gEl.dataset.g), at: gEl.dataset.at });
         const { blk, timed } = this._dropBlock(e, d) || {}, attached = 'Attached to ' + (blk?.title || 'block'), has = blk && this.scheduleItems.some(x => x.block_id === blk.id && x.task_id === d.id);
         if (blk && !timed) return has || this.perform(attached, { kind: 'create', target: 'scheduleItem', fields: { task_id: d.id, block_id: blk.id } }, { fail: 'Failed attaching. Try again?' });   // attached once
         if (blk) return this._saveSched(d.id, { on, dueTime: hm, block: has ? null : blk.id }, has ? 'Rescheduled task' : attached + ' at ' + this._clHMA(dm));   // a drop on a block is always in a column: dm is set
@@ -11169,7 +11224,7 @@ document.addEventListener('alpine:init', () => {
         if (!b) return this.toast('Failed saving “Added block”. Try again?');   // the editor stays open, edits intact
         this._pushEntry('Added block', { kind: 'remove', target: 'block', id: b.id, rows: this._rowsForDelete('block', b.id, b) });   // b: the re-read may have failed
       }
-      this.blockEdit = null;
+      if (this.blockEdit === e) this.blockEdit = null;
     },
     async clDeleteBlock(bin) {
       const b = this.blocks.find(x => x.id === this.blockEdit?.id);
@@ -11221,13 +11276,22 @@ document.addEventListener('alpine:init', () => {
     },
     // a subtask's row (SUB_ROW): ticks, opens, detaches; a block's carries its role, which nothing reads on a Google event
     clAttachedHtml(key) {
-      return html`<div class="blk-field" x-show="clAttachedTasks(${key}).length"><label class="section-label">Attached tasks</label>
+      const add = key === 'eventEdit';   // a Google event's editor attaches from Find a task (Android droid-gatt-1); a reader calendar's offers nothing to do
+      return html`<div class="blk-field" x-show="clAttachedTasks(${key}).length${raw(add ? ' || eventEdit.g && !eventEdit.g.ro' : '')}"><label class="section-label" x-show="clAttachedTasks(${key}).length">Attached tasks</label>
         <div class="entry-list flex flex-col"><template x-for="{ si, t } in clAttachedTasks(${key})" :key="si.id"><div class="entry" :class="{ done: t.completed_at }">
           <span class="entry-chk" x-html="entryCheckHtml(t)" @click="toggle(t)"></span><div class="entry-txt" x-text="t.content"></div>
           ${raw(key === 'blockEdit' ? html`<button type="button" class="c g flex-none" @click="clCycleRole(si.id)" x-text="si.role[0].toUpperCase() + si.role.slice(1)"></button>` : '')}
           <button type="button" class="entry-kids" title="Open this task" @click="editTask(t)"><svg class="ico"><use href="#i-chev-r"/></svg></button>
           <button type="button" class="entry-del" title="Detach" @click="clRemoveAttached(si.id)"><svg class="ico"><use href="#i-x"/></svg></button>
-        </div></template></div></div>`;
+        </div></template>${raw(add ? html`<button type="button" class="entry ev-attach" x-show="eventEdit.g && !eventEdit.g.ro" aria-haspopup="dialog" :aria-expanded="pop === 'evAttach'" @click="pickerQ = ''; togglePop('evAttach', $el)" @click.document.capture="clPopAway('evAttach', $event, $el)"><svg class="ico entry-add"><use href="#i-plus"/></svg><span class="entry-txt">Attach a task</span></button>` : '')}</div></div>`;
+    },
+    evAttachTasks() {   // Find a task: open tasks not yet on this occurrence (Android TaskPick)
+      const on = new Set(this.clAttachedTasks(this.eventEdit).map(({ t }) => t.id)), q = this.pickerQ.trim().toLowerCase();
+      return this.tasks.filter(t => !t.completed_at && !t.archived_at && !t.overview && !on.has(t.id) && t.content.toLowerCase().includes(q)).slice(0, 40);
+    },
+    evAttach(t) {
+      this.pop = null;
+      return this._gAttach(t.id, this.eventEdit.g);
     },
     clRemoveAttached(itemId) { return this.perform('Detached task', { kind: 'remove', target: 'scheduleItem', id: itemId }); },
 

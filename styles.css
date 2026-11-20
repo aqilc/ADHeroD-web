@@ -626,6 +626,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .nlp-pill[data-kind="rec"]  { --rc: var(--hint-recurrence); }
 .nlp-pill[data-kind="deadline"] { --rc: var(--deadline); }
 .nlp-pill[data-kind="loc"]  { --rc: var(--hint-location); }
+.nlp-pill[data-kind="loc"]::before { content: ""; display: inline-block; width: 11px; height: 11px; margin-right: var(--sp-4); vertical-align: -1px; background: currentColor; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z'/%3E%3Ccircle cx='12' cy='10' r='2.5'/%3E%3C/svg%3E") center / contain no-repeat; }   /* i-pin, as the place chips draw it */
 .nlp-pill[data-kind="needs"] { --rc: var(--accent); }
 .nlp-pill[data-kind="neededBy"] { --rc: var(--p1); }
 /* Checklist: rectangle boxes (distinct from round task checkbox); –6px aligns box with subtask column */
@@ -803,9 +804,7 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .peek-allday { flex: none; display: grid; grid-template-columns: 44px 1fr; align-items: stretch; margin: 0 var(--sp-8) var(--sp-6) 0; }
 .peek-ad-lbl { align-self: center; text-align: right; padding-right: 6px; font-size: var(--fs-10); color: var(--muted); }
 .peek-ad-zone { min-height: 40px; gap: var(--sp-4); padding: var(--sp-4) var(--sp-6); border-radius: var(--r-8); background: var(--hover); }
-.peek-ad-hint { font-size: var(--fs-11); color: var(--muted); }
 .peek-allday.hot .peek-ad-zone { background: color-mix(in srgb, var(--accent) 13%, transparent); }
-.peek-allday.hot .peek-ad-hint { color: var(--ink); }
 .peek-ad-chip { max-width: 120px; padding: 2px var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-12); color: var(--txt); background: color-mix(in srgb, var(--cc) 18%, transparent); }
 /* the pane's .cl-dl bands carry their own label (no room for the week view's bottom rail) */
 .peek-col .cl-dl { overflow: hidden; }   /* no z-index, as in the week grid: its fade paints under the blocks and events */
@@ -1077,7 +1076,7 @@ html:not(.touch) :is(.surface-lists .item, .dsk, .palette-row) {
 .entry-list { gap: 1px; }
 .entry { display: flex; align-items: flex-start; gap: var(--sp-8); padding: var(--sp-4) 0; position: relative; font-size: var(--fs-14);
   /* multiline entries: box, grip, chevron and trash anchor to the first text line (1lh = the text's line box) */
-  > :is(.chk-rect, .ghost-check, .entry-chk) { margin-top: calc((1lh - 16px) / 2); }
+  > :is(.chk-rect, .ghost-check, .entry-chk, .entry-add) { margin-top: calc((1lh - 16px) / 2); }
   .entry-chk { display: flex; }
   /* grip lives in the empty gutter left of the entry (absolute, no reflow); revealed on hover */
   .entry-grip { position: absolute; left: -16px; top: 0; bottom: 0; width: 14px; display: flex; align-items: flex-start; padding-top: calc(var(--sp-4) + (1lh - 14px) / 2); justify-content: center;
@@ -1424,13 +1423,11 @@ body > .pop { z-index: 61; }   /* an open menu stands over the toasts (#notif-st
 /* Duration popover: size ladder + one exact-minutes field */
 .pop.dur { min-width: 220px; padding: var(--sp-8); }
 .pop.dur .lad { display: flex; flex-direction: column; gap: 1px;
-  .pop-item { align-items: baseline;   /* name and gloss share a baseline */
+  .pop-item { align-items: baseline;   /* name and range share a baseline */
     .ico { align-self: center; }
     /* ceiling: the pick is a tint, not the primitive's .tick; revisit when the size popover is next restyled */
     &.on { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--warm-ink);
-      .ico { color: inherit; } }
-    i { font-style: normal; font-size: var(--fs-11); color: var(--muted); }
-    &.on i { color: color-mix(in srgb, var(--accent) 55%, var(--muted)); } }
+      .ico { color: inherit; } } }
 }
 .pop.dur .hmrow { display: flex; align-items: center; gap: var(--sp-6); padding: var(--sp-6) var(--sp-8); font-size: var(--fs-12); color: var(--muted); border-top: 1px solid var(--hair); margin-top: var(--sp-6);
   .ico { width: 13px; height: 13px; flex: none; }
@@ -1700,8 +1697,8 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .sheet-head { font-family: var(--font-display); font-size: var(--fs-22); font-weight: 600; margin-bottom: var(--sp-10); }
 /* Quiet icon button base — no fill, muted; each site keeps its border, size, and hover delta.
    .icon-btn intentionally carries border:1px solid transparent (dialog control system, ui-lint). */
-.sheet-x, .cl-add, .loc-del, .loc-home, .icon-btn { background: none; color: var(--muted); }
-.sheet-x, .cl-add, .loc-del, .loc-home { cursor: pointer; }
+.sheet-x, .cl-add, .loc-del, .loc-home, .oh-btn, .icon-btn { background: none; color: var(--muted); }
+.sheet-x, .cl-add, .loc-del, .loc-home, .oh-btn { cursor: pointer; }
 /* overlay/sheet close control; the Plan bar's ＋ and tray toggle are the same button at the bar's 30px (.cl-add) */
 .sheet-x, .cl-add { width: 28px; height: 28px;
   border: none; border-radius: var(--r-8);
@@ -2035,22 +2032,47 @@ html:not(.touch) .list-done-head { padding-top: var(--sp-4); }
 /* ---- Locations manager ---- */
 .loc-manager { width: 520px; max-height: 80vh; overflow-y: auto; }
 /* a place is a list row: borderless name input, hover bg, trash revealed on hover */
-.loc-row { border-radius: var(--r-6); padding: var(--sp-2) var(--sp-6); transition: background-color .1s; }
+.loc-row { border-radius: var(--r-6); padding: var(--sp-2) var(--sp-6); transition: background-color .1s; flex-wrap: wrap; row-gap: 0; }   /* wraps: a place's hours sit under its name */
 .loc-row:hover:where(:not(.touch *)) { background: var(--hover); }
 .loc-row .inp { flex: 1; min-width: 0; border: none; background: none; border-radius: 0; min-height: 0; padding: var(--sp-4) 0; }
 .loc-row .inp:focus { outline: none; box-shadow: inset 0 -1.5px var(--accent); }   /* Tab onto a place: the line marks which name types */
-.loc-del, .loc-home { border: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); opacity: 0; transition: opacity .1s, color .1s; }
-.loc-row:hover .loc-del { opacity: .6; }
-:where(html:not(.touch)) .loc-row:focus-within :is(.loc-del, .loc-home:not(.on)) { opacity: .6; }   /* a keyboard reaches them without hover */
+.loc-del, .loc-home, .oh-btn { border: none; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-4); opacity: 0; transition: opacity .1s, color .1s; }
+.loc-row:hover :is(.loc-del, .oh-btn) { opacity: .6; }
+:where(html:not(.touch)) .loc-row:focus-within :is(.loc-del, .loc-home:not(.on), .oh-btn) { opacity: .6; }   /* a keyboard reaches them without hover */
 /* designate-home toggle: quiet until hover, solid accent when home */
 .loc-home .ico { width: 15px; height: 15px; }
 .loc-row:hover .loc-home { opacity: .55; }
 .loc-home.on { opacity: 1; color: var(--accent); }
 .loc-del:hover:where(:not(.touch *)) { opacity: 1; color: var(--p1); }
-.loc-del .ico { width: 14px; height: 14px; flex: none; display: block; }
+:is(.loc-del, .oh-btn) .ico { width: 14px; height: 14px; flex: none; display: block; }
+.oh-btn:hover:where(:not(.touch *)) { opacity: 1; color: var(--ink); }
 :where(.touch) .loc-row { gap: 0; padding-block: 0; }   /* no hover on a phone: shown, 44px taps whose hits meet */
-:where(.touch) :is(.loc-del, .loc-home) { width: 44px; height: 44px; justify-content: center; padding: 0; opacity: .8; }
+:where(.touch) :is(.loc-del, .loc-home, .oh-btn) { width: 44px; height: 44px; justify-content: center; padding: 0; opacity: .8; }
 :where(.touch) .loc-home.on { opacity: 1; }
+/* A place's open hours: a muted day-group grid under the name; editing tints the row, adds the typed line and reads it back */
+.oh-sum, .oh-read { flex-basis: 100%; display: grid; grid-template-columns: max-content 1fr; column-gap: var(--sp-12); font-size: var(--fs-12); color: var(--muted); line-height: 1.5; padding: 0 0 var(--sp-4); font-variant-numeric: tabular-nums; cursor: pointer; }
+.oh-read { padding: var(--sp-6) var(--sp-8) var(--sp-8); cursor: auto; }
+.loc-row.ed { background: var(--hover); }
+.oh-ed { flex-basis: 100%; padding-top: var(--sp-2); }
+.oh-inp { width: 100%; border: none; background: var(--bg); border-radius: var(--r-6); padding: var(--sp-6) var(--sp-8); font-size: var(--fs-13); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--accent); outline: none; }
+:is(.oh-inp, .oh-chip input).bad { box-shadow: inset 0 0 0 1.5px var(--p1); }   /* words it can't read: flagged, never dropped */
+.loc-manager .dialog-actions { position: sticky; bottom: calc(-1 * var(--sp-20)); z-index: 1; background: var(--panel); margin: var(--sp-8) calc(-1 * var(--sp-24)) calc(-1 * var(--sp-20)); padding: var(--sp-10) var(--sp-24) var(--sp-20); }   /* a long list of places, or rows grown by hours, push Done below the fold; the New region row's 10px bottom margin collapses into the 8px top, so Done sits where it did */
+.loc-manager { scroll-padding-bottom: calc(var(--sp-10) + var(--sp-20) + 32px); }   /* a focused field scrolls clear of that bar (its padding + the 32px Done) */
+.touch .loc-manager { scroll-padding-bottom: calc(var(--sp-10) + var(--sp-20) + 44px); }   /* the phone's 44px Done */
+.oh-g { display: contents; }
+.oh-day { border: none; background: none; padding: 0; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.oh-read .oh-day:hover:where(:not(.touch *)) { color: var(--ink); text-decoration: underline; }
+.oh-wk { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: var(--sp-2) 0; }   /* one open day: its name, then its chips */
+.oh-wd { padding-left: var(--sp-8); }
+.oh-chips { display: flex; flex-wrap: wrap; gap: var(--sp-4); align-items: center; font-size: var(--fs-13); }
+.oh-chip { display: inline-flex; align-items: center; background: var(--bg); border-radius: var(--r-6); color: var(--ink); }
+.oh-chip input { border: none; background: none; border-radius: var(--r-6); padding: var(--sp-4) 0 var(--sp-4) var(--sp-8); font: inherit; color: inherit; field-sizing: content; outline: none; }
+.oh-chip input:only-child { padding-right: var(--sp-8); }
+.oh-chip input:focus { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.oh-chip button, .oh-add { border: none; background: none; color: var(--muted); padding: var(--sp-4) var(--sp-6); display: inline-flex; cursor: pointer; }
+.oh-chip .ico { width: 10px; height: 10px; flex: none; }
+.oh-add .ico { width: 13px; height: 13px; flex: none; }
+.touch :is(.oh-chip button, .oh-add) { position: relative; &::after { content: ""; position: absolute; inset: -13px -2px; } }   /* ~44px-tall touch slop; side slops stay apart */
 .loc-help { font-size: var(--fs-12); color: var(--muted); line-height: 1.5; margin: 0 0 var(--sp-12); }
 .loc-region { margin-bottom: var(--sp-12); border-radius: var(--r-6); }
 .loc-region.drop-into { background: color-mix(in srgb, var(--accent) 8%, transparent); outline: 1.5px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; }
@@ -2755,6 +2777,9 @@ textarea.inp { resize: vertical; }
 .ev-row { gap: var(--sp-12); margin-top: var(--sp-12); }
 /* the When pop: the week strip or a month, start – end, the composer's hour grid and quarters (.tpop, here in place) */
 .pop.cl-pop:is(.ev-when, :has(.ev-times)) { width: 296px; }   /* the block Repeat pop's times too */
+.pop.cl-pop.ev-attach-pop { width: 260px; max-height: 320px; overflow-y: auto; }
+.entry.ev-attach { width: 100%; border: none; background: none; text-align: left; color: var(--muted); cursor: pointer;
+  .entry-add { width: 16px; height: 16px; flex: none; } .entry-txt { color: inherit; } }   /* the composer's add row: a muted plus where the check sits */
 .pop.cl-del:not(.dock):has(.ev-month) { width: 296px; }   /* the delete ask's month, as wide as the When pop's */
 .cl-del .ev-month .danger { margin-top: var(--sp-8); }
 .pop.cl-pop.ev-when { gap: var(--sp-8); .cal-quick { margin-bottom: 0; } }
@@ -3345,7 +3370,6 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 /* destructive row: calm until you reach for it, then it reads red */
 .set-danger { color: var(--p1); }
 .set-danger:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--p1) 12%, transparent); }
-.set-danger .set-sub { color: color-mix(in srgb, var(--p1) 70%, var(--muted)); }
 /* the description sits under its setting title (beside it, it squeezes the control). A bare key hint (a <kbd>) is
    short enough to stay on the title's line, at the right. */
 .set-sub { flex: 1 0 100%; order: 1; margin: 1px 0 0 25px; }   /* 25px = icon (15) + the row's gap-10: lines up under the title, not the icon */

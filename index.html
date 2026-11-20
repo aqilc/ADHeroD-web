@@ -659,10 +659,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             </button>
             <template x-if="pop === 'dur'"><template x-teleport="body"><div class="pop dur" :class="{ dock: popDock }" :style="popStyle()">
               <div class="lad">
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny <i>slips into any crack</i><span class="rt">~5 m</span></button>
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short <i>one push</i><span class="rt">&lt;15 m</span></button>
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'session' }" @click="setSize('session')"><svg class="ico"><use href="#i-size-session"/></svg>Session <i>one sitting</i><span class="rt">½–1 h</span></button>
-                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'multi' }" @click="setSize('multi')"><svg class="ico"><use href="#i-size-multi"/></svg>Multi <i>spread across days</i><span class="rt">2 h+</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'tiny' }" @click="setSize('tiny')"><svg class="ico"><use href="#i-size-tiny"/></svg>Tiny<span class="rt">~5 m</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'short' }" @click="setSize('short')"><svg class="ico"><use href="#i-size-short"/></svg>Short<span class="rt">&lt;15 m</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'session' }" @click="setSize('session')"><svg class="ico"><use href="#i-size-session"/></svg>Session<span class="rt">½–1 h</span></button>
+                <button type="button" class="pop-item" :class="{ on: sizeNow() === 'multi' }" @click="setSize('multi')"><svg class="ico"><use href="#i-size-multi"/></svg>Multi<span class="rt">2 h+</span></button>
               </div>
               <!-- Exact minutes: one field, no wheels. Enter commits and closes; empty commits nothing (the ladder pick
                    stands). The ladder writes it too, so the two never disagree. -->
@@ -859,7 +859,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-for="(r, ri) in repRules()" :key="ri">
             <div class="zone flex gap-6" x-show="pop === 'due' && dreg === 'on'" :class="{ paused: r.paused || pausePicking && repIdx === ri, act: repIdx === ri && repRules().length > 1 }" @click="repIdx = ri">
               <div class="zrail flex-col flex-none">
-                <button type="button" class="icon-btn sm zbtn" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion - tap for fixed schedule' : 'Fixed schedule - tap to repeat after completion'" @click="repIdx = ri; toggleFromCompletion()">
+                <button type="button" class="icon-btn sm zbtn" :class="{ on: r.from_completion }" :title="r.from_completion ? 'Repeats after completion' : 'Fixed schedule'" @click="repIdx = ri; toggleFromCompletion()">
                   <svg class="ico"><use :href="r.from_completion ? '#i-repeat-done' : '#i-repeat'"/></svg>
                 </button>
                 <button type="button" class="icon-btn sm zbtn" :class="{ on: r.paused || (pzpop || pausePicking) && repIdx === ri, ring: pausePicking && repIdx === ri }" :title="r.paused ? 'Resume' : 'Pause'" @click.stop="repPause(r, $event)">
@@ -1053,7 +1053,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <div class="peek-allday" :class="{ hot: clDropHint === 'peek-ad' }" @dragenter.prevent @dragover.prevent="clDropHint = 'peek-ad'; clDropPreview = null" @dragleave="clDropHint = null" @drop.prevent="clDropOn($event, col.iso, true)">
             <span class="peek-ad-lbl">all day</span>
             <div class="peek-ad-zone flex items-center flex-wrap">
-              <span class="peek-ad-hint" x-show="!col.bands.length">any time that day</span>
               <template x-for="it in col.bands" :key="'pad' + it.kind + it.id"><span class="peek-ad-chip truncate" :style="'--cc:' + clItemColor(it)" x-text="it.title"></span></template>
             </div>
           </div>
@@ -1338,7 +1337,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <template x-if="mounted('social')">
     <div class="social" :class="{ 'in-thread': !!chat.open }" x-init="socialStart()" x-effect="chatSeen(openChatRow())">
       <template x-if="!session">
-        <div class="soc-out flex flex-col items-center"><h1>Social</h1><p x-text="localStorage.getItem('adherod.invite') ? 'Sign in to open the invite.' : 'Sign in to chat with friends.'"></p><button type="button" class="primary" @click="settingsOpen = true">Sign in</button></div>
+        <div class="soc-out flex flex-col items-center"><h1>Social</h1><p x-text="localStorage.getItem('adherod.invite') ? 'Sign in to open the invite.' : 'Sign in to chat'"></p><button type="button" class="primary" @click="settingsOpen = true">Sign in</button></div>
       </template>
       <template x-if="session">
       <div class="soc-list">
@@ -1412,7 +1411,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
          <div class="nav-pop-sep"></div>
          <button type="button" class="pop-item" role="menuitem" @click="clToday()"><svg class="ico" aria-hidden="true"><use href="#i-sun"/></svg>Today</button>
          <button type="button" class="pop-item" role="menuitemcheckbox" :aria-checked="clSideOpen" @click="clSideToggle()"><svg class="ico" aria-hidden="true"><use href="#i-panel-r"/></svg>Task panel</button>
-         <button type="button" class="pop-item" role="menuitem" @click="clNewEvent()"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>New event</button>
+         <button type="button" class="pop-item" role="menuitem" @click="clNewEvent()"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg>New event<span class="rt">or hold the field</span></button>
        </div></template>
        <div class="jb-el" :class="{ on: surface === 'lists' }">
          <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Lists" @click="goSurface('lists')" aria-label="Lists" :inert="surface === 'lists'"><svg class="ico" aria-hidden="true"><use href="#i-all"/></svg></button>
@@ -1425,7 +1424,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
          <button type="button" class="jb-ico flex items-center justify-center" data-sk="Go to Plan" @click="goSurface('plan')" aria-label="Plan" :inert="surface === 'plan'"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg></button>
          <div class="jb-field flex items-center" :inert="surface !== 'plan'">
            <button type="button" class="jb-dest jb-day inline-flex items-center min-w-0" @click="viewSheet = true" :aria-label="jbDay() + ', views'" aria-haspopup="menu"><svg class="ico" aria-hidden="true"><use href="#i-cal"/></svg><span class="truncate" x-text="jbDay()"></span></button>
-           <button type="button" class="jb-jot min-w-0" @click="quickAdd()">Jot or search</button>
+           <button type="button" class="jb-jot min-w-0" @click="quickAdd()" @touchend="if (drag.held) { drag.held = false; $event.preventDefault() }" @contextmenu.prevent>Hold for an event</button>
          </div>
        </div>
        <template x-if="phoneThread() &amp;&amp; chat.draft.trim() &amp;&amp; !chat.editing &amp;&amp; !composer.open"><div class="pop jb-lists jb-sheet" @mousedown.prevent>   <!-- a thread's words, as a task (a tap keeps the keyboard up) -->
@@ -1578,7 +1577,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         <div>
           <div class="set-acct flex items-center">
             <span class="set-ember cold rounded-full flex-none" aria-hidden="true"></span>
-            <span class="set-who min-w-0"><b>This device only</b><span>everything works offline</span></span>
+            <span class="set-who min-w-0"><b>This device only</b></span>
           </div>
           <template x-if="!authSent">
             <form class="set-form flex-col gap-8" @submit.prevent="signIn()">
@@ -1676,12 +1675,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <button type="button" :class="{ on: !shortcutTips }" :aria-pressed="!shortcutTips" @click="setFlag('shortcutTips', false)">Off</button>
           </div>
         </div>
-        <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="settingsOpen = false; guideOpen = true"><svg class="ico set-ico"><use href="#i-clipboard"/></svg>Bulk-add tasks<span class="set-sub muted-12">format &amp; AI prompt</span></button>
+        <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="settingsOpen = false; guideOpen = true"><svg class="ico set-ico"><use href="#i-clipboard"/></svg>Bulk-add tasks</button>
       </div>
       <div class="set-sec"><span class="section-label">Safety</span>
         <button type="button" class="set-row set-rowbtn set-trash flex items-center gap-10" @click="settingsOpen = false; trashOpen = true"><svg class="ico set-ico"><use href="#i-trash"/></svg>Bin<span class="set-sub muted-12"><kbd>b</kbd></span></button>
-        <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="exportAll()"><svg class="ico set-ico"><use href="#i-archive"/></svg>Export everything<span class="set-sub muted-12">one file, opens back in the app</span></button>
-        <button type="button" class="set-row set-rowbtn set-danger flex items-center gap-10" @click="resetLocalData()"><svg class="ico set-ico"><use href="#i-alert"/></svg>Delete local data<span class="set-sub muted-12">wipe this device &amp; start fresh</span></button>
+        <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="exportAll()"><svg class="ico set-ico"><use href="#i-archive"/></svg>Export everything</button>
+        <button type="button" class="set-row set-rowbtn set-danger flex items-center gap-10" @click="resetLocalData()"><svg class="ico set-ico"><use href="#i-alert"/></svg>Delete local data</button>
       </div>
       <template x-if="desk">   <!-- the Windows app's desktop surfaces (desktop/main.cpp); labels as the Mac app's -->
         <div class="set-sec"><span class="section-label">Windows</span>
@@ -1766,7 +1765,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
       <div class="sheet-grp">
         <div class="section-label">How it works</div>
-        <div class="muted-12">Paste a block like the one below into the task composer. It opens a preview first. Dropping a <code>.ics</code> calendar anywhere on the page works the same way.</div>
+        <div class="muted-12">Paste a block like this into the composer; a preview opens first. Dropping an <code>.ics</code> file works too.</div>
       </div>
 
       <div class="sheet-grp">
@@ -1776,7 +1775,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
       <div class="sheet-grp">
         <div class="section-label">Have an assistant write it</div>
-        <div class="muted-12">Copy this into ChatGPT or Gemini, add your syllabus, email or notes underneath, then paste its answer into the composer. It already knows today&apos;s date and your list names.</div>
+        <div class="muted-12">Copy this into ChatGPT or Gemini, add your syllabus, email or notes underneath, then paste its answer into the composer.</div>
       </div>
 
       <div class="dialog-actions flex items-center gap-8">
@@ -1791,9 +1790,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- unopened, the sheet builds nothing: boot shows none of it -->
       <div class="sk-start">
         <template x-for="s in shortcutsBuilt ? [
-          ['<kbd>␣</kbd> or <span class=nowrap><kbd>⌘</kbd><kbd class=sk-letter>k</kbd></span>','Find anything','find'], ['<kbd class=sk-letter>q</kbd>','Capture a thought','add'],
-          ['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd> then <kbd>↵</kbd>','Work through your list'], ['<kbd>⌘</kbd><kbd>↵</kbd>','Save and return'],
-          ['<kbd class=sk-letter>x</kbd>','Mark it done'], ['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd>','Take it back']
+          ['<kbd>␣</kbd> or <span class=nowrap><kbd>⌘</kbd><kbd class=sk-letter>k</kbd></span>','Search','find'], ['<kbd class=sk-letter>q</kbd>','Add task','add'],
+          ['<kbd class=sk-arrow>↑</kbd><kbd class=sk-arrow>↓</kbd> then <kbd>↵</kbd>','Move / open'], ['<kbd>⌘</kbd><kbd>↵</kbd>','Save and close'],
+          ['<kbd class=sk-letter>x</kbd>','Done'], ['<kbd>⌘</kbd><kbd class=sk-letter>z</kbd>','Undo']
         ] : []" :key="s[1]">
           <div class="sk-tile"><span class="sk-key" x-html="s[0].replaceAll('⌘', mod)"></span><strong x-text="s[1]"></strong><template x-if="s[2]"><button class="sk-launch" :aria-label="s[1]" :title="s[1]" @click="shortcutsOpen = false; s[2] === 'find' ? openPalette() : quickAdd()">↗</button></template></div>
         </template>
@@ -1807,7 +1806,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       <!-- closed, the Bin reads nothing: a task write would otherwise re-check every row -->
       <template x-for="days in trashOpen ? [trashDays()] : []" :key="0">
       <div class="contents">
-      <div class="trash-empty" x-show="!days.length">Nothing recent. Deletions and bulk changes land here.</div>
+      <div class="trash-empty" x-show="!days.length">Nothing recent</div>
       <!-- One chronological list under day heads: the bin answers "what did I just do?". The row says what kind it is:
            icon, the peek's text color (red gone, green a dropped draft) and the verb. -->
       <div class="trash-list flex-col" x-show="days.length">
@@ -1885,10 +1884,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- Places manager dialog -->
     <div class="dialog loc-manager" role="dialog" aria-modal="true" aria-label="Places" @click.stop x-show="locMgr">
       <div class="fe-head"><span class="fe-title">Places</span></div>
-      <p class="loc-help">Group places into regions. Drag a place to move it between them.</p>
+      <p class="loc-help">Drag a place between regions</p>
 
       <template x-if="!locations.length && !pendingRegions.length">
-        <p class="loc-empty">No places yet. Add a region below.</p>
+        <p class="loc-empty">No places</p>
       </template>
 
       <!-- Region sections: locations grouped under their region; drop target moves a dragged place here -->
@@ -1901,10 +1900,44 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <input class="loc-add-input" type="text" placeholder="＋ Add a place…" x-model="q" @keydown.enter="q.trim() && (addLocation(q.trim(), r), q = '')">
           </div>
           <template x-for="loc in locationsIn(r)" :key="loc.id">
-            <div class="loc-row flex items-center gap-6" draggable="true" @dragstart="dragLocId = loc.id" @dragend="dragLocId = null; dragOverRegion = null">
+            <div class="loc-row flex items-center gap-6" :class="{ ed: hoursEd?.id === loc.id }" draggable="true" @dragstart="dragLocId = loc.id" @dragend="dragLocId = null; dragOverRegion = null">
               <input class="inp grow" type="text" placeholder="Place name" :value="loc.name" @change="patchLocation(loc.id, { name: $event.target.value.trim() || loc.name })">
+              <template x-if="!loc.hours && !isHomeLocation(loc.id) && hoursEd?.id !== loc.id">
+                <button class="oh-btn flex-none inline-flex items-center" title="Add hours" @click="openHours(loc)"><svg class="ico"><use href="#i-clock"/></svg></button>
+              </template>
               <button class="loc-del flex-none inline-flex items-center" title="Delete place" @click="deleteLocation(loc.id)"><svg class="ico"><use href="#i-trash"/></svg></button>
               <button class="loc-home flex-none inline-flex items-center" :class="{ on: isHomeLocation(loc.id) }" :title="isHomeLocation(loc.id) ? 'Home' : 'Set as home'" @click="setHomeLocation(loc.id)"><svg class="ico"><use href="#i-tag-home"/></svg></button>
+              <!-- open hours: the typed line (Enter or Done saves, an empty line clears, Esc drops), read back by day group; a group's label opens a chip row per day -->
+              <template x-if="hoursEd?.id === loc.id">
+                <div class="oh-ed" x-effect="locMgr || hoursEd && saveHours(true)">
+                  <input class="oh-inp" type="text" placeholder="weekdays 9-5, sat 10-2" :class="{ bad: hoursBad() }" :value="hoursEd?.line" @input="hoursEd.line = $el.value" @keydown.enter.prevent="saveHours()" x-init="$nextTick(() => hoursEd && $el.focus({ preventScroll: true }))"
+                         x-effect="hoursEd?.line, hoursEd?.open, $nextTick(() => $el.closest('.loc-row')?.scrollIntoView({ block: 'nearest' }))">
+                </div>
+              </template>
+              <template x-if="loc.hours || hoursEd?.id === loc.id">
+                <div :class="hoursEd?.id === loc.id ? 'oh-read' : 'oh-sum'" @click="hoursEd?.id === loc.id || openHours(loc)">
+                  <template x-for="g in hoursRead(loc)" :key="g.label">
+                    <div class="oh-g">
+                      <button class="oh-day" @click.stop="hoursDay(loc, g)" x-text="g.label"></button>
+                      <span x-text="g.ranges.length ? g.ranges.map(r => fmtTime(r[0]) + '–' + fmtTime(r[1])).join(', ') : 'Closed'"></span>
+                      <template x-for="d in hoursOpenDays(loc, g)" :key="d.day">
+                        <div class="oh-wk">
+                          <span class="oh-wd" x-text="d.label"></span>
+                          <div class="oh-chips">
+                            <template x-for="(r, i) in hoursChips(d.day)" :key="r.join() + i">
+                              <span class="oh-chip"><input aria-label="Hours" :value="fmtTime(r[0]) + '–' + fmtTime(r[1])" @change="$el.classList.toggle('bad', !hoursChip(d.day, i, $el.value))" @keydown.enter.prevent="$el.blur()"><button title="Remove" @click="hoursChip(d.day, i, '')"><svg class="ico"><use href="#i-x"/></svg></button></span>
+                            </template>
+                            <template x-if="hoursEd?.adding === d.day">
+                              <span class="oh-chip"><input aria-label="Hours" placeholder="5-7" @change="$el.classList.toggle('bad', !hoursChip(d.day, hoursChips(d.day).length, $el.value))" @blur="$el.value || (hoursEd.adding = null)" @keydown.enter.prevent="$el.blur()" x-init="$nextTick(() => $el.focus())"></span>
+                            </template>
+                            <button class="oh-add" title="Add range" @click="hoursEd.adding = d.day"><svg class="ico"><use href="#i-plus"/></svg></button>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </template>
+                </div>
+              </template>
             </div>
           </template>
         </div>
@@ -1948,8 +1981,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
 
     <!-- ── Event + block editors, delete dialog ── -->
     <!-- Event editor (calendar) -->
-    <template x-if="eventEdit"><div class="dialog event-editor" :class="{ swapped: eventEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="clCardStyle(eventEdit)" @pointerdown.outside="eventEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (eventEdit = null)">
-      <div class="ev-title" :contenteditable="eventEdit.g?.ro ? 'false' : 'true'" role="textbox" aria-label="Title" data-placeholder="New event" x-init="clTitleInit($el, 'eventEdit')" x-effect="eventEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
+    <template x-if="eventEdit"><div class="dialog event-editor" :class="{ swapped: eventEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!eventEdit.draft" aria-label="Event" @click.stop :style="clCardStyle(eventEdit)" @pointerdown.outside="eventEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && clAway()">
+      <div class="ev-title" :contenteditable="eventEdit.g?.ro ? 'false' : 'true'" role="textbox" aria-label="Title" data-placeholder="New event" x-init="clTitleInit($el, 'eventEdit')" x-effect="eventEdit && ($el._of === eventEdit || clTitleInit($el, 'eventEdit'), mirrorPills($el, $el._draft))" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
       <textarea class="ev-notes" rows="1" placeholder="Description" aria-label="Description" x-show="!eventEdit.g?.ro || eventEdit.notes" :readonly="!!eventEdit.g?.ro" :value="eventEdit.notes" @input="eventEdit.notes = $event.target.value"></textarea>
       <div class="composer-rels ev-files" x-show="eventEdit.attachments.length || eventEdit.files.length">
         <template x-for="id in eventEdit.attachments" :key="id">
@@ -2009,6 +2042,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
         </div>
       </div>
       <div x-html="clAttachedHtml('eventEdit')"></div>
+      <template x-if="pop === 'evAttach'"><template x-teleport="body"><div class="pop cl-pop ev-attach-pop" :class="{ dock: popDock }" :style="popStyle()">
+        <input type="text" class="pop-input" placeholder="Find a task" aria-label="Find a task" x-model="pickerQ" x-init="$el.focus()" @keydown.enter.prevent="evAttachTasks()[0] && evAttach(evAttachTasks()[0])">
+        <template x-for="t in evAttachTasks()" :key="t.id"><button type="button" class="pop-item" @click="evAttach(t)"><span class="truncate" x-text="t.content"></span></button></template>
+      </div></template></template>
       <div x-html="evActionsHtml('eventEdit')"></div>
     </div></template>
     <!-- a repeating Google event's ask, outside the editor: a drop opens it at the drop -->
@@ -2019,8 +2056,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </div></template></template>
 
     <!-- Block editor: a condition-bearing span (click a time on week/day to create, click a band to edit) -->
-    <template x-if="blockEdit"><div class="dialog block-editor" :class="{ swapped: blockEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!blockEdit.draft" aria-label="Block" @click.stop :style="clCardStyle(blockEdit)" @pointerdown.outside="blockEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && (blockEdit = null)">
-      <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="Work" x-init="clTitleInit($el, 'blockEdit')" x-effect="blockEdit && mirrorPills($el, $el._draft)" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
+    <template x-if="blockEdit"><div class="dialog block-editor" :class="{ swapped: blockEdit.swapped }" role="dialog" x-init="clDraftFocus($el)" :aria-modal="!blockEdit.draft" aria-label="Block" @click.stop :style="clCardStyle(blockEdit)" @pointerdown.outside="blockEdit.draft && !pop && (!$event.target.closest('.cl-pcol') || $event.target.closest('.cl-event, .cl-block:not(.cl-block-drag)')) && clAway()">
+      <div class="ev-title" contenteditable="true" role="textbox" aria-label="Title" data-placeholder="Work" x-init="clTitleInit($el, 'blockEdit')" x-effect="blockEdit && ($el._of === blockEdit || clTitleInit($el, 'blockEdit'), mirrorPills($el, $el._draft))" @focus="clTitleAim($el)" @input="clTitleAim($el); pillInput($event)" @beforeinput="onEditorBeforeInput($event)" @keydown="clTitleKey($event)" @paste="onPaste($event)"></div>
       <div class="composer-opts cl-opts flex items-center">
         <div class="field" @click.document.capture="clPopAway('clWhen', $event, $el)">
           <button type="button" class="chip chip-when set inline-flex items-center" :style="'--cc:' + clWhenLook(blockEdit.date)[1]" title="When" aria-haspopup="dialog" :aria-expanded="pop === 'clWhen'" @click="togglePop('clWhen', $el)"><svg class="ico"><use :href="'#' + clWhenLook(blockEdit.date)[0]"/></svg><span x-text="clWhenLabel(blockEdit)"></span></button>
