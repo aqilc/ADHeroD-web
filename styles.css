@@ -1044,7 +1044,7 @@ html:not(.touch) :is(.surface-lists .item, .dsk) {
 .composer-opts {
   flex-wrap: wrap; gap: var(--sp-2); margin: var(--sp-8) 0 0;
   :where(html:not(.touch)) & { margin: 0 calc(-1 * var(--sp-10)) 0 calc(-1 * var(--sp-6)); padding-right: calc(var(--sp-24) + var(--sp-10));   /* touch keeps its order. The right room is the go's 28px and a 6px gap */
-    &:where(.composer-card:has(.by-go) *) { padding-right: calc(var(--sp-24) * 2 + var(--sp-10) + var(--sp-6)); }   /* and a new task's tack, 28px and a 2px gap */
+    :where(.composer-card:has(.by-go)) & { padding-right: calc(var(--sp-24) * 2 + var(--sp-10) + var(--sp-6)); }   /* and a new task's tack, 28px and a 2px gap. Not &:where(… *): that restyles the whole card on a .by-go flip */
     &::after { content: ""; flex: 1; order: -1; }
     .field:has(> .chip.set) { order: -1; } }
   /* the unset chips never wrap off alone (a tablet too, not the phone's one scrolling line): lines fill from the bottom
@@ -1237,6 +1237,7 @@ body > .pop { z-index: 61; }   /* an open menu stands over the toasts (#notif-st
   .ico { color: var(--pc); width: 13px; height: 13px; }
   &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--pc) 24%, transparent); }
   &.sel { background: color-mix(in srgb, var(--pc) 28%, transparent); box-shadow: inset 0 0 0 1.5px var(--pc); }
+  .pri-pop &.sel { box-shadow: none; }   /* a one-of pick: its check marks it */
   &.tog { flex: 1; justify-content: center; --pc: var(--muted); color: var(--muted); &.sel { --pc: var(--accent); color: var(--ink-hi); box-shadow: none; } }   /* a toggle: grey off, an accent fill on */
   &:disabled { cursor: default; }
 }
@@ -2575,7 +2576,8 @@ textarea.inp { resize: vertical; }
 .cl-event-b { display: block; min-width: 0; overflow: hidden; }
 .cl-event-imp { display: inline-block; width: 9px; height: 9px; margin-right: var(--sp-2); vertical-align: -1px; }   /* leads the title: the time line's .75 opacity drops Must's red under 3:1 */
 .cl-event-tm { display: block; font-size: var(--fs-10); line-height: 1.3; opacity: .75; font-variant-numeric: tabular-nums; }
-.cl-event-tm:has(.cl-ask, .cl-ag-ask) { opacity: 1; > span:not(.cl-ag-ask) { opacity: .75; } }   /* the label dims, the Going? ask keeps its contrast */
+.cl-event-tm:has(.cl-ask, .cl-ag-ask) { opacity: 1; }
+.cl-event-tm > span:has(~ :is(.cl-ask, .cl-ag-ask)) { opacity: .75; }   /* the label dims, the Going? ask keeps its contrast. The label anchors the :has(): one ending in a bare tag restyles every such tag on DOM changes */
 /* .cl-cov = something is drawn over this one, so only its top strip shows: the time joins the title on that line.
    Same layout as the compact tier. */
 .cl-event.tier-compact, .cl-event.cl-cov { display: flex; align-items: baseline; gap: var(--sp-4); }
@@ -2590,7 +2592,7 @@ textarea.inp { resize: vertical; }
 .cl-event.cl-cov .cl-event-b { width: auto; }
 .cl-event.cl-cov .cl-event-tm { text-align: left; }
 /* The Going ask shows whole or wraps onto a row the 1lh clips, never as "Goi…" */
-.cl-event:is(.tier-compact, .cl-cov) .cl-event-tm:has(.cl-ask) { display: flex; flex-wrap: wrap; justify-content: flex-end; height: 1lh; > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; } }
+.cl-event:is(.tier-compact, .cl-cov) .cl-event-tm { &:has(.cl-ask) { display: flex; flex-wrap: wrap; justify-content: flex-end; height: 1lh; } > span:has(~ .cl-ask) { min-width: 0; overflow: hidden; text-overflow: ellipsis; } }
 .cl-event.cl-cov .cl-event-tm:has(.cl-ask) { justify-content: flex-start; }
 /* Same on a full tile whose time line a later tile covers (.cl-cut; --cut = that tile's left edge from this one's) */
 .cl-event.cl-cut .cl-event-tm { display: flex; flex-wrap: wrap; height: 1lh; overflow: hidden; max-width: calc(var(--cut) - var(--sp-6) - 4px - var(--sp-4)); > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
@@ -3313,7 +3315,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .touch .composer-card:has(.acts.edit) .composer-opts.composer-opts .chip { min-width: 44px; }   /* an edit's chips have their row; a new task's share it with the actions and stay 40 wide, abutting */
 .touch .composer-card .acts.edit.edit :is(.ph, .overview-btn, .del-btn, .act-btn, .more-btn) { flex: 0 1 44px; min-width: 0; }   /* 44 where the row has room; the card's 344 at 390 shares it (a width would hold the row's min-content at 352) */
 .touch .bar-on .jb-host .acts.edit.edit :is(.ph, .overview-btn, .del-btn, .act-btn, .more-btn) { flex: none; width: 44px; }   /* the bar's 372 holds all eight at 44 */
-.touch .composer-card .composer-actions.composer-actions :is(.primary, .more-btn, .by-go):not(.bar-on .jb-host:has(.by-go) *) { width: 44px; min-width: 44px; height: 44px; }
+.touch .composer-card .composer-actions.composer-actions:is(:not(.bar-on .jb-host *), :not(:has(.by-go))) :is(.primary, .more-btn, .by-go) { width: 44px; min-width: 44px; height: 44px; }   /* the :has() on the actions: inside a :not(… *) a .by-go flip restyles the whole card, a huge description's spans included */
 .touch .bar-on .jb-host .composer-actions:has(.by-go) { :is(.more-btn, .by-go) { height: 44px; }   /* a new task's bar keeps ··· and the tack on its chips' 38 pitch and the go 40: at 390 three 44s left "Next Fri" no room for its word */
   .primary { position: relative; &::after { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; translate: -50% -50%; } } }
 .touch .composer-card .proj-pick:not(.jb-host *) { height: 44px; }   /* the card's pill keeps Save's row height */

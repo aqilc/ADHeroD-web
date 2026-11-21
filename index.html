@@ -629,7 +629,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
             <template x-if="pop === 'imp'"><template x-teleport="body"><div class="pop pri-pop" :class="{ dock: popDock }" :style="popStyle()">
               <template x-for="o in [['none','None','No special handling'],['focus','Focus','Keep it in front of me'],['must','Must','Hard to ignore'],['someday','Someday','Park it for later']]" :key="o[0]">
                 <button type="button" class="pri-chip" :class="{ sel: draft.importance === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="draft.importance = o[0]; pop = null">
-                  <svg class="ico"><use href="#i-prio"/></svg>
+                  <svg class="ico"><use :href="draft.importance === o[0] ? '#i-check' : '#i-prio'"/></svg>
                   <span x-text="o[1]"></span>
                 </button>
               </template>
@@ -1695,6 +1695,11 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
               <button type="button" :class="{ on: !desk.share }" :aria-pressed="!desk.share" @click="setDesk('share', false)">Off</button>
             </div>
           </div>
+          <div class="set-row flex items-center gap-10"><svg class="ico set-ico"><use href="#i-bell"/></svg>Ping before a timed task
+            <div class="seg sm">
+              <template x-for="min in [5, 10, 15]" :key="min"><button type="button" :class="{ on: pingLead === min }" :aria-pressed="pingLead === min" @click="setPingLead(min)" x-text="min + ' min'"></button></template>
+            </div>
+          </div>
           <button type="button" class="set-row set-rowbtn flex items-center gap-10" @click="desktopWindow('quit')"><svg class="ico set-ico"><use href="#i-x"/></svg>Quit ADHeroD</button>   <!-- the tray's and the note's menus have it too -->
         </div>
       </template>
@@ -2025,7 +2030,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <button type="button" class="chip chip-imp inline-flex items-center" :class="{ set: evImp(eventEdit) !== 'none' }" :style="'--cc:' + pc(evImp(eventEdit))" :title="impName(evImp(eventEdit), 'Importance')" aria-haspopup="menu" :aria-expanded="pop === 'clImp'" @click="togglePop('clImp', $el)"><svg class="ico"><use :href="evImp(eventEdit) !== 'none' ? '#i-prio-fill' : '#i-prio'"/></svg><span x-text="impName(evImp(eventEdit), 'Importance')"></span></button>
           <template x-if="pop === 'clImp'"><template x-teleport="body"><div class="pop cl-pop pri-pop" :class="{ dock: popDock }" :style="popStyle()">
             <template x-for="o in [['none','None','No special handling'],['focus','Focus','Holds other pings while it runs'],['must','Must','Rings until it starts']].filter(o => !eventEdit.pc || o[0] !== 'focus')" :key="o[0]">
-              <button type="button" class="pri-chip" :class="{ sel: evImp(eventEdit) === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="evSetImp(o[0]); pop = null"><svg class="ico"><use href="#i-prio"/></svg><span x-text="o[1]"></span></button>
+              <button type="button" class="pri-chip" :class="{ sel: evImp(eventEdit) === o[0] }" :style="'--pc:' + pc(o[0])" :title="o[2]" @click="evSetImp(o[0]); pop = null"><svg class="ico"><use :href="evImp(eventEdit) === o[0] ? '#i-check' : '#i-prio'"/></svg><span x-text="o[1]"></span></button>
             </template>
           </div></template></template>
         </div>

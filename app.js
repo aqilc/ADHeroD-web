@@ -894,14 +894,14 @@ document.addEventListener('alpine:init', () => {
             const task = r.kind === 'user' && !r.paused && this.byId.get(r.ref_id), when = task && (isRepeating(r) ? nextAt(r, late) : fireAt(r, task, nowAt));
             if (when) ours({ id: r.id + '@' + when, at: +new Date(when), until: +new Date(when) + 10 * 60e3, sev: sevOf(r), title: task.content, body: '', join: '' });   // the id carries the time: a repeat rings again
           }
-          // A task placed at a time Pings 10 minutes before with its first open step (Android Notify.kt line()); a Must rings an Alarm at its time too.
+          // A task placed at a time Pings pingLead minutes before (Settings › Windows) with its first open step (Android Notify.kt line()); a Must rings an Alarm at its time too.
           const placed = this._placedMap();
           for (const t of this.tasks) {
             const when = !t.completed_at && !t.archived_at && !t.overview && placed.get(t.id);
             if (!(when?.length >= 16)) continue;   // a date alone rings nothing (parsed, it'd be UTC midnight)
             const step = (!t.checklist_plain && t.checklist?.find(c => !c.done)?.text) || this.childTasks(t.id).find(k => !k.completed_at)?.content;
             const item = { id: t.id + '@' + when, at: +new Date(when), until: +new Date(when), sev: 'ping', title: step ? `${t.content}: ${step}` : t.content, body: this.fmtTime(when.slice(11, 16)), join: '' };
-            due.push({ ...item, at: item.at - 10 * 60e3 });
+            due.push({ ...item, at: item.at - this.pingLead * 60e3 });
             if (t.importance === 'must') ours({ ...item, id: item.id + '#must', sev: 'alarm', until: item.at + 10 * 60e3 });
           }
           const day = new Date(now), events = new Map(this.events.map(e => [e.id, e])), focus = [];
@@ -3518,9 +3518,17 @@ document.addEventListener('alpine:init', () => {
       const fade = [...g.querySelectorAll('.desc, .composer-rels, .entry.ghost, .entry-or, .composer-dock, .entry:not(.ghost) .entry-txt > .nlp-pill')].flatMap(boxes).filter(el => !_morphMoved.some(m => m[0] === el));   // a flown description goes home instead
       const rows = _morphRows.filter(r => r.isConnected), sub = rows.slice(1);
       for (const r of fly ? rows : rows.slice(0, 1)) r.classList.add('morph-hide', ...fly ? [] : ['morph-solo']);
+      const settle = () => {
+        if (!this._closingComposer) return;
+        this._t = 0; this.clip = false; this.growH = null; stop(); done && done();   // done's applyEditDom drops the rows' morph-hide
+        _morphMoved = []; _morphRows = []; _morphFrom = new Map(); _morphH = new Map();
+      };
+      // armed now, the generation stops an open's pending frames and a superseded close's, and a hidden tab (no frames) still settles
+      const t = this._t = setTimeout(settle, hold + dur + 20);
       requestAnimationFrame(() => {
-        // growH null: a starved frame landed past the settle below, and collapsing now would re-pin the closed grow
-        if (!this._closingComposer || this.growH === null) return;
+        if (!this._closingComposer || this._t !== t) return;
+        // re-armed from this frame, where the animations start: timed from the key, a late frame's fades are cut short
+        clearTimeout(t); this._t = setTimeout(settle, hold + dur + 20);
         const o = { duration: dur, delay: hold, easing: _closeEase, fill: 'backwards' }, of = { ...o, fill: 'both' }, h = g.offsetHeight;
         // a text that wraps in the card shrinks to the list's one line before it moves: over the hold its first line stays,
         // the rest fades as its box
@@ -3621,11 +3629,6 @@ document.addEventListener('alpine:init', () => {
         const below = chk && rows[0].getBoundingClientRect().bottom - card.getBoundingClientRect().bottom;
         if (below > 0) anims.push(rows[0].animate({ clipPath: [`inset(0 0 ${below}px 0)`, `inset(0 0 ${Math.max(0, below + card.offsetHeight - from)}px 0)`] }, of));
       });
-      this._t = setTimeout(() => {
-        if (!this._closingComposer) return;
-        this.clip = false; this.growH = null; stop(); done && done();   // done's applyEditDom drops the rows' morph-hide
-        _morphMoved = []; _morphRows = []; _morphFrom = new Map(); _morphH = new Map();
-      }, hold + dur + 20);
     },
     openComposer() {
       this._releaseCloseRange(true);
@@ -5839,22 +5842,23 @@ document.addEventListener('alpine:init', () => {
       return true;
     },
     // A word right after a date pill merges into it when foldIntoDate reads "<pill token> <word>" as one date:
-    // the pill is swapped for the combined one. [next week] + "sun" → next week's Sunday.
+    // the pill is swapped for the combined one. [next week] + "sun" → next week's Sunday, [by tmr] + "5pm" → that deadline's hour.
     swallowIntoPrevDate(node, start, token, end = node.textContent.length) {
       if (node.textContent.slice(0, start).trim() !== '') return false;          // the word must sit directly after the pill
       let prev = node.previousSibling;
       while (prev && prev.nodeType === 3 && /^\s*$/.test(prev.textContent)) prev = prev.previousSibling;
-      if (!prev || prev.nodeType !== 1 || !prev.classList?.contains('nlp-pill') || prev.dataset.kind !== 'date') return false;
-      const fold = foldIntoDate(prev.dataset.token, token.trim(), new Date(), this.locNames());
-      if (!fold) return false;
-      const merged = this.makePill('date', fold.value, fold.token);
+      if (!prev || prev.nodeType !== 1 || !prev.classList?.contains('nlp-pill') || !['date', 'deadline'].includes(prev.dataset.kind)) return false;
+      const kind = prev.dataset.kind, fold = foldIntoDate(prev.dataset.token, token.trim(), new Date(), this.locNames());
+      if (fold?.kind !== kind) return false;
+      const merged = this.makePill(kind, fold.value, fold.token);
+      if (kind === 'deadline') { merged.dataset.base = prev.dataset.token; merged.dataset.baseValue = prev.dataset.value; }   // Backspace gives the By pill back
       // One chip holds both words: removing it returns to the date before the first.
       merged.dataset.prior = prev.dataset.prior; merged.dataset.at = prev.dataset.at;
       this._nlpEl().replaceChild(merged, prev);
       node.textContent = node.textContent.slice(end);   // the word is in the pill; keep any tail. No space: a chip owns none, so one ⌫ un-chips
       this._caret(node, 0);
-      this._restoreField('date', JSON.parse(prev.dataset.prior ?? 'null'));   // "4:00" committed 04:00's day, "p.m." makes it 16:00's
-      this.commitPill('date', fold.value); this.syncTitle();
+      this._restoreField(kind, JSON.parse(prev.dataset.prior ?? 'null'));   // "4:00" committed 04:00's day, "p.m." makes it 16:00's
+      this.commitPill(kind, fold.value); this.syncTitle();
       return true;
     },
     // backspace after a pill restores its token text and clears the field; a second edits normally
@@ -5869,8 +5873,17 @@ document.addEventListener('alpine:init', () => {
       while (prev && prev.nodeType === 3 && prev.textContent === '') prev = prev.previousSibling;
       if (!prev || !(prev instanceof HTMLElement) || !prev.classList.contains('nlp-pill')) return false;
       this._unchip(prev, true);
+      if (prev.dataset.base) this._rechipBase(prev);
       this._noPillOnce = true;   // just un-chipped on purpose: the next space must not re-chip it
       return true;
+    },
+    // A By pill that took an hour un-chips to the By pill it grew from, the hour left as text: [by tmr 5pm] → [by tmr] "5pm".
+    // Runs on the text _unchip left, the caret at its end.
+    _rechipBase(pill) {
+      const { anchorNode: node, anchorOffset: end } = getSelection(), kind = pill.dataset.kind, base = pill.dataset.base;
+      const start = end - pill.dataset.token.length;
+      this.insertPill(node, start, kind, pillValue(kind, pill.dataset.baseValue), base, start + base.length);
+      this._caret(getSelection().anchorNode, pill.dataset.token.length - base.length);
     },
     // Replace a pill with its token text (asText) or nothing; fields revert to the pills left, else to its prior value.
     _unchip(pill, asText) {
@@ -11470,6 +11483,11 @@ document.addEventListener('alpine:init', () => {
     updateUrl: null,                  // Windows app only: a newer executable → gear arrow + restart row
     desk: null,                       // Windows app only: the sticky note's Settings switches, { on, share } (desktop/main.cpp)
     setDesk(key, v) { this.desk[key] = v; desktopWindow('desk', key, v); },
+    pingLead: [5, 15].find(m => m === +localStorage.getItem('adherod.pingLead')) ?? 10,   // Settings › Windows: minutes a timed task Pings ahead; this PC only
+    setPingLead(min) {
+      this.pingLead = min;
+      localStorage.setItem('adherod.pingLead', min);
+    },
     theme: savedAppearance(),
     colorTheme: savedColorTheme(),
     themeColors: THEME_COLORS,

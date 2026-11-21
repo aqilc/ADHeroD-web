@@ -380,8 +380,15 @@ export function parseQuick(raw, now = new Date(), locations = []) {
     dateStr = dateStr.replace(/\s*\u0001/, '');
     const at = dateStr.match(AT_HOUR_END);   // "by fri at 5"
     const parsed = parseDateText(at ? dateStr.slice(0, at.index) : dateStr.trim(), now, true);   // "deadline fri 5pm" keeps the hour
-    const iso = parsed.iso, time = at ? atHour(at[1], iso > isoDate(now), now) : parsed.time;
+    let iso = parsed.iso;
+    const time = at ? atHour(at[1], iso > isoDate(now), now) : parsed.time;
     if (!iso) return m;                 // not a date → leave the text untouched
+    // a weekday's hour that has passed today is next week's: "by fri 5pm" late on a Friday
+    if (time && WD_WORD.test(dateStr.toLowerCase()) && iso === isoDate(now) && iso + 'T' + time <= localStamp(now)) {
+      const d = midnight(now);
+      d.setDate(d.getDate() + 7);
+      iso = isoDate(d);
+    }
     o.deadlineIso = iso + (time ? 'T' + time : ''); return ' ';
   });
 
@@ -551,11 +558,12 @@ export function matchTrailingToken(pending, now = new Date(), locations = []) {
 export const WEEKDAYS = V.weekdayLabels;
 // A word typed after a date pill folds into it when "<pill> <word>" reads as one date: [next week] + "sun",
 // [Fri 4:00] + "PM" (space mints the time before its meridiem exists). A word that is a date alone stays an
-// independent pill ("fri" then "mon"), so backspacing the second restores the first.
+// independent pill ("fri" then "mon"), so backspacing the second restores the first. A By pill takes its hour
+// the same way: [by tmr] + "5pm" is one deadline.
 export function foldIntoDate(pillToken, word, now = new Date(), locations = []) {
   const token = (pillToken + ' ' + word).trim();
   const cls = classifyToken(token, now, locations);
-  if (cls?.kind !== 'date') return null;
+  if (cls?.kind !== 'date' && cls?.kind !== 'deadline') return null;
   const solo = classifyToken(word, now, locations);
   return solo?.kind === 'date' && solo.value.iso && solo.value.iso === cls.value.iso ? null : { ...cls, token };
 }
