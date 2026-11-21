@@ -197,7 +197,7 @@ export const areaChipHtml = ({ name, icon, color }) => html`<span class="area" s
 
 // Area picker chip body — the composer's area pop-up and the filter menu's Area facet share it, so the two can't drift.
 export const areaOptHtml = ({ name, icon }, on) => html`${raw(on ? '<svg class="tick ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>' : '')}${raw(
-  icon ? `<svg class="ico"><use href="#${esc(icon)}"/></svg>` : '')}<span>${name}</span>`;
+  `<svg class="ico${icon ? '' : ' ico-default'}"><use href="#${esc(icon || 'i-tag-tag')}"/></svg>`)}<span>${name}</span>`;
 
 // Shared proj chip — used by both rowBodyHtml (full row) and minimal task lines; the name is a task title, rendered as one.
 export const projChipHtml = (name, isDefault) => (name || isDefault)
@@ -237,13 +237,13 @@ export const showsProj = (r, opts = {}) => !!(r.projName || r.isDefaultProj)
   && (opts.proj === true || (opts.proj !== false && !r.depth && opts.navType !== 'project' && opts.navType !== 'backlog'));
 export const rowBodyHtml = (r, opts = {}) => {
   const t = r.t, done = !!t.completed_at, archived = !done && !!t.archived_at;
-  // Minimal mode: flat task-line (popup/palette/sweep/ghost). Inert span check + pick-name title + areas + proj.
-  // No wrappers, no badges, no chevron.
+  // Minimal mode: flat task-line (popup/palette/sweep/ghost). Inert span check + pick-name title + areas + the project at
+  // the right. opts.bare (search and picker rows): no areas, the project as the list draws it; the rest keep the # chip. No wrappers, no badges, no chevron.
   if (opts.minimal) {
     const check = checkHtml(r, 'span', 'sm');
-    const chips = (r.areas || []).map(areaChipHtml).join('');
+    const chips = opts.bare ? '' : (r.areas || []).map(areaChipHtml).join('');
     const titleHtml = r.titleHtml ?? mdTitle(t.content);
-    return `${check}<span class="pick-name">${titleHtml}</span>${chips ? `<span class="areas inline-flex items-center gap-6 flex-none">${chips}</span>` : ''}${opts.projAt ? projAtHtml(r) : projChipHtml(r.projName, r.isDefaultProj)}`;
+    return `${check}<span class="pick-name">${titleHtml}</span>${chips ? `<span class="areas inline-flex items-center gap-6 flex-none">${chips}</span>` : ''}${opts.bare ? projAtHtml(r) : projChipHtml(r.projName, r.isDefaultProj)}`;
   }
   const showProj = showsProj(r, opts);
   const badges = opts.badges !== false;

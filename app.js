@@ -1848,6 +1848,7 @@ document.addEventListener('alpine:init', () => {
     dotStripHtml,
     rollerBoxHtml,
     areaOptHtml,
+    areaChipHtml,
     keyTip,   // a keycap row → its platform text (⌘K / Ctrl+K) for markup that names one shortcut
     dotStripClick(e) {
       const v = e.target.closest('[data-v]'); if (v) return this.clSetView(v.dataset.v);   // the Plan dot's view segment (phone) — checked first, it sits INSIDE that dot
@@ -3041,6 +3042,10 @@ document.addEventListener('alpine:init', () => {
     focusedTask() { return this.rowIndexOf(this.focusId) < 0 ? null : this.byId.get(this.focusId); },
     openFocused() { const t = this.focusedTask(); if (t) this.editTask(t); },
     toggleFocused() { const t = this.focusedTask(), step = t && _rowMap.get(t.id)?.step; if (step) this.toggleChk(t.id, step.ci); else if (t) this.toggle(t); },   // a Steps row ticks its step, like its check
+    // The list holds nothing to show: no row, no section, no open composer, no done rows on view
+    listEmpty() { return this.visibleRows().length === 0 && !this.sections().length && !this.composer.open && !((this.showCompleted || this.qfArchived) && this.completedRows().length); },
+    listNoMatch() { return this.navSel.type === 'filter' || this.filtering() || !this.qfOpen; },   // a filter, search or lens hides what's there
+    addSearchAsTask() { const q = this.palette.q.trim(); this.palette.open = false; this.startAdd(); this.draft.content = q; this.setEditorText(q); },   // a search with no match, kept as a new task's title
     toggleShowCompleted() {
       this.showCompleted = !this.showCompleted;
       localStorage.setItem('adherod.list.showCompleted', this.showCompleted ? '1' : '0');   // persist across sessions (visibleRows keys on it)
@@ -3765,19 +3770,18 @@ document.addEventListener('alpine:init', () => {
     areaObjs(ids) { const areas = byIdIn(this.areas); return (ids || []).map(id => areas.get(id)).filter(Boolean); },
 
     // x-html; relation picker + cascade-complete use the same markup (ui.js)
-    // projAt: the list row's project (ring and name, or tray and Backlog) on a desktop search row; a phone's keeps its own.
-    taskLine(t, markedTitle, projAt) {
-      const parent = this.byId.get(t.parent_id), at = projAt && !document.documentElement.classList.contains('touch');
+    taskLine(t, markedTitle, bare) {   // bare: a search or picker row, no areas
+      const parent = this.byId.get(t.parent_id);
       return rowBodyHtml({
         t, pc: this.pc(t.importance),
         titleHtml: markedTitle != null ? markedTitle : mdTitleFn(t.content),
         areas: this.areaObjs(t.area_ids).map(l => ({ name: l.name, icon: l.icon, color: l.color || this.areaDefault })),
         projName: parent ? parent.content : '',
         isDefaultProj: !!t.parent_id && t.parent_id === this._defId,
-        projColor: parent?.color, projPie: at && parent && t.parent_id !== this._defId ? this._projPie(parent.id) : 0,
+        projColor: parent?.color, projPie: bare && parent && t.parent_id !== this._defId ? this._projPie(parent.id) : 0,
         note: inNotes(t),
         rels: [], chk: [],
-      }, { minimal: true, projAt: at });
+      }, { minimal: true, bare });
     },
     // static body — shell <li> keeps reactive bindings
     // Grouping by project already names it in the section head: no repeat per row.
@@ -4537,8 +4541,9 @@ document.addEventListener('alpine:init', () => {
     // overview project → navigate, not edit
     openTaskById(id, ghost) { const t = this.byId.get(id); if (!t) return; this.isOverviewProject(t) ? this.setNav('project', t.id) : this.editTask(t, null, undefined, ghost); },
     navTargets() {   // non-corpus palette targets: surfaces + filters + action commands
-      const t = this.surfaceOrder.map(s => ({ kind: 'nav', type: 'surface', id: s, title: SURF_META[s].label, icon: SURF_META[s].icon }));
-      for (const f of this.filters) t.push({ kind: 'nav', type: 'filter', id: f.id, title: f.name, color: f.color || 'var(--muted)' });
+      const t = [{ kind: 'nav', type: 'list', id: 'all', title: 'All', icon: 'i-overview', color: 'var(--accent)' }, { kind: 'nav', type: 'list', id: 'backlog', title: 'Backlog', icon: 'i-backlog' },
+        ...this.surfaceOrder.map(s => ({ kind: 'nav', type: 'surface', id: s, title: SURF_META[s].label, icon: SURF_META[s].icon }))];
+      for (const f of this.filters) { const { icon, color } = this.navLook({ kind: 'filter', f }); t.push({ kind: 'nav', type: 'filter', id: f.id, title: f.name, icon, color }); }
       t.push(
         { kind: 'cmd', type: 'command', id: 'new-task', title: 'New task', icon: 'i-edit', kw: 'add create' },
         { kind: 'cmd', type: 'command', id: 'new-filter', title: 'New filter', icon: 'i-search', kw: 'add create query' },
@@ -4563,7 +4568,8 @@ document.addEventListener('alpine:init', () => {
           const obj = r.type === 'area' ? this.areas.find(x => x.id === r.id) : this.byId.get(r.id);
           return obj ? { ...r, obj } : null;
         }).filter(Boolean);
-        const results = [...nav, ...docs];   // nav/commands first (the "go/do" intent), then content matches
+        const kind = { project: 0, area: 1, task: 2 };   // places and commands, projects, areas, then tasks (Things' Quick Find); each keeps its rank
+        const results = [...nav, ...docs.sort((a, b) => kind[a.type] - kind[b.type])];
         if (this.isFilterQuery(query)) results.push({ kind: 'cmd', type: 'command', id: 'save-filter', title: `Save "${query.trim()}" as filter`, icon: 'i-search' });   // appended: must not hijack Enter from a real result (e.g. "@home")
         return results;
       }, 1);
@@ -4576,15 +4582,10 @@ document.addEventListener('alpine:init', () => {
       const lim = r.titleLen || raw.length, S = '\x01', E = '\x02';
       return mdTitleFn(markTitle(raw, r.ranges, lim, S, E, false)).replaceAll(S, '<mark>').replaceAll(E, '</mark>');
     },
-    searchJumpHTML(r) {   // non-task palette row: lead (icon/dot) + name (+ a type tag for nav/commands)
-      if (r.kind === 'nav' || r.kind === 'cmd') {
-        const lead = r.color
-          ? html`<span class="filter-dot" style="background:${r.color}"></span>`
-          : html`<svg class="ico pick-ico"><use href="#${r.icon || 'i-arrow'}"/></svg>`;
-        return html`${raw(lead)}<span class="pick-name">${r.title || ''}</span><span class="pick-tag">${r.tag ?? (r.type === 'command' ? 'Action' : r.type)}</span>`;
-      }
+    searchJumpHTML(r) {   // non-task palette row: its nav glyph + name
+      if (r.kind === 'nav' || r.kind === 'cmd') return html`<svg class="ico pick-ico" style="${r.color ? 'color:' + r.color : ''}"><use href="#${r.icon || 'i-arrow'}"/></svg><span class="pick-name">${r.title || ''}</span>`;
       const marked = raw(this.searchTitleHTML(r));
-      if (r.type === 'project') return html`${raw(this.projRing(r.obj))}<span class="pick-name">${marked}</span>`;
+      if (r.type === 'project') return html`${raw(this.projRing(r.obj))}<span class="pick-name pick-proj">${marked}</span>`;
       return html`<svg class="ico area-ico" style="color:${r.obj.color || this.areaDefault}"><use href="#${r.obj.icon || 'i-tag-tag'}"/></svg><span class="pick-name">${marked}</span>`;
     },
     openPalette(q = '') { this.palette.open = true; this.palette.q = q; this.palette.sel = 0; this.$nextTick(() => this.palette.open && this.$refs.paletteInput?.focus()); },   // held by a leave transition, a focus tick can run after a close, ahead of the held hide: every deferred focus checks its open flag
@@ -4593,12 +4594,14 @@ document.addEventListener('alpine:init', () => {
       this.palette.sel = (this.palette.sel + d + n) % n;
       this.$nextTick(() => document.querySelector('.palette-row.psel')?.scrollIntoView({ block: 'nearest' }));
     },
+    hrAbove(rows, i) { return i > 0 && rows[i].type === 'task' && rows[i - 1].type !== 'task'; },   // by index: x-for hands each row as a proxy, which indexOf never finds   // the hairline between places and to-dos
     paletteEnter() { const r = this.searchResults()[this.palette.sel]; if (r) this.pickSearchResult(r); },
     pickSearchResult(r, query = this.palette.q) {
       this.palette.open = false;
       if (r.kind === 'cmd') return this.runCommand(r.id);
       if (r.type === 'surface') return this.goSurface(r.id);
       if (r.type === 'filter') return this.setNav('filter', r.id);
+      if (r.type === 'list') return this.setNav(r.id);
       this.store.recordSearchPick(r.id);   // recents: corpus items only (task/project/area)
       _palMemo.clear();   // the memo keys on q|_rowV; a pick reorders recents without a row change
       if (r.type === 'task') this.openTaskById(r.id, r.ranges?.[0] >= r.titleLen || !r.ranges?.length ? query.trim() : '');   // a title hit keeps the ghost empty
@@ -4610,10 +4613,10 @@ document.addEventListener('alpine:init', () => {
     jotting() { return this.composer.open && !this.editing && this._inBar() && !this.fromChat; },
     jotRows() {
       if (!this.jotting()) return [];
-      const q = this.draft.content, go = (id, title, icon, tag = '') => ({ kind: 'cmd', type: 'command', id, title, icon, tag });
+      const q = this.draft.content, go = (id, title, icon) => ({ kind: 'cmd', type: 'command', id, title, icon });
       if (q) return this.searchResults(q).slice(0, 4);   // no "+ Add x" row (send adds); no match, the composer stands alone
       const lists = this.store.search('', 50).filter(r => r.type === 'project').slice(0, 2).map(r => ({ ...r, obj: this.byId.get(r.id) })).filter(r => r.obj);
-      return [go('search', 'Search everything', 'i-search'), ...lists, { kind: 'nav', type: 'surface', id: 'social', title: SURF_META.social.label, icon: SURF_META.social.icon, tag: '' }, go('today', 'Today', 'i-cal', 'Plan')];
+      return [go('search', 'Search everything', 'i-search'), ...lists, { kind: 'nav', type: 'surface', id: 'social', title: SURF_META.social.label, icon: SURF_META.social.icon }, go('today', 'Today', 'i-cal')];
     },
     goRows() { const rows = this.jotRows(); return rows.length ? (_goRows = rows) : _goRows; },
     pickJot(r) {
@@ -4847,9 +4850,9 @@ document.addEventListener('alpine:init', () => {
     // The project picker's rows, ticked at sel: task-projects read as tasks (checkbox, title, areas), the rest as # rows
     projRowsHtml(list, sel) {
       return list.map(p => { const tick = raw(p.id === sel ? html`<svg class="tick ico"><use href="#i-check"/></svg>` : ''), tint = p.color ? `color:${p.color}` : '';
-        return this.taskProj(p) ? html`<button type="button" class="pop-item task-line" data-pid="${p.id}">${raw(this.taskLine(p))}${tick}</button>`
+        return this.taskProj(p) ? html`<button type="button" class="pop-item task-line" data-pid="${p.id}">${raw(this.taskLine(p, null, true))}${tick}</button>`
           : html`<button type="button" class="pop-item proj-row" data-pid="${p.id}">${raw(this.isDefaultProj(p.id) ? html`<svg class="hash-ico ico" style="${tint}"><use href="#i-backlog"/></svg>` : this.projRing(p))}`
-            + html`<span style="${tint && tint + ';opacity:.75'}">${this.projectPath(p)}</span>${tick}</button>`; }).join('');
+            + html`<span class="pick-name pick-proj">${this.projectPath(p)}</span>${tick}</button>`; }).join('');
     },
     pidOf(e) { return this.byId.get(e.target.closest('[data-pid]')?.dataset.pid); },
     pickProject(project) { this.draft.project_id = project.id; this.draft.project = project.content; this.projRequired = false; this.pickerQ = ''; this.pop = null; },
@@ -5353,7 +5356,7 @@ document.addEventListener('alpine:init', () => {
         const chips = [...opts.querySelectorAll(':scope > .field > .chip.set:not(.chip-notes)')];
         for (const chip of chips) chip.classList.remove('short', 'bare');
         const over = chip => chip.parentElement.scrollWidth > chip.parentElement.clientWidth;
-        if (this._inBar() && chips.some(over)) chips.find(chip => chip.matches('.chip-area:has(.disc:only-child)'))?.classList.add('short');   // one area's name gives way first, its circle stays
+        if (this._inBar() && chips.some(over)) chips.find(chip => chip.matches('.chip-area:has(.area:only-child)'))?.classList.add('short');   // one area's name gives way first, its glyph stays
         if (this._inBar()) for (const chip of chips.sort((a, b) => b.parentElement.offsetLeft - a.parentElement.offsetLeft)) for (const step of chip.matches('.chip-due') ? ['short', 'bare'] : ['bare']) if (over(chip)) chip.classList.add(step);   // last shown first
       });
       for (const el of [opts, ...opts.querySelectorAll('.chip > span')]) fit.observe(el);   // never a field or chip: the fit resizes them
@@ -6390,14 +6393,6 @@ document.addEventListener('alpine:init', () => {
       _qfGone = all.filter(id => !has(id));
       if (live.join() !== this.qfAreas.join()) { this.qfAreas = live; this._saveView(); }
     },
-    // A set chip's lead: each area's glyph on a disc of its color, the first on top.
-    areaDiscsHtml() {
-      const { fit, shift } = DESIGN['area-disc'];
-      return this.areaObjs(this.draft.areas).map((a, i, all) => {
-        const icon = a.icon || 'i-tag-tag', [x, y] = shift[icon] ?? [0, 0];
-        return `<i class="disc" style="--dc:${a.color || this.areaDefault};z-index:${all.length - i}">${a.icon ? '' : `<b class="ltr">${escHtml([...a.name || ''][0] || '')}</b>`}<svg class="ico" style="--fit:${fit[icon] ?? 1};--sx:${x};--sy:${y}"><use href="#${icon}"/></svg></i>`;
-      }).join('');
-    },
     // An id whose area is gone resolves to nothing, so the label keys off the resolved names, never a blank button.
     areaLabel() { return this.areaObjs(this.draft.areas).map(a => a.name).filter(Boolean).join(', ') || 'Areas'; },
     // The ONE map from a data kind to the narrowest re-read that covers it, shared by our writes (_reloadFor) and
@@ -6493,8 +6488,8 @@ document.addEventListener('alpine:init', () => {
     toast(msg) { return this.notify(msg); },
     // Push a card onto the bottom-right stack; with actions it lingers (8s) so the Undo is reachable.
     notify(msg, { actions = [], timeout = actions.length ? 8000 : 4000, done } = {}) {   // done: runs as the card leaves, after any action it ran
-      const id = crypto.randomUUID();
-      this.notifs.push({ id, msg, actions, done, leaving: false });
+      const id = crypto.randomUUID(), step = actions.find(a => a.dir);
+      this.notifs.push({ id, msg, actions, done, line: step && this._cardLine(msg, step.jid), leaving: false });
       // cap the visible stack, never the card just pushed: drop the oldest card without Undo/Redo first, an Undo card only
       // when all older ones carry one (⌘Z still reaches it)
       const older = this.notifs.filter(n => !n.leaving && n.id !== id);
@@ -6519,6 +6514,26 @@ document.addEventListener('alpine:init', () => {
       setTimeout(() => { this.notifs = this.notifs.filter(x => x.id !== id); }, 260);
     },
     _runNotifAction(n, a) { a.fn(); this._dismissNotif(n.id); },
+    // A task delete or move card reads as one sentence in the list line's voice, its Undo/Redo the last word: "deleted <task>, undo";
+    // one task, named in the label's own words (else after its verb) behind its project's ring. Null for any other step, for
+    // several tasks, or for one with more to say after its label (what stays, what couldn't come back).
+    _cardLine(msg, jid) {
+      const e = jid && this.journal.find(x => x.id === jid);
+      if (!e?.said || msg !== e.label) return null;
+      const t = this._cardTask(e.op), low = s => s[0].toLowerCase() + s.slice(1);
+      if (!t || msg.includes(t.content)) return null;   // several tasks, or a label naming it already (a merge), read as is
+      const noun = e.label.match(/^(.*?)\b(?:\d+ )?(?:task|it|project)\b(.*)$/);
+      const [, verb, prep] = e.label.match(/^(\S+)( (?:to|in|into|out|from|with|on|off)\b.*)?$/) || [, e.label + ' on'];
+      const [head, tail] = noun ? [noun[1], noun[2]] : [verb + ' ', prep || ''];
+      const p = this.byId.get(t.parent_id);   // its parent, as the row draws it (projColor)
+      return { head: low(head), name: t.content, tail, ring: p && this.ringVars(p) };
+    },
+    // The one task an entry's op touches (a deleted one from its stored rows; a retry whose rows were already back keeps only its id), or null: none, or several roots
+    _cardTask(op) {
+      const rows = (op.ops || [op]).flatMap(o => o.target !== 'task' ? [] : o.rows?.length ? o.rows : [this.byId.get(o.id ?? o.fwd?.id)]).filter(Boolean);
+      const ids = new Set(rows.map(r => r.id)), roots = [...new Map(rows.filter(r => !ids.has(r.parent_id)).map(r => [r.id, r])).values()];
+      return roots.length === 1 ? roots[0] : null;
+    },
     // --- Composer draft safety ---
     // Nothing typed is lost to a mispress: the whole draft is persisted (adherod.draftPending, keyed by editing id or
     // this tab's _newKey) on every change while the composer is open. Closing a dirty unsaved draft keeps it and makes it
@@ -7194,7 +7209,9 @@ document.addEventListener('alpine:init', () => {
     // part flattens in: its ops are already in undo order.
     _pushOps(label, target, j, opts) { if (j.length) return this._pushEntry(label, j.length > 1 || j[0][1].target !== target ? { kind: 'composite', target, ops: j.map(x => x[1]).reverse().flatMap(o => o.kind === 'composite' ? o.ops : o) } : j[0][1], opts); },
     _pushEntry(label, entryOp, { bin = false, silent = false, restored = false, msg = label, actions = [] } = {}) {
-      this._journalPush({ label, target: entryOp.target, kind: entryOp.kind, op: entryOp, bin: !!bin, restored });
+      // said: a task delete (its step reinserts what went) or move reads as a sentence (_cardLine)
+      const said = entryOp.target === 'task' && (entryOp.ops || [entryOp]).every(o => o.kind === 'move' || bin && o.kind === 'reinsert');
+      this._journalPush({ label, target: entryOp.target, kind: entryOp.kind, op: entryOp, bin: !!bin, restored, said });
       // silent = frequent actions (completion) that shouldn't toast on every press.
       const card = silent ? null : this.notify(msg, { actions: [this._cardStep(-1, this.journal.at(-1).id), ...actions] });
       if (!bin && !restored) this._pushSmall(entryOp);
@@ -7415,7 +7432,8 @@ document.addEventListener('alpine:init', () => {
         if (inverse.newer === 'all') return this.notify(`“${e.label}” not ${verb}ne, it changed since`, { actions: [this._cardStep(-dir, e.id)] });
         note = kept ? '. Already back, this copy stays in the Bin' : [inverse, ...inverse.ops || []].some(o => o.newer) ? '. What changed since stays' : this._skipNote(applied);
       }
-      this.notify(e.label + (dir < 0 ? ' undone' : '') + note, { actions: [this._cardStep(-dir, e.id)] });
+      const said = this._cardLine(e.label + note, e.id);   // a sentence card's redo word says it was undone
+      this.notify(e.label + (dir < 0 && !said ? ' undone' : '') + note, { actions: [this._cardStep(-dir, e.id)] });
     },
     // One at a time per key: overlapping runs read a row the last is still writing, and lose its write.
     _serial(key, fn) {

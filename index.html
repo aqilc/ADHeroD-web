@@ -381,9 +381,12 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- Today's plan atop All: what has a time today, as the Day view shows it; gone when nothing is placed -->
     <template x-if="navSel.type === 'all'"><div class="plan-box" x-html="planBoxHtml()"></div></template>
 
-    <div class="empty flex-col items-center gap-6" x-show="visibleRows().length === 0 && !sections().length && !composer.open && !((showCompleted || qfArchived) && completedRows().length)">
+    <!-- An empty list greets with a sunrise over the Add task row, drawn as a button (.greet); one cleared of open tasks keeps the full sun and Show done -->
+    <div class="empty flex-col items-center gap-6" :class="{ greet: !listNoMatch() && !completedRows().hidden }" x-show="listEmpty()">
       <template x-if="!(navSel.type === 'filter' || filtering()) && completedRows().hidden"><svg class="empty-sun" viewBox="0 0 48 28" aria-hidden="true"><path class="arc" d="M8 26a16 16 0 0 1 32 0"/><path class="ray" d="M24 4V0"/><path class="ray" d="M10 10 7 7"/><path class="ray" d="M38 10l3-3"/><path class="ray" d="M4 22H0"/><path class="ray" d="M44 22h4"/></svg></template>
-      <span class="empty-t" x-text="navSel.type === 'filter' || filtering() || !qfOpen ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'No tasks yet.'"></span>
+      <template x-if="!listNoMatch() && !completedRows().hidden"><svg class="empty-sun" viewBox="0 0 48 28" aria-hidden="true"><path d="M2 26h44"/><path class="arc" d="M14 26a10 10 0 0 1 20 0"/><path class="ray" d="M24 12V9"/><path class="ray" d="M15 17l-2-2"/><path class="ray" d="M33 17l2-2"/></svg></template>
+      <span class="empty-t" x-text="listNoMatch() ? 'No matching tasks.' : completedRows().hidden ? 'All clear' : 'Nothing here yet'"></span>
+      <template x-if="!listNoMatch() && completedRows().hidden"><button type="button" class="ghost" @click="toggleShowCompleted()">Show done</button></template>
     </div>
     <!-- Mail: the connected mailbox atop Backlog, its own scroller; a 1px line parts it from the tasks. Rows wear .item's look; mounted only with a mailbox, so its .sec-row head never joins the list's heads. -->
     <template x-if="(navSel.type === 'all' || navSel.type === 'backlog') && (mail || mailError || calError)"><section class="mail-panel">
@@ -488,10 +491,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <template x-for="(t, i) in areaMatches()" :key="t.id">
             <button type="button" class="pop-item" :class="{ hot: i === areaPicker.sel }"
                     @click="pickPill('area', t.id)" @mousemove="areaPicker.sel = i">
-              <span class="area" :style="'--tc:' + (t.color || areaDefault)">
-                <template x-if="t.icon"><svg class="ico"><use :href="'#' + t.icon"/></svg></template>
-                <span class="dot"></span><span class="nm" x-text="t.name"></span>
-              </span>
+              <svg class="ico" :style="'color:' + (t.color || areaDefault)"><use :href="'#' + (t.icon || 'i-tag-tag')"/></svg><span class="nm truncate" x-text="t.name"></span>
             </button>
           </template>
           <button type="button" class="pop-item create" x-show="areaMatches().length === 0 && areaPicker.frag.trim()"
@@ -639,8 +639,8 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <div class="field" @click.document.capture="pop === 'area' && outside($event, $el) && popAway('area', $event)">
             <button type="button" class="chip chip-area inline-flex items-center" :class="{ set: draft.areas.length }" :style="'--tc:' + (areaObjs(draft.areas)[0]?.color || areaDefault)" :title="areaLabel()" @click="togglePop('area', $el)">
               <svg class="ico" x-show="!areaObjs(draft.areas).length"><use href="#i-tag-tag"/></svg>
-              <i class="discs inline-flex" x-show="areaObjs(draft.areas).length" x-html="areaDiscsHtml()"></i>
-              <span x-text="areaLabel()"></span>
+              <span class="areas inline-flex items-center gap-4" x-show="areaObjs(draft.areas).length" x-html="areaObjs(draft.areas).map(a => areaChipHtml({ name: a.name, icon: a.icon, color: a.color || areaDefault })).join('')"></span>
+              <span x-show="!areaObjs(draft.areas).length" x-text="areaLabel()"></span>
             </button>
             <template x-if="pop === 'area'"><template x-teleport="body"><div class="pop area-pop" :class="{ dock: popDock }" :style="popStyle()">
               <div class="area-grid area-cluster items-center">
@@ -994,7 +994,7 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     </ul>
 
     <!-- Full ghost task row (keeps the .add-task-btn hook): looks like an empty task row; click opens the composer -->
-    <button class="add-task-btn flex items-center gap-10" x-ref="addRow" data-sk="New task" x-show="!composer.open || editing" @click="startAdd()"><span class="ghost-check"></span><span class="ghost-title">Add task</span></button>
+    <button class="add-task-btn flex items-center gap-10" x-ref="addRow" data-sk="New task" x-show="(!composer.open || editing) && !(listEmpty() && !listNoMatch() && completedRows().hidden)" :class="listEmpty() && !listNoMatch() && 'ghost greet'" @click="startAdd()"><span class="ghost-check"></span><span class="ghost-title">Add task</span></button>
 
     <!-- Completed tasks sit below the add button so it stays visible. A real task list (same row components):
          subtasks show and the composer can open inline. -->
@@ -1445,10 +1445,9 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
      </div></template>
      <template x-if="bar"><ul class="list jb-host" :class="{ open: composer.open &amp;&amp; _inBar(), editing, ka: kaEdit() }" x-init="const ro = new ResizeObserver(() => fitEntries($el)); ro.observe($el); ro.observe($refs.composer)">   <!-- the composer over the bar, new or edit (relocateComposer) -->
       <li class="jb-go" x-show="jotting()" :class="{ gone: !jotRows().length }" @mousedown.prevent>   <!-- a tap keeps the keyboard up -->
-        <template x-for="r in goRows()" :key="r.type + ':' + r.id">
-          <button type="button" class="palette-row task-line" @click="pickJot(r)" x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r), true) : searchJumpHTML(r)"></button>
+        <template x-for="(r, i) in goRows()" :key="r.type + ':' + r.id">
+          <button type="button" class="palette-row task-line" :class="{ hr: hrAbove(goRows(), i) }" @click="pickJot(r)" x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r), true) : searchJumpHTML(r)"></button>
         </template>
-        <div class="palette-section" x-show="!draft.content">Go to</div>
       </li>
     </ul></template>
     </div><!-- /canvas -->
@@ -1861,21 +1860,25 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <!-- ⌘K search palette (the backdrop gets .palette-backdrop while open for top alignment) -->
     <div class="palette" role="dialog" aria-modal="true" aria-label="Go to anything" @click.stop x-show="palette.open">
       <div class="palette-head flex items-center gap-8">
-        <svg class="ico palette-search-ico flex-none"><use href="#i-search"/></svg>
-        <input class="palette-input grow min-w-0" x-ref="paletteInput" type="text" placeholder="Go to anything, or run a command…"
-          x-model="palette.q" @input="palette.sel = 0"
-          @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)" @keydown.enter.prevent.stop="paletteEnter()"
-          @keydown.meta.s.prevent.stop="saveQueryAsFilter()" @keydown.ctrl.s.prevent.stop="saveQueryAsFilter()">
+        <div class="palette-field grow min-w-0 flex items-center gap-8">
+          <svg class="ico palette-search-ico flex-none"><use href="#i-search"/></svg>
+          <input class="palette-input grow min-w-0" x-ref="paletteInput" type="text" placeholder="Go to anything, or run a command…"
+            x-model="palette.q" @input="palette.sel = 0"
+            @keydown.down.prevent="paletteMove(1)" @keydown.up.prevent="paletteMove(-1)" @keydown.enter.prevent.stop="paletteEnter()"
+            @keydown.meta.s.prevent.stop="saveQueryAsFilter()" @keydown.ctrl.s.prevent.stop="saveQueryAsFilter()">
+          <button type="button" class="palette-clear flex-none flex items-center justify-center" x-show="palette.q" aria-label="Clear" @click="palette.q = ''; palette.sel = 0; $refs.paletteInput.focus()"><svg class="ico"><use href="#i-x"/></svg></button>
+        </div>
+        <button type="button" class="palette-cancel flex-none" @click="palette.open = false">Cancel</button>
       </div>
-      <div class="palette-section" x-show="searchResults().length" x-text="palette.q.trim() ? 'Results' : 'Go anywhere'"></div>
       <div class="palette-results flex-col" x-show="searchResults().length">
         <template x-for="(r, i) in searchResults()" :key="r.type + ':' + r.id">
-          <button type="button" class="palette-row task-line" :class="{ psel: i === palette.sel, done: r.obj?.completed_at }"
+          <button type="button" class="palette-row task-line" :class="{ psel: i === palette.sel, done: r.obj?.completed_at, hr: hrAbove(searchResults(), i) }"
             @click="pickSearchResult(r)" @mousemove="palette.sel = i"
             x-html="r.type === 'task' ? taskLine(r.obj, searchTitleHTML(r), true) : searchJumpHTML(r)"></button>
         </template>
       </div>
-      <div class="palette-empty" x-show="palette.q.trim() && !searchResults().length">No matches for “<span x-text="palette.q.trim()"></span>”</div>
+      <div class="palette-empty flex items-center gap-10" x-show="palette.q.trim() && !searchResults().length"><span class="ghost-check"></span>
+        <span class="ls-sent"><span class="ls-verb">nothing matches <b x-text="palette.q.trim()"></b>, </span><button type="button" class="ls-word" @click="addSearchAsTask()">add it as a task</button></span></div>
       <div class="palette-foot flex muted-11">
         <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> open</span><span :style="{ opacity: isFilterQuery(palette.q) ? 1 : .45 }"><kbd x-text="mod"></kbd><kbd>s</kbd> save as filter</span><span><kbd>esc</kbd> close</span>
       </div>
@@ -1962,11 +1965,10 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
       </div>
       <div class="fe-body">
         <textarea class="fe-query" placeholder="importance:must due:overdue" :value="filterEdit?.query" @input="filterEdit.query = $event.target.value"></textarea>
-        <p class="fe-hint"><code>#project</code> <code>@area</code> <code>importance:must</code> <code>due:overdue</code> <code>deadline:eow</code> <code>is:archived</code> <code>is:recurring</code> <code>in:description</code><br>Combine with <code>AND</code> <code>OR</code> <code>NOT</code> <code>( )</code></p>
+        <p class="fe-hint"><span class="fe-tok"><span class="pring"></span>#project</span> <span class="fe-tok"><svg class="ico"><use href="#i-tag-tag"/></svg>@area</span> <code>importance:must</code> <code>due:overdue</code> <code>deadline:eow</code> <code>is:archived</code> <code>is:recurring</code> <code>in:description</code><br>Combine with <code>AND</code> <code>OR</code> <code>NOT</code> <code>( )</code></p>
         <div class="fe-preview" x-show="filterEdit?.query?.trim()" x-cloak>
-          <div class="section-label">Matches</div>
           <template x-for="t in filterMatches().slice(0, 50)" :key="t.id">
-            <div class="task-line fe-prev-row" x-html="taskLine(t)"></div>
+            <div class="palette-row task-line fe-prev-row" x-html="taskLine(t, null, true)"></div>
           </template>
           <div class="fe-prev-empty" x-show="!filterMatches().length">No tasks match.</div>
         </div>
@@ -2191,11 +2193,14 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
   <!-- under a dialog only the buttons go inert: an inert live region leaves the tree and announces nothing. Settings is no dialog: Undo stays clickable beside it -->
   <div id="notif-stack" aria-live="polite" x-cloak :class="{ 'by-settings': settingsOpen, 'by-field': bar && phoneThread(), 'by-dialog': anyDialog() }">
     <template x-for="n in notifs" :key="n.id">
-      <div class="notif" :class="n.leaving && 'leaving'" @pointerenter="_notifHold(n.id, 'pointer', true)" @pointerleave="_notifHold(n.id, 'pointer', false)"
+      <div class="notif" :class="{ leaving: n.leaving, 'notif-line': n.line }" @pointerenter="_notifHold(n.id, 'pointer', true)" @pointerleave="_notifHold(n.id, 'pointer', false)"
         @focusin="_notifHold(n.id, 'focus', true)" @focusout="$el.contains($event.relatedTarget) || _notifHold(n.id, 'focus', false)">
-        <span class="notif-msg" x-text="n.msg"></span>
+        <template x-if="!n.line"><span class="notif-msg" x-text="n.msg"></span></template>
+        <!-- an Undo/Redo card: one sentence in the list line's voice, "deleted <task>, undo", its step a dotted word (app.js _cardLine) -->
+        <template x-if="n.line?.ring"><span class="pring" :style="n.line.ring"></span></template>
+        <template x-if="n.line"><span class="notif-msg ls-sent"><span x-text="n.line.head"></span><span class="notif-name" x-text="n.line.name"></span><span x-text="n.line.tail + (n.actions.some(a => a.dir) ? ',' : '')"></span></span></template>
         <template x-for="a in n.actions" :key="a.label">
-          <button type="button" class="notif-act" :tabindex="anyDialog() ? -1 : null" :data-sk="a.jid && a.dir < 0 && 'Undo / redo'" @click="_runNotifAction(n, a)" x-text="a.label"></button>
+          <button type="button" :class="n.line && a.dir ? 'ls-word' : 'notif-act'" :tabindex="anyDialog() ? -1 : null" :data-sk="a.jid && a.dir < 0 && 'Undo / redo'" @click="_runNotifAction(n, a)" x-text="n.line && a.dir ? a.label.toLowerCase() : a.label"></button>
         </template>
       </div>
     </template>

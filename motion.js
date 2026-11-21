@@ -123,7 +123,8 @@ export const motion = {
   running(key) { return tweens.has(key); },
   active() {
     // detached mid-flight, its end/cancel fires where document can't hear it — whether it stays out or is re-inserted
-    for (const el of css.keys()) if (!el.getAnimations({ subtree: true }).length) css.delete(el);
+    // finished unheard too: under content-visibility:hidden (Lists while Plan shows) a transition ends without its transitionend
+    for (const el of css.keys()) if (el.getAnimations({ subtree: true }).every(a => a.playState === 'finished')) css.delete(el);
     for (const el of scrollers.keys()) if (el !== document && !el.isConnected) scrollers.delete(el);
     return tweens.size + css.size + scrollers.size;
   },

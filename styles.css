@@ -35,7 +35,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 
 /* Eyebrow — every section label's one type rule, first so site rules (layout; the tray's thread line) override it.
    New labels use class="section-label". */
-.section-label, .rl-sec, .pop-sub-head, .rem-sug-head, .palette-section, .sec-row, .list-done-head, .lp-sec, .rel-well-h, .cl-side-sec, .nav-pop-label {
+.section-label, .rl-sec, .pop-sub-head, .rem-sug-head, .sec-row, .list-done-head, .lp-sec, .rel-well-h, .cl-side-sec, .nav-pop-label {
   font-size: var(--fs-11); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 
 /* ---- Utilities — Tailwind semantics over design.json tokens (gap-N = --sp-N, real px). ----
@@ -371,13 +371,18 @@ html:not(.touch) .plan-box { display: none; }
   .date { margin: var(--sp-4) 0 0; color: var(--muted); font-size: var(--fs-13); }
 }
 .empty { color: var(--muted); text-align: center; padding: 56px 0; font-size: var(--fs-14); }
-.empty-sun { width: 48px; height: 28px; margin-bottom: var(--sp-6); overflow: visible; fill: none; stroke: var(--warm); stroke-width: 2.25; stroke-linecap: round;
+.empty-sun { width: 64px; height: 37px; margin-bottom: var(--sp-10); overflow: visible; fill: none; stroke: var(--warm); stroke-width: 2.25; stroke-linecap: round;
   & .ray { transform-box: fill-box; transform-origin: center; } }
-.empty-sun ~ .empty-t { font-size: var(--fs-17); font-weight: 600; color: var(--ink); }
+.empty-sun ~ .empty-t { font-size: var(--fs-15); }
+.empty .ghost { margin-top: var(--sp-4); }
+.empty.greet { padding-bottom: 0; }
+/* The empty list's Add task row, drawn as the .ghost button under the greeting's words */
+.add-task-btn.greet { width: fit-content; margin: var(--sp-10) auto 0;   /* nothing sits below it: an empty list */
+  > .ghost-check { display: none; } > .ghost-title { font: inherit; color: inherit; } }
 /* All clear arriving (_clearIn): the sun rises, its rays light in turn, the words follow */
 .empty.arrive { & .arc { animation: clear-arc var(--motion-daily) var(--ease-spring) both; }
   & .ray { animation: clear-ray var(--motion-daily) var(--ease-out) calc(100ms + sibling-index() * 40ms) both; }
-  & .empty-sun ~ .empty-t { animation: clear-t var(--motion-daily) var(--ease-out) 220ms both; } }
+  & .empty-sun ~ :is(.empty-t, .ghost) { animation: clear-t var(--motion-daily) var(--ease-out) 220ms both; } }
 @keyframes clear-arc { from { translate: 0 10px; opacity: 0; } }
 @keyframes clear-ray { from { scale: .3; opacity: 0; } }
 @keyframes clear-t { from { translate: 0 6px; opacity: 0; } }
@@ -924,13 +929,13 @@ html:not(.touch) .dsk {
   .icons-only .areas { border: 0; height: 15px; }   /* the ladder's rolled-up pill: one capsule, a named chip's height */
   .r1r > .proj-at { flex: none; }   /* the ladder moves it, the title takes the squeeze */
 }
-/* A search row wears the list row's capsule and project. */
-html:not(.touch) :is(.dsk, .palette-row) {
+/* The drag ghost wears the list row's project. */
+html:not(.touch) .dsk {
   .proj-at { gap: var(--sp-5); font-size: var(--fs-12); color: var(--ink); font-weight: 500;
     .pring { width: 1em; height: 1em; translate: 0 calc((1em - 1cap) / 2); } > .ico { width: 1.1em; height: 1.1em; flex: none; color: var(--faint); } }   /* the pie on its name's capitals */
 }
-/* Desktop tags: every list row's, the drag ghost's and a search row's. A phone's stay in .typed above. */
-html:not(.touch) :is(.surface-lists .item, .dsk, .palette-row) {
+/* Desktop tags: every list row's and the drag ghost's. A phone's stay in .typed above. */
+html:not(.touch) :is(.surface-lists .item, .dsk) {
   .area { border: 0; line-height: 17px; margin-block: -1px; color: color-mix(in oklab, var(--tc) 50%, var(--ink)); padding: 0 calc(var(--sp-4) + 1px); font-size: var(--fs-11); font-weight: 500; background: color-mix(in srgb, var(--tc) 22%, transparent); }   /* 15 + its 1px border, given to box and text; the -1px margins keep the title still */
   .area svg.ico { width: 11px; height: 11px; }
   .icons-only { .areas { height: 17px; background: color-mix(in srgb, var(--tc, var(--muted)) 22%, transparent); } .area { padding: 0; line-height: 15px; background: none; } }
@@ -1054,20 +1059,12 @@ html:not(.touch) :is(.surface-lists .item, .dsk, .palette-row) {
   .chip {
     &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* owns the open pop */
     &.set { color: var(--ink); .ico { color: var(--cc); } }
-    :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span { display: none; }   /* touch keeps words: its row scrolls; areas read by their discs */
+    :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span:not(.areas) { display: none; }   /* touch keeps words: its row scrolls; areas read by their capsules */
     &.down .ico { rotate: 180deg; } }   /* Someday: the chevrons point down */
   .chip-rem { --cc: var(--accent); }   /* the light accent on a dark card reads at 2.4:1 */
   .chip-loc { --cc: var(--hue-location); }
   .chip-dur { --cc: var(--hue-duration); }
   .chip-dl { --cc: var(--p1); }   /* the deadline's red */
-  .discs { flex: none; }
-  .disc { --disc-size: 20px; --disc-box: 10px; --disc-k: 1; position: relative; display: inline-flex; align-items: center; justify-content: center; width: var(--disc-size); height: var(--disc-size); border-radius: 50%; background: var(--dc); color: var(--on-accent);
-    --ring: 1.5px; box-shadow: 0 0 0 var(--ring) var(--panel);   /* cut out of the disc behind */
-    & + .disc { margin-left: calc(-2 * var(--ring)); } }
-  .disc .ltr { display: none; }   /* an iconless area's first letter, the phone bar's one-area tag only */
-  .chip.set .disc .ico { width: var(--disc-box); height: var(--disc-box); color: inherit; --panel: var(--dc);   /* a glyph's cut-outs show the disc */
-    --s: calc(var(--fit, 1) * var(--disc-k)); scale: var(--s);   /* design.json area-disc: fit and shift per glyph, 24-unit, here only: chips, pickers and rows draw it plain */
-    translate: calc(var(--sx, 0) * var(--disc-box) / 24 * var(--s)) calc(var(--sy, 0) * var(--disc-box) / 24 * var(--s)); }
   .loc-map { width: 40px; height: 18px; flex: none; color: var(--cc); }
   .ico { width: 16px; height: 16px; flex: none; }   /* 16 + the 8 gap: a value starts where the entries' text does */
 }
@@ -1217,7 +1214,8 @@ body > .pop { z-index: 61; }   /* an open menu stands over the toasts (#notif-st
 .pop-item .ico { width: 15px; height: 15px; flex: none; color: var(--muted); }   /* an un-sized .ico has no viewBox height and inflates the row */
 .pop-item { display: flex; align-items: center; gap: var(--sp-8); width: 100%; text-align: left;
   padding: var(--sp-6) var(--sp-8); border: none; background: none; border-radius: var(--r-6); color: var(--ink); font-size: var(--fs-13);
-  &:hover:where(:not(.touch *)), &.hot { background: var(--hover); }   /* .hot: the keyboard's row */
+  &:hover:where(:not(.touch *)) { background: var(--hover); }
+  &.hot { background: color-mix(in srgb, var(--accent) 13%, transparent); }   /* the keyboard's row, the list's selected tint */
   &.clear { color: var(--muted); }
   &.del, &.del .ico { color: var(--p1); }
   .tick { margin-left: auto; color: var(--accent); }
@@ -1501,7 +1499,17 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
   background: color-mix(in srgb, var(--tc) 10%, transparent);
   .ico { width: 12px; height: 12px; }
   &.on { border-color: var(--tc); background: color-mix(in srgb, var(--tc) 22%, transparent);
-    color: color-mix(in srgb, var(--tc) 82%, var(--ink)); } }
+    color: color-mix(in srgb, var(--tc) 82%, var(--ink)); }
+  .ico-default { display: none; } }
+/* The area pickers' rows (composer, block, Move): glyph in its color, name, the check at the right; the multi-select toggles as before. */
+:is(.area-pop, .sel-move-pop) .area-grid.area-cluster { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: 0; padding: 0;
+  .area-opt { display: flex; gap: var(--sp-8); min-height: 28px; padding: var(--sp-4) var(--sp-8); border: 0; border-radius: var(--r-6); background: none;
+    color: var(--ink); font-size: var(--fs-13); font-weight: 400; opacity: 1;
+    .ico { width: 15px; height: 15px; flex: none; color: var(--tc); } .ico-default { display: inline-flex; }
+    .tick { order: 1; margin-left: auto; width: 14px; height: 14px; color: var(--accent); }
+    &:hover:where(:not(.touch *)) { background: var(--hover); } }
+  .area-ghost { border: 0; border-radius: var(--r-6); min-height: 28px; padding: var(--sp-4) var(--sp-8); input { font-size: var(--fs-13); } } }
+.touch :is(.area-pop, .sel-move-pop) .area-grid.area-cluster :is(.area-opt, .area-ghost) { min-height: 44px; font-size: var(--fs-15); }
 /* Location constraint popover */
 /* Location hybrid picker: Anywhere / At / Away from seg + block-driven here-row + region chip rows */
 .pop.loc-pop { min-width: 232px; max-width: 264px; padding: var(--sp-6); }
@@ -1575,6 +1583,11 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
    side panel its label would wrap and spill out of the 30px pill; min-width:0 lets it ellipsize instead. */
 .chip-proj { max-width: 14rem; }
 .chip-proj, .chip-area { min-width: 0; }
+.chip-area.set .areas .area { border: 0; padding: 0 calc(var(--sp-6) + 1px) 0 var(--sp-5); font-size: var(--fs-12); font-weight: 400; line-height: 1.5;   /* the list's capsule (line 2's) */
+  color: color-mix(in oklab, var(--tc) 50%, var(--ink)); background: color-mix(in srgb, var(--tc) 13%, transparent);
+  svg.ico { width: 1em; height: 1em; color: var(--tc); } }
+.touch .chip-area.set .areas .area { font-size: var(--fs-13); }   /* the phone row's capsule */
+.chip-area.short .area { .nm { display: none; } .ico-default { display: inline-flex; } padding-inline: var(--sp-4); }   /* the bar's squeeze: one area's name gives way, its glyph stays */
 .chip-proj > span:last-child, .chip-area > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- Nested row: expand chevron ---- */
@@ -1639,6 +1652,12 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .pick-ico, .area-ico { width: 18px; height: 18px; flex: none; color: var(--muted); }   /* palette lead icons (.area-ico's inline color overrides the muted fallback). Explicit size: a bare .ico has no viewBox and inflates to 300×150. */
 /* task-line (picker/palette/rel-picker) proj chip: pushed right, a step smaller */
 .task-line .proj { margin-left: auto; flex: 0 1 auto; padding-left: var(--sp-8); font-size: var(--fs-11); }
+/* its parent as the list draws it: pie + name, Backlog's tray + Backlog, quiet */
+.task-line .proj-at { max-width: 45%; gap: var(--sp-5); font-size: var(--fs-12); color: var(--muted);
+  .pring { width: 1em; height: 1em; translate: 0 calc((1em - 1cap) / 2); } > .ico { width: 1.1em; height: 1.1em; flex: none; color: var(--faint); }   /* the pie on its name's capitals, as the list's */
+  .proj-nm, > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+.pick-proj { font-weight: 500; }   /* a project's name, as its list title's */
+.proj-row .pick-name { flex: 0 1 auto; min-width: 0; max-width: none; }
 
 /* ---- Cascade-completion confirm dialog ---- */
 .dialog-backdrop {   /* a dialog over another sits beside it (Import + its guide); under 760px they stack (block below) */
@@ -1659,19 +1678,25 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .palette-backdrop { align-items: flex-start; }
 .palette { background: var(--panel); border-radius: var(--r-lg); box-shadow: var(--shadow); width: 600px; max-width: 92vw;
   margin-top: 11vh; overflow: hidden; display: flex; flex-direction: column; }
-.palette-head { padding: var(--sp-12) var(--sp-16); border-bottom: 1px solid var(--hair); }
-.palette-search-ico { width: 18px; height: 18px; color: var(--muted); }
+.palette-head { padding: var(--sp-8); }
+.palette-field { min-height: 36px; padding: 0 var(--sp-4) 0 var(--sp-10); background: var(--hover); border-radius: var(--r-8); }
+.palette-search-ico { width: 16px; height: 16px; color: var(--faint); }
+.palette-clear { width: 28px; height: 28px; padding: 0; border: none; background: none; color: var(--faint); border-radius: var(--r-6); cursor: pointer;
+  .ico { width: 14px; height: 14px; } &:hover:where(:not(.touch *)) { color: var(--muted); } }
+.palette-cancel { display: none; padding: 0 var(--sp-4); border: none; background: none; color: var(--accent); font: inherit; font-size: var(--fs-15); cursor: pointer; }
+.touch { .palette-cancel { display: block; } .palette-field { min-height: 40px; border-radius: var(--r-12); } .palette-row { min-height: 44px; } }
 .palette-input { border: none; background: none; outline: none; color: var(--ink);
   font-size: var(--fs-16); padding: 0; &::placeholder { color: var(--muted); } }
-.palette-section { padding: var(--sp-8) var(--sp-16) var(--sp-4); }
-.palette-results { gap: 1px; max-height: 54vh; overflow-y: auto; padding: 0 var(--sp-6) var(--sp-6); }
-.palette-row { gap: var(--sp-8); width: 100%; text-align: left; padding: var(--sp-8) var(--sp-10); border: none; background: none;
-  color: var(--ink); font: inherit; border-radius: var(--r-8); cursor: pointer; scroll-margin: var(--sp-6); }
+.palette-results { max-height: 54vh; overflow-y: auto; padding: 0 var(--sp-4) var(--sp-4); }
+.palette-row { position: relative; gap: var(--sp-8); width: 100%; text-align: left; padding: var(--sp-4) var(--sp-8); border: none; background: none;
+  color: var(--ink); font: inherit; border-radius: var(--r-6); cursor: pointer; scroll-margin: var(--sp-6);
+  > :is(.pring, .check) { margin-inline: 1px; }   /* the glyph column: each lead on the 18px icons' center */
+  &.hr { margin-top: var(--sp-8); &::before { content: ""; position: absolute; inset: calc(-1 * var(--sp-4)) var(--sp-4) auto; border-top: 1px solid var(--edge); } } }   /* places above, to-dos below */
 :where(html:not(.touch)) .palette-row { &.task-line { min-height: 35px; } .pick-name { font-size: var(--fs-15); line-height: 18px; } .proj-at { flex: none; } }   /* the list row's height; :where leaves .jb-go's 44 winning */
 .palette-row.psel { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .palette-row.done .pick-name { color: var(--muted); text-decoration: line-through; }
 .palette-row mark, .pick-name mark { background: color-mix(in srgb, var(--accent) 24%, transparent); color: inherit; border-radius: var(--r-4); padding: 0 1px; }
-.palette-empty { color: var(--muted); font-size: var(--fs-13); padding: var(--sp-24) var(--sp-16); text-align: center; }
+.palette-empty { padding: var(--sp-16); & b { font-weight: 600; color: var(--ink); } }   /* the list line's sentence (.ls-sent), its query in ink */
 .palette-foot { gap: var(--sp-16); padding: var(--sp-8) var(--sp-16); border-top: 1px solid var(--hair); }
 /* Shortcuts cheat-sheet (?) */
 .shortcuts-sheet { width: min(760px, calc(100vw - var(--sp-24))); min-width: 0; max-width: none; max-height: 88vh; overflow-y: auto; }
@@ -1783,6 +1808,8 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .fe-count { position: absolute; right: var(--sp-10); top: 50%; transform: translateY(-50%); color: var(--muted); font-size: var(--fs-12); white-space: nowrap; pointer-events: none; }
 .fe-body { display: flex; flex-direction: column; gap: var(--sp-10); margin-bottom: var(--sp-16); }
 .fe-hint { margin: 0; color: var(--muted); font-size: var(--fs-11); line-height: 1.9; }
+.fe-tok { display: inline-flex; align-items: center; gap: var(--sp-4); color: var(--ink); white-space: nowrap;   /* a project and an area token, as the list draws them */
+  .pring { --p: .5; --pc: var(--faint); width: 12px; height: 12px; } .ico { width: 12px; height: 12px; color: var(--muted); } }
 .fe-hint code { font: var(--fs-11) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--hover); border-radius: var(--r-4); padding: 0 var(--sp-4); color: var(--ink); white-space: nowrap; }
 .fe-query { border: 1px solid var(--edge); background: none; border-radius: var(--r-8); padding: var(--sp-8) var(--sp-10);
   min-height: 48px; resize: none; width: 100%; outline: none; color: var(--ink);
@@ -1790,7 +1817,8 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .fe-query::placeholder { color: var(--muted); }
 /* live preview of matching tasks (reuses taskLine) */
 .fe-preview { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-2); }
-.fe-prev-row { padding: var(--sp-4) var(--sp-6); border-radius: var(--r-6); font-size: var(--fs-13); }
+.fe-prev-row { padding: var(--sp-4) var(--sp-8); border-radius: var(--r-6); }
+.fe-preview { border-top: 1px solid var(--edge); padding-top: var(--sp-6); }   /* the query above, its tasks below */
 .fe-prev-row:hover:where(:not(.touch *)) { background: var(--hover); }
 .fe-prev-empty { color: var(--muted); font-size: var(--fs-12); padding: var(--sp-4) 0; }
 
@@ -2012,7 +2040,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
    would let this hidden popover shadow the composer's pickers for querySelector-based tests */
 .sel-prio-pop { flex-direction: row; gap: var(--sp-6); width: max-content; }
 .sel-due-pop { min-width: 168px; }
-.sel-move-pop { min-width: 230px; max-height: 300px; overflow-y: auto; }   /* x-if, not x-show: hidden, its project list would re-render on every task reload, so it closes instantly */
+.sel-move-pop { width: 280px; max-height: 300px; overflow-y: auto; }   /* x-if, not x-show: hidden, its project list would re-render on every task reload, so it closes instantly */
 .sel-anim { transition: opacity .18s var(--ease-out), transform .18s var(--ease-out); }
 .sel-hide { opacity: 0; transform: translateY(-6px); }
 .sel-show { opacity: 1; transform: translateY(0); }
@@ -2852,6 +2880,13 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 @starting-style { .notif { opacity: 0; transform: translateX(110%); } }   /* enter from the right edge */
 .notif.leaving { opacity: 0; transform: translateX(110%); }               /* exit the same edge */
 .notif-msg { flex: 1; min-width: 0; }                                     /* fills the card on mobile → actions ride the right edge */
+/* An Undo/Redo card is one sentence: the ring, the words, then the step word right after its comma; a long name truncates */
+.notif-line { gap: var(--sp-2);
+  > .pring { margin-right: var(--sp-6); }
+  > .notif-msg { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  > .ls-word { flex: none; padding-inline: var(--sp-2); }
+  > .notif-act { margin-left: var(--sp-10); } }
+.notif-name { color: var(--ink); }
 .notif-act { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 700; cursor: pointer; border-radius: var(--r-4); transition: transform 140ms var(--ease-out); }
 .notif-act:hover:where(:not(.touch *)) { text-decoration: underline; }
 .notif-act:active { transform: scale(.97); }
@@ -2872,7 +2907,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   /* The ghost row bleeds as far as the list it stands in for (desktop -18px/+28px; here .list drops to -8px, so
      an unchanged button would hang off the screen edge). Left padding stays the rows' --gut (below) so the ghost
      check sits on the real checkboxes. */
-  .add-task-btn { width: calc(100% + 16px); margin-left: -8px; }
+  .add-task-btn { width: calc(100% + 16px); margin-left: -8px; }   /* .greet outranks it */
   /* Overview stacks: cards on top, lists roller below. Side-by-side wants ~880px; at 390 the roller and
      the 200px cards run off the edges. order beats reordering the markup. */
   .overview { padding: var(--sp-16); justify-content: flex-start; }
@@ -2981,7 +3016,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .item:has(.chk-list) > .check::before { bottom: -8px; }   /* 37px tall, ending where the first checklist item's hit starts */
   .chk-list { --chk-e: 3.1px; margin-top: var(--sp-6); }   /* 28px pitch (Apple's minimum control); 2px lower so the task's check keeps a 37px hit above it */
   /* grow the row vertically, but keep the --gut left pad: a `14px` shorthand slides the ghost check off. */
-  .add-task-btn { padding: var(--sp-12) var(--sp-10) var(--sp-12) var(--gut); font-size: var(--fs-15); }
+  .add-task-btn:not(.greet) { padding: var(--sp-12) var(--sp-10) var(--sp-12) var(--gut); font-size: var(--fs-15); }
   :is(.composer-opts, .blk-today) .chip { height: 40px; padding: 0 var(--sp-12); font-size: var(--fs-13); }
   .composer-actions .primary, .composer-actions .ghost { padding: var(--sp-12) var(--sp-16); font-size: var(--fs-15); }
   .composer-actions .del-btn, .composer-actions .overview-btn { padding: var(--sp-10); }
@@ -3042,7 +3077,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .field:has(> .chip-loc.set) { order: -1; } .field:has(> :is(.chip-area, .chip-loc):not(.set)) { order: 1; }
     &:not(.cl-opts) .field:has(> :is(.chip-dur, .chip-loc):not(.set)) { display: none; }   /* the editors have no ··· to hold them */
     &.cl-opts .field:has(> .chip-imp:not(.set)) { order: 2; }   /* an event's unset Importance goes last, so its place stays in view */
-    .chip:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span { display: none; } }   /* areas read by their discs, as on a mouse row; the names are in the picker */
+    .chip:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span:not(.areas) { display: none; } }   /* areas read by their capsules, as on a mouse row */
   :is(.touch, .bar-on .jb-host) .composer-actions .more-btn { width: 40px; height: 40px; justify-content: center; padding: 0; }
   :is(.touch, .bar-on .jb-host) .composer-actions .primary { flex: none; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border-radius: var(--r-pill);
     .ico { display: block; width: 20px; height: 20px; stroke-width: 2.4; } > span { display: none; } }
@@ -3211,23 +3246,14 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   .bar-on .jb-host .composer-opts { --inset: var(--sp-6); height: 48px; min-width: 38px; padding-right: 0;   /* never 0 wide: it would fit beside the line break */
     mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* clear of a glyph at rest */
     &::before { content: ""; flex: 1; }   /* set values left, the bare icons right against ··· */
-    .chip { height: 40px; width: 38px; padding: 0; justify-content: center; > .ico { width: 19px; height: 19px; } }   /* never an area disc's glyph */
+    .chip { height: 40px; width: 38px; padding: 0; justify-content: center; > .ico { width: 19px; height: 19px; } }
     .chip.set:not(.chip-imp, .chip-dur) { width: auto; height: 40px; padding: 0 var(--sp-8) 0 var(--sp-6); gap: var(--sp-5); font-size: var(--fs-14); > .ico { width: 19px; height: 19px; } }
-    .disc { --disc-size: 22px; --disc-box: 12px; --disc-k: calc(11 / 12);   /* the box's 12 at the 11's ink: cart's clearance */
-      box-shadow: 0 0 0 var(--ring) var(--dim, transparent), 0 0 0 var(--ring) var(--panel); }   /* the sheet's color under the composer's dim, so no halo reads as a larger circle */
-    /* one area is a tag: its circle and name on the phone row tag's fill; the capsule is drawn inside the 40px target,
-     its edges where a bare value's ink would be */
-    .chip-area.set:has(.disc:only-child) { .ltr:not(:empty) { display: inline; font-size: var(--fs-11); font-weight: 700; font-style: normal; line-height: 1; text-transform: uppercase; & + .ico { display: none; } }
-      &:not(.short) { position: relative; isolation: isolate; padding: 0 calc(var(--sp-8) + var(--sp-10)) 0 calc(var(--inset) + var(--sp-4));
-        &::before { content: ""; position: absolute; z-index: -1; inset: var(--sp-6) var(--sp-8) var(--sp-6) var(--inset); border-radius: var(--r-pill); background: color-mix(in srgb, var(--tc) 13%, transparent); }
-        .disc { box-shadow: none; } }   /* no ring: it would halo on the tint */
-      > span { display: inline; } }   /* folded too, out of flow at its own size: barFit sees a rename */
     .field:has(> .chip-notes:not(.set)) { order: 1; }   /* the steps icon last */
     .field:has(> .chip-dl:not(.set)) { display: none; }   /* an unset deadline waits in ···, like Size and Place */
     .field:has(> .chip.set:not(.chip-notes)) { flex-shrink: 1; min-width: 38px; overflow: hidden; white-space: nowrap; mask-image: linear-gradient(to left, transparent, #000 var(--sp-8));   /* crowded, the values go to their icons (barFit), never the bare icons or the steps */
       &:not(:has(~ .field > .chip.set:not(.chip-notes))) { flex-shrink: 100; }   /* the last first, as shown */
-      &:has(> :is(.bare, .chip-area)) { min-width: fit-content; mask-image: none; } }   /* a bare icon whole: the place's map and the area discs are wider than 38 */
-    .chip.set:is(.short, .bare) { position: relative; overflow: hidden; > span { position: absolute; visibility: hidden; } }   /* out of flow at its own size: barFit still sees its text change */
+      &:has(> :is(.bare, .chip-area)) { min-width: fit-content; mask-image: none; } }   /* a bare icon whole: the place's map and the area capsules are wider than 38 */
+    .chip.set:is(.short, .bare) { position: relative; overflow: hidden; > span:not(.areas) { position: absolute; visibility: hidden; } }   /* out of flow at its own size: barFit still sees its text change; the area capsules stay (.chip-area.short drops the name) */
     .chip.set.bare { width: auto; min-width: 38px; padding: 0; justify-content: center; .rep-on { display: none; } }   /* the bare icons' box */
     .chip-due.set.short:not(.bare) > .due-short { position: static; display: inline; visibility: visible; &::before { content: attr(data-short); } } }   /* not text: the chip's textContent stays its one label */
   /* short row glyphs up to the circle's ink height */
@@ -3287,17 +3313,17 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .touch .composer-card:has(.acts.edit) .composer-opts.composer-opts .chip { min-width: 44px; }   /* an edit's chips have their row; a new task's share it with the actions and stay 40 wide, abutting */
 .touch .composer-card .acts.edit.edit :is(.ph, .overview-btn, .del-btn, .act-btn, .more-btn) { flex: 0 1 44px; min-width: 0; }   /* 44 where the row has room; the card's 344 at 390 shares it (a width would hold the row's min-content at 352) */
 .touch .bar-on .jb-host .acts.edit.edit :is(.ph, .overview-btn, .del-btn, .act-btn, .more-btn) { flex: none; width: 44px; }   /* the bar's 372 holds all eight at 44 */
-.touch .composer-card .composer-actions.composer-actions :is(.primary, .more-btn, .by-go) { width: 44px; min-width: 44px; height: 44px; }
+.touch .composer-card .composer-actions.composer-actions :is(.primary, .more-btn, .by-go):not(.bar-on .jb-host:has(.by-go) *) { width: 44px; min-width: 44px; height: 44px; }
+.touch .bar-on .jb-host .composer-actions:has(.by-go) { :is(.more-btn, .by-go) { height: 44px; }   /* a new task's bar keeps ··· and the tack on its chips' 38 pitch and the go 40: at 390 three 44s left "Next Fri" no room for its word */
+  .primary { position: relative; &::after { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 44px; translate: -50% -50%; } } }
 .touch .composer-card .proj-pick:not(.jb-host *) { height: 44px; }   /* the card's pill keeps Save's row height */
 .touch .bar-on .jb-host.ka { --grew: calc((44px - 38px) / 2);   /* a tapped task's chips and actions grew 38 to 44: their first icons stay on the 16px edge */
   .composer-opts { --inset: calc((44px - 19px) / 2); }
-  .acts.edit { --out: calc((44px - 18px) / 2 - var(--sp-16) + var(--sp-10) + var(--grew)); }
-  .chip-area.set:has(.disc:only-child):not(.short) { padding-right: calc(var(--sp-8) + var(--sp-10) + var(--grew)); &::before { right: calc(var(--sp-8) + var(--grew)); } } }   /* the tag's edges as far from its neighbors' ink as before */
+  .acts.edit { --out: calc((44px - 18px) / 2 - var(--sp-16) + var(--sp-10) + var(--grew)); } }
 .touch .bar-on .jb-host .field.loc.loc :is(.proj-pick, .ka-notes) { position: relative;   /* the bar's project line keeps its height under the title; the hit is 36 */
   &::after { content: ''; position: absolute; inset: 50% 0 auto; height: max(100%, 36px); translate: 0 -50%; } }
 .touch .bar-on .jb-host .composer-opts :is(.chip, .chip.set:not(.chip-imp, .chip-dur)) { height: 44px; }   /* the bar's values too: one row height */
-.touch .bar-on .jb-host .composer-opts .chip-area.set:has(.disc:only-child):not(.short)::before { inset-block: var(--sp-8); }   /* the one-area tag stays 28 in the 44 target */
-.touch .bar-on .jb-host .composer-opts .chip-area { justify-content: flex-start; }   /* the circle where the one-area tag's edge was when its name gives way */
+.touch .bar-on .jb-host .composer-opts .chip-area { justify-content: flex-start; }   /* one area's glyph stays at the left when its name gives way */
 .touch .bar-on .jb-host .kc.kc { padding-block: var(--sp-4); button { height: 36px; } }   /* the strip scrolls, so its own box holds the slop */
 /* a step's check and Remove reach 44 wide on the steps' 30 pitch; Remove is already absolute */
 .touch .entry.chk .chk-rect { position: relative; &::before { content: ''; position: absolute; left: 50%; top: 50%; width: 44px; height: 30px; translate: -50% -50%; } }
