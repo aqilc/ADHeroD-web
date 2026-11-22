@@ -1,0 +1,6 @@
+# no-transform keeps Cloudflare from injecting its bot-check and analytics scripts, so the CS exe's bundle
+# download hashes the pages as deployed. Rules match the path after the .html redirect (/index.html → /).
+/
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
+/privacy
+  Cache-Control: public, max-age=0, must-revalidate, no-transform
