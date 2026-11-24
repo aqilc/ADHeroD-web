@@ -457,6 +457,9 @@ export function createSupabaseStore(client) {
     setHomeLocation: id => patchSettings({ home_location_id: _settings.home_location_id === id ? null : id }),
     currentRegion() { return _settings.current_region ?? 'Home'; },
     setDeskCheck: deskCheck => patchSettings({ desk_check: deskCheck }),
+    // Gmail accounts: {address, sealed (gcal-token's), color, photo}; read fresh so another device's connect shows
+    mailAccounts: async () => (await getSettings()).mail_accounts ?? [],
+    setMailAccounts: list => patchSettings({ mail_accounts: list }),
 
     // Trash restore: re-insert deleted rows. A row already live stays (ON CONFLICT DO NOTHING): another device may have
     // brought it back and edited it, and the Bin's older copy must not overwrite that. `live` gets those ids.

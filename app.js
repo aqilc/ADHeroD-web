@@ -64,6 +64,134 @@ let _gRun = null;   // the write a repeating Google event's ask (Only this day, 
 // Google Identity Services' token model, loaded on first use (developers.google.com/identity/oauth2/web/guides/use-token-model)
 const gis = () => window.google?.accounts?.oauth2 ? Promise.resolve(window.google.accounts.oauth2)
   : new Promise((resolve, reject) => document.head.append(Object.assign(document.createElement('script'), { src: 'https://accounts.google.com/gsi/client', onload: () => resolve(window.google.accounts.oauth2), onerror: reject })));
+// § Gmail (docs/superpowers/explorations/2026-11-23-gmail-connect.md): each connected account's inbox, read by the page and
+// kept only in memory. The accounts live in his settings (mail_accounts) with each refresh token sealed by gcal-token, so every
+// device, the Windows app too, reads them. Never a revoke: Google's revoke ends every scope of the project, Calendar's too.
+const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me/', PEOPLE = 'https://people.googleapis.com/v1/';
+const GMAIL_SCOPE = ['gmail.modify', 'contacts.readonly', 'contacts.other.readonly', 'userinfo.profile'].map(s => 'https://www.googleapis.com/auth/' + s).join(' ');
+const _gm = new Map();   // address -> { sealed, token, exp, out (Google refused the sealed token), hist (Gmail's history id), rows: Map id -> row, pics }
+let _gmRun = Promise.resolve(), _outMail = null;   // the running pass, later ones queue behind it · Outlook's list (Windows app)
+// one Gmail or People request as account `s`: its JSON, or { error: status }
+const gmailApi = async (s, path, body) => {
+  const res = await fetch(/^https:/.test(path) ? path : GMAIL + path, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${s.token}`, ...body && { 'Content-Type': 'application/json' } },
+    body: body && JSON.stringify(body) }).catch(() => null);
+  if (res?.status === 401) s.token = null;
+  return res?.ok ? res.json() : { error: res?.status ?? 0 };
+};
+// an access token good for a minute more, renewed from the sealed one when it isn't
+const gmailFresh = async (store, s) => {
+  if (s.token && s.exp > Date.now() + 60e3) return true;
+  const t = await store.gcal.token({ sealed: s.sealed });
+  s.out = !!t?.revoked;
+  if (!t?.access_token) return false;
+  Object.assign(s, { token: t.access_token, exp: Date.now() + t.expires_in * 1000 });
+  return true;
+};
+const gmailDo = async (store, address, path, body = {}) => { const s = _gm.get(address); return !!s && await gmailFresh(store, s) && !(await gmailApi(s, path, body)).error; };
+// "Name <a@b>, c@d" -> [{ name, address }]
+const mailPeople = v => [...(v || '').matchAll(/\s*(?:"?([^"<,]*?)"?\s*<([^>]+)>|([^\s,<>]+@[^\s,<>]+))\s*(?:,|$)/g)].map(([, name, addr, bare]) => ({ name: (name || '').trim(), address: addr || bare }));
+const gmailHeader = m => n => m.payload.headers.find(h => h.name.toLowerCase() === n)?.value ?? '';
+const gmailText = p => { const cs = gmailHeader({ payload: p })('content-type').match(/charset="?([^";\s]+)/i)?.[1];
+  const bytes = Uint8Array.fromBase64(p.body.data ?? '', { alphabet: 'base64url' });
+  try { return new TextDecoder(cs || 'utf-8').decode(bytes); } catch { return new TextDecoder().decode(bytes); } };
+// a sender's picture: his contacts' photo, else the brand's icon when the sender is the brand (the name's first word is the domain's), else none
+const FREE_MAIL = /^(gmail|googlemail|outlook|hotmail|live|msn|yahoo|ymail|aol|icloud|me|mac|proton|protonmail|gmx|mail|qq|163|yandex)$/;
+const gmailPic = (s, name, address) => {
+  const photo = s.pics.get(address.toLowerCase()), host = address.split('@')[1] ?? '', label = host.split('.').at(-2) ?? '';
+  if (photo) return { pic: photo, logo: false };
+  const brand = label && !FREE_MAIL.test(label) && name.split(/\s/)[0].toLowerCase() === label;
+  return { pic: brand ? `https://www.google.com/s2/favicons?domain=${host}&sz=64` : '', logo: brand };
+};
+// ceiling: the first 1000 contacts and other contacts, read once a page load; page through them past that
+const gmailPics = async s => {
+  const pics = new Map();
+  for (const path of ['people/me/connections?personFields=emailAddresses,photos&pageSize=1000', 'otherContacts?readMask=emailAddresses,photos&pageSize=1000']) {
+    const got = await gmailApi(s, PEOPLE + path);
+    for (const p of got.connections ?? got.otherContacts ?? []) {
+      const photo = p.photos?.find(x => !x.default)?.url;
+      if (photo) for (const e of p.emailAddresses ?? []) pics.set(e.value.toLowerCase(), photo);
+    }
+  }
+  return pics;
+};
+const gmailRow = (s, address, m) => {
+  const h = gmailHeader(m), from = mailPeople(h('from'))[0] ?? { name: '', address: '' };
+  return { id: m.id, acct: address, subject: h('subject'), from: from.name || from.address, at: localStamp(new Date(+m.internalDate)),
+    preview: new DOMParser().parseFromString(m.snippet, 'text/html').documentElement.textContent, read: !m.labelIds.includes('UNREAD'), files: [], ...gmailPic(s, from.name, from.address) };
+};
+// One account's pass: its 50 newest inbox mails; only new ones and those Gmail's history says changed are read again
+const gmailPass = async (store, a) => {
+  const s = _gm.get(a.address) ?? _gm.set(a.address, { rows: new Map() }).get(a.address);
+  s.sealed = a.sealed;
+  if (!await gmailFresh(store, s)) return;
+  s.pics ??= await gmailPics(s);
+  const touched = new Set(), h = s.hist && await gmailApi(s, `history?startHistoryId=${s.hist}`);
+  if (h?.error === 404) s.rows.clear();   // the history id aged out: read every mail again
+  for (const r of h?.history ?? []) for (const m of r.messages ?? []) touched.add(m.id);
+  const hist = h?.historyId ?? (s.hist ? null : (await gmailApi(s, 'profile')).historyId), list = await gmailApi(s, 'messages?labelIds=INBOX&maxResults=50');
+  if (list.error) return;
+  const ids = (list.messages ?? []).map(m => m.id), need = ids.filter(id => !s.rows.has(id) || touched.has(id));
+  const got = await Promise.all(need.map(id => gmailApi(s, `messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`)));
+  got.forEach((m, i) => { if (m.id) s.rows.set(need[i], gmailRow(s, a.address, m)); });
+  for (const id of s.rows.keys()) if (!ids.includes(id)) s.rows.delete(id);
+  if (hist && got.every(m => m.id)) s.hist = hist;   // a failed read is asked again next pass
+};
+// An open Gmail mail in the shape Outlook's open answers
+const gmailOpen = async (store, address, id) => {
+  const s = _gm.get(address), m = s && await gmailFresh(store, s) && await gmailApi(s, `messages/${id}?format=full`);
+  if (!m?.id) return null;
+  const h = gmailHeader(m), out = { body: '', html: '', files: [] };
+  const walk = p => {
+    if (p.filename) out.files.push({ name: p.filename, size: p.body.size, type: p.mimeType, att: p.body.attachmentId, data: p.body.data });
+    else if (p.mimeType === 'text/html') out.html ||= gmailText(p);
+    else if (p.mimeType === 'text/plain') out.body ||= gmailText(p);
+    p.parts?.forEach(walk);
+  };
+  walk(m.payload);
+  return { ...out, from: mailPeople(h('from'))[0] ?? { name: '', address: '' }, to: mailPeople(h('to')), cc: mailPeople(h('cc')), at: localStamp(new Date(+m.internalDate)),
+    high: /high|urgent|^[12]/i.test(h('importance') || h('x-priority')), flagged: m.labelIds.includes('STARRED'),
+    subject: h('subject'), replyTo: mailPeople(h('reply-to')), mid: h('message-id'), refs: h('references'), thread: m.threadId };
+};
+// His answer as an RFC 822 mail from the account: a reply quotes the mail, a forward carries its files
+const gmailSend = async (store, address, o, kind, text, to) => {
+  const s = _gm.get(address);
+  if (!s || !await gmailFresh(store, s)) return false;
+  const word = v => /^[\x20-\x7e]*$/.test(v) ? v : `=?UTF-8?B?${new TextEncoder().encode(v).toBase64()}?=`;
+  const lines = v => v.replace(/.{76}/g, '$&\r\n');
+  const self = p => p.address.toLowerCase() === address.toLowerCase();
+  const sender = o.replyTo.length ? o.replyTo : [o.from];
+  const rcpt = kind === 'forward' ? [to] : (kind === 'all' ? [...sender, ...o.to, ...o.cc].filter(p => !self(p)) : sender).map(p => p.address);
+  const subject = kind === 'forward' ? 'Fwd: ' + o.subject : /^re:/i.test(o.subject) ? o.subject : 'Re: ' + o.subject;
+  const said = o.body || new DOMParser().parseFromString(o.html, 'text/html').body.innerText;
+  const body = kind === 'forward' ? `${text}\n\n---------- Forwarded message ---------\nFrom: ${o.from.name} <${o.from.address}>\nDate: ${new Date(o.at).toString()}\nSubject: ${o.subject}\nTo: ${o.to.map(p => p.address).join(', ')}\n\n${said}`
+    : `${text}\n\nOn ${new Date(o.at).toString()}, ${o.from.name || o.from.address} wrote:\n${said.replace(/^/gm, '> ')}`;
+  const head = [`From: ${address}`, `To: ${[...new Set(rcpt)].join(', ')}`, `Subject: ${word(subject)}`, 'MIME-Version: 1.0',
+    ...kind !== 'forward' && o.mid ? [`In-Reply-To: ${o.mid}`, `References: ${[o.refs, o.mid].filter(Boolean).join(' ')}`] : []];
+  const plain = ['Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64', '', lines(new TextEncoder().encode(body.replace(/\r?\n/g, '\r\n')).toBase64())];
+  let parts = plain;
+  if (kind === 'forward' && o.files.length) {
+    const files = await Promise.all(o.files.map(async f => ({ ...f, data: f.data ?? (await gmailApi(s, `messages/${o.id}/attachments/${f.att}`)).data })));
+    if (files.some(f => !f.data)) return false;
+    const cut = 'adherod-' + crypto.randomUUID();
+    parts = [`Content-Type: multipart/mixed; boundary="${cut}"`, '', `--${cut}`, ...plain, ...files.flatMap(f => [`--${cut}`, `Content-Type: ${f.type}; name="${word(f.name)}"`,
+      `Content-Disposition: attachment; filename="${word(f.name)}"`, 'Content-Transfer-Encoding: base64', '', lines(Uint8Array.fromBase64(f.data, { alphabet: 'base64url' }).toBase64())]), `--${cut}--`];
+  }
+  const raw = new TextEncoder().encode([...head, ...parts].join('\r\n')).toBase64({ alphabet: 'base64url', omitPadding: true });
+  return !(await gmailApi(s, 'messages/send', { raw, ...kind !== 'forward' && { threadId: o.thread } })).error && 'sent';
+};
+// Google's own color for an account with no photo, sampled from its default picture (it carries no other); else one from its address
+const gmailLook = async (s, address) => {
+  const photo = (await gmailApi(s, PEOPLE + 'people/me?personFields=photos')).photos?.find(p => p.metadata?.primary) ?? null;
+  const img = photo?.default && await new Promise(done => Object.assign(new Image(), { crossOrigin: 'anonymous', onload() { done(this); }, onerror: () => done(null), src: photo.url }));
+  if (img) {
+    const ctx = Object.assign(document.createElement('canvas'), { width: 8, height: 8 }).getContext('2d');
+    ctx.drawImage(img, 0, 0, 8, 8);
+    return { color: '#' + [...ctx.getImageData(1, 4, 1, 1).data.slice(0, 3)].map(v => v.toString(16).padStart(2, '0')).join('') };
+  }
+  let hash = 0;
+  for (const ch of address) hash = hash * 31 + ch.charCodeAt(0) | 0;
+  return { color: `hsl(${(hash >>> 0) % 360} 55% 42%)`, ...photo && !photo.default && { photo: photo.url } };
+};
 let _filesTried = new Set(), _tasksGen = 0;   // file ids a read answered without a row (not re-read per load) · loadTasks' generation
 const countedFetch = async (...a) => {   // every signed-in read and write passes here
   _inFlight++;
@@ -335,7 +463,7 @@ const OVERLAYS = [
   [c => c.palette.open, c => c.palette.open = false, 1], [c => c.confirm, c => c.confirmNo(), 1],
   [c => c.guideOpen, c => c.guideOpen = false, 1],
   [c => c.importPreview, c => c.importPreview = null, 1],   // above the rest: it is the frontmost thing when open
-  [c => c.delAsk, c => c.delAsk = null, 1], [c => c.locMgr && c.hoursEd, c => c.hoursEd = null], [c => c.locMgr, c => c.locMgr = false, 1],   // Esc on a place's hours drops that edit first
+  [c => c.delAsk, c => c.delAsk = null, 1], [c => c.locMgr && c.hoursEd, c => c.hoursEd = null], [c => c.locMgr && c.addrEd, c => c.addrEd = null], [c => c.locMgr, c => c.locMgr = false, 1],   // Esc on a place's hours drops that edit first
   [c => c.filterEdit, c => c.filterEdit = null, 1],
   [c => c.pop && (c.eventEdit || c.blockEdit), c => c.pop = null],   // an editor's chip pop closes before its editor
   [c => c.eventEdit && !c.eventEdit.draft, c => c.eventEdit = null, 'editor'], [c => c.blockEdit && !c.blockEdit.draft, c => c.blockEdit = null, 'editor'],   // Esc drops the edit, the backdrop saves it
@@ -388,8 +516,21 @@ for (const k in PICKERS) if (PICKERS[k].word) {
   PICKERS[k].char = w + ' ';
   PICKERS[k].find = txt => { let i = -1, m; re.lastIndex = 0; while ((m = re.exec(txt))) i = m.index + m[0].length - n; return i; };
 }
+// Address search as you type: Photon (OSM), whose terms allow typeahead; Nominatim's ban it. Biased toward `near` ([lat, lon]).
+// A hit: its bold name, the one address line under it, `full` (both, what a task's one-off place stores) and `addr` (what a saved place stores).
+async function findAddresses(q, near) {
+  const r = await fetch('https://photon.komoot.io/api/?' + new URLSearchParams({ q, limit: 5, ...near && { lat: near[0], lon: near[1] } }));
+  if (!r.ok) throw new Error('photon ' + r.status);
+  return (await r.json()).features.map(({ properties: p, geometry: g }) => {
+    const street = [p.housenumber, p.street].filter(Boolean).join(' '), name = p.name || street || p.city || p.country;
+    const address = [...new Set([street, p.city || p.county, p.state, p.country])].filter(x => x && x !== name).slice(0, 2).join(', ');
+    return { name, address, full: [name, address].filter(Boolean).join(', '), addr: p.name && street ? address : [name, address].filter(Boolean).join(', '), coords: [g.coordinates[1], g.coordinates[0]] };
+  });
+}
+const mapsUrl = place => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(place);
+const placeName = place => place?.split(', ')[0] ?? '';   // ceiling: a name holding ", " splits early; revisit if a picked hit's name carries one
 // The composer draft's empty shape — one source of truth for the title draft, resetDraft, and subtask sub-drafts.
-const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', importance: 'none', on: '', available_from: '', deadline_at: '', durMin: 0, dateText: '', dueTime: '', part: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], checklist_plain: false, task_type: null, recurrence: null, location: { mode: 'any', ids: [] }, needs: [], neededBy: [], reminders: [] });
+const emptyDraft = () => ({ subs: [], subMoves: {}, content: '', notes: '', importance: 'none', on: '', available_from: '', deadline_at: '', durMin: 0, dateText: '', dueTime: '', part: '', project: null, project_id: null, areas: [], goal_ids: [], checklist: [], checklist_plain: false, task_type: null, recurrence: null, location: { mode: 'any', ids: [] }, place: '', needs: [], neededBy: [], reminders: [] });
 // Deep-read a reactive value WITHOUT serializing it: subscribes an effect to every nested field.
 // `skip` prunes one subtree that another effect owns.
 const _touch = (v, skip) => { if (v && typeof v === 'object' && v !== skip) for (const k in v) _touch(v[k], skip); };
@@ -601,6 +742,8 @@ document.addEventListener('alpine:init', () => {
     homeLocationId: null,   // designated home place (mirror of store)
     currentRegion: 'Home',
     locMgr: false,
+    addrEd: null,           // the place whose address search is open: { id, q, hits (null until answered), err }
+    placeFind: { q: '', hits: null, err: false },   // the place picker's address search
     hoursEd: null,          // the place whose open hours are open: { id, line (typed), open (day indexes whose chips show), adding }
     navSel: { type: 'all', id: null },
     // --- Spatial-canvas spine: top-level surface ∈ surfaceOrder; navSel keeps the Lists inner selection ---
@@ -646,8 +789,9 @@ document.addEventListener('alpine:init', () => {
     qfDue: null,        // quick-filter: 'today'|'overdue'|'has'|'none'|null
     qfOpen: true,       // state lenses: open tasks fill the list, done and archived add the section below; any mix, never none
     qfArchived: false,
-    mail: null,        // the mailbox's messages, newest first: {id, subject, from, at, preview, read, files}; null = none connected, so All and Backlog show no Mail panel
-    mailbox: null,     // the connected mailbox: setRead(id, read) / archive(id) / remove(id) → boolean
+    mail: null,        // Outlook's and each Gmail account's messages, newest first: {id, subject, from, at, preview, read, files, acct (Gmail's address), pic, logo}; null = none connected, so All and Backlog show no Mail panel
+    mailbox: null,     // Outlook on the Windows app: setRead(id, read) / archive(id) / remove(id) → boolean; a Gmail mail's is _box(m)
+    gmail: [],         // the connected Gmail accounts: {address, color, photo, out (signed out)}
     mailError: '',     // why the last read failed, shown atop the panel
     calError: '',      // why the last Outlook calendar read failed, shown there too
     mailQ: '',
@@ -816,6 +960,9 @@ document.addEventListener('alpine:init', () => {
       this.gcalSync();   // Google Calendar: a pass on load, every minute and on focus while this browser is connected
       setInterval(() => this.gcalSync(), 60e3);
       addEventListener('focus', () => this.gcalSync());
+      this.gmailSync();   // Gmail the same way, on every device
+      setInterval(() => this.gmailSync(), 60e3);
+      addEventListener('focus', () => this.gmailSync());
       setInterval(() => { if (!document.hidden) this._nowTickV++; const d = isoDate(new Date()); if (d !== this._nowDay) { this._nowDay = d; this._resumeDue(); } if (this._loadFailed) this.reloadAll(); }, 60000);   // keeps the Now-window's now-line/leave-by honest (a hidden tab skips the re-list it forces); _nowDay busts visibleRows on midnight
       if (window.desktopWindow) addEventListener('storage', e => {   // the sticky and composer windows follow the app window's theme live: its write reaches them as this event
         if (e.key === 'adherod.theme' || e.key === 'adherod.colorTheme') { this.colorTheme = savedColorTheme(this.store.theme()); this.setTheme(savedAppearance()); }
@@ -836,7 +983,7 @@ document.addEventListener('alpine:init', () => {
         const loadMail = async () => {
           const got = await desktopWindow('mail', 'list');
           this.mailError = got?.error ? (got.error === 'closed' ? 'Open classic Outlook to see new mail.' : `Can't read Outlook (${got.error}).`) : '';
-          if (Array.isArray(got) && JSON.stringify(got) !== JSON.stringify(this.mail)) this.mail = got;   // the same again keeps the list as drawn
+          if (Array.isArray(got)) { _outMail = got; this._mailMerge(); }
         };
         // Outlook's own all-day end is the next midnight; ours is the last day. going: Outlook's answer; none asks on its day.
         // His title, notes, color and countdown lie over each series (pcEdit); a countdown counts to the series' next one.
@@ -1945,6 +2092,7 @@ document.addEventListener('alpine:init', () => {
     canvasDown(e) {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (e.target.closest('input, textarea, [contenteditable], .inp, .composer, code, .md-code, .cd-seg')) return;   // let native text interaction (and a view-strip tap) win
+      if (e.pointerType === 'mouse' && e.target.closest('.msg')) return;   // a mouse selects a message's words; a finger still swipes back (it selects by holding)
       if (this.drag.active) return;   // ignore extra touch points once a drag owns the pointer
       this.drag = { active: true, x0: e.clientX, y0: e.clientY, w: this.$refs.canvas.offsetWidth, t0: e.timeStamp || performance.now(), id: e.pointerId, axis: null, from: e.target };
       // Holding the strip's ＋ or Plan's phone field = a new event on the shown day: 500ms real time (motion.t would make every tap a hold);
@@ -2461,11 +2609,74 @@ document.addEventListener('alpine:init', () => {
         + html`<span class="sec-lbl">${raw(up)}<span class="sec-nm">${g.label}</span></span><span class="sec-ct">${g.count}</span>`
         + html`<svg class="ico sec-chev"${raw(g.shut ? ' style="transform:rotate(-90deg)"' : '')}><use href="#i-chev-d"/></svg></li>`;
     },
+    // § Gmail: a pass reads the accounts from his settings (another device may have connected one), then each inbox
+    gmailSync() {
+      return _gmRun = _gmRun.then(async () => {
+        const accts = await this.store.mailAccounts().catch(() => null);
+        if (!accts || !accts.length && !this.gmail.length) return;   // no Gmail now or before: nothing to merge
+        for (const address of _gm.keys()) if (!accts.some(a => a.address === address)) _gm.delete(address);
+        await Promise.all(accts.map(a => gmailPass(this.store, a)));
+        this.gmail = accts.map(a => ({ address: a.address, color: a.color, photo: a.photo, out: !!_gm.get(a.address)?.out }));
+        this._mailMerge();
+      }).catch(() => {});
+    },
+    // Outlook's list and every account's inbox as one, newest first; the same again keeps the list as drawn
+    _mailMerge() {
+      const rows = [..._outMail ?? [], ...[..._gm.values()].flatMap(s => [...s.rows.values()])].sort((x, y) => y.at.localeCompare(x.at));
+      const next = _outMail || _gm.size ? rows : null;
+      if (JSON.stringify(next) !== JSON.stringify(this.mail)) this.mail = next;
+    },
+    // hint: Reconnect's address, so Google skips the account picker
+    async gmailConnect(hint) {
+      const oauth = await gis().catch(() => null);
+      const res = oauth && await new Promise(done => oauth.initCodeClient({ client_id: GOOGLE.clientId, scope: GMAIL_SCOPE, ux_mode: 'popup', callback: done, error_callback: done,
+        select_account: !hint, login_hint: hint }).requestCode());
+      if (res?.type === 'popup_closed') return;
+      const t = res?.code && await this.store.gcal.token({ code: res.code, mail: true });
+      const s = t?.sealed && { token: t.access_token, exp: Date.now() + t.expires_in * 1000, out: false };
+      const address = s && (await gmailApi(s, 'profile')).emailAddress;
+      const list = address && await this.store.mailAccounts().catch(() => null);
+      const row = list && { address, sealed: t.sealed, ...await gmailLook(s, address) };
+      const next = row && (list.some(a => a.address === address) ? list.map(a => a.address === address ? row : a) : [...list, row]);
+      // Google sends a lasting token only on a first grant: one already given (and never revoked, Calendar shares it) is removed in his Google Account
+      if (!next || !await this.store.setMailAccounts(next)) return void this.notify(t?.regrant ? 'Remove ADHeroD in your Google Account, then connect again' : "Couldn't connect Gmail");
+      _gm.set(address, { rows: new Map(), ..._gm.get(address), ...s });   // the fresh token reads at once
+      await this.gmailSync();
+    },
+    // forgets the account on every device; Google's grant stays, as a revoke would end Calendar's too
+    gmailDisconnect(address) {
+      return _gmRun = _gmRun.then(async () => {
+        const list = await this.store.mailAccounts().catch(() => null);
+        if (!list || !await this.store.setMailAccounts(list.filter(a => a.address !== address))) return void this.notify("Couldn't disconnect");
+        _gm.delete(address);
+        this.gmail = this.gmail.filter(a => a.address !== address);
+        this._mailMerge();
+      });
+    },
+    // the mailbox a mail's actions go to: its Gmail account's, else Outlook's
+    _box(m) {
+      if (!m.acct) return this.mailbox;
+      const store = this.store, acct = m.acct, edit = (id, body) => gmailDo(store, acct, `messages/${id}/modify`, body);
+      return { setRead: (id, read) => edit(id, read ? { removeLabelIds: ['UNREAD'] } : { addLabelIds: ['UNREAD'] }), archive: id => edit(id, { removeLabelIds: ['INBOX'] }),
+        remove: id => gmailDo(store, acct, `messages/${id}/trash`), open: id => gmailOpen(store, acct, id),
+        reply: (id, kind, text, to) => gmailSend(store, acct, this.mailOpened, kind, text, to) };
+    },
+    // the receiving account's mark on a mail's picture, once Mail holds more than one source; work mail wears Outlook's blue
+    mailBadge(m) {
+      if (this.gmail.length + (this.mail?.some(x => !x.acct) ? 1 : 0) < 2) return null;
+      if (!m.acct) return { letter: 'O', color: '#0078d4' };
+      const a = this.gmail.find(x => x.address === m.acct);
+      return a && { letter: a.address[0].toUpperCase(), color: a.color, photo: a.photo };
+    },
     // All's and Backlog's Mail panel: search matches subject, sender and preview. Each action lands only once the mailbox says it did.
     mailRows() { const q = this.mailQ.trim().toLowerCase(); return q ? this.mail.filter(m => (m.subject + ' ' + m.from + ' ' + m.preview).toLowerCase().includes(q)) : this.mail; },
-    async mailRead(m) { if (await this.mailbox.setRead(m.id, !m.read)) m.read = !m.read; },
+    // the list's foot fades while mail is below, never deeper than what's hidden: a row 4px past the edge stays legible
+    mailMore(el) { const below = el.scrollHeight - el.clientHeight - el.scrollTop; el.classList.toggle('more', below > 1); el.style.setProperty('--fade', Math.min(48, below) + 'px'); },
+    async mailRead(m) { if (await this._box(m).setRead(m.id, !m.read)) m.read = !m.read; },
     async mailDrop(m, act) {
-      if (!await this.mailbox[act](m.id)) return this.toast(act === 'archive' ? "Couldn't archive" : "Couldn't delete");
+      if (!await this._box(m)[act](m.id)) return this.toast(act === 'archive' ? "Couldn't archive" : "Couldn't delete");
+      _gm.get(m.acct)?.rows.delete(m.id);
+      _outMail &&= _outMail.filter(x => x.id !== m.id);
       this.mail = this.mail.filter(x => x !== m);
       if (this.mailOpened?.id === m.id) this.mailOpened = null;
       this.toast(act === 'archive' ? 'Archived' : 'Deleted');
@@ -2473,7 +2684,7 @@ document.addEventListener('alpine:init', () => {
     // Opening reads it, as Outlook's reading pane does; the row opens once the mail is in, so it never fills in after.
     async mailToggle(m) {
       if (this.mailOpened?.id === m.id) return void (this.mailOpened = null);   // an unsent draft stays for when it reopens
-      const got = await this.mailbox.open(m.id);
+      const got = await this._box(m).open(m.id);
       if (!got) return this.toast("Couldn't open");
       this.mailOpened = { id: m.id, ...got };
       this.mailPics = false;
@@ -2481,8 +2692,8 @@ document.addEventListener('alpine:init', () => {
     },
     mailWrite(kind, going = null) { this.mailDraft = { id: this.mailOpened.id, kind, going, text: this.mailDraft?.id === this.mailOpened.id ? this.mailDraft.text : '', to: '' }; },
     async mailSend() {
-      const draft = this.mailDraft, answer = draft.kind === 'answer';
-      const got = answer ? await this.mailbox.answer(draft.id, draft.going, draft.text.trim()) : await this.mailbox.reply(draft.id, draft.kind, draft.text, draft.to.trim());
+      const draft = this.mailDraft, answer = draft.kind === 'answer', box = this._box(this.mail.find(m => m.id === draft.id) ?? {});
+      const got = answer ? await box.answer(draft.id, draft.going, draft.text.trim()) : await box.reply(draft.id, draft.kind, draft.text, draft.to.trim());
       if (!got) return this.toast("Couldn't send");   // the draft stays, text and all
       this.mailDraft = null;
       if (answer) {
@@ -3044,6 +3255,7 @@ document.addEventListener('alpine:init', () => {
     toggleFocused() { const t = this.focusedTask(), step = t && _rowMap.get(t.id)?.step; if (step) this.toggleChk(t.id, step.ci); else if (t) this.toggle(t); },   // a Steps row ticks its step, like its check
     // The list holds nothing to show: no row, no section, no open composer, no done rows on view
     listEmpty() { return this.visibleRows().length === 0 && !this.sections().length && !this.composer.open && !((this.showCompleted || this.qfArchived) && this.completedRows().length); },
+    mailUp() { return !!this.mail?.length && (this.navSel.type === 'all' || this.navSel.type === 'backlog'); },   // mail rows head the list: an empty task list takes the plain Add task row, not the greeting
     listNoMatch() { return this.navSel.type === 'filter' || this.filtering() || !this.qfOpen; },   // a filter, search or lens hides what's there
     addSearchAsTask() { const q = this.palette.q.trim(); this.palette.open = false; this.startAdd(); this.draft.content = q; this.setEditorText(q); },   // a search with no match, kept as a new task's title
     toggleShowCompleted() {
@@ -3313,6 +3525,7 @@ document.addEventListener('alpine:init', () => {
       this._draftSid = crypto.randomUUID();   // ditto the draft identity — a rapid-add save resets the draft without reopening
     },
     pc(imp) { return `var(--p${({ must: 1, focus: 2, someday: 3 })[imp] || 4})`; },   // check color by importance — PLACEHOLDER map (user will remap): must→p1, focus→p2, someday→p3, none→p4
+    impIcon(v) { return ({ must: '#i-prio3', focus: '#i-prio', someday: '#i-cloud' })[v] || '#i-ring'; },   // each level's own glyph: chevrons by rank, Someday a cloud, None a ring
     impName(v, unset = 'None') { return ({ none: 'None', focus: 'Focus', must: 'Must', someday: 'Someday' })[v] || unset; },   // proper name incl. None; pass 'Importance' for picker's unset label
     durMinNow() { return this.draft.durMin; },
     sizeNow() { return sizeFromMinutes(this.durMinNow()); },
@@ -3999,7 +4212,7 @@ document.addEventListener('alpine:init', () => {
     // --- Peek Pane: drag a Lists row → today's real day column docks right; drop = schedule, list drop still reorders ---
     peekOn() { return this.surface === 'lists' && (!!this.dragId || this.peekPin); },
     peekCol() { void this.tasks; void this.events; void this.pcEvents; void this.gcalEvents; void this.blocks;   // register deps — the memos underneath may short-circuit
-      return this._clPack(this._clColumn(this.peekIso || isoDate(new Date())), 44); },   // 44: .peek-grid's --clhh, whatever Plan's scale
+      return this._clPack(this._clColumn(this.peekIso || isoDate(new Date())), 60, true); },   // 60: .peek-grid's --clhh, whatever Plan's scale; true: its block names run across the top
     _peekShow() {   // called from dragStart; scrolls the pane to now on first appearance
       if (!this.peekPin) this.peekIso = isoDate(new Date());
       this.$nextTick(() => { const b = document.querySelector('.peek-body');
@@ -4036,19 +4249,14 @@ document.addEventListener('alpine:init', () => {
           { duration: 200, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }));   // reduced motion: the fade alone, ≤150ms
       });
     },
-    // Month strip at the pane's foot: drop on a day = all-day that day; dwell ~500ms retargets the timeline.
-    // It shows the month of the pane day's TOMORROW: on a month's last day that's next month, so a future day is always there.
-    _peekMon() { const d = this._peekDay(); d.setDate(d.getDate() + 1); return d; },
+    // Two-week strip at the pane's foot, this week and next: drop on a day = all-day that day; dwell ~500ms retargets the timeline.
     peekCells() {
-      const base = this._peekMon();
-      const y = base.getFullYear(), m = base.getMonth(), lead = new Date(y, m, 1).getDay(), today = isoDate(new Date());
-      const rows = Math.ceil((lead + new Date(y, m + 1, 0).getDate()) / 7);
-      return Array.from({ length: rows * 7 }, (_, i) => {
-        const d = new Date(y, m, 1 - lead + i), iso = isoDate(d);
-        return { iso, d: d.getDate(), cur: d.getMonth() === m, today: iso === today, off: iso < today };
+      const t = new Date(), today = isoDate(t);
+      return Array.from({ length: 14 }, (_, i) => {
+        const d = new Date(t.getFullYear(), t.getMonth(), t.getDate() - t.getDay() + i), iso = isoDate(d);
+        return { iso, d: d.getDate(), today: iso === today, off: iso < today };
       });
     },
-    peekMonLabel() { return this._peekMon().toLocaleDateString([], { month: 'long', year: 'numeric' }); },
     peekMonOver(c) {
       if (c.off || this._pkmZone === c.iso) return;
       clearTimeout(this._pkmT); this._pkmZone = c.iso; this.peekMonHot = c.iso;
@@ -4333,7 +4541,7 @@ document.addEventListener('alpine:init', () => {
         deadline_at: (t.deadline_at || '').slice(0, 16),   // 16, not 10: a timed deadline must survive an edit round-trip
         durMin: min,
         project: this.projName(t.parent_id) || null, project_id: t.parent_id || null, areas: [...(t.area_ids || [])], goal_ids: [...(t.goal_ids || [])], checklist: (t.checklist || []).map(c => ({ ...c })), checklist_plain: !!t.checklist_plain, task_type: t.task_type ?? null, recurrence: t.recurrence ? JSON.parse(JSON.stringify(t.recurrence)) : null,
-        location: t.location ? { ...t.location, ids: [...(t.location.ids || [])] } : { mode: 'any', ids: [] },
+        location: t.location ? { ...t.location, ids: [...(t.location.ids || [])] } : { mode: 'any', ids: [] }, place: t.place || '',
         reminders: userReminders(this.reminders, t.id).map(r => ({ ...r })), subs: this._subsOf(t.id),
       };
     },
@@ -4657,7 +4865,7 @@ document.addEventListener('alpine:init', () => {
         const turn = this.surface === 'plan';
         this.goSurface('plan'); queueMicrotask(() => this.clToday(turn));   // after the flush that mounts Plan
       }
-      else if (id === 'locations') { this.locMgr = true; this.loadLocations(); }
+      else if (id === 'locations') this.openLocManager();
       else if (id === 'settings') this.settingsOpen = true;
       else if (id === 'toggle-done') this.toggleShowCompleted();
       else if (id === 'toggle-archived') this.toggleQfArchived();
@@ -4682,7 +4890,7 @@ document.addEventListener('alpine:init', () => {
         goal_ids: d.goal_ids ?? [],
         checklist: d.checklist,
         recurrence: d.recurrence,
-        location: d.location || { mode: 'any', ids: [] },
+        location: d.location || { mode: 'any', ids: [] }, place: d.place || null,
         checklist_plain: !!d.checklist_plain, task_type: d.task_type ?? null,
         possible: d.part && d.on && !d.dueTime ? { bands: [DAY_PARTS[d.part]] } : null,   // the haze's window
       };
@@ -5054,15 +5262,19 @@ document.addEventListener('alpine:init', () => {
         this.endPicking = false; return;
       }
       if (this.dreg === 'on' && this.repRules().length) {
-        this.draft.on = c.iso;
-        if ((this.draft.available_from || '').slice(0, 10) > c.iso) this.draft.available_from = '';
+        this._setOn(c.iso);
         this.repRules().forEach(x => { x.gen_due = false; });   // hand-set due: stays accent even while paused
         return;
       }
       // ON register (§11): the tap is an intention, one all-day placement; re-tap the same day to unplace.
       // It never touches the window/deadline, so flipping registers loses nothing.
-      if (this.dreg === 'on') { this.draft.on = this.draft.on === c.iso ? '' : c.iso; return; }
+      if (this.dreg === 'on') { this._setOn(this.draft.on === c.iso ? '' : c.iso); return; }
       this.calDayBy(c);
+    },
+    // a do day before the window a typed day opened ("tomorrow") takes the window's start with it, or the task stays unavailable past it
+    _setOn(iso) {
+      this.draft.on = iso;
+      if (iso && (this.draft.available_from || '').slice(0, 10) > iso) this.draft.available_from = '';
     },
     // BY register, nearest-endpoint model: a fresh tap is the deadline; otherwise a tap grows the window at the nearer
     // endpoint (a lone deadline: earlier = start, later = moves it). Re-tapping an endpoint collapses to
@@ -5350,7 +5562,7 @@ document.addEventListener('alpine:init', () => {
       return on || d.recurrence ? ['i-cal-fill', 'var(--muted)'] : ['i-cal', 'var(--muted)'];
     },
     calSugApply(iso) {
-      if (this.dreg === 'on') this.draft.on = iso;
+      if (this.dreg === 'on') this._setOn(iso);
       else this.setDeadlineDay(iso);
       this.pop = null;
     },
@@ -7523,15 +7735,15 @@ document.addEventListener('alpine:init', () => {
     rowLoc(t) {
       // The picked set makes a task location-scoped: an empty set is "anywhere" whatever `mode` says (as locPolarity);
       // trusting mode would hide the badge on every task saved with the default 'any'.
-      const byId = byIdIn(this.locations), names = (t.location?.ids || []).map(id => byId.get(id)?.name).filter(Boolean);   // a place not loaded yet isn't counted, as locChipLabel
+      const byId = byIdIn(this.locations), names = [placeName(t.place), ...(t.location?.ids || []).map(id => byId.get(id)?.name)].filter(Boolean);   // a place not loaded yet isn't counted, as locChipLabel
       return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0] ?? '';
     },
     // --- location hybrid picker (mode seg + here-row + region chip rows) ---
-    locNew: null, locExpanded: [], locOrder: {},
+    locNew: null, locExpanded: [], locOrder: {}, placeName, mapsUrl,
     openLoc(anchor) {
       this.togglePop('loc', anchor);
       if (this.pop !== 'loc') return;
-      this.locNew = null; this.locExpanded = [];
+      this.locNew = null; this.locExpanded = []; this.placeFind = { q: '', hits: null, err: false };
       // Freeze chip order for this open, selected-first. Toggling must never reorder: keyed DOM moves while the
       // fill transition runs leave stale orange/checkmarks.
       const sel = new Set(this.draft.location?.ids || []);
@@ -7542,10 +7754,26 @@ document.addEventListener('alpine:init', () => {
       }
     },
     // 'any' (no places picked) | 'only' | 'except'
-    locPolarity() { const L = this.draft.location; return !L?.ids?.some(id => this.locName(id)) ? 'any' : (L.mode === 'except' ? 'except' : 'only'); },   // only loaded places count: the chip reads unset until they load
+    locPolarity() { const L = this.draft.location; return !this.draft.place && !L?.ids?.some(id => this.locName(id)) ? 'any' : (L.mode === 'except' ? 'except' : 'only'); },   // only loaded places count: the chip reads unset until they load
     // the seg: the picked set's polarity, else the mode chosen before a place
     locMode() { const p = this.locPolarity(), m = this.draft.location?.mode; return p !== 'any' ? p : (m === 'only' || m === 'except' ? m : 'any'); },
-    setLocMode(mode) { this.draft.location = { mode, ids: mode === 'any' ? [] : [...this.draft.location?.ids || []] }; },
+    setLocMode(mode) { this.draft.location = { mode, ids: mode === 'any' ? [] : [...this.draft.location?.ids || []] }; if (mode !== 'only') this.draft.place = ''; },   // a one-off address is only ever At
+    // The newest query's answer wins; a failed search says so (err) rather than showing nothing.
+    findPlaces(s) {
+      clearTimeout(s.timer);
+      const q = s.q.trim(), L = this.locations, near = (L.find(l => l.id === this.homeLocationId)?.address?.coords ?? L.find(l => l.address?.coords)?.address.coords);
+      Object.assign(s, { hits: null, err: false });
+      if (q) s.timer = setTimeout(async () => { const hits = await findAddresses(q, near).catch(() => null); if (s.q.trim() === q) Object.assign(s, { hits: hits ?? [], err: !hits }); }, 250);   // a pause, not each key: Photon throttles heavy use
+    },
+    // The picker's field narrows the saved places by name too; a picked address is this task's alone, never a saved place.
+    placeMatch(name) { const q = this.placeFind.q.trim().toLowerCase(); return !q || name.toLowerCase().includes(q); },
+    pickPlace(hit) { this.draft.place = hit.full; this.draft.location = { mode: 'only', ids: [...this.draft.location?.ids || []] }; this.placeFind = { q: '', hits: null, err: false }; },
+    openAddr(loc) { this.addrEd = { id: loc.id, q: loc.address?.text || '', hits: null, err: false }; },
+    async saveAddr(loc, hit) {   // a hit saves its address; an emptied line clears it; the line as it was closes
+      const q = this.addrEd.q.trim();
+      if (!hit && q) return q === loc.address?.text && (this.addrEd = null);
+      if (await this.patchLocation(loc.id, { address: hit ? { text: hit.addr, coords: hit.coords } : null })) this.addrEd = null;
+    },
     // "here" = the current block's location, the app's only location source
     hereLocationId() {
       const now = new Date(), iso = isoDate(now);
@@ -7559,7 +7787,7 @@ document.addEventListener('alpine:init', () => {
       return this.regions().map(region => {
         const snap = this.locOrder[region] || [];
         const extras = this.locations.filter(l => (l.region || 'Home') === region && !snap.includes(l.id)).map(l => l.id);   // created after open
-        const ordered = [...snap, ...extras].map(id => byId.get(id)).filter(l => l && (l.region || 'Home') === region && l.id !== hereId);
+        const ordered = [...snap, ...extras].map(id => byId.get(id)).filter(l => l && (l.region || 'Home') === region && l.id !== hereId && this.placeMatch(l.name));
         const open = this.locExpanded.includes(region);
         let visible = open ? ordered : ordered.slice(0, CAP);
         if (!open) visible = [...visible, ...ordered.slice(CAP).filter(l => sel.has(l.id))];
@@ -7580,7 +7808,7 @@ document.addEventListener('alpine:init', () => {
       if (l) pick(l);   // created from the picker: selected
     },
     locChipLabel() {
-      const L = this.draft.location, names = (L?.ids || []).map(id => this.locName(id)).filter(Boolean);
+      const L = this.draft.location, names = [placeName(this.draft.place), ...(L?.ids || []).map(id => this.locName(id))].filter(Boolean);
       if (!names.length) return 'Place';
       const list = names.length > 2 ? names.slice(0, 2).join(', ') + ' +' + (names.length - 2) : names.join(' or ');
       return (L.mode === 'except' ? 'away from ' : '') + list;   // the map says "at"
@@ -7591,7 +7819,7 @@ document.addEventListener('alpine:init', () => {
       const pins = Array.from({ length: n }, (_, i) => `<use href="#${pin}" x="${(n === 1 ? 20 : 10 + i * 20) - 5.5}" y="${3.5 + (i % 2 ? -1 : 1)}" width="11" height="11"/>`);
       return '<rect width="40" height="18" rx="4" opacity=".22" fill="currentColor"/><path d="M0 13 40 5M11 18 7 0M29 18 33 0" stroke="currentColor" stroke-width="2" opacity=".55"/>' + pins.join('');
     },
-    openLocManager() { this.pop = null; this.locMgr = true; this.loadLocations(); },
+    openLocManager() { this.pop = null; this.locMgr = true; this.addrEd = null; this.loadLocations(); },
     toggleLocId(id) { const ids = new Set(this.draft.location?.ids || []); ids.has(id) ? ids.delete(id) : ids.add(id); this.draft.location = { mode: this.draft.location?.mode === 'except' ? 'except' : 'only', ids: [...ids] }; },   // 'any' is truthy: `|| 'only'` would store picked places as unscoped
     regions() { return [...new Set(this.locations.map(l => l.region || 'Home'))]; },
     // Manager grouping: regions in use + any just-created empty ones.
@@ -8127,7 +8355,7 @@ document.addEventListener('alpine:init', () => {
       if (c.recurrence) add('rec', c.recurrence);
       if (min) add('dur', min);
       for (const a of (c.area_ids || [])) add('area', a);
-      if (c.location?.ids?.length) { const nm = this.locations.find(l => l.id === c.location.ids[0])?.name; if (nm) add('loc', (c.location.mode === 'except' ? 'away from ' : '') + nm); }   // the picked set scopes it, whatever `mode` says (rowLoc)
+      if (c.place || c.location?.ids?.length) { const nm = placeName(c.place) || this.locations.find(l => l.id === c.location.ids[0])?.name; if (nm) add('loc', (c.location.mode === 'except' ? 'away from ' : '') + nm); }   // the picked set scopes it, whatever `mode` says (rowLoc)
       _nlpFocus = prev;
       el._hist = null;   // history restarts at the stored row: ⌘Z must not bring back what the store replaced
       // No caret/history read between hydration writes; focus initializes the editor history.
@@ -9934,7 +10162,7 @@ document.addEventListener('alpine:init', () => {
     // nothing included) lane-packs with events/tasks as peers, 16px right per holder it overlaps: held or crossing an
     // edge, else it buries the spine label or lands left of (over) a held child.
     // ceiling: O(blocks × items) per day on a pack miss; index by start if a day passes ~100 items
-    _clPack(col, hourH = this.clHourH || 60) {
+    _clPack(col, hourH = this.clHourH || 60, across = false) {
       const tRanges = col.items.filter(it => !it.allDay && it.start.length > 10 && it.kind !== 'task-deadline').map(it => {   // a timed deadline is its rule, not a tile; over midnight: this day's slice, as _dayBlocks
         const sm = it.start < col.iso ? 0 : this._clMin(it.start), em = it.going === false ? sm + CL_NG_PX * 60 / hourH : it.end.slice(0, 10) > col.iso ? 1440 : Math.max(this._clMin(it.end), sm + 20); return { it, sm, em };   // Not going packs as its thin tile: a later overlap takes the full width
       });
@@ -9944,8 +10172,10 @@ document.addEventListener('alpine:init', () => {
       // the DEEPEST spine it meets, not one per holder: back-to-back holders sit at one depth
       // an all-day block's spine is just its label, down from 00:00 (.is-terrain .cl-blk-t: 6px + up to ~13px a char): only what starts under it insets
       // ceiling: label length over-estimated from its characters (W ~9.6px, CJK ~9px; too long only insets more); measure it if a script runs longer
-      const underLabel = (t, sm) => !t.it.allDay || sm * hourH / 60 < 6 + 13 * (t.it.title || '').length;
-      const terrain = [], inset = (sm, em, near) => Math.max(0, ...terrain.filter(t => near(t.it, sm, em) && underLabel(t, sm)).map(t => t.offPx + 16));
+      // across (the pane): the name runs along the block's top (.peek-col .cl-blk-t: 3px + 10px), so what starts on its line insets past its text (up to 12px a char, W's width; 96px at most); the rest keeps the spine's 16px
+      const underLabel = (t, sm) => across ? (sm - t.it._sm) * hourH / 60 < 14 : sm * hourH / 60 < 6 + 13 * (t.it.title || '').length;
+      const gap = (t, sm) => across && underLabel(t, sm) ? 14 + Math.min(96, 12 * (t.it.title || '').length) : !t.it.allDay || underLabel(t, sm) ? 16 : 0;
+      const terrain = [], inset = (sm, em, near) => Math.max(0, ...terrain.filter(t => near(t.it, sm, em) && gap(t, sm)).map(t => t.offPx + gap(t, sm)));
       for (const b of holders.sort((a, b) => (b._pem - b._sm) - (a._pem - a._sm)))   // outermost first: its depth is set before what it holds, and draws under it
         terrain.push({ it: b, blk: true, terrain: true, topPct: b.topPct, hPct: b.hPct, offPx: inset(b._sm, b._pem, holds) });
       const packed = this._lanePack(tRanges, col.blocks.filter(b => !holders.includes(b)));
@@ -10200,7 +10430,6 @@ document.addEventListener('alpine:init', () => {
       const rows = col.agenda || [], cut = col.past ? 1440 : col.today ? this.clNowMin() : 0;
       const parts = rows.filter(r => r.allday).map((r, ix) => ({ id: r.key, html: this._clAgRowHtml(r, ix, cut) }));
       if (!rows.length && !col.blocks.some(b => !b.allDay)) parts.push({ id: 'none', html: html`<div class="cl-ag-none" data-id="none">Nothing scheduled</div>` });   // above the hours: inside them it reads as an entry at that hour
-      if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });
       return parts;
     },
     // at: a timed mark's place on the hours (it has no length to draw as a tile)
@@ -10258,11 +10487,12 @@ document.addEventListener('alpine:init', () => {
       void this.clPeriodH();   // any resize, width alone too, reruns this: _clResized drops the metrics clPeriodH reads
       // rows past the page push the hours down, never squash them; a short tile draws 24px, so the day's last one
       // moves the night down to clear it
-      const fit = () => { grid.style.minHeight = (w1 - w0) / 60 * CL_DAY_HOUR + 'px'; return grid.clientHeight / (w1 - w0) || 1; };
+      const foot = col.cleared ? 32 : 0;   // a cleared day's label gets its own band under the last hour, never over its last tile
+      const fit = () => { grid.style.minHeight = (w1 - w0) / 60 * CL_DAY_HOUR + foot + 'px'; return (grid.clientHeight - foot) / (w1 - w0) || 1; };
       let k = fit();
       const end = Math.max(...timed.filter(r => r.mins).map(r => r.min + 24 / k));
       if (end > w1 && w1 < 1440) { w1 = Math.min(1440, Math.ceil(end / 60) * 60); k = fit(); night(); }
-      const span = w1 - w0, P = m => (m - w0) / span * 100;   // k: px a minute
+      const gh = grid.clientHeight, P = m => (m - w0) * k / gh * 100;   // k: px a minute
       const inBlk = blocks.filter(b => b._sm <= now && b._em > now).sort((a, b) => (a._em - a._sm) - (b._em - b._sm))[0];
       const cuts = m => col.today && Math.abs(now - m) * k < 15.5, parts = [];   // the now pill covers the hour label it meets, as the week's clNowCuts
       for (let m = w0; m <= w1; m += 60) if (m < w1 || !next) parts.push({ id: 'h' + m, html: html`<div class="cl-dhr" data-id="h${m}" style="top:${P(m)}%"><span>${raw(m % 1440 && !cuts(m) ? lbl(this.clHourLabel(m / 60)) : '')}</span></div>` });   // the night starts where the day's last line was
@@ -10273,10 +10503,13 @@ document.addEventListener('alpine:init', () => {
       }
       // cascade, the week's rule at day width: a later tile steps right over the earlier one and runs to the edge, the
       // earlier keeps its title line; two starting within a line of each other sit side by side
-      const ng = r => r.it.going === false, len = r => ng(r) ? CL_NG_PX / k : Math.max(r.mins, 24 / k);   // a short tile still draws 24px
+      const ng = r => r.it.going === false, len = r => ng(r) ? ngLen.get(r) : Math.max(r.mins, 24 / k);   // a short tile still draws 24px
       // a Not going tile under the floor of a tile above it (that one's 24px runs past its end) draws below it, never across it
       const drawn = new Map(timed.filter(r => r.mins && ng(r)).map(r => [r, Math.max(r.min, ...timed.filter(o => o.mins && !ng(o) && o.min <= r.min && o.min + len(o) > r.min).map(o => o.min + len(o)))]));
       const st = r => drawn.get(r) ?? r.min, hit = (a, b) => st(a.r) < st(b.r) + len(b.r) && st(a.r) + len(a.r) > st(b.r);
+      // a tile starting within 1px of a Not going line's end clips the line, never halves its own width (a phone Day's hour runs under 32px)
+      const ngLen = new Map(timed.filter(r => r.mins && ng(r)).map(r => { const gap = Math.min(...timed.filter(o => o.mins && !ng(o) && o.min > st(r)).map(o => o.min - st(r)));
+        return [r, gap * k >= CL_NG_PX - 1 ? Math.min(CL_NG_PX / k, gap) : CL_NG_PX / k]; }));
       const at = timed.filter(r => r.mins).map(r => ({ r, x0: 0, x1: 1, z: 0 }));
       // a tile clears the block lane (--L) only where a block sits beside it, else it starts at the hours' edge (--g);
       // a run of overlapping tiles shares one edge so the cascade's fractions keep one width
@@ -10298,19 +10531,20 @@ document.addEventListener('alpine:init', () => {
       const wide = el.closest('.cl-agwrap').clientWidth >= 720;   // the 720px container query's line: a desk page has room for where and what
       let evs, locs;   // by id, built once per render when a tall tile needs them
       at.forEach(({ r, x0, x1, z, ring }, i) => {
-        const it = r.it, tw = tws(r), L = edge(r), ht = ng(r) ? CL_NG_PX : Math.max(r.mins * k, 24), ev = wide && ht >= 58 && it.kind === 'event' && (evs ||= new Map(this.events.map(e => [e.id, e]))).get(it.id);
+        const it = r.it, tw = tws(r), L = edge(r), ht = ng(r) ? len(r) * k : Math.max(r.mins * k, 24), ev = wide && ht >= 58 && it.kind === 'event' && (evs ||= new Map(this.events.map(e => [e.id, e]))).get(it.id);
         const more = ev ? [(ev.location?.ids || []).map(id => (locs ||= new Map(this.locations.map(x => [x.id, x]))).get(id)?.name).filter(Boolean).join(', '), ev.notes].filter(Boolean) : [];
         const ask = this.clAsks(it), chips = room(at[i]) ? this._clAskHtml(it, ask, true) : '';
         const cov = ht < 40 && at.some(b => b.z > z && hit(at[i], b));   // the week's .cl-cov: a later tile over a one-line tile's far end, so its time rides beside the title
         const cut = ht >= 40 && ask && !chips ? Math.min(...over(at[i]).map(b => b.x0).filter(x => x > x0 && x < x1)) : Infinity;   // where a later tile covers this one's time line: Going? shows whole before it or not at all
         const imp = it.importance === 'must' || it.importance === 'focus' ? html`<svg class="ico cl-event-imp" style="color:${this.pc(it.importance)}"><use href="#i-prio-fill"/></svg>` : '';
         parts.push({ id: r.key, html: html`<div class="cl-event ${it.kind} tier-${ht >= 40 ? 'full' : 'compact'}${ring ? ' cl-casc' : ''}${cov ? ' cl-cov' : ''}${cut < 1 ? ' cl-cut' : ''}${r.min + r.mins <= now ? ' past' : ''}${this.clTaskState(it)}" data-id="${r.key}"${raw(/^g:/.test(it.id) ? html` data-g="${it.id}" data-at="${it.start}"` : '')} role="button" tabindex="0" draggable="true"`
-          + html` style="${cut < 1 ? `--cut:${tw * (cut - x0)}px;` : ''}top:${P(st(r))}%;height:${ng(r) ? CL_NG_PX + 'px' : `max(24px, ${P(r.min + r.mins) - P(r.min)}%)`};left:calc(${L} + (100% - ${L}) * ${x0} + 2px);width:calc((100% - ${L}) * ${x1 - x0} - 4px);z-index:${2 + z};--i:${i};--cc:${this.clItemColor(it)}">`
+          + html` style="${cut < 1 ? `--cut:${tw * (cut - x0)}px;` : ''}top:${P(st(r))}%;height:${ng(r) ? len(r) * k + 'px' : `max(24px, ${P(r.min + r.mins) - P(r.min)}%)`};left:calc(${L} + (100% - ${L}) * ${x0} + 2px);width:calc((100% - ${L}) * ${x1 - x0} - 4px);z-index:${2 + z};--i:${i};--cc:${this.clItemColor(it)}">`
           + (it.kind === 'task-block' ? this.clCheckHtml(it, 'cl-evt-check') : '')
           + html`<span class="cl-event-b"><span class="cl-event-t"${raw(chips ? ' tabindex="-1"' : '')}>${raw(imp)}<span>${it.title}</span></span><span class="cl-event-tm"><span>${this.clTimeLabel(it)}</span>${raw(chips || (ask ? '<b class="cl-ask">Going?</b>' : ''))}</span>`
           + more.map(t => html`<span class="cl-event-tm cl-event-x">${t}</span>`).join('') + '</span></div>' });
       });
       for (const r of timed.filter(r => !r.mins)) parts.push({ id: r.key, html: this._clAgRowHtml(r, 0, now, `top:calc(${P(r.min)}% - 12px);--e:${edge(r)};`) });
+      if (col.cleared) parts.push({ id: 'cleared', html: html`<div class="cl-cleared" data-id="cleared"><span class="cl-cleared-t">${col.cleared.label}</span></div>` });   // on the day's own hours: the page's foot is the night and the next day
       if (col.today) parts.push({ id: 'now', html: html`<div class="cl-dnow" data-id="now" style="top:${P(now)}%"><span>${this._clHMA(now)}</span></div>` });
       this.renderRows(grid, parts);
       // a deadline mark draws over a tile, never through its text: a title it crosses moves below it, then any line still

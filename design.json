@@ -114,6 +114,7 @@
     "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, oklch(.985 .012 60), var(--bg) 62%)",
     "bg-foot": "linear-gradient(0deg, color-mix(in srgb, var(--warm) 7%, var(--bg)), transparent 22%)",
     "on-accent": "var(--bg)",
+    "act": "var(--accent)", "on-act": "var(--on-accent)",
     "knob": "#FFFFFF",
     "today-fill": "var(--warm-ink)", "hl": "oklch(.92 .15 102)",
     "today-ink": "var(--bg)",
@@ -174,20 +175,21 @@
   "themes": {
     "hearth-dark": {
       "label": "Hearth Dark",
-      "base": "dark"
+      "base": "dark",
+      "over": { "accent": "#EBDBC9", "warm": "var(--accent)", "warm-ink": "var(--accent)", "soon-ink": "var(--accent)", "on-accent": "#0e0b09", "today-ink": "#0e0b09" }
     },
     "hearth-light": {
       "label": "Hearth Light",
       "family": "Hearth",
       "base": "light",
-      "over": { "soon-ink": "#c85000" }
+      "over": { "accent": "#3A2A20", "warm": "var(--accent)", "warm-ink": "var(--accent)", "today-fill": "var(--accent)", "soon-ink": "var(--accent)" }
     },
     "graphite-light": {
       "label": "Graphite Light", "family": "Graphite", "base": "light",
       "over": {
         "sheet": "#FFFFFF", "deadline": "#9E3752", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#9D2B63",
         "bg": "#E3E7ED", "panel": "#F7F9FC", "ink": "#20242B", "ink-hi": "var(--ink)", "muted": "#59616E", "faint": "#6A7381", "hover": "#D9DFE8",
-        "accent": "#2054C5", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "accent": "#2054C5", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)", "act": "var(--ink)", "on-act": "var(--panel)",
         "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
         "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
         "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, #CCD9EF, var(--bg) 70%)", "bg-foot": "none",
@@ -199,7 +201,7 @@
       "over": {
         "deadline": "#F16B8B", "accent-info": "var(--accent)", "syntax-key": "var(--accent)",
         "bg": "#15171A", "panel": "#202328", "ink": "#E7EAF0", "ink-hi": "var(--ink)", "muted": "#A9B1BF", "faint": "#929CAA", "hover": "#2D323A",
-        "accent": "#8AAEFF", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#15171A", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)",
+        "accent": "#8AAEFF", "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)", "on-accent": "#15171A", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)", "act": "var(--ink)", "on-act": "var(--bg)",
         "hair": "color-mix(in srgb, var(--ink) 8%, transparent)", "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)",
         "ember-cold": "var(--hover)", "ember-mid": "var(--muted)", "ember-hot": "var(--accent)",
         "bg-wash": "radial-gradient(ellipse 1000px 520px at 50% -80px, var(--panel), var(--bg) 62%)", "bg-foot": "none",
@@ -283,7 +285,7 @@
       "over": {
         "deadline": "#96394E", "accent-info": "var(--accent)", "syntax-key": "var(--accent)", "positive": "#21643E", "syntax-number": "#785013", "hint-duration": "#633F91", "hint-location": "#9D2B63",
         "bg": "#DADDE2", "panel": "#F3F4F6", "ink": "#22252B", "ink-hi": "var(--ink)",
-        "muted": "#4C535E", "faint": "#4C535E", "hover": "#CDD1D8", "accent": "#2F529E",
+        "muted": "#4C535E", "faint": "#4C535E", "hover": "#CDD1D8", "accent": "var(--ink)",
         "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)",
         "on-accent": "#FFFFFF", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)", "hair": "color-mix(in srgb, var(--ink) 8%, transparent)",
         "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)", "ember-cold": "var(--hover)", "ember-mid": "var(--muted)",
@@ -296,7 +298,7 @@
       "over": {
         "deadline": "#F26C88", "accent-info": "var(--accent)", "syntax-key": "var(--accent)",
         "bg": "#08090B", "panel": "#111317", "ink": "#F0F2F5", "ink-hi": "var(--ink)",
-        "muted": "#B0B7C2", "faint": "#979FAB", "hover": "#202329", "accent": "#A8BEF8",
+        "muted": "#B0B7C2", "faint": "#979FAB", "hover": "#202329", "accent": "var(--ink)",
         "warm": "var(--accent)", "warm-ink": "var(--accent)", "gold": "var(--accent)", "hot": "var(--ink)",
         "on-accent": "#08090B", "today-fill": "var(--accent)", "today-ink": "var(--on-accent)", "hair": "color-mix(in srgb, var(--ink) 8%, transparent)",
         "edge": "color-mix(in srgb, var(--ink) 14%, transparent)", "edge-hi": "color-mix(in srgb, var(--ink) 28%, transparent)", "ember-cold": "var(--hover)", "ember-mid": "var(--muted)",

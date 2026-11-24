@@ -942,6 +942,8 @@ export function createLocalStore(opts = {}) {
     theme() { return readMeta().theme ?? null; },
     setTheme(theme) { return writeMeta({ ...readMeta(), theme }); },
     async setDeskCheck(deskCheck) { return writeMeta({ ...readMeta(), desk_check: deskCheck }); },
+    async mailAccounts() { return readMeta().mail_accounts ?? []; },
+    async setMailAccounts(list) { return writeMeta({ ...readMeta(), mail_accounts: list }); },
 
   };
 }

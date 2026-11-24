@@ -86,7 +86,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .chat-row:hover:where(:not(.touch *)), .soc-invite:hover:where(:not(.touch *)) { background: var(--hover); }
 .chat-row.sel { background: color-mix(in srgb, var(--accent) 13%, transparent); }   /* the open chat: the open/selected tint (.chk-sel, .open), never the hover fill */
 .chat-row.sel:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--accent) 22%, transparent); }   /* a hover steps up one, as .item.selected's */
-:is(.chat-row, .soc-invite, .jb-chat) .av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-13); font-weight: 700;
+:is(.chat-row, .soc-invite, .jb-chat, .mail-row) .av { grid-row: span 2; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: var(--fs-13); font-weight: 700;
   color: var(--warm-ink); background: color-mix(in srgb, var(--warm) 15%, transparent); }
 .chat-row b { font-size: var(--fs-15); font-weight: 600; }
 .chat-row.new .av { position: relative; }
@@ -147,7 +147,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .chat-comp { gap: var(--sp-6); padding: var(--sp-8) var(--sp-8) var(--sp-8) var(--sp-10); border: 1px solid var(--edge); border-radius: var(--r); background: var(--panel); }
 .chat-input { position: relative; display: flex; flex: 1; min-width: 0; }
 .chat-comp textarea { flex: 1; min-width: 0; field-sizing: content; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: var(--fs-15); line-height: 20px; padding: var(--sp-4); }   /* 28px, the send's: one line shares its center */
-.chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.chat-comp .send { flex: none; width: 28px; height: 28px; border: 0; border-radius: var(--r-6); background: var(--act); color: var(--on-act); cursor: pointer; }
 .chat-comp .send:disabled { opacity: .45; cursor: default; }
 .chat-comp textarea::placeholder { color: transparent; }
 :is(.chat-comp, .jb-chat) textarea { max-height: calc((100vh - var(--kb)) * .4); }   /* of what the keyboard leaves */
@@ -482,12 +482,12 @@ html:not(.touch) .plan-box { display: none; }
 .topbar-title { position: relative; }
 .head-cele { position: absolute; display: flex; align-items: center; padding-left: var(--sp-20); pointer-events: none; .check { zoom: 1.5; } }
 .check .ember { position: absolute; left: 50%; top: 50%; pointer-events: none; }
-.check .ember i { position: absolute; width: var(--s); height: var(--s); margin: calc(var(--s) / -2); border-radius: 50%; background: var(--accent);
+.check .ember i { position: absolute; width: var(--s); height: var(--s); margin: calc(var(--s) / -2); border-radius: 50%; background: var(--ember-hot);
   animation: cele-ember var(--t) var(--ease-pop) both, cele-fade calc(var(--t) * .35) var(--ease-in-out) var(--f) both; }
-/* shades of the theme's accent, so every theme bursts in its own color: paler, deeper, a hue step either way */
-.check .ember i:nth-child(4n+2) { background: oklch(from var(--accent) calc(l + .2) calc(c * .6) h); }
-.check .ember i:nth-child(4n+3) { background: oklch(from var(--accent) calc(l - .06) c calc(h - 14)); }
-.check .ember i:nth-child(4n) { background: oklch(from var(--accent) calc(l + .06) c calc(h + 20)); }
+/* shades of the theme's ember (its accent, except Hearth's fire under its char), so every theme bursts in its own color: paler, deeper, a hue step either way */
+.check .ember i:nth-child(4n+2) { background: oklch(from var(--ember-hot) calc(l + .2) calc(c * .6) h); }
+.check .ember i:nth-child(4n+3) { background: oklch(from var(--ember-hot) calc(l - .06) c calc(h - 14)); }
+.check .ember i:nth-child(4n) { background: oklch(from var(--ember-hot) calc(l + .06) c calc(h + 20)); }
 @keyframes cele-tick { from { scale: .4; opacity: 0; } 15% { opacity: 1; } }   /* opaque early: the spring is in the scale */
 @keyframes cele-pulse { from { scale: .85; } to { scale: 1.6; } }
 @keyframes cele-ember {   /* from just past the ring (12px), not over the tick, out --d further */
@@ -799,36 +799,39 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
 .peek-panel, .cl-side { box-shadow: -1px 0 0 var(--hair); background: var(--bg-wash) right 0 top calc(-1 * var(--wash-y)) / 100vw 100vh no-repeat, var(--bg); }
 .peek-panel { box-shadow: inset 1px 0 0 var(--hair); }   /* .peek clips anything outside the panel */
 .peek.on .peek-panel { transform: translateX(0); opacity: 1; }
-.peek-head { flex: none; padding: var(--sp-10) var(--sp-10) var(--sp-6); }
-.peek-date { font-size: var(--fs-22); font-weight: 800; letter-spacing: -.02em; color: var(--ink); }
+.peek-head { flex: none; padding: var(--sp-12) var(--sp-12) var(--sp-8); }
+.peek-date { font-size: var(--fs-28); font-weight: 800; letter-spacing: -.03em; color: var(--ink); }
 .peek-pin { border: none; background: none; cursor: pointer; padding: var(--sp-4); border-radius: var(--r-6); color: var(--faint);
   .ico { width: 13px; height: 13px; flex: none; }
   &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
   &.on { color: var(--accent); } }
 /* all-day lane mirrors the grid's gutter/column split so it reads as row 0 of the timeline */
-.peek-allday { flex: none; display: grid; grid-template-columns: 44px 1fr; align-items: stretch; margin: 0 var(--sp-8) var(--sp-6) 0; }
+.peek-allday { flex: none; display: grid; grid-template-columns: 44px 1fr; align-items: stretch; margin: 0 var(--sp-24) var(--sp-6) 0; }   /* right: the grid's edge lane, so its heat ends with the column */
 .peek-ad-lbl { align-self: center; text-align: right; padding-right: 6px; font-size: var(--fs-10); color: var(--muted); }
-.peek-ad-zone { min-height: 40px; gap: var(--sp-4); padding: var(--sp-4) var(--sp-6); border-radius: var(--r-8); background: var(--hover); }
+.peek-ad-zone { min-height: 30px; gap: var(--sp-4); padding: var(--sp-2) var(--sp-4); border-radius: var(--r-8); }   /* no slab: the label and the chips say it; a drag's heat fills it */
 .peek-allday.hot .peek-ad-zone { background: color-mix(in srgb, var(--accent) 13%, transparent); }
 .peek-ad-chip { max-width: 120px; padding: 2px var(--sp-8); border-radius: var(--r-6); font-size: var(--fs-12); color: var(--txt); background: color-mix(in srgb, var(--cc) 18%, transparent); }
 /* the pane's .cl-dl bands carry their own label (no room for the week view's bottom rail) */
 .peek-col .cl-dl { overflow: hidden; }   /* no z-index, as in the week grid: its fade paints under the blocks and events */
 .peek-dl-t { position: absolute; z-index: 4; right: 3px; bottom: 4px; max-width: calc(100% - 6px); gap: 3px; font-size: var(--fs-11); font-weight: 600; color: var(--txt); }
-.peek-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; }
-.peek-grid { display: grid; grid-template-columns: 44px 1fr; --clhh: 44px; height: calc(var(--clhh) * 24); }
+.peek-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid color-mix(in srgb, var(--hair) 55%, transparent); }
+.peek-grid { display: grid; grid-template-columns: 44px 1fr; --clhh: 60px; height: calc(var(--clhh) * 24); padding-right: var(--sp-24); }   /* 60: peekCol packs at it; the right 24px is the edge label's lane, so it never lies over a tile */
 .peek-col { border-right: none; }
-/* month foot: drop = all-day that day; a held drag dwelling on a day retargets the timeline */
+.peek-col .cl-block.is-terrain { padding-left: 0; }   /* the block's name across its top, not down a spine */
+.peek-col .cl-block.is-terrain .cl-blk-t { writing-mode: horizontal-tb; transform: none; left: 8px; top: 3px; max-width: 96px; max-height: none; opacity: .85; }   /* 96: peekCol's pack insets what starts on this line past it */
+.peek-col .cl-event.task-block { padding-left: var(--sp-10); }   /* task text on the cards' text edge */
+.peek-col .cl-event.task-block:not(.done) .cl-event-tm { color: var(--muted); opacity: 1; }
+.peek .cl-drop-ghost { left: 6px; background: color-mix(in srgb, var(--accent) 13%, color-mix(in srgb, var(--bg) 70%, transparent)); }   /* clear of the block's strip; 70% ground: what it lands on still shows, its text never reads as the drop's */
+/* two-week foot: drop = all-day that day; a held drag dwelling on a day retargets the timeline */
 .peek-month { flex: none; padding: var(--sp-6) var(--sp-10) var(--sp-10); border-top: 1px solid color-mix(in srgb, var(--hair) 55%, transparent); }
-.peek-mon-lbl { padding: 0 2px var(--sp-4); font-size: var(--fs-11); font-weight: 600; color: var(--muted); }
 .peek-mgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
 .peek-mdow { text-align: center; font-size: var(--fs-10); color: var(--muted); padding-bottom: 2px; }
-.peek-mday { height: 26px; border-radius: var(--r-6); font-size: var(--fs-11); color: var(--ink); cursor: pointer;
+.peek-mday { height: 34px; border-radius: var(--r-6); font-size: var(--fs-13); color: var(--ink); cursor: pointer;
   &:hover:where(:not(.touch *)) { background: var(--hover); }
-  &.dim { color: var(--faint); }
   &.today { background: radial-gradient(circle closest-side, var(--today-fill) calc(100% - 1.5px), transparent calc(100% - 1px)); color: var(--today-ink); font-weight: 700; }   /* today = a circle in every day grid */
   &.sel { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); font-weight: 700; }
-  &.today.sel:not(.hot) { box-shadow: inset 0 0 0 1.5px var(--today-ink); color: var(--today-ink); }   /* the pane opens on today: on its fill the amber ring vanishes; a drag's heat replaces the fill */
-  &.off { color: var(--faint); opacity: .4; cursor: default; }
+  &.today.sel:not(.hot) { box-shadow: none; color: var(--today-ink); }   /* the pane opens on today: its disc says it, no ring (his 11-18 "never put a white outline around it"); a drag's heat replaces the fill */
+  &.off { background: none; cursor: default; }   /* this week's past days: no number (index.html), no target (peekMonDrop) */
   &.hot { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--ink); } }   /* the heat is the fill; amber type on it reads ~2.5:1 */
 /* edge-dwell paging chevrons: quiet gutter marks that brighten while the dwell timer runs */
 .peek-eg { position: absolute; top: 0; bottom: 0; width: 26px; z-index: 4; display: flex; align-items: center;
@@ -839,7 +842,9 @@ mark.hl { background: var(--hl); color: var(--ink); }   /* ==x== is a highlighte
   &::after { content: ""; position: absolute; top: 0; height: 100%; width: 3px; border-radius: 2px; background: var(--accent); opacity: .9; transform: scaleY(0); transform-origin: top; }
   &.l::after { left: 1px; } &.r::after { right: 1px; }
   &.hot::after { transform: scaleY(1); transition: transform .5s linear; } }   /* fills over the 500ms dwell (_peekT); leaving resets instantly */
-.peek-eg-lbl { writing-mode: vertical-rl; padding: 0 var(--sp-4); font-size: var(--fs-12); font-weight: 700; letter-spacing: .08em; color: var(--accent); }
+.peek-eg-lbl { writing-mode: vertical-rl; padding: var(--sp-6) var(--sp-2); border-radius: var(--r-6); background: var(--bg); font-size: var(--fs-12); font-weight: 700; letter-spacing: .08em; color: var(--accent);
+  opacity: 0; transition: opacity .2s var(--ease-out); }   /* only while its dwell charges */
+.peek-eg.hot .peek-eg-lbl { opacity: 1; }
 .peek-eg.l .peek-eg-lbl { transform: rotate(180deg); }
 /* Tinted chip — solid fill, own --tc tint. */
 .area { display: inline-flex; align-items: center; gap: var(--sp-4); border-radius: var(--r-pill); font-size: var(--fs-11); font-weight: 600; padding: 0 var(--sp-6); line-height: 15px; white-space: nowrap;   /* pill shape is identity — see .check note */
@@ -1059,8 +1064,7 @@ html:not(.touch) :is(.surface-lists .item, .dsk) {
   .chip {
     &.open { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--ink); }   /* owns the open pop */
     &.set { color: var(--ink); .ico { color: var(--cc); } }
-    :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span:not(.areas) { display: none; }   /* touch keeps words: its row scrolls; areas read by their capsules */
-    &.down .ico { rotate: 180deg; } }   /* Someday: the chevrons point down */
+    :where(html:not(.touch)) &:is(:not(.set), .chip-imp, .chip-dur, .chip-area) > span:not(.areas) { display: none; }   /* touch keeps words: its row scrolls; areas read by their capsules */ }
   .chip-rem { --cc: var(--accent); }   /* the light accent on a dark card reads at 2.4:1 */
   .chip-loc { --cc: var(--hue-location); }
   .chip-dur { --cc: var(--hue-duration); }
@@ -1147,7 +1151,7 @@ html:not(.touch) :is(.surface-lists .item, .dsk) {
   > .entry.chk.cur::before { background: linear-gradient(var(--accent) 0 calc(var(--sp-4) + .5lh), var(--rail) 0); }
   .chk-rect { border: 3px solid transparent; border-radius: 50%; background: var(--panel) padding-box; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--faint) 70%, transparent); }
   .chk-rect::before { content: ''; position: absolute; inset: calc(50% - 12px); border-radius: 50%; }
-  .chk-rect.done { background: var(--accent) padding-box; box-shadow: none; &::after { display: none; } }
+  .chk-rect.done { background: var(--act) padding-box; box-shadow: none; &::after { display: none; } }
   > .ghost .chk-rect { box-shadow: none; }
   > .ghost.active .chk-rect { border-color: transparent; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--faint) 70%, transparent); &::after { display: none; } }   /* typed: solid, like every ghost check */
   .cur .chk-rect { border-width: 1px; box-shadow: inset 0 0 0 2px var(--accent); }
@@ -1237,7 +1241,6 @@ body > .pop { z-index: 61; }   /* an open menu stands over the toasts (#notif-st
   .ico { color: var(--pc); width: 13px; height: 13px; }
   &:hover:where(:not(.touch *)) { background: color-mix(in srgb, var(--pc) 24%, transparent); }
   &.sel { background: color-mix(in srgb, var(--pc) 28%, transparent); box-shadow: inset 0 0 0 1.5px var(--pc); }
-  .pri-pop &.sel { box-shadow: none; }   /* a one-of pick: its check marks it */
   &.tog { flex: 1; justify-content: center; --pc: var(--muted); color: var(--muted); &.sel { --pc: var(--accent); color: var(--ink-hi); box-shadow: none; } }   /* a toggle: grey off, an accent fill on */
   &:disabled { cursor: default; }
 }
@@ -1537,13 +1540,24 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
   .c { position: relative; height: 32px; font-size: var(--fs-15); padding: 0 var(--sp-12);
     &::after { content: ''; position: absolute; left: 50%; top: 50%; width: max(100%, 44px); height: 44px; translate: -50% -50%; } }
   input { font-size: var(--fs-15); width: 120px; } }
+/* An address: bold name over its one-line address (picker hits, the picked one-off, Places' search); the OSM credit under results */
+.lp-hit { flex: none; .lp-txt { display: flex; flex-direction: column; flex: 1; min-width: 0; line-height: 1.3; } b { font-weight: 600; }
+  small { color: var(--muted); font-size: var(--fs-12); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
+.lp-hit.sel .ico { color: var(--ink); }
+.lp-one { flex: none; .lp-hit { flex: 1; min-width: 0; } }
+.lp-go { flex: none; display: inline-flex; padding: var(--sp-6); border-radius: var(--r-6); color: var(--muted); .ico { width: 15px; height: 15px; }
+  &:hover:where(:not(.touch *)) { color: var(--ink); background: var(--hover); } }
+:is(.lp-osm, .lp-note) { margin: 0; padding: var(--sp-4) var(--sp-8) 0; font-size: var(--fs-11); color: var(--faint); }
+.lp-osm { text-align: right; }
+.lp-note { font-size: var(--fs-12); color: var(--muted); padding-inline: var(--sp-4); }   /* the .lp-sec header's inset */
+.loc-pop > div:has(> .lp-hit) { flex: none; }   /* the phone dock is a shrinking flex column */
 .lp-mgr { margin-top: var(--sp-8); border-top: 1px solid var(--hair); border-radius: 0; }
 @keyframes req-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
 
 /* one box for every button, its 1.5px border transparent: a radiused fill, never an outline */
 .primary, :where(button).ghost, .danger { padding: var(--sp-4) var(--sp-12); border: 1.5px solid transparent; border-radius: var(--r-8); font-size: var(--fs-13); cursor: pointer; }
 .primary, .danger { font-weight: 600; }
-.primary { background: var(--accent); color: var(--on-accent); }
+.primary { background: var(--act); color: var(--on-act); }
 .primary:disabled { opacity: .45; cursor: default; }
 .danger { background: var(--p1); color: var(--on-accent); }
 :where(button).ghost { background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); transition: background-color .15s ease;   /* a share of the ink reads on a panel and on an open mail's --hover */
@@ -1888,30 +1902,51 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
 .sec-row:hover:where(:not(.touch *)) .sec-chev, .cl-side-more:hover:where(:not(.touch *)) .sec-chev { color: var(--ink); }
 /* the picker's project pie, sized for a section head. ::after inset scales with it (4px would leave no core). */
 .sec-pie { width: 12px; height: 12px; margin-left: var(--sp-8); }
-/* Backlog's Mail panel: a section head, search, then its own scroller (faded at the foot while more is below)
-   above a 1px --hair line; it bleeds like .list so the envelope sits in the check's column. */
+/* Backlog's Mail panel: one head row (the chevron on the pictures' column, the search on the subjects' column), then its own
+   scroller (faded at the foot while more is below) above a 1px --hair line; it bleeds like .list. */
 .mail-panel { margin: 0 -10px var(--sp-12) -18px;
-  > .sec-row { border: 0; background: none; text-align: left; padding-top: var(--sp-10); padding-bottom: var(--sp-2); }
   &::after { content: ''; display: block; height: 1px; background: var(--hair); margin: var(--sp-6) var(--sp-10) 0 var(--gut); }
 }
-.mail-unread-ct { margin-left: var(--sp-6); text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
-.mail-find { display: flex; align-items: center; gap: var(--sp-10); padding: var(--sp-4) var(--sp-10) var(--sp-4) var(--gut); color: var(--muted);
-  .ico { width: 16px; height: 16px; flex: none; margin-left: 1px; }
+.mail-top { gap: var(--sp-4); min-height: 26px; padding: var(--sp-10) var(--sp-10) var(--sp-6) var(--gut); color: var(--muted); }
+/* the chevron's ink sits on the pictures' left edge (i-chev-d's ink starts 5/24 into its box), and its right margin puts
+   the field's text on the subjects' column; its pad reaches past it for a bigger target */
+.mail-chev { --g: 16px; flex: none; display: grid; padding: var(--sp-4); margin: calc(-1 * var(--sp-4)); margin-left: calc(-1 * var(--sp-4) - var(--g) * 5 / 24); margin-right: calc(var(--g) / 12 - var(--sp-4)); border: none; background: none; color: var(--faint); border-radius: var(--r-4); cursor: pointer;
+  .ico { width: var(--g); height: var(--g); }
+  &:hover:where(:not(.touch *)) { color: var(--ink); }
+}
+/* --end: the trash glyph's inset from the row's end; the count and Clear's X both end there */
+.mail-top { --end: var(--sp-5); }
+.mail-unread-ct { flex: none; font-size: var(--fs-12); margin-right: var(--end); }
+/* Clear keeps its 26px target without growing the row past the count's height; the X's ink sits 8px inside it */
+.mail-top > .mail-btn { margin-block: calc(-1 * var(--sp-4)); margin-right: calc(var(--end) - var(--sp-8)); }
+.mail-find { gap: var(--sp-8);
+  .ico { width: 16px; height: 16px; flex: none; }
   input { flex: 1; min-width: 0; border: none; background: none; font: inherit; color: var(--ink); outline: none; padding: 0; }
   input::placeholder { color: var(--muted); }
 }
 .mail-list { list-style: none; padding: 0; margin: 0; max-height: 400px; overflow-y: auto; overscroll-behavior: contain;
-  &.more { mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent); }
+  &.more { mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent); }
 }
 .mail-row { padding-left: var(--gut); }
 .mail-bold { font-weight: 600; }
-.mail-env { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border: none; background: none; padding: 0; cursor: pointer;
-  color: var(--p4); border-radius: var(--r-4);
-  .ico { width: 20px; height: 20px; }
-  &.read { color: var(--faint); }
-  &:hover:where(:not(.touch *)) { background: var(--hover); }
+/* the sender's picture (Social's .av); a click marks read, a read mail's picture dims (bold and dim carry unread, no icon).
+   With 2+ sources the receiving account's mark (--b) centers on the circle's edge at its bottom left, the picture cut
+   1.5px wider round it so the row shows between them; --c: that edge point's inset, (1 - cos 45deg) of the radius. */
+.mail-env { --s: 32px; --b: 14px; --c: calc(var(--s) / 2 * .2929); position: relative; flex: none; align-self: flex-start; margin-top: var(--sp-4);
+  border: none; padding: 0; background: none; cursor: pointer;
+  > .av { overflow: hidden; }
+  &:focus-visible { outline: none; > .av { outline: 2px solid var(--accent); outline-offset: 2px; } }
+  > .av img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  > .av.logo { background: #fff; box-shadow: inset 0 0 0 1px var(--edge); }
+  > .av.logo img { width: 70%; height: 70%; object-fit: contain; }
+  &.read > .av { opacity: .5; }
+  &:hover:where(:not(.touch *)) > .av { outline: 2px solid var(--hover); }
+  &:has(.mail-acct) > .av { mask: radial-gradient(circle at var(--c) calc(var(--s) - var(--c)), transparent calc(var(--b) / 2 + 1.5px), #000 calc(var(--b) / 2 + 2px)); }
 }
+.mail-acct { position: absolute; left: calc(var(--c) - var(--b) / 2); top: calc(var(--s) - var(--c) - var(--b) / 2); width: var(--b); height: var(--b); border-radius: 50%;
+  display: grid; place-items: center; font-size: var(--fs-10); font-weight: 700; color: #fff; background: var(--gc) center / cover; }
 .mail-acts { flex: none; gap: var(--sp-2); align-self: flex-start; }
+.mail-row > .mail-acts { margin-top: calc(-1 * var(--sp-4)); }   /* centered on the subject's line */
 .mail-btn { flex: none; width: 26px; height: 26px; display: grid; place-items: center; border: none; background: none; color: var(--faint); border-radius: var(--r-4); cursor: pointer; padding: 0;
   .ico { width: 16px; height: 16px; }
   &:hover:where(:not(.touch *)) { background: var(--hover); color: var(--ink); }
@@ -1968,6 +2003,7 @@ button.pop-item.rem-head { cursor: pointer; &:hover:where(:not(.touch *)) { back
   .mail-row .title { white-space: normal; }
   .mail-row .r1l { flex-wrap: wrap; row-gap: 0; }
   .mail-row .row2 .mail-acts { margin-right: calc(-1 * var(--sp-4)); }
+  .mail-top { --end: 0px; }   /* the trash glyph sits further out here */
 }
 .sec-lbl { display: flex; min-width: 0; white-space: nowrap; }
 /* a nested section's ancestors; the last segment keeps the head's tone. Short of room the path gives way first;
@@ -2083,6 +2119,10 @@ html:not(.touch) .list-done-head { padding-top: var(--sp-4); }
 .oh-read { padding: var(--sp-6) var(--sp-8) var(--sp-8); cursor: auto; }
 .loc-row.ed { background: var(--hover); }
 .oh-ed { flex-basis: 100%; padding-top: var(--sp-2); }
+.lp-ad { flex-basis: 100%; gap: var(--sp-2); min-width: 0; font-size: var(--fs-12); color: var(--muted); padding: 0 0 var(--sp-4);
+  .lp-go { padding: var(--sp-2); .ico { width: 14px; height: 14px; } } }
+.lp-adt { min-width: 0; border: none; background: none; padding: 0; font: inherit; color: inherit; text-align: start; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  &:hover:where(:not(.touch *)) { color: var(--ink); text-decoration: underline; } }
 .oh-inp { width: 100%; border: none; background: var(--bg); border-radius: var(--r-6); padding: var(--sp-6) var(--sp-8); font-size: var(--fs-13); color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--accent); outline: none; }
 :is(.oh-inp, .oh-chip input).bad { box-shadow: inset 0 0 0 1.5px var(--p1); }   /* words it can't read: flagged, never dropped */
 .loc-manager .dialog-actions { position: sticky; bottom: calc(-1 * var(--sp-20)); z-index: 1; background: var(--panel); margin: var(--sp-8) calc(-1 * var(--sp-24)) calc(-1 * var(--sp-20)); padding: var(--sp-10) var(--sp-24) var(--sp-20); }   /* a long list of places, or rows grown by hours, push Done below the fold; the New region row's 10px bottom margin collapses into the 8px top, so Done sits where it did */
@@ -2532,6 +2572,7 @@ textarea.inp { resize: vertical; }
 /* The cleared day: with everything done the column warms rather than going blank; the glow rises from the day's end. */
 .cl-cleared { position: absolute; inset: auto 0 0 0; height: 62%; z-index: 4; display: flex; align-items: flex-end; justify-content: center; padding-bottom: var(--sp-16); pointer-events: none; background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--accent) 13%, transparent)); }
 .cl-cleared-t { font-size: var(--fs-11); font-weight: 600; color: var(--accent); text-align: center; text-wrap: balance; }
+.cl-dgrid > .cl-cleared { padding-bottom: var(--sp-8); }   /* the Day's label in the foot band clAgRender reserves under the last hour */
 
 /* Month-row -> week morph: the row and the week side both carry cl-active-week, else it cross-fades and the gutter
    and column heads pop in at the end. */
@@ -2745,7 +2786,7 @@ textarea.inp { resize: vertical; }
 
 /* Selected/active state: accent fill. The .on/.sel/.today hooks across pickers + calendar opt in here. */
 /* .cl-seg.sel opts out: the view switcher is a segmented control with a raised panel chip (see .cl-seg.sel above). */
-.blk-wd.sel, .cal-dow.on, .tpop .th.on, .tpop .tq button.on, .c.sel { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.blk-wd.sel, .cal-dow.on, .tpop .th.on, .tpop .tq button.on, .c.sel { background: var(--act); border-color: var(--act); color: var(--on-act); }
 /* A day circle is a 17px numeral on 30px of fill: --on-accent on the bright accent fails (near-white on #df6b12 is
    ~3:1). --today-fill is the deeper warm ink in light; in dark the accent takes dark ink. */
 .cl-cell.today .cl-dnum { font-weight: 600; background: var(--today-fill); border-color: var(--today-fill); color: var(--today-ink); }
@@ -2852,9 +2893,9 @@ textarea.inp { resize: vertical; }
   appearance: none; display: block; width: 100%; height: 24px; margin: 0; border-radius: var(--r-6); background: none; cursor: pointer; }
 .touch .slider { height: 44px; }
 .slider::-webkit-slider-runnable-track { height: var(--tk); border-radius: var(--r-pill);
-  background: linear-gradient(to right, var(--accent) calc(var(--th) / 2 + (100% - var(--th)) * var(--at)), var(--track) 0); }
+  background: linear-gradient(to right, var(--act) calc(var(--th) / 2 + (100% - var(--th)) * var(--at)), var(--track) 0); }
 .slider::-moz-range-track { height: var(--tk); border-radius: var(--r-pill); background: var(--track); }
-.slider::-moz-range-progress { height: var(--tk); border-radius: var(--r-pill); background: var(--accent); }
+.slider::-moz-range-progress { height: var(--tk); border-radius: var(--r-pill); background: var(--act); }
 .slider::-webkit-slider-thumb { appearance: none; width: var(--th); height: var(--kh); margin-top: calc((var(--tk) - var(--kh)) / 2); border-radius: var(--r-pill);
   background: var(--knob); box-shadow: var(--shadow-sm); transition: transform var(--motion-constant) var(--ease-out); }
 .slider::-moz-range-thumb { width: var(--th); height: var(--kh); border: 0; border-radius: var(--r-pill); background: var(--knob);
@@ -3179,7 +3220,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   textarea { flex: 1; min-width: 0; field-sizing: content; resize: none; padding: var(--sp-6) 0; border: 0; outline: 0; background: none;
     color: inherit; font: inherit; font-size: var(--fs-15); line-height: 20px; &::placeholder { color: var(--faint); } }
   :is(.attach, .send) { width: 32px; height: 32px; border-radius: var(--r-pill); }
-  .send { flex: none; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; &:disabled { opacity: .45; cursor: default; } .ico { width: 16px; height: 16px; } } }
+  .send { flex: none; border: 0; background: var(--act); color: var(--on-act); cursor: pointer; &:disabled { opacity: .45; cursor: default; } .ico { width: 16px; height: 16px; } } }
 .jb-jot { flex: 1; align-self: stretch; padding: 0; border: 0; background: none; color: var(--faint); font: inherit; font-size: var(--fs-15); text-align: left; cursor: text;
   &:first-child { padding-left: var(--sp-10); } }   /* Social's: no chip before it */
 .jb-ico { flex: none; width: 44px; height: 44px; border: 0; border-radius: var(--r-pill); background: none; color: var(--muted); cursor: pointer;
@@ -3259,7 +3300,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
     .chip.set.bare { width: auto; min-width: 38px; padding: 0; justify-content: center; .rep-on { display: none; } }   /* the bare icons' box */
     .chip-due.set.short:not(.bare) > .due-short { position: static; display: inline; visibility: visible; &::before { content: attr(data-short); } } }   /* not text: the chip's textContent stays its one label */
   /* short row glyphs up to the circle's ink height */
-  .bar-on .jb-host .ico:has(use:is([href="#i-prio"], [href="#i-prio-fill"], [href="#i-tack"])) { scale: 1.25; }
+  .bar-on .jb-host .ico:has(use:is([href="#i-prio"], [href="#i-tack"])) { scale: 1.25; }
   .bar-on .jb-host .ico:has(use:is([href="#i-steps"], [href="#i-notes"])) { scale: 1.15; }
   .bar-on .jb-host .ico:has(use:is([href="#i-pin"], [href="#i-overview"], [href="#i-archive"])) { scale: 1.1; }
   .bar-on .jb-host .ico:has(use:is([href="#i-cal"], [href="#i-cal-fill"])) { scale: 1.05; }
@@ -3404,6 +3445,10 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .set-sub:has(kbd) { flex: none; order: 0; margin-left: auto; }
 .set-mail { margin-left: var(--sp-8); }   /* the Google account beside "Google Calendar" */
 .set-gcal .set-out + .set-out { margin-left: 0; }
+/* a Gmail account: its Google photo, else its letter on Google's color for it; half strength while signed out */
+.set-gpic { width: 19px; height: 19px; margin: 0 calc(-1 * var(--sp-2)); border-radius: 50%; display: grid; place-items: center; flex: none; color: #fff; font-size: var(--fs-11); font-weight: 700;
+  background: var(--gc) center / cover; &.out { opacity: .5; } }
+.set-gmail .set-re { margin: calc(-1 * var(--sp-4)) 0 calc(-1 * var(--sp-4)) var(--sp-2); padding-inline: var(--sp-6); color: var(--ink); }
 /* every settings row is named by a glyph as well as a word */
 .set-ico { width: 15px; height: 15px; flex: none; overflow: visible; color: var(--muted); }   /* visible: #i-lock's shackle rises past the viewBox */
 .set-danger .set-ico { color: inherit; }
