@@ -78,8 +78,6 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .social h1 { margin: 0 0 var(--sp-20) var(--sp-2); font-size: var(--fs-44); font-weight: 700; letter-spacing: -.6px; }
 .soc-head { margin-bottom: var(--sp-20); padding: 0 var(--sp-2); }   /* the title's line: the jot bar's gear sits on it */
 .social .soc-head > h1 { margin: 0; }
-.soc-out { grid-column: 1 / -1; justify-content: center; gap: var(--sp-12); color: var(--muted); }
-.soc-out p { margin: 0; }
 .soc-list { display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; overflow-y: auto; }
 .chat-row, .soc-invite { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; gap: var(--sp-2) var(--sp-10); align-items: center; padding: var(--sp-8) var(--sp-10);
   border: 0; border-radius: var(--r-8); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -92,12 +90,14 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .chat-row.new .av { position: relative; }
 .chat-row.new .av::after { content: ''; position: absolute; right: 0; top: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }   /* unread: the Social dot's look */
 .chat-row .when { font-size: var(--fs-11); color: var(--faint); }
+.chat-row :is(b, .when) { align-self: baseline; }   /* centered, the 11 px time rides 2 pt above the name's line */
 .chat-row .last { grid-column: 2 / -1; font-size: var(--fs-13); color: var(--muted); }
 .soc-invite { color: var(--muted); }
 .soc-invite .av { background: var(--hover); color: inherit; }
 .soc-invite .ico { width: 15px; height: 15px; flex: none; }
 .soc-invite b { grid-row: span 2; font-weight: 500; }
-.soc-empty { margin: 0; padding: var(--sp-8) var(--sp-10); color: var(--muted); }
+.empty.soc-empty { padding-bottom: var(--sp-6); }
+.soc-invite.lone { align-self: center; grid-template-columns: 32px auto; }   /* no chats: the empty's one action, centered under its words; no empty time column to pull it left */
 .thread { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .th-head { gap: var(--sp-10); padding: var(--sp-8) 0 var(--sp-12); }
 .th-head b { font-size: var(--fs-22); font-weight: 600; }
@@ -180,7 +180,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
   /* an open thread is the whole screen: no switcher; ‹ Chats, Back and a swipe right lead back */
   .social.in-thread { padding-bottom: var(--sp-12); }
   .canvas.in-thread > :is(.canvas-dots, .settings-gear) { display: none; }
-  :is(.soc-out h1, .soc-head) { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
+  .soc-head { margin-top: var(--sp-16); }   /* Lists' phone title: .app's top padding + .topbar's margin */
   .social.in-thread:not(.back) .soc-list, .social:not(.in-thread) .thread { display: none; }
   .social .thread { margin: calc(-1 * var(--sp-16)) calc(-1 * var(--sp-12)) calc(-1 * var(--sp-12)); padding: var(--sp-16) var(--sp-12) calc(var(--sp-12) + max(var(--kb), var(--safe-b))); }   /* full bleed, so it slides as a page; its field rides the keyboard, else clears the gesture bar (the keyboard covers it) */
   .social.back .thread { background: var(--bg-wash), var(--bg); box-shadow: var(--shadow-sm); }
@@ -215,7 +215,7 @@ kbd { font: inherit; font-size: var(--fs-11); color: var(--muted); background: l
 .cd-cur .cd-ico, .cd-near .cd-ico { color: inherit; }
 .cd-far .cd-lab { display: none; }
 .cd-new { position: relative; }
-.cd-new::before { content: ''; position: absolute; left: 12px; top: calc(50% - 10px); width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }   /* on the icon's corner; the gear's .st dot */
+.cd-new::before { content: ''; position: absolute; left: 18px; top: calc(50% - 10px); width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }   /* on the icon's corner past the button's 6 px UA padding; the gear's .st dot */
 /* Plan's views fold into its dot on a phone: one navigator, and the grid keeps its bottom band for the nav and
    toasts. The desktop .cl-switcher's pill-and-raised-letter idiom at strip scale. The ::after slop buys a 40px
    touch target without inflating the 24px control, which sits beside the app's most important taps. */
@@ -375,6 +375,8 @@ html:not(.touch) .plan-box { display: none; }
   & .ray { transform-box: fill-box; transform-origin: center; } }
 .empty-sun ~ .empty-t { font-size: var(--fs-15); }
 .empty .ghost { margin-top: var(--sp-4); }
+.empty-t { margin: 0; }
+.soc-out .ghost { background: none; font-weight: 500; &:hover:where(:not(.touch *)) { background: var(--hover); } }   /* a text action, as first open's Add task: no plate at rest */
 .empty.greet { padding-bottom: 0; }
 /* The empty list's Add task row, drawn as the .ghost button under the greeting's words */
 .add-task-btn.greet { width: fit-content; margin: var(--sp-10) auto 0;   /* nothing sits below it: an empty list */
@@ -3338,7 +3340,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
   &.sub { padding-left: calc(var(--sp-16) + var(--sp-24)); } }   /* a disclosed choice's icon under its parent's label: 10 in + the 18 icon + its 12 gap */
 .touch .pop.dock :is(.pri-chip, .area-opt, .area-ghost) { min-height: 36px; padding-inline: var(--sp-12); font-size: var(--fs-15); }
 .touch .pop.dock .area-ghost input { font-size: var(--fs-15); min-width: 90px; }
-.touch .pop.dock :is(.pri-grid, .area-grid) { gap: var(--sp-8); }
+.touch .pop.dock .area-grid { gap: var(--sp-8); }
 /* the tray's arrows side by side, their hits meeting at a 12 gap */
 .touch .rl-mv { flex-direction: row; gap: var(--sp-12); opacity: .6; }
 .touch .rl-mvb { width: 32px; height: 28px; align-items: center; justify-content: center; color: var(--muted); }
@@ -3350,7 +3352,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .touch :is(.settings, .loc-manager) :is(.inp, .primary) { min-height: 44px; font-size: var(--fs-15); }
 .touch .loc-manager { :is(.loc-region-head, .loc-add-input) { min-height: 44px; } .loc-row { margin-top: var(--sp-2); } }   /* abutting 44s lose a px to the neighbor at a fractional y */
 .touch .ls-add-pop :is(.pri-chip, .area-opt, .badge) { min-height: 36px; font-size: var(--fs-13); }
-.touch .ls-due, .touch .ls-add-pop .pri-grid { gap: var(--sp-8); }
+.touch .ls-due { gap: var(--sp-8); }
 /* the composer's chips and icons 44 apiece */
 .touch .composer-card .composer-opts.composer-opts .chip { height: 44px; }
 .touch .composer-card:has(.acts.edit) .composer-opts.composer-opts .chip { min-width: 44px; }   /* an edit's chips have their row; a new task's share it with the actions and stay 40 wide, abutting */
@@ -3376,7 +3378,7 @@ body:is(.list-drag, .calendar-lift) :is(.canvas-dots, .notif) { pointer-events: 
 .touch .event-editor .primary.primary { width: 44px; height: 44px; }
 .touch .blk-wd { width: 36px; height: 36px; font-size: var(--fs-13); }
 .touch :has(> .blk-wd) { gap: var(--sp-8); }
-.touch .soc-out .primary { min-height: 44px; padding-inline: var(--sp-20); font-size: var(--fs-15); }
+.touch .soc-out .ghost { min-height: 44px; margin-top: calc(-1 * var(--sp-2)); }   /* the 44 box pads the words 7 px past desk's: pulled up, the gap under the caption matches desk */
 /* ---- Account & settings: corner gear + popup ---- */
 /* The gear: faint hover fill, no border, no glow; clearly apart from the centered dot strip */
 .settings-gear { position: absolute; left: var(--sp-12); bottom: calc(10px + var(--safe-b)); z-index: 5;   /* sits higher than the dot strip (4px) */

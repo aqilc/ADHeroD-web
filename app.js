@@ -1220,7 +1220,8 @@ document.addEventListener('alpine:init', () => {
         // margin here, or the new height past the kept rows is blank. Mid-scroll the rest timer does it.
         let appH = -1;
         if (app) new ResizeObserver(([e]) => { const h = Math.round(e.contentRect.height); if (!h || h === appH) return; appH = h; if (!_restT) { _win = new WeakMap(); this._reflow(); } }).observe(app);
-        document.fonts.ready.then(() => { _fitV++; _fitMemo.clear(); this._fitControls(); this._reflow(); });   // font-display: swap — a boot pass may have measured (and cached) fallback widths
+        // font-display: swap: a boot pass measured (and cached) fallback widths and row heights, and windowed on them
+        document.fonts.ready.then(() => { _fitV++; _fitMemo.clear(); _hCache.clear(); this._reEstimate(); if (!_restT) _win = new WeakMap(); this._fitControls(); this._reflow(); });
       });
     },
     _scrollWindow(app, at) {
@@ -4470,7 +4471,10 @@ document.addEventListener('alpine:init', () => {
       // By deltas, so a reader pin's or a hand's own scroll stays; the held space keeps the browser from clamping under it
       const ride = space ? this._rideClose(sc, grow, space, held) : null;
       if (this.composer.open && this.editing && sc) _viewHold = true;
-      _editEnd = end; this._reflow();   // before any row rises into view — the collapse itself never re-windows
+      // Windowed now, before any row rises into view (the collapse itself never re-windows) and before _growClose reads which
+      // subtree rows are in the DOM to unfold: a window kept from before the open still holds them, and a pass after would drop
+      // them mid-unfold under a card shrinking to its row, a blank band below it (scroll-b "100 subtasks" under load: 657 px).
+      _editEnd = end; this._paintRows(); this.fitRows();
       return new Promise(done => this._growClose(() => grow, end, () => {
         ride?.();   // the last step: all of it under reduced motion, whose collapse lands at once
         this.composer.open = false; this.editing = null; _editPin = _editEnd = null; this.resetDraft(); this._releaseView(); this.applyEditDom(); this._paintRows(); this.fitRows();   // windowed in the frame the subtree returns, fitted next

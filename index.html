@@ -1357,10 +1357,6 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
     <section class="surface surface-social" data-surface="social" :style="surfaceStyle('social')" :inert="surface !== 'social'">
     <template x-if="mounted('social')">
     <div class="social" :class="{ 'in-thread': !!chat.open }" x-init="socialStart()" x-effect="chatSeen(openChatRow())">
-      <template x-if="!session">
-        <div class="soc-out flex flex-col items-center"><h1>Social</h1><p x-text="localStorage.getItem('adherod.invite') ? 'Sign in to open the invite.' : 'Sign in to chat'"></p><button type="button" class="primary" @click="settingsOpen = true">Sign in</button></div>
-      </template>
-      <template x-if="session">
       <div class="soc-list">
         <div class="soc-head flex items-center justify-between"><h1>Social</h1>
         <template x-if="bar"><button class="settings-gear flex items-center justify-center rounded-pill" @click="settingsOpen = true" aria-label="Account &amp; settings" title="Account &amp; settings">   <!-- the jot bar's, as on Lists -->
@@ -1368,16 +1364,19 @@ if (mode !== 'system') document.documentElement.dataset.theme = mode;
           <span class="st inline-flex items-center" :class="{ off: !online || !synced }"></span>
           <template x-if="updateUrl"><svg class="ico upd" aria-hidden="true"><use href="#i-arrow"/></svg></template>
         </button></template></div>
+        <!-- signed out and no chats: the list's quiet empty moment: a glyph, the words and one action -->
+        <template x-if="!session"><div class="soc-out empty flex-col items-center gap-6"><svg class="empty-sun" viewBox="0 0 48 28" aria-hidden="true"><path d="M2 26h44"/><path class="arc" d="M14 26a10 10 0 0 1 20 0"/><path class="ray" d="M24 12V9"/><path class="ray" d="M15 17l-2-2"/><path class="ray" d="M33 17l2-2"/></svg><p class="empty-t" x-text="localStorage.getItem('adherod.invite') ? 'Sign in to open the invite.' : 'Sign in to chat'"></p><button type="button" class="ghost" @click="settingsOpen = true">Sign in</button></div></template>
+        <template x-if="session"><div class="contents">
         <template x-for="c in chat.chats" :key="c.id">
           <button type="button" class="chat-row" :class="{ sel: c.id === chat.open, new: chatNew(c) }" :aria-current="c.id === chat.open" @click="openChat(c.id)">
             <span class="av" x-text="chatPeer(c).slice(0, 1).toUpperCase()"></span><b class="truncate" x-text="chatPeer(c)"></b>
             <span class="when" x-text="chatWhen(c.last?.created_at)"></span><span class="last truncate" x-text="chatLine(c.last)"></span>
           </button>
         </template>
-        <p class="soc-empty" x-show="chat.listed &amp;&amp; !chat.chats.length">No chats yet</p>
-        <button type="button" class="soc-invite" @click="inviteFriend()"><span class="av"><svg class="ico" aria-hidden="true"><use href="#i-link"/></svg></span><b>Invite a friend</b></button>
+        <div class="soc-empty empty flex-col items-center gap-6" x-show="chat.listed &amp;&amp; !chat.chats.length"><svg class="empty-sun" viewBox="0 0 48 28" aria-hidden="true"><path d="M2 26h44"/><path class="arc" d="M14 26a10 10 0 0 1 20 0"/><path class="ray" d="M24 12V9"/><path class="ray" d="M15 17l-2-2"/><path class="ray" d="M33 17l2-2"/></svg><p class="empty-t">No chats yet</p></div>
+        <button type="button" class="soc-invite" :class="{ lone: chat.listed &amp;&amp; !chat.chats.length }" @click="inviteFriend()"><span class="av"><svg class="ico" aria-hidden="true"><use href="#i-link"/></svg></span><b>Invite a friend</b></button>
+        </div></template>
       </div>
-      </template>
       <template x-if="session &amp;&amp; openChatRow()">
       <div class="thread" x-ref="thread">
         <div class="th-head flex items-center"><button type="button" class="th-back flex items-center" @click="openChat(null)"><svg class="ico" aria-hidden="true"><use href="#i-chev-l"/></svg>Chats</button><b x-text="chatPeer(openChatRow())"></b></div>
